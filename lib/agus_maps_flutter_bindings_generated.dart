@@ -15,31 +15,24 @@ import 'dart:ffi' as ffi;
 class AgusMapsFlutterBindings {
   /// Holds the symbol lookup function.
   final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-      _lookup;
+  _lookup;
 
   /// The symbols are looked up in [dynamicLibrary].
   AgusMapsFlutterBindings(ffi.DynamicLibrary dynamicLibrary)
-      : _lookup = dynamicLibrary.lookup;
+    : _lookup = dynamicLibrary.lookup;
 
   /// The symbols are looked up with [lookup].
   AgusMapsFlutterBindings.fromLookup(
-      ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-          lookup)
-      : _lookup = lookup;
+    ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
+  ) : _lookup = lookup;
 
   /// A very short-lived native function.
   ///
   /// For very short-lived functions, it is fine to call them on the main isolate.
   /// They will block the Dart execution while running the native function, so
   /// only do this for native functions which are guaranteed to be short-lived.
-  int sum(
-    int a,
-    int b,
-  ) {
-    return _sum(
-      a,
-      b,
-    );
+  int sum(int a, int b) {
+    return _sum(a, b);
   }
 
   late final _sumPtr =
@@ -51,19 +44,72 @@ class AgusMapsFlutterBindings {
   /// Do not call these kind of native functions in the main isolate. They will
   /// block Dart execution. This will cause dropped frames in Flutter applications.
   /// Instead, call these native functions on a separate isolate.
-  int sum_long_running(
-    int a,
-    int b,
-  ) {
-    return _sum_long_running(
-      a,
-      b,
-    );
+  int sum_long_running(int a, int b) {
+    return _sum_long_running(a, b);
   }
 
   late final _sum_long_runningPtr =
       _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Int, ffi.Int)>>(
-          'sum_long_running');
-  late final _sum_long_running =
-      _sum_long_runningPtr.asFunction<int Function(int, int)>();
+        'sum_long_running',
+      );
+  late final _sum_long_running = _sum_long_runningPtr
+      .asFunction<int Function(int, int)>();
+
+  void comaps_init(
+    ffi.Pointer<ffi.Char> apkPath,
+    ffi.Pointer<ffi.Char> storagePath,
+  ) {
+    return _comaps_init(apkPath, storagePath);
+  }
+
+  late final _comaps_initPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)
+        >
+      >('comaps_init');
+  late final _comaps_init = _comaps_initPtr
+      .asFunction<
+        void Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)
+      >();
+
+  void comaps_init_paths(
+    ffi.Pointer<ffi.Char> resourcePath,
+    ffi.Pointer<ffi.Char> writablePath,
+  ) {
+    return _comaps_init_paths(resourcePath, writablePath);
+  }
+
+  late final _comaps_init_pathsPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)
+        >
+      >('comaps_init_paths');
+  late final _comaps_init_paths = _comaps_init_pathsPtr
+      .asFunction<
+        void Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)
+      >();
+
+  void comaps_load_map_path(ffi.Pointer<ffi.Char> path) {
+    return _comaps_load_map_path(path);
+  }
+
+  late final _comaps_load_map_pathPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Char>)>>(
+        'comaps_load_map_path',
+      );
+  late final _comaps_load_map_path = _comaps_load_map_pathPtr
+      .asFunction<void Function(ffi.Pointer<ffi.Char>)>();
+
+  void comaps_set_view(double lat, double lon, int zoom) {
+    return _comaps_set_view(lat, lon, zoom);
+  }
+
+  late final _comaps_set_viewPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Void Function(ffi.Double, ffi.Double, ffi.Int)>
+      >('comaps_set_view');
+  late final _comaps_set_view = _comaps_set_viewPtr
+      .asFunction<void Function(double, double, int)>();
 }

@@ -12,7 +12,11 @@
 #if _WIN32
 #define FFI_PLUGIN_EXPORT __declspec(dllexport)
 #else
-#define FFI_PLUGIN_EXPORT
+#define FFI_PLUGIN_EXPORT __attribute__((visibility("default")))
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 // A very short-lived native function.
@@ -28,3 +32,13 @@ FFI_PLUGIN_EXPORT int sum(int a, int b);
 // block Dart execution. This will cause dropped frames in Flutter applications.
 // Instead, call these native functions on a separate isolate.
 FFI_PLUGIN_EXPORT int sum_long_running(int a, int b);
+
+FFI_PLUGIN_EXPORT void comaps_init(const char* apkPath, const char* storagePath);
+FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* writablePath);
+FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path);
+
+FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom);
+
+#ifdef __cplusplus
+}
+#endif

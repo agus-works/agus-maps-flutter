@@ -1,8 +1,11 @@
-
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
+
+import 'package:flutter/services.dart';
+import 'package:ffi/ffi.dart';
 
 import 'agus_maps_flutter_bindings_generated.dart';
 
@@ -31,6 +34,89 @@ Future<int> sumAsync(int a, int b) async {
   _sumRequests[requestId] = completer;
   helperIsolateSendPort.send(request);
   return completer.future;
+}
+
+final _channel = const MethodChannel('agus_maps_flutter');
+
+Future<String> extractMap(String assetPath) async {
+  final String? path = await _channel.invokeMethod('extractMap', {'assetPath': assetPath});
+  return path!;
+}
+
+/// Extract all CoMaps data files (classificator, types, categories, etc.)
+/// Returns the path to the directory containing the extracted files.
+Future<String> extractDataFiles() async {
+  final String? path = await _channel.invokeMethod('extractDataFiles');
+  return path!;
+}
+
+Future<String> getApkPath() async {
+  final String? path = await _channel.invokeMethod('getApkPath');
+  return path!;
+}
+
+void init(String apkPath, String storagePath) {
+  final apkPathPtr = apkPath.toNativeUtf8().cast<Char>();
+  final storagePathPtr = storagePath.toNativeUtf8().cast<Char>();
+  _bindings.comaps_init(apkPathPtr, storagePathPtr);
+  malloc.free(apkPathPtr);
+  malloc.free(storagePathPtr);
+}
+
+/// Initialize CoMaps with separate resource and writable paths
+void initWithPaths(String resourcePath, String writablePath) {
+  final resourcePathPtr = resourcePath.toNativeUtf8().cast<Char>();
+  final writablePathPtr = writablePath.toNativeUtf8().cast<Char>();
+  _bindings.comaps_init_paths(resourcePathPtr, writablePathPtr);
+  malloc.free(resourcePathPtr);
+  malloc.free(writablePathPtr);
+}
+
+void loadMap(String path) {
+  final pathPtr = path.toNativeUtf8().cast<Char>();
+  _bindings.comaps_load_map_path(pathPtr);
+  malloc.free(pathPtr);
+}
+
+void setView(double lat, double lon, int zoom) {
+  _bindings.comaps_set_view(lat, lon, zoom);
+}
+
+Future<int> createMapSurface() async {
+  final int? textureId = await _channel.invokeMethod('createMapSurface');
+  return textureId!;
+}
+
+class AgusMap extends StatefulWidget {
+  const AgusMap({super.key});
+
+  @override
+  State<AgusMap> createState() => _AgusMapState();
+}
+
+class _AgusMapState extends State<AgusMap> {
+  int? _textureId;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeMap();
+  }
+
+  Future<void> _initializeMap() async {
+    final textureId = await createMapSurface();
+    setState(() {
+      _textureId = textureId;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_textureId == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Texture(textureId: _textureId!);
+  }
 }
 
 const String _libName = 'agus_maps_flutter';

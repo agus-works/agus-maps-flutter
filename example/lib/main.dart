@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 
@@ -15,58 +16,105 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  late int sumResult;
-  late Future<int> sumAsyncResult;
+  String _status = 'Initializing...';
+  String _mapPath = '';
+  String _debug = '';
 
   @override
   void initState() {
     super.initState();
-    sumResult = agus_maps_flutter.sum(1, 2);
-    sumAsyncResult = agus_maps_flutter.sumAsync(3, 4);
+    _initMap();
+  }
+
+  Future<void> _initMap() async {
+    try {
+      _log('Starting initialization...');
+      
+      // 1. Extract map file
+      _log('Extracting map...');
+      String mapPath = await agus_maps_flutter.extractMap('assets/maps/Gibraltar.mwm');
+      _log('Map path: $mapPath');
+      
+      // 2. Extract CoMaps data files (classificator.txt, types.txt, etc.)
+      _log('Extracting data files...');
+      String dataPath = await agus_maps_flutter.extractDataFiles();
+      _log('Data path: $dataPath');
+      
+      String storagePath = File(mapPath).parent.path;
+      _log('Storage path: $storagePath');
+      
+      // 3. Initialize with extracted data files
+      _log('Calling initWithPaths()...');
+      agus_maps_flutter.initWithPaths(dataPath, storagePath);
+      _log('initWithPaths() complete');
+      
+      _log('Calling loadMap()...');
+      agus_maps_flutter.loadMap(mapPath);
+      _log('loadMap() complete');
+      
+      _log('Calling setView()...');
+      agus_maps_flutter.setView(36.1408, -5.3536, 14);
+      _log('setView() complete');
+      
+      if (!mounted) return;
+      setState(() {
+        _status = 'Success';
+        _mapPath = mapPath;
+      });
+    } catch (e, stackTrace) {
+      _log('ERROR: $e\n$stackTrace');
+      if (!mounted) return;
+      setState(() {
+        _status = 'Error: $e';
+      });
+    }
+  }
+  
+  void _log(String msg) {
+    debugPrint('[AgusDemo] $msg');
+    if (mounted) {
+      setState(() {
+        _debug += '$msg\n';
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    const textStyle = TextStyle(fontSize: 25);
-    const spacerSmall = SizedBox(height: 10);
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(
-          title: const Text('Native Packages'),
+          title: const Text('Agus Maps (CoMaps)'),
         ),
-        body: SingleChildScrollView(
-          child: Container(
-            padding: const .all(10),
-            child: Column(
-              children: [
-                const Text(
-                  'This calls a native function through FFI that is shipped as source in the package. '
-                  'The native code is built as part of the Flutter Runner build.',
-                  style: textStyle,
-                  textAlign: .center,
-                ),
-                spacerSmall,
-                Text(
-                  'sum(1, 2) = $sumResult',
-                  style: textStyle,
-                  textAlign: .center,
-                ),
-                spacerSmall,
-                FutureBuilder<int>(
-                  future: sumAsyncResult,
-                  builder: (BuildContext context, AsyncSnapshot<int> value) {
-                    final displayValue =
-                        (value.hasData) ? value.data : 'loading';
-                    return Text(
-                      'await sumAsync(3, 4) = $displayValue',
-                      style: textStyle,
-                      textAlign: .center,
-                    );
-                  },
-                ),
-              ],
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text('Status: $_status\nMap: $_mapPath'),
             ),
-          ),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(_debug, style: const TextStyle(fontSize: 10, fontFamily: 'monospace')),
+                ),
+              ),
+            ),
+            // Debug controls
+            Container(
+              height: 50,
+              color: Colors.grey[200],
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  TextButton(
+                    onPressed: () => agus_maps_flutter.setView(36.1407, -5.3535, 12),
+                    child: const Text('Gibraltar'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

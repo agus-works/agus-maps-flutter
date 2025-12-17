@@ -30,6 +30,11 @@ android {
         versionName = flutter.versionName
     }
 
+    aaptOptions {
+        noCompress("mwm")
+    }
+
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

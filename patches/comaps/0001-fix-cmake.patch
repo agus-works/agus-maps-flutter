@@ -1,0 +1,44 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d0ecf6e3..dccb5b7e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -22,12 +22,14 @@ if (POLICY CMP0156)
+   cmake_policy(SET CMP0156 NEW)
+ endif()
+ 
+-set(OMIM_ROOT ${CMAKE_SOURCE_DIR})
++set(OMIM_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${OMIM_ROOT}/cmake")
+ 
+ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+ 
++include_directories(${OMIM_ROOT} ${OMIM_ROOT}/libs)
++
+ include(OmimPlatform)
+ include(OmimOptions)
+ include(OmimConfig)
+@@ -215,6 +217,7 @@ include_directories("${OMIM_ROOT}/3party/boost")
+ # Used in qt/ and shaders/
+ find_package(Python3 REQUIRED COMPONENTS Interpreter)
+ 
++if (NOT SKIP_PROTOBUF_CHECK)
+ execute_process(
+     COMMAND ${Python3_EXECUTABLE} -c "import google.protobuf; 
+ print(google.protobuf.__version__)"
+@@ -233,6 +236,7 @@ if(PROTOBUF_CHECK EQUAL 0)
+ else()
+     message(FATAL_ERROR "Python protobuf not found. Install version <4.0")
+ endif()
++endif()
+ 
+ 
+ add_subdirectory(libs)
+@@ -252,6 +256,6 @@ endif()
+ 
+ omim_add_test_subdirectory(libs/qt_tstfrm)
+ 
+-if (PLATFORM_ANDROID)
++if (PLATFORM_ANDROID AND NOT SKIP_ANDROID_JNI)
+   add_subdirectory(android/sdk/src/main/cpp)
+ endif()
