@@ -1,3 +1,11 @@
+### Implementation Notes
+
+1. The main objective is to develop the plugin as explained in GUIDE.md
+1. We will mutate `./GUIDE.md` as needed so that it continues to reflect the direction we want to take this development.
+1. A `./thirdparty` folder must exist in the root of the repository. Create if not exists.
+1. The `./scripts` folder in the root of the directory will be responsible for downloading dependencies. Dependencies that may come from other git repositories will be downloaded on to the thirdparty directory.
+1. We will first focus on making the entire build workflow and example on android. Relevant directories are `./example/android` and `./android`. The solution must work as specified in `./GUIDE.md` on the `android` platform initially.
+
 ### Conventional Commits
 
 The key words “MUST”, “MUST NOT”, “REQUIRED”, “SHALL”, “SHALL NOT”, “SHOULD”, “SHOULD NOT”, “RECOMMENDED”, “MAY”, and “OPTIONAL” in this document are to be interpreted as described in RFC 2119.
