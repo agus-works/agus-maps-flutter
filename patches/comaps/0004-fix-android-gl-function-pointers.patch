@@ -1,0 +1,52 @@
+diff --git a/libs/drape/gl_functions.cpp b/libs/drape/gl_functions.cpp
+index 6e06b24f..57940a55 100644
+--- a/libs/drape/gl_functions.cpp
++++ b/libs/drape/gl_functions.cpp
+@@ -15,6 +15,10 @@
+ #include <map>
+ #include <mutex>
+ 
++#if defined(OMIM_OS_ANDROID)
++#include <EGL/egl.h>
++#endif
++
+ #if defined(OMIM_OS_WINDOWS)
+ #define DP_APIENTRY __stdcall
+ #else
+@@ -241,13 +245,29 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+ 
+ #if !defined(OMIM_OS_WINDOWS)
+   // OpenGL ES3 api is the same for all systems, except WINDOWS.
+-  glGenVertexArraysFn = ::glGenVertexArrays;
+-  glBindVertexArrayFn = ::glBindVertexArray;
+-  glDeleteVertexArrayFn = ::glDeleteVertexArrays;
+-  glUnmapBufferFn = ::glUnmapBuffer;
+-  glMapBufferRangeFn = ::glMapBufferRange;
+-  glFlushMappedBufferRangeFn = ::glFlushMappedBufferRange;
+-  glGetStringiFn = ::glGetStringi;
++  // On Android, we need to use eglGetProcAddress to get properly resolved function pointers
++  // because direct symbol references may not be properly resolved by the dynamic linker.
++  #if defined(OMIM_OS_ANDROID)
++    #define LOAD_GLES3_FUNC(var, type, name) \
++      var = reinterpret_cast<type>(eglGetProcAddress(#name));
++    
++    LOAD_GLES3_FUNC(glGenVertexArraysFn, TglGenVertexArraysFn, glGenVertexArrays);
++    LOAD_GLES3_FUNC(glBindVertexArrayFn, TglBindVertexArrayFn, glBindVertexArray);
++    LOAD_GLES3_FUNC(glDeleteVertexArrayFn, TglDeleteVertexArrayFn, glDeleteVertexArrays);
++    LOAD_GLES3_FUNC(glUnmapBufferFn, TglUnmapBufferFn, glUnmapBuffer);
++    LOAD_GLES3_FUNC(glMapBufferRangeFn, TglMapBufferRangeFn, glMapBufferRange);
++    LOAD_GLES3_FUNC(glFlushMappedBufferRangeFn, TglFlushMappedBufferRangeFn, glFlushMappedBufferRange);
++    LOAD_GLES3_FUNC(glGetStringiFn, TglGetStringiFn, glGetStringi);
++    #undef LOAD_GLES3_FUNC
++  #else
++    glGenVertexArraysFn = ::glGenVertexArrays;
++    glBindVertexArrayFn = ::glBindVertexArray;
++    glDeleteVertexArrayFn = ::glDeleteVertexArrays;
++    glUnmapBufferFn = ::glUnmapBuffer;
++    glMapBufferRangeFn = ::glMapBufferRange;
++    glFlushMappedBufferRangeFn = ::glFlushMappedBufferRange;
++    glGetStringiFn = ::glGetStringi;
++  #endif
+ 
+   glClearColorFn = LOAD_GL_FUNC(TglClearColorFn, glClearColor);
+   glClearFn = LOAD_GL_FUNC(TglClearFn, glClear);

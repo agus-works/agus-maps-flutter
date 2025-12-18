@@ -24,6 +24,10 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   private MethodChannel channel;
   private Context context;
   private TextureRegistry textureRegistry;
+  
+  static {
+      System.loadLibrary("agus_maps_flutter");
+  }
 
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -115,39 +119,39 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   private String extractDataFiles() throws IOException {
     android.util.Log.d("AgusMapsFlutter", "Extracting CoMaps data files...");
     
-    File dataDir = new File(context.getFilesDir(), "comaps_data");
-    if (!dataDir.exists()) {
-        dataDir.mkdirs();
-    }
+    // Extract data files directly to the files directory (not a subdirectory)
+    // This is because platform_android.cpp looks for files in m_writableDir directly
+    File filesDir = context.getFilesDir();
     
     // Check if data is already extracted by looking for a marker file
-    File markerFile = new File(dataDir, ".extracted");
+    File markerFile = new File(filesDir, ".comaps_data_extracted");
     if (markerFile.exists()) {
-        android.util.Log.d("AgusMapsFlutter", "Data already extracted at: " + dataDir.getAbsolutePath());
-        return dataDir.getAbsolutePath();
+        android.util.Log.d("AgusMapsFlutter", "Data already extracted at: " + filesDir.getAbsolutePath());
+        return filesDir.getAbsolutePath();
     }
     
     AssetManager assetManager = context.getAssets();
     String assetPrefix = io.flutter.FlutterInjector.instance().flutterLoader().getLookupKeyForAsset("assets/comaps_data");
     
-    // Recursively extract all files from assets/comaps_data
-    extractAssetsRecursive(assetManager, assetPrefix, dataDir);
+    // Extract all files from assets/comaps_data directly to files directory
+    extractAssetsRecursive(assetManager, assetPrefix, filesDir);
     
     // Create marker file
     markerFile.createNewFile();
     
-    android.util.Log.d("AgusMapsFlutter", "Data extracted to: " + dataDir.getAbsolutePath());
-    return dataDir.getAbsolutePath();
+    android.util.Log.d("AgusMapsFlutter", "Data extracted to: " + filesDir.getAbsolutePath());
+    return filesDir.getAbsolutePath();
   }
 
   private void extractAssetsRecursive(AssetManager assetManager, String assetPath, File outDir) throws IOException {
     String[] files = assetManager.list(assetPath);
+    android.util.Log.d("AgusMapsFlutter", "Listing assets at: " + assetPath + " found: " + (files != null ? files.length : 0) + " items");
     if (files == null || files.length == 0) {
         // It's a file, not a directory
         try (InputStream in = assetManager.open(assetPath)) {
             String fileName = new File(assetPath).getName();
             File outFile = new File(outDir, fileName);
-            android.util.Log.d("AgusMapsFlutter", "Extracting: " + assetPath + " -> " + outFile.getAbsolutePath());
+            android.util.Log.d("AgusMapsFlutter", "Extracting file: " + assetPath + " -> " + outFile.getAbsolutePath());
             
             try (OutputStream out = new FileOutputStream(outFile)) {
                 byte[] buffer = new byte[32 * 1024];
@@ -158,7 +162,14 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
             }
         }
     } else {
-        // It's a directory
+        // It's a directory - list what we found
+        for (int i = 0; i < Math.min(files.length, 5); i++) {
+            android.util.Log.d("AgusMapsFlutter", "  Found item: " + files[i]);
+        }
+        if (files.length > 5) {
+            android.util.Log.d("AgusMapsFlutter", "  ... and " + (files.length - 5) + " more items");
+        }
+        
         for (String file : files) {
             String childPath = assetPath + "/" + file;
             File childDir = outDir;
@@ -168,6 +179,7 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
             if (subFiles != null && subFiles.length > 0) {
                 // It's a directory, create it
                 childDir = new File(outDir, file);
+                android.util.Log.d("AgusMapsFlutter", "Creating directory: " + childDir.getAbsolutePath());
                 childDir.mkdirs();
             }
             

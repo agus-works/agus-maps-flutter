@@ -3,9 +3,18 @@
 #include "platform/http_client.hpp"
 #include "platform/secure_storage.hpp"
 #include "platform/get_text_by_id.hpp"
+#include "platform/constants.hpp"
+#include "coding/file_reader.hpp"
+#include "base/file_name_utils.hpp"
+#include "base/logging.hpp"
+#include "base/task_loop.hpp"
+#include "agus_gui_thread.hpp"
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <boost/regex.hpp>
 
 class AgusPlatform : public Platform
 {
@@ -41,6 +50,10 @@ public:
       if (!m_writableDir.empty() && m_writableDir.back() != '/') m_writableDir += '/';
       if (!m_settingsDir.empty() && m_settingsDir.back() != '/') m_settingsDir += '/';
       if (!m_tmpDir.empty() && m_tmpDir.back() != '/') m_tmpDir += '/';
+      
+      // Initialize the GUI thread to post tasks to Android main thread
+      // This ensures thread affinity for BookmarkManager and other GUI-thread components
+      SetGuiThread(std::make_unique<agus::AgusGuiThread>());
   }
 };
 
@@ -151,4 +164,89 @@ namespace platform {
   {
     return false;
   }
+}
+// Override GetReader to use filesystem-only (no ZIP/APK reader)
+// This is necessary because our data files are extracted to the filesystem
+std::unique_ptr<ModelReader> Platform::GetReader(std::string const & file, std::string searchScope) const
+{
+  // Use ReadPathForFile which handles all scopes via filesystem
+  return std::make_unique<FileReader>(ReadPathForFile(file, std::move(searchScope)), READER_CHUNK_LOG_SIZE,
+                                      READER_CHUNK_LOG_COUNT);
+}
+
+bool Platform::GetFileSizeByName(std::string const & fileName, uint64_t & size) const
+{
+  try
+  {
+    return GetFileSizeByFullPath(ReadPathForFile(fileName), size);
+  }
+  catch (RootException const &)
+  {
+    return false;
+  }
+}
+
+void Platform::GetFilesByRegExp(std::string const & directory, boost::regex const & regexp, FilesList & outFiles)
+{
+  DIR * dir = opendir(directory.c_str());
+  if (!dir)
+    return;
+  
+  struct dirent * entry;
+  while ((entry = readdir(dir)) != nullptr)
+  {
+    std::string name(entry->d_name);
+    if (name != "." && name != ".." && boost::regex_search(name.begin(), name.end(), regexp))
+      outFiles.push_back(std::move(name));
+  }
+  closedir(dir);
+}
+
+void Platform::GetAllFiles(std::string const & directory, FilesList & outFiles)
+{
+  DIR * dir = opendir(directory.c_str());
+  if (!dir)
+    return;
+  
+  struct dirent * entry;
+  while ((entry = readdir(dir)) != nullptr)
+  {
+    std::string name(entry->d_name);
+    if (name != "." && name != "..")
+      outFiles.push_back(std::move(name));
+  }
+  closedir(dir);
+}
+
+int Platform::PreCachingDepth() const
+{
+  return 3;
+}
+
+int Platform::VideoMemoryLimit() const
+{
+  return 20 * 1024 * 1024;  // 20 MB
+}
+
+// static
+Platform::EError Platform::MkDir(std::string const & dirName)
+{
+  if (mkdir(dirName.c_str(), 0755) == 0)
+    return Platform::ERR_OK;
+  if (errno == EEXIST)
+    return Platform::ERR_FILE_ALREADY_EXISTS;
+  return Platform::ERR_UNKNOWN;
+}
+
+void Platform::GetSystemFontNames(FilesList & res) const
+{
+  // Return fonts from the data directory
+  // Use RELATIVE paths (like "fonts/filename.ttf") so ReadPathForFile can resolve them
+  std::string const fontsDir = m_resourcesDir + "fonts/";
+  FilesList fontFiles;
+  GetFilesByRegExp(fontsDir, boost::regex(".*\\.ttf$"), fontFiles);
+  
+  // Prepend "fonts/" prefix (relative path) to each font file
+  for (auto const & font : fontFiles)
+    res.push_back("fonts/" + font);
 }

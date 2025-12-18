@@ -16,6 +16,12 @@ set(SKIP_ANDROID_JNI ON CACHE BOOL "" FORCE)
 set(SKIP_PROTOBUF_CHECK ON CACHE BOOL "" FORCE)
 set(SKIP_TOOLS ON CACHE BOOL "" FORCE)
 
+# Force non-Android platform to use filesystem-based GetReader instead of ZipFileReader
+# We provide our own platform implementation in agus_platform.cpp
+set(PLATFORM_ANDROID FALSE CACHE BOOL "" FORCE)
+set(PLATFORM_LINUX TRUE CACHE BOOL "" FORCE)
+set(PLATFORM_DESKTOP TRUE CACHE BOOL "" FORCE)
+
 # Build CoMaps
 add_subdirectory(../thirdparty/comaps build/comaps)
 
@@ -23,6 +29,7 @@ add_library(agus_maps_flutter SHARED
   "agus_maps_flutter.cpp"
   "agus_platform.cpp"
   "agus_ogl.cpp"
+  "agus_gui_thread.cpp"
 )
 
 set_target_properties(agus_maps_flutter PROPERTIES

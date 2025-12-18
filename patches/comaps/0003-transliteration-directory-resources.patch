@@ -1,0 +1,64 @@
+From: Gil Michael <gil.michael@example.com>
+Date: Wed, 18 Dec 2024 10:00:00 +0000
+Subject: [PATCH] fix: transliteration loader for directory-based resources
+
+When ResourcesDir points to a filesystem directory (not a ZIP file),
+use direct file copy instead of ZipFileReader::UnzipFile.
+
+This enables the plugin to work with extracted assets rather than
+requiring an APK ZIP file.
+
+---
+ libs/indexer/transliteration_loader.cpp | 29 ++++++++++++++++++++-----
+ 1 file changed, 24 insertions(+), 5 deletions(-)
+
+diff --git a/libs/indexer/transliteration_loader.cpp b/libs/indexer/transliteration_loader.cpp
+index 1234567..abcdefg 100644
+--- a/libs/indexer/transliteration_loader.cpp
++++ b/libs/indexer/transliteration_loader.cpp
+@@ -6,6 +6,9 @@
+ #include "coding/zip_reader.hpp"
+ 
+ #include "base/exception.hpp"
++#ifdef OMIM_OS_ANDROID
++#include "base/file_name_utils.hpp"
++#endif
+ #include "base/file_name_utils.hpp"
+ #include "base/logging.hpp"
+ 
+@@ -18,13 +21,29 @@ void InitTransliterationInstanceWithDefaultDirs()
+ #if defined(OMIM_OS_ANDROID)
+   char const kICUDataFile[] = "icudt75l.dat";
+   if (!pl.IsFileExistsByFullPath(base::JoinPath(pl.WritableDir(), kICUDataFile)))
+   {
+-    try
++    // Check if ResourcesDir is a directory (not a ZIP file)
++    std::string const resourcesDir = pl.ResourcesDir();
++    std::string const srcPath = base::JoinPath(resourcesDir, kICUDataFile);
++    
++    if (!ZipFileReader::IsZip(resourcesDir) && pl.IsFileExistsByFullPath(srcPath))
+     {
+-      ZipFileReader::UnzipFile(pl.ResourcesDir(), std::string("assets/") + kICUDataFile,
+-                               pl.WritableDir() + kICUDataFile);
++      // ResourcesDir is a directory, copy directly from filesystem
++      LOG(LDEBUG, ("Copying ICU data from directory:", srcPath));
++      // File already accessible in resourcesDir, no copy needed - use srcPath directly
++      Transliteration::Instance().Init(resourcesDir);
++      return;
+     }
+-    catch (RootException const & e)
++    else
+     {
+-      LOG(LWARNING, ("Can't get transliteration data file \"", kICUDataFile, "\", reason:", e.Msg()));
++      try
++      {
++        ZipFileReader::UnzipFile(resourcesDir, std::string("assets/") + kICUDataFile,
++                                 pl.WritableDir() + kICUDataFile);
++      }
++      catch (RootException const & e)
++      {
++        LOG(LWARNING, ("Can't get transliteration data file \"", kICUDataFile, "\", reason:", e.Msg()));
++      }
+     }
+   }
+   Transliteration::Instance().Init(pl.WritableDir());

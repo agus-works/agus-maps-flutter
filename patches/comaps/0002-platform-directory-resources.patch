@@ -1,0 +1,48 @@
+From: Agus Maps Flutter <agus@example.com>
+Subject: [PATCH] fix(platform): Support directory-based resources on Android
+
+When m_resourcesDir is a directory (not a ZIP/APK file), use FileReader
+instead of ZipFileReader for scope 'r'. This allows the platform to
+work when data files are extracted to the filesystem rather than
+reading from the APK.
+
+---
+ libs/platform/platform_android.cpp | 20 +++++++++++++++-----
+ 1 file changed, 15 insertions(+), 5 deletions(-)
+
+diff --git a/libs/platform/platform_android.cpp b/libs/platform/platform_android.cpp
+index 1234567..abcdefg 100644
+--- a/libs/platform/platform_android.cpp
++++ b/libs/platform/platform_android.cpp
+@@ -99,14 +99,24 @@ std::unique_ptr<ModelReader> Platform::GetReader(std::string const & file, std::
+       break;
+ 
+     case 'r':
+-      ASSERT_EQUAL(file.find("assets/"), std::string::npos, ());
+-      try
+-      {
+-        return make_unique<ZipFileReader>(m_resourcesDir, "assets/" + file, logPageSize, logPageCount);
+-      }
+-      catch (Reader::OpenException const & e)
++      // If resourcesDir is a directory (not a ZIP file), use FileReader like scope 'w'
++      if (!ZipFileReader::IsZip(m_resourcesDir))
+       {
+-        LOG(LWARNING, ("Can't get reader:", e.what()));
++        auto const path = base::JoinPath(m_resourcesDir, file);
++        if (IsFileExistsByFullPath(path))
++          return std::make_unique<FileReader>(path, logPageSize, logPageCount);
++      }
++      else
++      {
++        ASSERT_EQUAL(file.find("assets/"), std::string::npos, ());
++        try
++        {
++          return make_unique<ZipFileReader>(m_resourcesDir, "assets/" + file, logPageSize, logPageCount);
++        }
++        catch (Reader::OpenException const & e)
++        {
++          LOG(LWARNING, ("Can't get reader:", e.what()));
++        }
+       }
+       break;
+ 

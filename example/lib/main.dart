@@ -19,6 +19,8 @@ class _MyAppState extends State<MyApp> {
   String _status = 'Initializing...';
   String _mapPath = '';
   String _debug = '';
+  bool _mapReady = false;
+  int? _textureId;
 
   @override
   void initState() {
@@ -30,22 +32,34 @@ class _MyAppState extends State<MyApp> {
     try {
       _log('Starting initialization...');
       
-      // 1. Extract map file
-      _log('Extracting map...');
+      // 1. Extract map files
+      _log('Extracting World.mwm...');
+      await agus_maps_flutter.extractMap('assets/maps/World.mwm');
+      _log('Extracting WorldCoasts.mwm...');
+      await agus_maps_flutter.extractMap('assets/maps/WorldCoasts.mwm');
+      _log('Extracting Gibraltar.mwm...');
       String mapPath = await agus_maps_flutter.extractMap('assets/maps/Gibraltar.mwm');
       _log('Map path: $mapPath');
       
-      // 2. Extract CoMaps data files (classificator.txt, types.txt, etc.)
+      // 2. Extract ICU data for transliteration
+      _log('Extracting icudt75l.dat...');
+      await agus_maps_flutter.extractMap('assets/maps/icudt75l.dat');
+      
+      // 3. Extract CoMaps data files (classificator.txt, types.txt, etc.)
+      // These files are extracted directly to the files directory
       _log('Extracting data files...');
       String dataPath = await agus_maps_flutter.extractDataFiles();
       _log('Data path: $dataPath');
       
-      String storagePath = File(mapPath).parent.path;
+      // storagePath is the same as dataPath since data files are extracted to files directory
+      String storagePath = dataPath;
       _log('Storage path: $storagePath');
       
-      // 3. Initialize with extracted data files
+      // 4. Initialize with extracted data files
+      // Both resource and writable paths point to the same directory
+      // so that scope "w" and "r" both find the files
       _log('Calling initWithPaths()...');
-      agus_maps_flutter.initWithPaths(dataPath, storagePath);
+      agus_maps_flutter.initWithPaths(storagePath, storagePath);
       _log('initWithPaths() complete');
       
       _log('Calling loadMap()...');
@@ -56,10 +70,17 @@ class _MyAppState extends State<MyApp> {
       agus_maps_flutter.setView(36.1408, -5.3536, 14);
       _log('setView() complete');
       
+      // 5. Create the rendering surface
+      _log('Creating map surface...');
+      final textureId = await agus_maps_flutter.createMapSurface();
+      _log('Map surface created, textureId: $textureId');
+
       if (!mounted) return;
       setState(() {
         _status = 'Success';
         _mapPath = mapPath;
+        _mapReady = true;
+        _textureId = textureId;
       });
     } catch (e, stackTrace) {
       _log('ERROR: $e\n$stackTrace');
@@ -92,13 +113,16 @@ class _MyAppState extends State<MyApp> {
               padding: const EdgeInsets.all(8.0),
               child: Text('Status: $_status\nMap: $_mapPath'),
             ),
+            // Map rendering area
             Expanded(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(_debug, style: const TextStyle(fontSize: 10, fontFamily: 'monospace')),
-                ),
-              ),
+              child: _mapReady && _textureId != null
+                  ? Texture(textureId: _textureId!)
+                  : SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(_debug, style: const TextStyle(fontSize: 10, fontFamily: 'monospace')),
+                      ),
+                    ),
             ),
             // Debug controls
             Container(
