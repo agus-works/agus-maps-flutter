@@ -301,12 +301,11 @@ This architecture satisfies all constraints: it is **cross-platform** (Linux, Wi
 - ✅ Directory-based resource loading (Platform and Transliteration)
 - ✅ Framework initialization and Drape engine startup
 - ✅ Backend and Frontend renderer threads started
-
-#### **In Progress / Pending**
-- 🔄 Frame rendering to Flutter texture (SwapBuffers integration)
-- 🔄 Touch/gesture event forwarding to Framework
-- 🔄 Map viewport resize handling
-- 🔄 Flutter Dart API for map control (zoom, pan, center)
+- ✅ Frame rendering to Flutter texture via SurfaceProducer
+- ✅ Touch/gesture event forwarding to Framework
+- ✅ Map viewport resize handling with dynamic surface recreation
+- ✅ Flutter Dart API (`AgusMapController`) for map control (setView, moveToLocation)
+- ✅ Multitouch gesture support (pan, pinch-to-zoom)
 
 #### **Not Started**
 - ⏳ iOS/macOS implementation
@@ -315,6 +314,8 @@ This architecture satisfies all constraints: it is **cross-platform** (Linux, Wi
 - ⏳ Routing API integration
 - ⏳ POI interaction callbacks
 - ⏳ Map download management
+- ⏳ Animated camera transitions
+- ⏳ Compass and ruler widgets (requires symbols.sdf generation)
 
 ### **A.2 CoMaps Submodule Patches**
 

@@ -112,4 +112,39 @@ class AgusMapsFlutterBindings {
       >('comaps_set_view');
   late final _comaps_set_view = _comaps_set_viewPtr
       .asFunction<void Function(double, double, int)>();
+
+  /// Touch event handling
+  /// type: 1=TOUCH_DOWN, 2=TOUCH_MOVE, 3=TOUCH_UP, 4=TOUCH_CANCEL
+  /// id1, x1, y1: first touch pointer
+  /// id2, x2, y2: second touch pointer (use -1 for id2 if single touch)
+  void comaps_touch(
+    int type,
+    int id1,
+    double x1,
+    double y1,
+    int id2,
+    double x2,
+    double y2,
+  ) {
+    return _comaps_touch(type, id1, x1, y1, id2, x2, y2);
+  }
+
+  late final _comaps_touchPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int,
+            ffi.Int,
+            ffi.Float,
+            ffi.Float,
+            ffi.Int,
+            ffi.Float,
+            ffi.Float,
+          )
+        >
+      >('comaps_touch');
+  late final _comaps_touch = _comaps_touchPtr
+      .asFunction<
+        void Function(int, int, double, double, int, double, double)
+      >();
 }

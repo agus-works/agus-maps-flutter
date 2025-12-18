@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'dart:ffi';
+import 'dart:ffi' hide Size;
 import 'dart:io';
 import 'dart:isolate';
 
@@ -82,13 +82,103 @@ void setView(double lat, double lon, int zoom) {
   _bindings.comaps_set_view(lat, lon, zoom);
 }
 
-Future<int> createMapSurface() async {
-  final int? textureId = await _channel.invokeMethod('createMapSurface');
+/// Touch event types
+enum TouchType {
+  none,      // 0
+  down,      // 1
+  move,      // 2
+  up,        // 3
+  cancel,    // 4
+}
+
+/// Send a touch event to the map engine.
+/// 
+/// [type] is the touch event type (down, move, up, cancel).
+/// [id1], [x1], [y1] are the first pointer's ID and coordinates.
+/// [id2], [x2], [y2] are the second pointer's data (use -1 for id2 if single touch).
+void sendTouchEvent(TouchType type, int id1, double x1, double y1, {int id2 = -1, double x2 = 0, double y2 = 0}) {
+  _bindings.comaps_touch(type.index, id1, x1, y1, id2, x2, y2);
+}
+
+/// Create a map rendering surface with the given dimensions.
+/// If width/height are not specified, uses the screen size.
+Future<int> createMapSurface({int? width, int? height}) async {
+  final int? textureId = await _channel.invokeMethod('createMapSurface', {
+    if (width != null) 'width': width,
+    if (height != null) 'height': height,
+  });
   return textureId!;
 }
 
+/// Resize the map surface to new dimensions.
+Future<void> resizeMapSurface(int width, int height) async {
+  await _channel.invokeMethod('resizeMapSurface', {
+    'width': width,
+    'height': height,
+  });
+}
+
+/// Controller for programmatic control of an AgusMap.
+/// 
+/// Use this to move the map, change zoom level, and other operations.
+class AgusMapController {
+  /// Move the map to the specified coordinates and zoom level.
+  /// 
+  /// [lat] and [lon] specify the center point in WGS84 coordinates.
+  /// [zoom] is the zoom level (typically 0-20, where higher is more zoomed in).
+  void moveToLocation(double lat, double lon, int zoom) {
+    setView(lat, lon, zoom);
+  }
+  
+  /// Animate the map to the specified coordinates.
+  /// Currently this is the same as moveToLocation; animation support
+  /// will be added in a future version.
+  void animateToLocation(double lat, double lon, int zoom) {
+    // TODO: Implement animated camera movement
+    setView(lat, lon, zoom);
+  }
+  
+  /// Zoom in by one level.
+  void zoomIn() {
+    // TODO: Implement zoom level tracking and relative zoom
+    debugPrint('[AgusMapController] zoomIn not yet implemented');
+  }
+  
+  /// Zoom out by one level.
+  void zoomOut() {
+    // TODO: Implement zoom level tracking and relative zoom
+    debugPrint('[AgusMapController] zoomOut not yet implemented');
+  }
+}
+
+/// A Flutter widget that displays a CoMaps map.
+/// 
+/// The widget handles initialization, sizing, and gesture events.
 class AgusMap extends StatefulWidget {
-  const AgusMap({super.key});
+  /// Initial latitude for the map center.
+  final double? initialLat;
+  
+  /// Initial longitude for the map center.
+  final double? initialLon;
+  
+  /// Initial zoom level (0-20).
+  final int? initialZoom;
+  
+  /// Callback when the map is ready.
+  final VoidCallback? onMapReady;
+  
+  /// Controller for programmatic map control.
+  /// If not provided, the map can only be controlled via gestures.
+  final AgusMapController? controller;
+
+  const AgusMap({
+    super.key,
+    this.initialLat,
+    this.initialLon,
+    this.initialZoom,
+    this.onMapReady,
+    this.controller,
+  });
 
   @override
   State<AgusMap> createState() => _AgusMapState();
@@ -96,26 +186,144 @@ class AgusMap extends StatefulWidget {
 
 class _AgusMapState extends State<AgusMap> {
   int? _textureId;
+  Size? _currentSize;
+  bool _surfaceCreated = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeMap();
   }
 
-  Future<void> _initializeMap() async {
-    final textureId = await createMapSurface();
+  Future<void> _createSurface(Size size) async {
+    if (_surfaceCreated) return;
+    _surfaceCreated = true;
+    
+    final width = size.width.toInt();
+    final height = size.height.toInt();
+    
+    debugPrint('[AgusMap] Creating surface: ${width}x$height');
+    
+    final textureId = await createMapSurface(width: width, height: height);
+    
+    if (!mounted) return;
+    
     setState(() {
       _textureId = textureId;
+      _currentSize = size;
     });
+    
+    // Set initial view if specified
+    if (widget.initialLat != null && widget.initialLon != null) {
+      setView(
+        widget.initialLat!,
+        widget.initialLon!,
+        widget.initialZoom ?? 14,
+      );
+    }
+    
+    widget.onMapReady?.call();
+  }
+
+  Future<void> _handleResize(Size newSize) async {
+    if (_currentSize == newSize) return;
+    if (_textureId == null) return;
+    
+    final width = newSize.width.toInt();
+    final height = newSize.height.toInt();
+    
+    if (width <= 0 || height <= 0) return;
+    
+    debugPrint('[AgusMap] Resizing: ${width}x$height');
+    
+    await resizeMapSurface(width, height);
+    
+    if (mounted) {
+      setState(() {
+        _currentSize = newSize;
+      });
+    }
+  }
+  
+  // Track active pointers for multitouch
+  final Map<int, Offset> _activePointers = {};
+  
+  void _handlePointerDown(PointerDownEvent event) {
+    _activePointers[event.pointer] = event.localPosition;
+    _sendTouchEvent(TouchType.down, event.pointer, event.localPosition);
+  }
+  
+  void _handlePointerMove(PointerMoveEvent event) {
+    _activePointers[event.pointer] = event.localPosition;
+    _sendTouchEvent(TouchType.move, event.pointer, event.localPosition);
+  }
+  
+  void _handlePointerUp(PointerUpEvent event) {
+    _sendTouchEvent(TouchType.up, event.pointer, event.localPosition);
+    _activePointers.remove(event.pointer);
+  }
+  
+  void _handlePointerCancel(PointerCancelEvent event) {
+    _sendTouchEvent(TouchType.cancel, event.pointer, event.localPosition);
+    _activePointers.remove(event.pointer);
+  }
+  
+  void _sendTouchEvent(TouchType type, int pointerId, Offset position) {
+    // Get pixel ratio for coordinate conversion
+    final pixelRatio = MediaQuery.of(context).devicePixelRatio;
+    
+    // Convert logical coordinates to physical pixels
+    final x1 = position.dx * pixelRatio;
+    final y1 = position.dy * pixelRatio;
+    
+    // Check for second pointer (multitouch)
+    int id2 = -1;
+    double x2 = 0;
+    double y2 = 0;
+    
+    for (final entry in _activePointers.entries) {
+      if (entry.key != pointerId) {
+        id2 = entry.key;
+        x2 = entry.value.dx * pixelRatio;
+        y2 = entry.value.dy * pixelRatio;
+        break;
+      }
+    }
+    
+    sendTouchEvent(type, pointerId, x1, y1, id2: id2, x2: x2, y2: y2);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_textureId == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    return Texture(textureId: _textureId!);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = Size(constraints.maxWidth, constraints.maxHeight);
+        
+        // Create surface on first layout
+        if (!_surfaceCreated && size.width > 0 && size.height > 0) {
+          // Use post-frame callback to avoid calling during build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _createSurface(size);
+          });
+        } else if (_surfaceCreated && _currentSize != size) {
+          // Handle resize
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _handleResize(size);
+          });
+        }
+        
+        if (_textureId == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        return Listener(
+          onPointerDown: _handlePointerDown,
+          onPointerMove: _handlePointerMove,
+          onPointerUp: _handlePointerUp,
+          onPointerCancel: _handlePointerCancel,
+          child: Texture(textureId: _textureId!),
+        );
+      },
+    );
   }
 }
 

@@ -19,16 +19,17 @@ class _MyAppState extends State<MyApp> {
   String _status = 'Initializing...';
   String _mapPath = '';
   String _debug = '';
+  bool _dataReady = false;
   bool _mapReady = false;
-  int? _textureId;
+  final agus_maps_flutter.AgusMapController _mapController = agus_maps_flutter.AgusMapController();
 
   @override
   void initState() {
     super.initState();
-    _initMap();
+    _initData();
   }
 
-  Future<void> _initMap() async {
+  Future<void> _initData() async {
     try {
       _log('Starting initialization...');
       
@@ -46,41 +47,24 @@ class _MyAppState extends State<MyApp> {
       await agus_maps_flutter.extractMap('assets/maps/icudt75l.dat');
       
       // 3. Extract CoMaps data files (classificator.txt, types.txt, etc.)
-      // These files are extracted directly to the files directory
       _log('Extracting data files...');
       String dataPath = await agus_maps_flutter.extractDataFiles();
       _log('Data path: $dataPath');
       
-      // storagePath is the same as dataPath since data files are extracted to files directory
-      String storagePath = dataPath;
-      _log('Storage path: $storagePath');
-      
       // 4. Initialize with extracted data files
-      // Both resource and writable paths point to the same directory
-      // so that scope "w" and "r" both find the files
       _log('Calling initWithPaths()...');
-      agus_maps_flutter.initWithPaths(storagePath, storagePath);
+      agus_maps_flutter.initWithPaths(dataPath, dataPath);
       _log('initWithPaths() complete');
       
       _log('Calling loadMap()...');
       agus_maps_flutter.loadMap(mapPath);
       _log('loadMap() complete');
-      
-      _log('Calling setView()...');
-      agus_maps_flutter.setView(36.1408, -5.3536, 14);
-      _log('setView() complete');
-      
-      // 5. Create the rendering surface
-      _log('Creating map surface...');
-      final textureId = await agus_maps_flutter.createMapSurface();
-      _log('Map surface created, textureId: $textureId');
 
       if (!mounted) return;
       setState(() {
-        _status = 'Success';
+        _status = 'Data ready - creating map...';
         _mapPath = mapPath;
-        _mapReady = true;
-        _textureId = textureId;
+        _dataReady = true;
       });
     } catch (e, stackTrace) {
       _log('ERROR: $e\n$stackTrace');
@@ -89,6 +73,14 @@ class _MyAppState extends State<MyApp> {
         _status = 'Error: $e';
       });
     }
+  }
+  
+  void _onMapReady() {
+    _log('Map surface ready!');
+    setState(() {
+      _status = 'Map ready! Try panning/zooming.';
+      _mapReady = true;
+    });
   }
   
   void _log(String msg) {
@@ -115,8 +107,14 @@ class _MyAppState extends State<MyApp> {
             ),
             // Map rendering area
             Expanded(
-              child: _mapReady && _textureId != null
-                  ? Texture(textureId: _textureId!)
+              child: _dataReady
+                  ? agus_maps_flutter.AgusMap(
+                      initialLat: 36.1408,
+                      initialLon: -5.3536,
+                      initialZoom: 14,
+                      onMapReady: _onMapReady,
+                      controller: _mapController,
+                    )
                   : SingleChildScrollView(
                       child: Padding(
                         padding: const EdgeInsets.all(8.0),
@@ -124,16 +122,24 @@ class _MyAppState extends State<MyApp> {
                       ),
                     ),
             ),
-            // Debug controls
+            // Control buttons
             Container(
-              height: 50,
+              height: 60,
               color: Colors.grey[200],
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   TextButton(
-                    onPressed: () => agus_maps_flutter.setView(36.1407, -5.3535, 12),
+                    onPressed: () => _mapController.moveToLocation(36.1407, -5.3535, 14),
                     child: const Text('Gibraltar'),
+                  ),
+                  TextButton(
+                    onPressed: () => _mapController.moveToLocation(0, 0, 2),
+                    child: const Text('World'),
+                  ),
+                  TextButton(
+                    onPressed: () => _mapController.moveToLocation(40.4168, -3.7038, 12),
+                    child: const Text('Madrid'),
                   ),
                 ],
               ),
