@@ -30,6 +30,14 @@ namespace agus
   {
     EGLContext sharedContext = (contextToShareWith == NULL) ? EGL_NO_CONTEXT : contextToShareWith->m_nativeContext;
     m_nativeContext = eglCreateContext(m_display, config, sharedContext, getContextAttributesList());
+    
+    if (m_nativeContext == EGL_NO_CONTEXT) {
+      EGLint error = eglGetError();
+      LOG(LERROR, ("eglCreateContext failed with error:", std::hex, error));
+    } else {
+      LOG(LINFO, ("AgusOGLContext created: context=", m_nativeContext, 
+                  "surface=", m_surface, "shared=", sharedContext));
+    }
   }
 
   AgusOGLContext::~AgusOGLContext()
@@ -40,8 +48,18 @@ namespace agus
 
   void AgusOGLContext::MakeCurrent()
   {
-    if (m_surface != EGL_NO_SURFACE)
-      eglMakeCurrent(m_display, m_surface, m_surface, m_nativeContext);
+    if (m_surface != EGL_NO_SURFACE) {
+      EGLBoolean result = eglMakeCurrent(m_display, m_surface, m_surface, m_nativeContext);
+      if (result != EGL_TRUE) {
+        EGLint error = eglGetError();
+        LOG(LERROR, ("eglMakeCurrent failed with error:", std::hex, error,
+                     "display:", m_display, "surface:", m_surface, "context:", m_nativeContext));
+      } else {
+        LOG(LDEBUG, ("eglMakeCurrent succeeded for context:", m_nativeContext, "surface:", m_surface));
+      }
+    } else {
+      LOG(LWARNING, ("MakeCurrent called but m_surface is EGL_NO_SURFACE"));
+    }
   }
 
   void AgusOGLContext::DoneCurrent()
@@ -194,12 +212,20 @@ namespace agus
   }
 
   dp::GraphicsContext * AgusOGLContextFactory::GetDrawContext() {
-      if (!m_drawContext) m_drawContext = new AgusOGLContext(m_display, m_windowSurface, m_config, m_uploadContext);
+      LOG(LINFO, ("GetDrawContext called, m_drawContext=", m_drawContext, "m_uploadContext=", m_uploadContext));
+      if (!m_drawContext) {
+          m_drawContext = new AgusOGLContext(m_display, m_windowSurface, m_config, m_uploadContext);
+          LOG(LINFO, ("Created draw context"));
+      }
       return m_drawContext;
   }
   
   dp::GraphicsContext * AgusOGLContextFactory::GetResourcesUploadContext() {
-      if (!m_uploadContext) m_uploadContext = new AgusOGLContext(m_display, m_pixelbufferSurface, m_config, m_drawContext);
+      LOG(LINFO, ("GetResourcesUploadContext called, m_uploadContext=", m_uploadContext, "m_drawContext=", m_drawContext));
+      if (!m_uploadContext) {
+          m_uploadContext = new AgusOGLContext(m_display, m_pixelbufferSurface, m_config, m_drawContext);
+          LOG(LINFO, ("Created upload context"));
+      }
       return m_uploadContext;
   }
 

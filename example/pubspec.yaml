@@ -68,8 +68,51 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/maps/Gibraltar.mwm
+    - assets/maps/World.mwm
+    - assets/maps/WorldCoasts.mwm
+    - assets/maps/icudt75l.dat
     # CoMaps data files for engine initialization
     - assets/comaps_data/
+    - assets/comaps_data/fonts/
+    - assets/comaps_data/categories-strings/
+    - assets/comaps_data/countries-strings/
+    - assets/comaps_data/symbols/
+    - assets/comaps_data/symbols/6plus/
+    - assets/comaps_data/symbols/6plus/dark/
+    - assets/comaps_data/symbols/6plus/light/
+    - assets/comaps_data/symbols/default/
+    - assets/comaps_data/symbols/hdpi/
+    - assets/comaps_data/symbols/hdpi/dark/
+    - assets/comaps_data/symbols/hdpi/light/
+    - assets/comaps_data/symbols/mdpi/
+    - assets/comaps_data/symbols/mdpi/dark/
+    - assets/comaps_data/symbols/mdpi/light/
+    - assets/comaps_data/symbols/xhdpi/
+    - assets/comaps_data/symbols/xhdpi/dark/
+    - assets/comaps_data/symbols/xhdpi/light/
+    - assets/comaps_data/symbols/xxhdpi/
+    - assets/comaps_data/symbols/xxhdpi/dark/
+    - assets/comaps_data/symbols/xxhdpi/light/
+    - assets/comaps_data/symbols/xxxhdpi/
+    - assets/comaps_data/symbols/xxxhdpi/dark/
+    - assets/comaps_data/symbols/xxxhdpi/light/
+    - assets/comaps_data/styles/
+    - assets/comaps_data/styles/default/
+    - assets/comaps_data/styles/default/include/
+    - assets/comaps_data/styles/default/light/
+    - assets/comaps_data/styles/default/light/symbols/
+    - assets/comaps_data/styles/default/light/symbols-ad/
+    - assets/comaps_data/styles/default/dark/
+    - assets/comaps_data/styles/default/dark/symbols/
+    - assets/comaps_data/styles/default/dark/symbols-ad/
+    - assets/comaps_data/styles/vehicle/
+    - assets/comaps_data/styles/vehicle/include/
+    - assets/comaps_data/styles/vehicle/light/
+    - assets/comaps_data/styles/vehicle/dark/
+    - assets/comaps_data/styles/outdoors/
+    - assets/comaps_data/styles/outdoors/include/
+    - assets/comaps_data/styles/outdoors/light/
+    - assets/comaps_data/styles/outdoors/dark/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
