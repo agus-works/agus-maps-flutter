@@ -285,3 +285,84 @@ This architecture satisfies all constraints: it is **cross-platform** (Linux, Wi
 28. Using Dart FFI to Communicate with CPP in Flutter \- GeekyAnts, accessed December 17, 2025, [https://geekyants.com/blog/using-dart-ffi-to-communicate-with-cpp-in-flutter](https://geekyants.com/blog/using-dart-ffi-to-communicate-with-cpp-in-flutter)  
 29. JNI tips \- NDK \- Android Developers, accessed December 17, 2025, [https://developer.android.com/ndk/guides/jni-tips](https://developer.android.com/ndk/guides/jni-tips)  
 30. CMake: How to set up source, library and CMakeLists.txt dependencies? \- Stack Overflow, accessed December 17, 2025, [https://stackoverflow.com/questions/31512485/cmake-how-to-set-up-source-library-and-cmakelists-txt-dependencies](https://stackoverflow.com/questions/31512485/cmake-how-to-set-up-source-library-and-cmakelists-txt-dependencies)
+
+---
+
+## **Appendix A: Development Status and Pending Work**
+
+### **A.1 Current Implementation Status (December 2024)**
+
+#### **Completed**
+- ✅ Android JNI bridge layer with OpenGL ES 3.0 rendering
+- ✅ EGL context management with shared contexts for multi-threaded rendering
+- ✅ JNI-based GuiThread for main thread task dispatch
+- ✅ Asset extraction system for CoMaps data files
+- ✅ GL function pointer resolution fix for Android (eglGetProcAddress)
+- ✅ Directory-based resource loading (Platform and Transliteration)
+- ✅ Framework initialization and Drape engine startup
+- ✅ Backend and Frontend renderer threads started
+
+#### **In Progress / Pending**
+- 🔄 Frame rendering to Flutter texture (SwapBuffers integration)
+- 🔄 Touch/gesture event forwarding to Framework
+- 🔄 Map viewport resize handling
+- 🔄 Flutter Dart API for map control (zoom, pan, center)
+
+#### **Not Started**
+- ⏳ iOS/macOS implementation
+- ⏳ Linux/Windows desktop implementation
+- ⏳ Search API integration
+- ⏳ Routing API integration
+- ⏳ POI interaction callbacks
+- ⏳ Map download management
+
+### **A.2 CoMaps Submodule Patches**
+
+The `thirdparty/comaps` directory contains a modified checkout of the CoMaps source. The modifications are tracked via patch files in `patches/comaps/`:
+
+| Patch | Description |
+|-------|-------------|
+| `0001-fix-cmake.patch` | CMake configuration fixes for cross-compilation |
+| `0002-platform-directory-resources.patch` | Directory-based resource loading in `platform_android.cpp` |
+| `0003-transliteration-directory-resources.patch` | Directory-based ICU data file loading |
+| `0004-fix-android-gl-function-pointers.patch` | Android GL function pointer resolution via `eglGetProcAddress` |
+
+**Note:** After cloning the repository, run `./scripts/apply_comaps_patches.sh` to apply these patches to a fresh CoMaps checkout.
+
+### **A.3 Known Issues**
+
+1. **Transliteration Loader Spam**: The ICU data file check logs repeatedly during initialization. This is cosmetic but should be deduplicated.
+
+2. **Missing Transit Colors**: Warning about missing `transit_colors.txt` file. This file is optional and doesn't affect basic map rendering.
+
+3. **Unknown Transit Symbols**: Warnings about unknown transit symbols (tram, bus, ferry, etc.). These are optional icons that don't affect core functionality.
+
+### **A.4 Build Requirements**
+
+- **Android NDK**: r25c or later
+- **CMake**: 3.18+
+- **Flutter**: 3.x stable channel
+- **Android SDK**: API 24+ (minSdk), API 34 (targetSdk)
+
+### **A.5 Testing the Current Implementation**
+
+```bash
+# Build and install the example app
+cd example
+flutter build apk --debug
+adb install -r build/app/outputs/flutter-apk/app-debug.apk
+
+# Launch and monitor logs
+adb logcat -c
+adb shell am start -n app.agus.maps.agus_maps_flutter_example/.MainActivity
+adb logcat | grep -E "(CoMaps|AGUS|drape)"
+```
+
+Expected log output showing successful initialization:
+```
+D CoMaps: Framework(): Classificator initialized
+I CoMaps: Visual scale = 2 ; Tile size = 256 ; Resources = xhdpi
+I CoMaps: drape_frontend/backend_renderer.cpp: Start routine.
+I CoMaps: drape_frontend/frontend_renderer.cpp: Start routine.
+I CoMaps: Renderer = Mali-G76 | Api = OpenGLES3 | Version = OpenGL ES 3.2
+```
