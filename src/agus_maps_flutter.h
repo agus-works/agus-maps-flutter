@@ -39,6 +39,12 @@ FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path);
 
 FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom);
 
+// Touch event handling
+// type: 1=TOUCH_DOWN, 2=TOUCH_MOVE, 3=TOUCH_UP, 4=TOUCH_CANCEL
+// id1, x1, y1: first touch pointer
+// id2, x2, y2: second touch pointer (use -1 for id2 if single touch)
+FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int id2, float x2, float y2);
+
 #ifdef __cplusplus
 }
 #endif

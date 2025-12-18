@@ -2,6 +2,8 @@ package app.agus.maps.agus_maps_flutter;
 
 import android.content.Context;
 import android.content.res.AssetManager;
+import android.util.DisplayMetrics;
+import android.view.WindowManager;
 import androidx.annotation.NonNull;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.MethodCall;
@@ -21,9 +23,15 @@ import android.view.Surface;
 
 /** AgusMapsFlutterPlugin */
 public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
+  private static final String TAG = "AgusMapsFlutter";
+  
   private MethodChannel channel;
   private Context context;
   private TextureRegistry textureRegistry;
+  private TextureRegistry.SurfaceProducer surfaceProducer;
+  private int surfaceWidth = 0;
+  private int surfaceHeight = 0;
+  private float density = 2.0f;
   
   static {
       System.loadLibrary("agus_maps_flutter");
@@ -35,6 +43,15 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     channel.setMethodCallHandler(this);
     context = flutterPluginBinding.getApplicationContext();
     textureRegistry = flutterPluginBinding.getTextureRegistry();
+    
+    // Get display metrics for proper density
+    WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+    if (wm != null) {
+        DisplayMetrics dm = new DisplayMetrics();
+        wm.getDefaultDisplay().getMetrics(dm);
+        density = dm.density;
+        android.util.Log.d(TAG, "Display density: " + density);
+    }
   }
 
   @Override
@@ -80,16 +97,69 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     } else if (call.method.equals("getApkPath")) {
         result.success(context.getApplicationInfo().sourceDir);
     } else if (call.method.equals("createMapSurface")) {
-        TextureRegistry.SurfaceProducer producer = textureRegistry.createSurfaceProducer();
-        Surface surface = producer.getSurface();
-        nativeSetSurface(producer.id(), surface);
-        result.success(producer.id());
+        // Get requested size from Flutter (in logical pixels)
+        Integer width = call.argument("width");
+        Integer height = call.argument("height");
+        
+        // Use screen size as default if not specified
+        if (width == null || height == null || width <= 0 || height <= 0) {
+            WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+            DisplayMetrics dm = new DisplayMetrics();
+            wm.getDefaultDisplay().getMetrics(dm);
+            width = dm.widthPixels;
+            height = dm.heightPixels;
+        }
+        
+        surfaceWidth = width;
+        surfaceHeight = height;
+        
+        android.util.Log.d(TAG, "createMapSurface: " + surfaceWidth + "x" + surfaceHeight + " density=" + density);
+        
+        surfaceProducer = textureRegistry.createSurfaceProducer();
+        surfaceProducer.setSize(surfaceWidth, surfaceHeight);
+        
+        // Set up surface lifecycle callback
+        surfaceProducer.setCallback(new TextureRegistry.SurfaceProducer.Callback() {
+            @Override
+            public void onSurfaceAvailable() {
+                android.util.Log.d(TAG, "onSurfaceAvailable: recreating surface");
+                Surface surface = surfaceProducer.getSurface();
+                nativeOnSurfaceChanged(surfaceProducer.id(), surface, surfaceWidth, surfaceHeight, density);
+            }
+            
+            @Override
+            public void onSurfaceDestroyed() {
+                android.util.Log.d(TAG, "onSurfaceDestroyed: pausing rendering");
+                nativeOnSurfaceDestroyed();
+            }
+        });
+        
+        // Initial surface setup
+        Surface surface = surfaceProducer.getSurface();
+        nativeSetSurface(surfaceProducer.id(), surface, surfaceWidth, surfaceHeight, density);
+        result.success(surfaceProducer.id());
+    } else if (call.method.equals("resizeMapSurface")) {
+        Integer width = call.argument("width");
+        Integer height = call.argument("height");
+        
+        if (width != null && height != null && width > 0 && height > 0 && surfaceProducer != null) {
+            surfaceWidth = width;
+            surfaceHeight = height;
+            surfaceProducer.setSize(width, height);
+            nativeOnSizeChanged(width, height);
+            result.success(true);
+        } else {
+            result.error("INVALID_STATE", "Surface not created or invalid size", null);
+        }
     } else {
       result.notImplemented();
     }
   }
 
-  private native void nativeSetSurface(long textureId, Surface surface);
+  private native void nativeSetSurface(long textureId, Surface surface, int width, int height, float density);
+  private native void nativeOnSurfaceChanged(long textureId, Surface surface, int width, int height, float density);
+  private native void nativeOnSurfaceDestroyed();
+  private native void nativeOnSizeChanged(int width, int height);
 
   private String extractMap(String assetPath) throws IOException {
     android.util.Log.d("AgusMapsFlutter", "Extracting asset: " + assetPath);
