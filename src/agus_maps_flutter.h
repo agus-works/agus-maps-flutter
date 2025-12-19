@@ -45,6 +45,13 @@ FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom);
 // id2, x2, y2: second touch pointer (use -1 for id2 if single touch)
 FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int id2, float x2, float y2);
 
+// Register a single MWM map file directly by full path.
+// This bypasses the version folder scanning and registers the map file
+// directly with the rendering engine.
+// Returns: 0 on success, -1 if framework not ready, -2 on exception, 
+//          or MwmSet::RegResult value on registration failure
+FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath);
+
 #ifdef __cplusplus
 }
 #endif

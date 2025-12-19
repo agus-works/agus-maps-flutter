@@ -28,6 +28,7 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 
 #include "base/logging.hpp"
 #include "map/framework.hpp"
+#include "platform/local_country_file.hpp"
 #include "drape/graphics_context_factory.hpp"
 #include "drape_frontend/visual_params.hpp"
 #include "drape_frontend/user_event_stream.hpp"
@@ -297,4 +298,39 @@ FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int i
     }
     
     g_framework->TouchEvent(event);
+}
+
+// Register a single MWM map file directly by full path.
+// This bypasses the version folder scanning and registers the map file
+// directly with the rendering engine using LocalCountryFile::MakeTemporary.
+FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", 
+        "comaps_register_single_map: %s", fullPath);
+    
+    if (!g_framework) {
+        __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative", 
+            "comaps_register_single_map: Framework not initialized");
+        return -1;  // Error: Framework not ready
+    }
+    
+    try {
+        platform::LocalCountryFile file = platform::LocalCountryFile::MakeTemporary(fullPath);
+        file.SyncWithDisk();
+        
+        auto result = g_framework->RegisterMap(file);
+        if (result.second == MwmSet::RegResult::Success) {
+            __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+                "comaps_register_single_map: Successfully registered %s", fullPath);
+            return 0;  // Success
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, "AgusMapsFlutterNative", 
+                "comaps_register_single_map: Failed to register %s, result=%d", 
+                fullPath, static_cast<int>(result.second));
+            return static_cast<int>(result.second);
+        }
+    } catch (std::exception const & e) {
+        __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative", 
+            "comaps_register_single_map: Exception: %s", e.what());
+        return -2;  // Error: Exception
+    }
 }

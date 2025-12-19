@@ -40,6 +40,10 @@ Most Flutter map solutions either:
 - 🖐️ **Gesture Support** — Pan, pinch-to-zoom, rotation (multitouch)
 - 📐 **Responsive** — Automatically handles resize and device pixel ratio
 - 🔌 **Simple API** — Drop-in `AgusMap` widget with `AgusMapController`
+- 📥 **Map Download Manager** — Browse and download maps from mirror servers with progress tracking
+- 🔍 **Fuzzy Search** — Search for regions with intelligent fuzzy matching
+- 💾 **Caching** — Downloaded region data cached locally for instant subsequent loads
+- 📊 **Disk Space Management** — Real-time disk space monitoring with safety checks
 
 ---
 
@@ -116,7 +120,7 @@ See the [example app](example/) for a complete working demo.
 - **No real-time traffic** — Offline-first design means no live data
 - **Android-only (currently)** — iOS, desktop platforms are planned but not yet implemented
 - **MWM format required** — Must use pre-generated map files (not arbitrary tile servers)
-- **Early stage** — Search, routing, and POI interaction APIs not yet exposed
+- **Early stage** — Search and routing APIs not yet exposed
 
 ---
 
@@ -136,8 +140,13 @@ See the [example app](example/) for a complete working demo.
 ### ✅ Completed (Android)
 - Native rendering to Flutter Texture
 - Touch gesture forwarding (pan, zoom)
-- Viewport resize handling
+- Viewport resize handling with proper DPI scaling
 - Basic Dart API (`AgusMap`, `AgusMapController`)
+- Map Download Manager with mirror selection
+- Region caching for instant loads
+- Fuzzy search for region browsing
+- Disk space detection and safety checks
+- MWM registration API for dynamic map loading
 
 ### 🔄 In Progress
 - Animated camera transitions
@@ -149,7 +158,7 @@ See the [example app](example/) for a complete working demo.
 - Search API integration
 - Routing API integration
 - POI tap callbacks
-- Map download manager
+- Map deletion/management
 
 ---
 
@@ -158,6 +167,7 @@ See the [example app](example/) for a complete working demo.
 Agus Maps uses MWM files from OpenStreetMap. You can download maps from:
 - [Organic Maps Downloads](https://organicmaps.app/downloads/)
 - [CoMaps Mirror](https://omaps.webfreak.org/)
+- **In-app**: Use the built-in Downloads tab to browse and download regions
 
 The example app bundles a small Gibraltar map for testing.
 

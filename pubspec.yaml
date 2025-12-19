@@ -12,6 +12,10 @@ dependencies:
     sdk: flutter
   plugin_platform_interface: ^2.0.2
   ffi: ^2.1.3
+  # For MWM storage persistence
+  shared_preferences: ^2.2.0
+  # For HTTP requests (mirror service)
+  http: ^1.1.0
 
 dev_dependencies:
   ffigen: ^13.0.0
