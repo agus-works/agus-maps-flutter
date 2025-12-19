@@ -1,0 +1,37 @@
+diff --git a/libs/routing/speed_camera_manager.cpp b/libs/routing/speed_camera_manager.cpp
+index feb8ff5c..68b15334 100644
+--- a/libs/routing/speed_camera_manager.cpp
++++ b/libs/routing/speed_camera_manager.cpp
+@@ -129,16 +129,31 @@ void SpeedCameraManager::ResetNotifications()
+ 
+ void SpeedCameraManager::Reset()
+ {
++  LOG(LDEBUG, ("SpeedCameraManager::Reset: Starting, this=", reinterpret_cast<void*>(this)));
+   CHECK_THREAD_CHECKER(m_threadChecker, ());
+ 
++  LOG(LDEBUG, ("SpeedCameraManager::Reset: Calling ResetNotifications..."));
+   ResetNotifications();
+ 
+-  m_speedCamClearCallback();
++  LOG(LDEBUG, ("SpeedCameraManager::Reset: About to call m_speedCamClearCallback, callback valid=", static_cast<bool>(m_speedCamClearCallback)));
++  if (m_speedCamClearCallback)
++  {
++    LOG(LDEBUG, ("SpeedCameraManager::Reset: Invoking callback..."));
++    m_speedCamClearCallback();
++    LOG(LDEBUG, ("SpeedCameraManager::Reset: Callback invoked successfully"));
++  }
++  else
++  {
++    LOG(LDEBUG, ("SpeedCameraManager::Reset: Callback is null, skipping"));
++  }
++  LOG(LDEBUG, ("SpeedCameraManager::Reset: m_speedCamClearCallback complete"));
+ 
++  LOG(LDEBUG, ("SpeedCameraManager::Reset: Invalidating closestCamera..."));
+   m_closestCamera.Invalidate();
+ 
+   m_firstNotCheckedSpeedCameraIndex = 1;
+   m_cachedSpeedCameras = std::queue<SpeedCameraOnRoute>();
++  LOG(LDEBUG, ("SpeedCameraManager::Reset: Complete"));
+ }
+ 
+ bool SpeedCameraManager::IsSpeedLimitExceeded() const

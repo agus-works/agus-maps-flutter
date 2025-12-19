@@ -1,0 +1,32 @@
+diff --git a/libs/map/routing_manager.cpp b/libs/map/routing_manager.cpp
+index 5034ed81..691b615b 100644
+--- a/libs/map/routing_manager.cpp
++++ b/libs/map/routing_manager.cpp
+@@ -521,18 +521,27 @@ void RoutingManager::SetRouterImpl(RouterType type)
+   auto const getMwmRectByName = [this](string const & countryId) -> m2::RectD
+   { return m_callbacks.m_countryInfoGetter().GetLimitRectForLeaf(countryId); };
+ 
++  LOG(LDEBUG, ("SetRouterImpl: Creating AbsentRegionsFinder"));
+   auto regionsFinder = make_unique<AbsentRegionsFinder>(countryFileGetter, localFileChecker, numMwmIds, dataSource);
+ 
++  LOG(LDEBUG, ("SetRouterImpl: Creating router, type=", static_cast<int>(type)));
+   std::unique_ptr<IRouter> router;
+   if (type == RouterType::Ruler)
+     router = make_unique<RulerRouter>();
+   else
++  {
++    LOG(LDEBUG, ("SetRouterImpl: Creating IndexRouter..."));
+     router = make_unique<IndexRouter>(
+         vehicleType, m_loadAltitudes, m_callbacks.m_countryParentNameGetterFn, countryFileGetter, getMwmRectByName,
+         numMwmIds, MakeNumMwmTree(*numMwmIds, m_callbacks.m_countryInfoGetter()), m_routingSession, dataSource);
++    LOG(LDEBUG, ("SetRouterImpl: IndexRouter created successfully"));
++  }
+ 
++  LOG(LDEBUG, ("SetRouterImpl: Setting routing settings"));
+   m_routingSession.SetRoutingSettings(GetRoutingSettings(vehicleType));
++  LOG(LDEBUG, ("SetRouterImpl: Setting router"));
+   m_routingSession.SetRouter(std::move(router), std::move(regionsFinder));
++  LOG(LDEBUG, ("SetRouterImpl: Complete"));
+   m_currentRouterType = type;
+ }
+ 
