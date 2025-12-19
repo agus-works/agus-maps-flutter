@@ -1,0 +1,69 @@
+diff --git a/libs/routing/routing_session.cpp b/libs/routing/routing_session.cpp
+index 006d3072..cac11aae 100644
+--- a/libs/routing/routing_session.cpp
++++ b/libs/routing/routing_session.cpp
+@@ -119,15 +119,22 @@ void RoutingSession::DoReadyCallback::operator()(std::shared_ptr<Route> const &
+ 
+ void RoutingSession::RemoveRoute()
+ {
++  LOG(LDEBUG, ("RoutingSession::RemoveRoute: Starting..."));
+   CHECK_THREAD_CHECKER(m_threadChecker, ());
+ 
++  LOG(LDEBUG, ("RoutingSession::RemoveRoute: Resetting distances..."));
+   m_lastDistance = 0.0;
+   m_moveAwayCounter = 0;
++  LOG(LDEBUG, ("RoutingSession::RemoveRoute: Resetting turn notifications..."));
+   m_turnNotificationsMgr.Reset();
+ 
++  LOG(LDEBUG, ("RoutingSession::RemoveRoute: Creating new Route..."));
+   m_route = std::make_shared<Route>(std::string{} /* router */, 0 /* route id */);
++  LOG(LDEBUG, ("RoutingSession::RemoveRoute: Resetting speed camera manager..."));
+   m_speedCameraManager.Reset();
++  LOG(LDEBUG, ("RoutingSession::RemoveRoute: Setting route on speed camera manager..."));
+   m_speedCameraManager.SetRoute(m_route);
++  LOG(LDEBUG, ("RoutingSession::RemoveRoute: Complete"));
+ }
+ 
+ void RoutingSession::RebuildRouteOnTrafficUpdate()
+@@ -224,12 +231,17 @@ bool RoutingSession::IsFollowing() const
+ 
+ void RoutingSession::Reset()
+ {
++  LOG(LDEBUG, ("RoutingSession::Reset: Starting..."));
+   CHECK_THREAD_CHECKER(m_threadChecker, ());
+   ASSERT(m_router != nullptr, ());
+ 
++  LOG(LDEBUG, ("RoutingSession::Reset: Calling RemoveRoute()..."));
+   RemoveRoute();
++  LOG(LDEBUG, ("RoutingSession::Reset: RemoveRoute complete, calling SetState..."));
+   SetState(SessionState::NoValidRoute);
++  LOG(LDEBUG, ("RoutingSession::Reset: SetState complete, calling m_router->ClearState()..."));
+   m_router->ClearState();
++  LOG(LDEBUG, ("RoutingSession::Reset: ClearState complete"));
+ 
+   m_passedDistanceOnRouteMeters = 0.0;
+   m_isFollowing = false;
+@@ -238,6 +250,7 @@ void RoutingSession::Reset()
+   // reset announcement counters
+   m_routingRebuildCount = -1;
+   m_routingRebuildAnnounceCount = 0;
++  LOG(LDEBUG, ("RoutingSession::Reset: Complete"));
+ }
+ 
+ void RoutingSession::SetState(SessionState state)
+@@ -542,10 +555,15 @@ void RoutingSession::AssignRoute(std::shared_ptr<Route> const & route, RouterRes
+ 
+ void RoutingSession::SetRouter(std::unique_ptr<IRouter> && router, std::unique_ptr<AbsentRegionsFinder> && finder)
+ {
++  LOG(LDEBUG, ("RoutingSession::SetRouter: Starting..."));
+   CHECK_THREAD_CHECKER(m_threadChecker, ());
++  LOG(LDEBUG, ("RoutingSession::SetRouter: Thread check passed"));
+   ASSERT(m_router != nullptr, ());
++  LOG(LDEBUG, ("RoutingSession::SetRouter: m_router exists, calling Reset()..."));
+   Reset();
++  LOG(LDEBUG, ("RoutingSession::SetRouter: Reset complete, setting router..."));
+   m_router->SetRouter(std::move(router), std::move(finder));
++  LOG(LDEBUG, ("RoutingSession::SetRouter: Complete"));
+ }
+ 
+ void RoutingSession::MatchLocationToRoadGraph(location::GpsInfo & location)

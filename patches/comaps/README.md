@@ -23,6 +23,18 @@ Fixes OpenGL ES 3.0 function pointer resolution on Android. On Android, taking t
 - `glFlushMappedBufferRange`
 - `glGetStringi`
 
+### 0005-libs-map-framework-cpp.patch
+Adds debug logging to `framework.cpp` for tracking initialization sequence during router setup and editor delegate configuration.
+
+### 0006-libs-map-routing_manager-cpp.patch
+Adds debug logging to `routing_manager.cpp` for tracking router creation and configuration flow.
+
+### 0007-libs-routing-routing_session-cpp.patch
+Adds debug logging to `routing_session.cpp` for tracking session lifecycle events including route removal and reset operations.
+
+### 0008-libs-routing-speed_camera_manager-cpp.patch
+Adds debug logging to `speed_camera_manager.cpp` and adds null-check guard for the speed camera clear callback to prevent crashes when the callback is not set.
+
 ## Policy
 
 - Prefer a clean bridge layer in this repo.
