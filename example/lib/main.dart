@@ -86,6 +86,20 @@ class _MyAppState extends State<MyApp> {
       _log('Initializing MWM storage...');
       _mwmStorage = await MwmStorage.create();
 
+      // Validate existing metadata against actual files on disk.
+      // After reinstall, SharedPreferences may persist but files are deleted.
+      _log('Validating stored MWM metadata...');
+      final orphanedRegions = await _mwmStorage!.getOrphanedRegions();
+      if (orphanedRegions.isNotEmpty) {
+        _log(
+            'Found ${orphanedRegions.length} orphaned regions: $orphanedRegions');
+        _log('Pruning orphaned metadata...');
+        await _mwmStorage!.pruneOrphaned();
+        _log('Orphaned metadata pruned.');
+      } else {
+        _log('All stored metadata is valid.');
+      }
+
       // 1. Extract map files and store paths for later registration
       _log('Extracting World.mwm...');
       final worldPath =
@@ -174,11 +188,36 @@ class _MyAppState extends State<MyApp> {
   void _onMapReady() {
     _log('Map surface ready! Registering maps...');
 
-    // Register all maps now that Framework is initialized
+    // Register bundled maps (extracted during init)
     for (final path in _mapPathsToRegister) {
       final result = agus_maps_flutter.registerSingleMap(path);
-      _log('Registered $path: result=$result');
+      _log('Registered bundled $path: result=$result');
     }
+
+    // Re-register all previously downloaded maps from MwmStorage
+    // This is crucial: downloaded maps are only stored as metadata,
+    // they need to be re-registered with the native engine on each app start
+    if (_mwmStorage != null) {
+      final allMaps = _mwmStorage!.getAll();
+      _log('Re-registering ${allMaps.length} maps from storage...');
+      for (final metadata in allMaps) {
+        // Skip bundled maps (already registered above)
+        if (metadata.isBundled) continue;
+
+        _log(
+            'Re-registering downloaded: ${metadata.regionName} at ${metadata.filePath}');
+        final result = agus_maps_flutter.registerSingleMap(metadata.filePath);
+        _log('  Result: $result');
+      }
+    }
+
+    // Debug: List all registered MWMs and check Manila coverage
+    _log('Debug: Listing all registered MWMs...');
+    agus_maps_flutter.debugListMwms();
+
+    // Check Manila, Philippines (14.5995, 120.9842)
+    _log('Debug: Checking Manila coverage...');
+    agus_maps_flutter.debugCheckPoint(14.5995, 120.9842);
 
     setState(() {
       _status = 'Map ready!';
@@ -275,7 +314,8 @@ class _MyAppState extends State<MyApp> {
                   padding: const EdgeInsets.all(16),
                   child: Text(
                     _debug,
-                    style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
+                    style:
+                        const TextStyle(fontSize: 10, fontFamily: 'monospace'),
                   ),
                 ),
               ),

@@ -163,4 +163,28 @@ class AgusMapsFlutterBindings {
       );
   late final _comaps_register_single_map = _comaps_register_single_mapPtr
       .asFunction<int Function(ffi.Pointer<ffi.Char>)>();
+
+  /// Debug: List all registered MWMs and their bounds to logcat
+  void comaps_debug_list_mwms() {
+    return _comaps_debug_list_mwms();
+  }
+
+  late final _comaps_debug_list_mwmsPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>(
+        'comaps_debug_list_mwms',
+      );
+  late final _comaps_debug_list_mwms = _comaps_debug_list_mwmsPtr
+      .asFunction<void Function()>();
+
+  /// Debug: Check if a lat/lon point is covered by any registered MWM
+  void comaps_debug_check_point(double lat, double lon) {
+    return _comaps_debug_check_point(lat, lon);
+  }
+
+  late final _comaps_debug_check_pointPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Double, ffi.Double)>>(
+        'comaps_debug_check_point',
+      );
+  late final _comaps_debug_check_point = _comaps_debug_check_pointPtr
+      .asFunction<void Function(double, double)>();
 }

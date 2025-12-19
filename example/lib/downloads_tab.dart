@@ -168,23 +168,16 @@ class _DownloadsTabState extends State<DownloadsTab> {
       return;
     }
 
-    // Use fuzzy search for matching
-    _filteredRegions = _regions.where((region) {
-      final displayName = region.displayName.toLowerCase();
-      final name = region.name.toLowerCase();
+    // Use extractAllSorted for relevance-sorted fuzzy search
+    // This returns results sorted by best match score (highest first)
+    final results = fuzz.extractAllSorted<MwmRegion>(
+      query: _searchQuery,
+      choices: _regions,
+      cutoff: kFuzzySearchThreshold,
+      getter: (region) => region.displayName,
+    );
 
-      // First check exact substring match
-      if (displayName.contains(_searchQuery) || name.contains(_searchQuery)) {
-        return true;
-      }
-
-      // Then try fuzzy match on display name
-      final ratio = fuzz.ratio(displayName, _searchQuery);
-      final partialRatio = fuzz.partialRatio(displayName, _searchQuery);
-
-      return ratio >= kFuzzySearchThreshold ||
-          partialRatio >= kFuzzySearchThreshold;
-    }).toList();
+    _filteredRegions = results.map((r) => r.choice).toList();
   }
 
   Future<void> _checkConnectivity() async {
@@ -206,6 +199,18 @@ class _DownloadsTabState extends State<DownloadsTab> {
     });
 
     try {
+      // Validate MWM storage against actual files on disk.
+      // After reinstall, metadata may reference deleted files.
+      final orphanedRegions = await widget.mwmStorage.getOrphanedRegions();
+      if (orphanedRegions.isNotEmpty) {
+        debugPrint(
+          '[Downloads] Found ${orphanedRegions.length} orphaned MWM entries: '
+          '$orphanedRegions',
+        );
+        await widget.mwmStorage.pruneOrphaned();
+        debugPrint('[Downloads] Pruned orphaned MWM metadata');
+      }
+
       // First check connectivity
       _hasInternet = await checkInternetConnectivity();
 
@@ -1063,13 +1068,13 @@ class _DownloadsTabState extends State<DownloadsTab> {
         isDownloaded
             ? Icons.check_circle
             : isDownloading
-            ? Icons.downloading
-            : Icons.circle_outlined,
+                ? Icons.downloading
+                : Icons.circle_outlined,
         color: isDownloaded
             ? Colors.green
             : isDownloading
-            ? Colors.blue
-            : Colors.grey,
+                ? Colors.blue
+                : Colors.grey,
         size: 20,
       ),
       title: Text(region.displayName, style: const TextStyle(fontSize: 14)),

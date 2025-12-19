@@ -334,3 +334,89 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
         return -2;  // Error: Exception
     }
 }
+
+// Debug function to list all registered MWMs and their bounds
+FFI_PLUGIN_EXPORT void comaps_debug_list_mwms() {
+    __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+        "=== DEBUG: Listing all registered MWMs ===");
+    
+    if (!g_framework) {
+        __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative", 
+            "comaps_debug_list_mwms: Framework not initialized");
+        return;
+    }
+    
+    auto const & dataSource = g_framework->GetDataSource();
+    std::vector<std::shared_ptr<MwmInfo>> mwms;
+    dataSource.GetMwmsInfo(mwms);
+    
+    __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+        "Total registered MWMs: %zu", mwms.size());
+    
+    for (auto const & info : mwms) {
+        auto const & bounds = info->m_bordersRect;
+        const char* typeStr = "UNKNOWN";
+        switch (info->GetType()) {
+            case MwmInfo::COUNTRY: typeStr = "COUNTRY"; break;
+            case MwmInfo::COASTS: typeStr = "COASTS"; break;
+            case MwmInfo::WORLD: typeStr = "WORLD"; break;
+        }
+        
+        __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+            "  MWM: %s [%s] version=%d scales=[%d-%d] bounds=[%.4f,%.4f - %.4f,%.4f] status=%d",
+            info->GetCountryName().c_str(),
+            typeStr,
+            info->GetVersion(),
+            info->m_minScale,
+            info->m_maxScale,
+            bounds.minX(), bounds.minY(),
+            bounds.maxX(), bounds.maxY(),
+            static_cast<int>(info->GetStatus()));
+    }
+    
+    __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+        "=== END MWM list ===");
+}
+
+// Debug function to check if a point is covered by any MWM
+FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
+    __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+        "=== DEBUG: Checking point coverage lat=%.6f, lon=%.6f ===", lat, lon);
+    
+    if (!g_framework) {
+        __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative", 
+            "comaps_debug_check_point: Framework not initialized");
+        return;
+    }
+    
+    // Convert to Mercator coordinates (what the engine uses internally)
+    m2::PointD const pt = mercator::FromLatLon(lat, lon);
+    __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+        "Mercator coords: x=%.6f, y=%.6f", pt.x, pt.y);
+    
+    auto const & dataSource = g_framework->GetDataSource();
+    std::vector<std::shared_ptr<MwmInfo>> mwms;
+    dataSource.GetMwmsInfo(mwms);
+    
+    int coveringCount = 0;
+    for (auto const & info : mwms) {
+        if (info->m_bordersRect.IsPointInside(pt)) {
+            coveringCount++;
+            __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+                "  COVERS: %s [scales %d-%d]",
+                info->GetCountryName().c_str(),
+                info->m_minScale, info->m_maxScale);
+        }
+    }
+    
+    if (coveringCount == 0) {
+        __android_log_print(ANDROID_LOG_WARN, "AgusMapsFlutterNative", 
+            "  NO MWM covers this point!");
+    } else {
+        __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+            "Point covered by %d MWMs", coveringCount);
+    }
+    
+    __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+        "=== END point check ===");
+}

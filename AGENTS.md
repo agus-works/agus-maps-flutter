@@ -6,6 +6,32 @@
 1. The `./scripts` folder in the root of the directory will be responsible for downloading dependencies. Dependencies that may come from other git repositories will be downloaded on to the thirdparty directory.
 1. We will first focus on making the entire build workflow and example on android. Relevant directories are `./example/android` and `./android`. The solution must work as specified in `./GUIDE.md` on the `android` platform initially.
 
+### Thirdparty Patching Mechanism
+
+**IMPORTANT:** The `./thirdparty/comaps` directory contains a git checkout of the CoMaps project with local modifications. These modifications are tracked via patch files in `./patches/comaps/`.
+
+**DO NOT** directly modify files in `./thirdparty/comaps` without following this workflow:
+
+1. **Before modifying thirdparty code:** Understand that changes to `./thirdparty/comaps` MUST be captured as patches so they can be reapplied when updating the upstream CoMaps version.
+
+2. **After modifying thirdparty code:** Run the patch regeneration script:
+   ```bash
+   ./scripts/regenerate_patches.sh
+   ```
+   This creates/updates patch files in `./patches/comaps/` for each modified file.
+
+3. **To validate patches are in sync:** Run the validation script:
+   ```bash
+   ./scripts/validate_patches.sh
+   ```
+   This verifies all modifications in `./thirdparty/comaps` are accurately captured by existing patches.
+
+4. **Workflow summary:**
+   - `./scripts/fetch_comaps.sh` - Clones CoMaps and applies existing patches
+   - `./scripts/apply_comaps_patches.sh` - Applies patches to existing checkout
+   - `./scripts/regenerate_patches.sh` - Generates patches from current modifications
+   - `./scripts/validate_patches.sh` - Validates patches match current state
+
 ### Conventional Commits
 
 The key words “MUST”, “MUST NOT”, “REQUIRED”, “SHALL”, “SHALL NOT”, “SHOULD”, “SHOULD NOT”, “RECOMMENDED”, “MAY”, and “OPTIONAL” in this document are to be interpreted as described in RFC 2119.
