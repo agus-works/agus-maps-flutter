@@ -91,10 +91,10 @@ jobs:
           echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> $GITHUB_ENV
 
       # ─────────────────────────────────────────────────────────────────
-      # 5. Cache CoMaps dependencies
+      # 5. Restore CoMaps dependencies from cache
       # ─────────────────────────────────────────────────────────────────
-      - name: Cache CoMaps thirdparty
-        uses: actions/cache@v4
+      - name: Restore CoMaps thirdparty from cache
+        uses: actions/cache/restore@v4
         id: cache-comaps
         with:
           path: |
@@ -326,3 +326,14 @@ jobs:
           echo "- **CoMaps**: ${{ env.COMAPS_TAG }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Build Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+      # ─────────────────────────────────────────────────────────────────
+      # 16. Save CoMaps cache (runs even if build fails)
+      # ─────────────────────────────────────────────────────────────────
+      - name: Save CoMaps thirdparty to cache
+        uses: actions/cache/save@v4
+        if: always() && steps.cache-comaps.outputs.cache-hit != 'true' && hashFiles('thirdparty/comaps/.git/config') != ''
+        with:
+          path: |
+            thirdparty/comaps
+          key: comaps-${{ env.COMAPS_TAG }}-${{ hashFiles('patches/comaps/*.patch') }}
