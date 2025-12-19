@@ -38,6 +38,29 @@ jobs:
 
     steps:
       # ─────────────────────────────────────────────────────────────────
+      # 0. Free up disk space (GitHub runners have limited space ~14GB)
+      # ─────────────────────────────────────────────────────────────────
+      - name: Free up disk space
+        run: |
+          echo "=== Disk space BEFORE cleanup ==="
+          df -h /
+          
+          # Remove unnecessary pre-installed software
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          
+          # Clean apt cache
+          sudo apt-get clean
+          
+          echo "=== Disk space AFTER cleanup ==="
+          df -h /
+
+      # ─────────────────────────────────────────────────────────────────
       # 1. Checkout repository with submodules
       # ─────────────────────────────────────────────────────────────────
       - name: Checkout repository
@@ -114,12 +137,18 @@ jobs:
           # Use HTTPS instead of SSH for GitHub Actions
           mkdir -p thirdparty
           if [ ! -d "thirdparty/comaps/.git" ]; then
-            git clone https://github.com/comaps/comaps.git thirdparty/comaps
+            git clone --depth 1 --branch "$COMAPS_TAG" https://github.com/comaps/comaps.git thirdparty/comaps
           fi
           cd thirdparty/comaps
-          git fetch --tags --prune
-          git checkout --detach "$COMAPS_TAG"
-          git submodule update --init --recursive
+          git submodule update --init --recursive --depth 1
+          
+          # Clean up unnecessary files to save disk space
+          echo "=== Cleaning up CoMaps to save disk space ==="
+          rm -rf .git/objects/pack/*.pack~ 2>/dev/null || true
+          rm -rf android iphone qt xcode tools generator docs packaging 2>/dev/null || true
+          find . -name "*.git" -type d -exec rm -rf {} + 2>/dev/null || true
+          echo "=== Disk space after CoMaps cleanup ==="
+          df -h /
 
       - name: Apply CoMaps patches
         run: |
