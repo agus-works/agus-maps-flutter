@@ -150,6 +150,28 @@ adb logcat | grep -E "(CoMaps|AGUS|drape)"
 
 See [GUIDE.md](../GUIDE.md) for the full architectural blueprint.
 
+### Detailed Documentation
+
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE-ANDROID.md](./ARCHITECTURE-ANDROID.md) | Deep dive into Android integration, memory/battery efficiency |
+| [IMPLEMENTATION-ANDROID.md](./IMPLEMENTATION-ANDROID.md) | Build instructions, debug/release modes |
+| [GUIDE.md](../GUIDE.md) | High-level plugin architecture |
+
+### Known Issues
+
+Efficiency and reliability issues are tracked in dedicated files:
+
+| Issue | Severity | Status |
+|-------|----------|--------|
+| [ISSUE-debug-logging-release.md](./ISSUE-debug-logging-release.md) | Medium | Should Fix |
+| [ISSUE-egl-context-recreation.md](./ISSUE-egl-context-recreation.md) | Medium | Should Fix |
+| [ISSUE-indexed-stack-memory.md](./ISSUE-indexed-stack-memory.md) | Medium | By Design |
+| [ISSUE-touch-event-throttling.md](./ISSUE-touch-event-throttling.md) | Low | Deferred |
+| [ISSUE-dpi-mismatch-surface.md](./ISSUE-dpi-mismatch-surface.md) | Low | Monitor |
+| [ISSUE-ffi-string-allocation.md](./ISSUE-ffi-string-allocation.md) | Low | Won't Fix |
+| [ISSUE-data-extraction-cold-start.md](./ISSUE-data-extraction-cold-start.md) | Low | Won't Fix |
+
 ## Getting Help
 
 - Open an issue for bugs or feature requests

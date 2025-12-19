@@ -124,14 +124,58 @@ See the [example app](example/) for a complete working demo.
 
 ---
 
+## Why It's Efficient
+
+Agus Maps achieves excellent performance on older devices (tested on Samsung Galaxy S10) through architectural choices that minimize resource usage:
+
+| Aspect | How We Achieve It | Learn More |
+|--------|-------------------|------------|
+| **Memory** | Memory-mapped files (mmap) — only viewed tiles loaded into RAM | [Details](docs/ARCHITECTURE-ANDROID.md#memory-efficiency) |
+| **Battery** | Event-driven rendering — CPU/GPU sleep when map is idle | [Details](docs/ARCHITECTURE-ANDROID.md#battery-efficiency) |
+| **CPU** | Multi-threaded — heavy work on background threads, UI never blocked | [Details](docs/ARCHITECTURE-ANDROID.md#processor-efficiency) |
+| **Startup** | One-time asset extraction, cached on subsequent launches | [Details](docs/IMPLEMENTATION-ANDROID.md) |
+
+```
+Traditional Map App          Agus Maps
+┌─────────────────┐         ┌─────────────────┐
+│ Download tiles  │         │ Load from disk  │
+│ Decode images   │         │ (memory-mapped) │
+│ Store in RAM    │         │ Direct to GPU   │
+│ Copy to GPU     │         │                 │
+│ Render          │         │ Render          │
+└─────────────────┘         └─────────────────┘
+   ~100MB RAM                  ~20MB RAM
+   Always polling              Sleep when idle
+```
+
+---
+
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
 | [GUIDE.md](GUIDE.md) | Architectural blueprint and design philosophy |
-| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer setup and contribution guidelines |
-| [docs/IMPLEMENTATION-ANDROID.md](docs/IMPLEMENTATION-ANDROID.md) | Android-specific implementation details |
-| [example/](example/) | Working demo application |
+| [docs/ARCHITECTURE-ANDROID.md](docs/ARCHITECTURE-ANDROID.md) | Deep dive: memory efficiency, battery savings, how it works |
+| [docs/IMPLEMENTATION-ANDROID.md](docs/IMPLEMENTATION-ANDROID.md) | Build instructions, debug/release modes, acceptance criteria |
+| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer setup, commit guidelines, known issues |
+| [example/](example/) | Working demo application with downloads manager |
+
+### Technical Deep Dives
+
+For those who want to understand *why* Agus Maps is efficient:
+
+- **[How Memory Mapping Works](docs/ARCHITECTURE-ANDROID.md#memory-efficiency)** — Why we use 10x less RAM than tile-based solutions
+- **[Battery Efficiency](docs/ARCHITECTURE-ANDROID.md#battery-efficiency)** — Event-driven rendering that sleeps when idle
+- **[Multi-threaded Architecture](docs/ARCHITECTURE-ANDROID.md#processor-efficiency)** — How we keep the UI thread responsive
+- **[Old Phone Compatibility](docs/ARCHITECTURE-ANDROID.md#why-this-works-on-older-phones)** — Tested on Samsung Galaxy S10 and similar devices
+
+### Known Issues & Optimization Opportunities
+
+We track efficiency-related issues in dedicated files. See [CONTRIBUTING.md](docs/CONTRIBUTING.md#known-issues) for the full list, including:
+
+- Debug logging overhead in release builds
+- EGL context recreation on app resume
+- Touch event throttling considerations
 
 ---
 
