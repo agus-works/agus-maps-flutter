@@ -52,6 +52,12 @@ FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int i
 //          or MwmSet::RegResult value on registration failure
 FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath);
 
+// Debug: List all registered MWMs and their bounds to logcat
+FFI_PLUGIN_EXPORT void comaps_debug_list_mwms();
+
+// Debug: Check if a lat/lon point is covered by any registered MWM
+FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon);
+
 #ifdef __cplusplus
 }
 #endif
