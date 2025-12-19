@@ -147,4 +147,20 @@ class AgusMapsFlutterBindings {
       .asFunction<
         void Function(int, int, double, double, int, double, double)
       >();
+
+  /// Register a single MWM map file directly by full path.
+  /// This bypasses the version folder scanning and registers the map file
+  /// directly with the rendering engine.
+  /// Returns: 0 on success, -1 if framework not ready, -2 on exception,
+  ///          or MwmSet::RegResult value on registration failure
+  int comaps_register_single_map(ffi.Pointer<ffi.Char> fullPath) {
+    return _comaps_register_single_map(fullPath);
+  }
+
+  late final _comaps_register_single_mapPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<ffi.Char>)>>(
+        'comaps_register_single_map',
+      );
+  late final _comaps_register_single_map = _comaps_register_single_mapPtr
+      .asFunction<int Function(ffi.Pointer<ffi.Char>)>();
 }

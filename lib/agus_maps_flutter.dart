@@ -9,6 +9,10 @@ import 'package:ffi/ffi.dart';
 
 import 'agus_maps_flutter_bindings_generated.dart';
 
+// Export additional services
+export 'mwm_storage.dart';
+export 'mirror_service.dart';
+
 /// A very short-lived native function.
 ///
 /// For very short-lived functions, it is fine to call them on the main isolate.
@@ -76,6 +80,25 @@ void loadMap(String path) {
   final pathPtr = path.toNativeUtf8().cast<Char>();
   _bindings.comaps_load_map_path(pathPtr);
   malloc.free(pathPtr);
+}
+
+/// Register a single MWM map file directly by full path.
+/// 
+/// This bypasses the version folder scanning and registers the map file
+/// directly with the rendering engine. Use this for MWM files that are
+/// not in the standard version directory structure.
+/// 
+/// Returns 0 on success, negative values on error:
+///   -1: Framework not initialized (call after map surface is created)
+///   -2: Exception during registration
+///   >0: MwmSet::RegResult error code
+int registerSingleMap(String fullPath) {
+  final pathPtr = fullPath.toNativeUtf8().cast<Char>();
+  try {
+    return _bindings.comaps_register_single_map(pathPtr);
+  } finally {
+    malloc.free(pathPtr);
+  }
 }
 
 void setView(double lat, double lon, int zoom) {
@@ -186,30 +209,33 @@ class AgusMap extends StatefulWidget {
 
 class _AgusMapState extends State<AgusMap> {
   int? _textureId;
-  Size? _currentSize;
+  Size? _currentSize; // Logical size
   bool _surfaceCreated = false;
+  double _devicePixelRatio = 1.0;
 
   @override
   void initState() {
     super.initState();
   }
 
-  Future<void> _createSurface(Size size) async {
+  Future<void> _createSurface(Size logicalSize, double pixelRatio) async {
     if (_surfaceCreated) return;
     _surfaceCreated = true;
+    _devicePixelRatio = pixelRatio;
     
-    final width = size.width.toInt();
-    final height = size.height.toInt();
+    // Convert logical pixels to physical pixels for crisp rendering
+    final physicalWidth = (logicalSize.width * pixelRatio).toInt();
+    final physicalHeight = (logicalSize.height * pixelRatio).toInt();
     
-    debugPrint('[AgusMap] Creating surface: ${width}x$height');
+    debugPrint('[AgusMap] Creating surface: ${logicalSize.width.toInt()}x${logicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical (ratio: $pixelRatio)');
     
-    final textureId = await createMapSurface(width: width, height: height);
+    final textureId = await createMapSurface(width: physicalWidth, height: physicalHeight);
     
     if (!mounted) return;
     
     setState(() {
       _textureId = textureId;
-      _currentSize = size;
+      _currentSize = logicalSize;
     });
     
     // Set initial view if specified
@@ -224,22 +250,25 @@ class _AgusMapState extends State<AgusMap> {
     widget.onMapReady?.call();
   }
 
-  Future<void> _handleResize(Size newSize) async {
-    if (_currentSize == newSize) return;
+  Future<void> _handleResize(Size newLogicalSize, double pixelRatio) async {
+    if (_currentSize == newLogicalSize && _devicePixelRatio == pixelRatio) return;
     if (_textureId == null) return;
     
-    final width = newSize.width.toInt();
-    final height = newSize.height.toInt();
+    _devicePixelRatio = pixelRatio;
     
-    if (width <= 0 || height <= 0) return;
+    // Convert logical pixels to physical pixels
+    final physicalWidth = (newLogicalSize.width * pixelRatio).toInt();
+    final physicalHeight = (newLogicalSize.height * pixelRatio).toInt();
     
-    debugPrint('[AgusMap] Resizing: ${width}x$height');
+    if (physicalWidth <= 0 || physicalHeight <= 0) return;
     
-    await resizeMapSurface(width, height);
+    debugPrint('[AgusMap] Resizing: ${newLogicalSize.width.toInt()}x${newLogicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical');
+    
+    await resizeMapSurface(physicalWidth, physicalHeight);
     
     if (mounted) {
       setState(() {
-        _currentSize = newSize;
+        _currentSize = newLogicalSize;
       });
     }
   }
@@ -268,8 +297,8 @@ class _AgusMapState extends State<AgusMap> {
   }
   
   void _sendTouchEvent(TouchType type, int pointerId, Offset position) {
-    // Get pixel ratio for coordinate conversion
-    final pixelRatio = MediaQuery.of(context).devicePixelRatio;
+    // Use cached pixel ratio for coordinate conversion (matches surface dimensions)
+    final pixelRatio = _devicePixelRatio;
     
     // Convert logical coordinates to physical pixels
     final x1 = position.dx * pixelRatio;
@@ -297,17 +326,18 @@ class _AgusMapState extends State<AgusMap> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
+        final pixelRatio = MediaQuery.of(context).devicePixelRatio;
         
         // Create surface on first layout
         if (!_surfaceCreated && size.width > 0 && size.height > 0) {
           // Use post-frame callback to avoid calling during build
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _createSurface(size);
+            _createSurface(size, pixelRatio);
           });
-        } else if (_surfaceCreated && _currentSize != size) {
-          // Handle resize
+        } else if (_surfaceCreated && (_currentSize != size || _devicePixelRatio != pixelRatio)) {
+          // Handle resize or pixel ratio change
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _handleResize(size);
+            _handleResize(size, pixelRatio);
           });
         }
         

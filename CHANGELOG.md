@@ -1,3 +1,55 @@
+## 0.2.0
+
+### Features
+* **Map Download Manager**: New Downloads tab for browsing and downloading MWM files from mirror servers
+  - Mirror discovery with automatic latency measurement
+  - Snapshot (version) selection with YYMMDD format
+  - Fuzzy search for regions using `fuzzywuzzy` package
+  - Progress tracking with concurrent download limits (max 3)
+  - Human-readable region names (URL decoding, underscore replacement)
+  - File size display parsed from mirror directory listings
+* **Caching System**: Persist loaded region data to local storage via `shared_preferences`
+  - Instant subsequent loads from cache
+  - Automatic cache validation against server
+  - "cached" badge indicator in UI
+* **Disk Space Management**: Real-time disk space detection and safety checks
+  - Uses `storage_space` package for accurate Android/iOS detection
+  - Blocks downloads if <128MB would remain after download
+  - Warns if <1GB would remain after download
+* **MWM Registration API**: New `registerSingleMap(path)` FFI function
+  - Register individual MWM files by path
+  - Bypasses version folder scanning requirement
+  - Works with dynamically downloaded maps
+* **DPI Scaling**: Proper device pixel ratio handling for crisp rendering on high-DPI displays
+* **Tab Navigation**: Stable tab switching using IndexedStack (prevents widget recreation)
+
+### Bug Fixes
+* **Disk Space Detection**: Fixed `df -B1` command not working on Android by using `storage_space` package
+* **File Size Parsing**: Fixed regex to extract size from HTML `title="13701303 B"` attribute format
+* **Snapshot Equality**: Added `==` and `hashCode` to `Snapshot` class for proper DropdownButton matching
+* **ANR Prevention**: Heavy regex parsing offloaded to isolate via `compute()`
+* **Connectivity Checking**: Use `InternetAddress.lookup()` instead of unreliable `connectivity_plus`
+
+### New Dependencies
+* `shared_preferences: ^2.2.0` - Cache storage and MWM metadata persistence
+* `http: ^1.1.0` - Mirror service HTTP requests
+* `fuzzywuzzy: ^1.1.6` - Fuzzy search for region names (example app)
+* `connectivity_plus: ^6.1.4` - Network state monitoring (example app)
+* `storage_space: ^1.2.0` - Cross-platform disk space detection (example app)
+
+### New Files
+* `lib/mirror_service.dart` - Mirror discovery and MWM download service
+* `lib/mwm_storage.dart` - MWM metadata persistence service
+* `example/lib/downloads_tab.dart` - Map download manager UI
+* `example/lib/downloads_cache.dart` - Downloads caching service
+* `example/lib/settings_tab.dart` - Settings tab placeholder
+
+### Documentation
+* `docs/IMPL-01-fix-mwm-registration.md` - MWM registration fix documentation
+* `docs/IMPL-02-mwm-metadata-storage.md` - Storage implementation guide
+* `docs/IMPL-03-mirror-service.md` - Mirror service design document
+* `docs/IMPL-04-map-downloads-page.md` - Downloads UI specification
+
 ## 0.1.0
 
 ### Features
