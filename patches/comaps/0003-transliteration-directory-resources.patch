@@ -1,33 +1,22 @@
-From: Gil Michael <gil.michael@example.com>
-Date: Wed, 18 Dec 2024 10:00:00 +0000
+From 60100b8431fb7079aa06e3857b234332b6dd6a24 Mon Sep 17 00:00:00 2001
+From: GitHub Copilot <copilot@github.com>
+Date: Fri, 19 Dec 2025 07:22:10 +0000
 Subject: [PATCH] fix: transliteration loader for directory-based resources
 
 When ResourcesDir points to a filesystem directory (not a ZIP file),
-use direct file copy instead of ZipFileReader::UnzipFile.
+use direct file access instead of ZipFileReader::UnzipFile.
 
 This enables the plugin to work with extracted assets rather than
 requiring an APK ZIP file.
-
 ---
- libs/indexer/transliteration_loader.cpp | 29 ++++++++++++++++++++-----
- 1 file changed, 24 insertions(+), 5 deletions(-)
+ libs/indexer/transliteration_loader.cpp | 26 ++++++++++++++++++++-----
+ 1 file changed, 21 insertions(+), 5 deletions(-)
 
 diff --git a/libs/indexer/transliteration_loader.cpp b/libs/indexer/transliteration_loader.cpp
-index 1234567..abcdefg 100644
+index 9ef60ab6..e268e86e 100644
 --- a/libs/indexer/transliteration_loader.cpp
 +++ b/libs/indexer/transliteration_loader.cpp
-@@ -6,6 +6,9 @@
- #include "coding/zip_reader.hpp"
- 
- #include "base/exception.hpp"
-+#ifdef OMIM_OS_ANDROID
-+#include "base/file_name_utils.hpp"
-+#endif
- #include "base/file_name_utils.hpp"
- #include "base/logging.hpp"
- 
-@@ -18,13 +21,29 @@ void InitTransliterationInstanceWithDefaultDirs()
- #if defined(OMIM_OS_ANDROID)
+@@ -19,14 +19,30 @@ void InitTransliterationInstanceWithDefaultDirs()
    char const kICUDataFile[] = "icudt75l.dat";
    if (!pl.IsFileExistsByFullPath(base::JoinPath(pl.WritableDir(), kICUDataFile)))
    {
@@ -40,9 +29,9 @@ index 1234567..abcdefg 100644
      {
 -      ZipFileReader::UnzipFile(pl.ResourcesDir(), std::string("assets/") + kICUDataFile,
 -                               pl.WritableDir() + kICUDataFile);
-+      // ResourcesDir is a directory, copy directly from filesystem
-+      LOG(LDEBUG, ("Copying ICU data from directory:", srcPath));
-+      // File already accessible in resourcesDir, no copy needed - use srcPath directly
++      // ResourcesDir is a directory, use file directly from filesystem
++      LOG(LDEBUG, ("Using ICU data from directory:", srcPath));
++      // File already accessible in resourcesDir, use that path directly
 +      Transliteration::Instance().Init(resourcesDir);
 +      return;
      }
@@ -50,6 +39,7 @@ index 1234567..abcdefg 100644
 +    else
      {
 -      LOG(LWARNING, ("Can't get transliteration data file \"", kICUDataFile, "\", reason:", e.Msg()));
++      // ResourcesDir is a ZIP, extract the file
 +      try
 +      {
 +        ZipFileReader::UnzipFile(resourcesDir, std::string("assets/") + kICUDataFile,
@@ -62,3 +52,6 @@ index 1234567..abcdefg 100644
      }
    }
    Transliteration::Instance().Init(pl.WritableDir());
+-- 
+2.52.0
+
