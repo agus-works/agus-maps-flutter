@@ -2,363 +2,304 @@
 format_version: '23'
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: flutter
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Agus Maps Flutter - Bitrise CI/CD Configuration
-# ═══════════════════════════════════════════════════════════════════════════════
-# 
-# Builds Android AAB and APK artifacts using CoMaps native map engine.
-# Uses macOS stack for better disk space and NDK compatibility.
-#
-# Outputs:
-#   - agus-maps-android.aab (Android App Bundle for Play Store)
-#   - agus-maps-android.apk (Universal APK for direct installation)
-#   - Split APKs per architecture (armeabi-v7a, arm64-v8a, x86_64)
-#
-# ═══════════════════════════════════════════════════════════════════════════════
-
 trigger_map:
-  - tag: v*
-    pipeline: build-release
-  - push_branch: main
-    pipeline: build-android
-  - push_branch: develop
-    pipeline: build-android
-  - pull_request_source_branch: "*"
-    pipeline: build-android
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# WORKFLOWS
-# ═══════════════════════════════════════════════════════════════════════════════
-
+- tag: v*
+  pipeline: build-release
+- push_branch: main
+  pipeline: build-android
+- push_branch: develop
+  pipeline: build-android
+- pull_request_source_branch: "*"
+  pipeline: build-android
 workflows:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Build Android AAB & APK
-  # ─────────────────────────────────────────────────────────────────────────────
   build-android:
     summary: Build Android AAB and APK
     description: |
       Fetches CoMaps native engine, applies patches, and builds Android artifacts.
       Outputs AAB for Play Store and APK for direct installation.
     steps:
-      - git-clone@8:
-          inputs:
-            - fetch_tags: 'yes'
+    - git-clone@8:
+        inputs:
+        - fetch_tags: 'yes'
+    - script@1:
+        title: Set Environment Variables
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            envman add --key FLUTTER_VERSION --value "3.27.0"
+            envman add --key COMAPS_TAG --value "v2025.12.11-2"
+            envman add --key NDK_VERSION --value "27.2.12479018"
+            envman add --key CMAKE_VERSION --value "3.22.1"
+    - flutter-installer@0:
+        inputs:
+        - version: "$FLUTTER_VERSION"
+        - is_update: 'false'
+    - script@1:
+        title: Install Android SDK Components (NDK & CMake)
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
 
-      - script@1:
-          title: Set Environment Variables
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                envman add --key FLUTTER_VERSION --value "3.27.0"
-                envman add --key COMAPS_TAG --value "v2025.12.11-2"
-                envman add --key NDK_VERSION --value "27.2.12479018"
-                envman add --key CMAKE_VERSION --value "3.22.1"
+            echo "=== Installing Android NDK and CMake ==="
 
-      - flutter-installer@0:
-          inputs:
-            - version: "$FLUTTER_VERSION"
-            - is_update: 'false'
+            # Use sdkmanager from ANDROID_HOME
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            if [ ! -f "$SDKMANAGER" ]; then
+              SDKMANAGER="$ANDROID_HOME/tools/bin/sdkmanager"
+            fi
 
-      - script@1:
-          title: Install Android SDK Components (NDK & CMake)
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                
-                echo "=== Installing Android NDK and CMake ==="
-                
-                # Use sdkmanager from ANDROID_HOME
-                SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-                if [ ! -f "$SDKMANAGER" ]; then
-                  SDKMANAGER="$ANDROID_HOME/tools/bin/sdkmanager"
-                fi
-                
-                # Accept licenses
-                yes | $SDKMANAGER --licenses > /dev/null 2>&1 || true
-                
-                # Install NDK and CMake
-                $SDKMANAGER "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
-                
-                # Export NDK path for subsequent steps
-                envman add --key ANDROID_NDK_HOME --value "$ANDROID_HOME/ndk/$NDK_VERSION"
-                envman add --key NDK_HOME --value "$ANDROID_HOME/ndk/$NDK_VERSION"
-                
-                echo "NDK installed at: $ANDROID_HOME/ndk/$NDK_VERSION"
+            # Accept licenses
+            yes | $SDKMANAGER --licenses > /dev/null 2>&1 || true
 
-      - script@1:
-          title: Fetch CoMaps Source
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                
-                echo "=== Fetching CoMaps $COMAPS_TAG ==="
-                echo "Disk space before:"
-                df -h /
-                
-                mkdir -p thirdparty
-                
-                if [ ! -d "thirdparty/comaps/.git" ]; then
-                  git clone --depth 1 --branch "$COMAPS_TAG" \
-                    https://github.com/comaps/comaps.git thirdparty/comaps
-                fi
-                
-                cd thirdparty/comaps
-                git submodule update --init --recursive --depth 1
-                
-                # Clean up unnecessary directories to save disk space
-                echo "=== Cleaning up CoMaps to save disk space ==="
-                rm -rf android iphone qt xcode tools generator docs packaging 2>/dev/null || true
-                
-                echo "Disk space after CoMaps fetch:"
-                df -h /
+            # Install NDK and CMake
+            $SDKMANAGER "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
 
-      - script@1:
-          title: Apply CoMaps Patches
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                chmod +x scripts/apply_comaps_patches.sh
-                ./scripts/apply_comaps_patches.sh
+            # Export NDK path for subsequent steps
+            envman add --key ANDROID_NDK_HOME --value "$ANDROID_HOME/ndk/$NDK_VERSION"
+            envman add --key NDK_HOME --value "$ANDROID_HOME/ndk/$NDK_VERSION"
 
-      - script@1:
-          title: Build Boost Headers
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                cd thirdparty/comaps/3party/boost
-                if [ ! -d "boost" ]; then
-                  echo "=== Building Boost headers ==="
-                  ./bootstrap.sh
-                  ./b2 headers
-                fi
+            echo "NDK installed at: $ANDROID_HOME/ndk/$NDK_VERSION"
+    - script@1:
+        title: Fetch CoMaps Source
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
 
-      - script@1:
-          title: Copy CoMaps Assets
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                
-                # Copy fonts to Android assets
-                mkdir -p example/android/app/src/main/assets
-                cp -r thirdparty/comaps/data/fonts example/android/app/src/main/assets/
-                
-                # Copy CoMaps data files
-                chmod +x scripts/copy_comaps_data.sh
-                ./scripts/copy_comaps_data.sh
+            echo "=== Fetching CoMaps $COMAPS_TAG ==="
+            echo "Disk space before:"
+            df -h /
 
-      - restore-dart-cache@2: {}
+            mkdir -p thirdparty
 
-      - script@1:
-          title: Get Flutter Dependencies
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                flutter pub get
-                cd example && flutter pub get
+            if [ ! -d "thirdparty/comaps/.git" ]; then
+              git clone --depth 1 --branch "$COMAPS_TAG" \
+                https://github.com/comaps/comaps.git thirdparty/comaps
+            fi
 
-      - save-dart-cache@1: {}
+            cd thirdparty/comaps
+            git submodule update --init --recursive --depth 1
 
-      - flutter-analyze@0:
-          inputs:
-            - project_location: "$BITRISE_FLUTTER_PROJECT_LOCATION"
+            # Clean up unnecessary directories to save disk space
+            echo "=== Cleaning up CoMaps to save disk space ==="
+            rm -rf android iphone qt xcode tools generator docs packaging 2>/dev/null || true
 
-      - script@1:
-          title: Build Android App Bundle (AAB)
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                cd example
-                
-                flutter build appbundle --release \
-                  --build-name=1.0.0 \
-                  --build-number=$BITRISE_BUILD_NUMBER
+            echo "Disk space after CoMaps fetch:"
+            df -h /
+    - script@1:
+        title: Apply CoMaps Patches
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            chmod +x scripts/apply_comaps_patches.sh
+            ./scripts/apply_comaps_patches.sh
+    - script@1:
+        title: Build Boost Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd thirdparty/comaps/3party/boost
+            if [ ! -d "boost" ]; then
+              echo "=== Building Boost headers ==="
+              ./bootstrap.sh
+              ./b2 headers
+            fi
+    - script@1:
+        title: Copy CoMaps Assets
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
 
-      - script@1:
-          title: Build Universal APK
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                cd example
-                
-                flutter build apk --release \
-                  --build-name=1.0.0 \
-                  --build-number=$BITRISE_BUILD_NUMBER
+            # Copy fonts to Android assets
+            mkdir -p example/android/app/src/main/assets
+            cp -r thirdparty/comaps/data/fonts example/android/app/src/main/assets/
 
-      - script@1:
-          title: Build Split APKs (per architecture)
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                cd example
-                
-                flutter build apk --release --split-per-abi \
-                  --build-name=1.0.0 \
-                  --build-number=$BITRISE_BUILD_NUMBER
+            # Copy CoMaps data files
+            chmod +x scripts/copy_comaps_data.sh
+            ./scripts/copy_comaps_data.sh
+    - restore-dart-cache@2: {}
+    - script@1:
+        title: Get Flutter Dependencies
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            flutter pub get
+            cd example && flutter pub get
+    - save-dart-cache@1: {}
+    - flutter-analyze@0:
+        inputs:
+        - project_location: "$BITRISE_FLUTTER_PROJECT_LOCATION"
+    - script@1:
+        title: Build Android App Bundle (AAB)
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd example
 
-      - script@1:
-          title: Prepare Artifacts
-          inputs:
-            - content: |
-                #!/bin/bash
-                set -e
-                
-                # Create output directory
-                mkdir -p $BITRISE_DEPLOY_DIR
-                
-                # Copy AAB
-                cp example/build/app/outputs/bundle/release/app-release.aab \
-                   $BITRISE_DEPLOY_DIR/agus-maps-android.aab
-                
-                # Copy Universal APK
-                cp example/build/app/outputs/flutter-apk/app-release.apk \
-                   $BITRISE_DEPLOY_DIR/agus-maps-android.apk
-                
-                # Copy Split APKs
-                mkdir -p $BITRISE_DEPLOY_DIR/split-apks
-                cp example/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
-                   $BITRISE_DEPLOY_DIR/split-apks/agus-maps-android-armeabi-v7a.apk 2>/dev/null || true
-                cp example/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
-                   $BITRISE_DEPLOY_DIR/split-apks/agus-maps-android-arm64-v8a.apk 2>/dev/null || true
-                cp example/build/app/outputs/flutter-apk/app-x86_64-release.apk \
-                   $BITRISE_DEPLOY_DIR/split-apks/agus-maps-android-x86_64.apk 2>/dev/null || true
-                
-                # Generate build info
-                cat > $BITRISE_DEPLOY_DIR/BUILD_INFO.txt << EOF
-                Agus Maps Flutter - Android Build
-                ==================================
-                
-                Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-                Build Number: $BITRISE_BUILD_NUMBER
-                Git SHA: $GIT_CLONE_COMMIT_HASH
-                Git Branch: $BITRISE_GIT_BRANCH
-                Git Tag: ${BITRISE_GIT_TAG:-N/A}
-                
-                Flutter Version: $FLUTTER_VERSION
-                CoMaps Version: $COMAPS_TAG
-                
-                Artifacts:
-                - agus-maps-android.aab (Android App Bundle - for Play Store)
-                - agus-maps-android.apk (Universal APK - for direct install)
-                - split-apks/ (Per-architecture APKs for smaller downloads)
-                
-                Supported Architectures:
-                - armeabi-v7a (32-bit ARM)
-                - arm64-v8a (64-bit ARM)
-                - x86_64 (64-bit x86, for emulators)
-                EOF
-                
-                # Print artifact sizes
-                echo "=== Build Artifacts ==="
-                ls -lh $BITRISE_DEPLOY_DIR/*.aab $BITRISE_DEPLOY_DIR/*.apk
-                ls -lh $BITRISE_DEPLOY_DIR/split-apks/ 2>/dev/null || true
-                
-                # Export paths for pipeline intermediate files
-                envman add --key AAB_PATH --value "$BITRISE_DEPLOY_DIR/agus-maps-android.aab"
-                envman add --key APK_PATH --value "$BITRISE_DEPLOY_DIR/agus-maps-android.apk"
+            flutter build appbundle --release \
+              --build-name=1.0.0 \
+              --build-number=$BITRISE_BUILD_NUMBER
+    - script@1:
+        title: Build Universal APK
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd example
 
-      - deploy-to-bitrise-io@2:
-          inputs:
-            - pipeline_intermediate_files: |-
-                $BITRISE_DEPLOY_DIR/agus-maps-android.aab:AAB_PATH
-                $BITRISE_DEPLOY_DIR/agus-maps-android.apk:APK_PATH
-                $BITRISE_DEPLOY_DIR/BUILD_INFO.txt:BUILD_INFO_PATH
+            flutter build apk --release \
+              --build-name=1.0.0 \
+              --build-number=$BITRISE_BUILD_NUMBER
+    - script@1:
+        title: Build Split APKs (per architecture)
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd example
+
+            flutter build apk --release --split-per-abi \
+              --build-name=1.0.0 \
+              --build-number=$BITRISE_BUILD_NUMBER
+    - script@1:
+        title: Prepare Artifacts
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            # Create output directory
+            mkdir -p $BITRISE_DEPLOY_DIR
+
+            # Copy AAB
+            cp example/build/app/outputs/bundle/release/app-release.aab \
+               $BITRISE_DEPLOY_DIR/agus-maps-android.aab
+
+            # Copy Universal APK
+            cp example/build/app/outputs/flutter-apk/app-release.apk \
+               $BITRISE_DEPLOY_DIR/agus-maps-android.apk
+
+            # Copy Split APKs
+            mkdir -p $BITRISE_DEPLOY_DIR/split-apks
+            cp example/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+               $BITRISE_DEPLOY_DIR/split-apks/agus-maps-android-armeabi-v7a.apk 2>/dev/null || true
+            cp example/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+               $BITRISE_DEPLOY_DIR/split-apks/agus-maps-android-arm64-v8a.apk 2>/dev/null || true
+            cp example/build/app/outputs/flutter-apk/app-x86_64-release.apk \
+               $BITRISE_DEPLOY_DIR/split-apks/agus-maps-android-x86_64.apk 2>/dev/null || true
+
+            # Generate build info
+            cat > $BITRISE_DEPLOY_DIR/BUILD_INFO.txt << EOF
+            Agus Maps Flutter - Android Build
+            ==================================
+
+            Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            Build Number: $BITRISE_BUILD_NUMBER
+            Git SHA: $GIT_CLONE_COMMIT_HASH
+            Git Branch: $BITRISE_GIT_BRANCH
+            Git Tag: ${BITRISE_GIT_TAG:-N/A}
+
+            Flutter Version: $FLUTTER_VERSION
+            CoMaps Version: $COMAPS_TAG
+
+            Artifacts:
+            - agus-maps-android.aab (Android App Bundle - for Play Store)
+            - agus-maps-android.apk (Universal APK - for direct install)
+            - split-apks/ (Per-architecture APKs for smaller downloads)
+
+            Supported Architectures:
+            - armeabi-v7a (32-bit ARM)
+            - arm64-v8a (64-bit ARM)
+            - x86_64 (64-bit x86, for emulators)
+            EOF
+
+            # Print artifact sizes
+            echo "=== Build Artifacts ==="
+            ls -lh $BITRISE_DEPLOY_DIR/*.aab $BITRISE_DEPLOY_DIR/*.apk
+            ls -lh $BITRISE_DEPLOY_DIR/split-apks/ 2>/dev/null || true
+
+            # Export paths for pipeline intermediate files
+            envman add --key AAB_PATH --value "$BITRISE_DEPLOY_DIR/agus-maps-android.aab"
+            envman add --key APK_PATH --value "$BITRISE_DEPLOY_DIR/agus-maps-android.apk"
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - pipeline_intermediate_files: |-
+            $BITRISE_DEPLOY_DIR/agus-maps-android.aab:AAB_PATH
+            $BITRISE_DEPLOY_DIR/agus-maps-android.apk:APK_PATH
+            $BITRISE_DEPLOY_DIR/BUILD_INFO.txt:BUILD_INFO_PATH
     meta:
       bitrise.io:
         stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Release to GitHub
-  # ─────────────────────────────────────────────────────────────────────────────
   release:
     summary: Publish to GitHub Releases
     description: Downloads artifacts and publishes to GitHub Releases.
     steps:
-      - git-clone@8:
-          inputs:
-            - fetch_tags: 'yes'
+    - git-clone@8:
+        inputs:
+        - fetch_tags: 'yes'
+    - pull-intermediate-files@1: {}
+    - github-release@0:
+        inputs:
+        - api_token: "$GITHUB_ACCESS_TOKEN"
+        - username: "$GITHUB_USERNAME"
+        - repository_url: "$GITHUB_RELEASE_REPO"
+        - tag: "$BITRISE_GIT_TAG"
+        - name: Agus Maps $BITRISE_GIT_TAG
+        - body: |
+            ## Agus Maps Flutter - $BITRISE_GIT_TAG
 
-      - pull-intermediate-files@1: {}
+            Automated release from Bitrise build #$BITRISE_BUILD_NUMBER
 
-      - github-release@0:
-          inputs:
-            - api_token: "$GITHUB_ACCESS_TOKEN"
-            - username: "$GITHUB_USERNAME"
-            - repository_url: "$GITHUB_RELEASE_REPO"
-            - tag: "$BITRISE_GIT_TAG"
-            - name: "Agus Maps $BITRISE_GIT_TAG"
-            - body: |
-                ## Agus Maps Flutter - $BITRISE_GIT_TAG
-                
-                Automated release from Bitrise build #$BITRISE_BUILD_NUMBER
-                
-                ### Downloads
-                - **agus-maps-android.aab** - Android App Bundle (for Play Store upload)
-                - **agus-maps-android.apk** - Universal APK (for direct installation)
-                - **Split APKs** - Per-architecture builds for smaller download sizes
-                
-                ### Installation
-                ```bash
-                adb install agus-maps-android.apk
-                ```
-                
-                ### Features
-                - Offline vector maps powered by CoMaps engine
-                - OpenStreetMap data with Organic Maps rendering
-                - Battery-efficient event-driven rendering
-            - draft: 'no'
-            - files_to_upload: |-
-                $AAB_PATH
-                $APK_PATH
-                $BUILD_INFO_PATH
+            ### Downloads
+            - **agus-maps-android.aab** - Android App Bundle (for Play Store upload)
+            - **agus-maps-android.apk** - Universal APK (for direct installation)
+            - **Split APKs** - Per-architecture builds for smaller download sizes
+
+            ### Installation
+            ```bash
+            adb install agus-maps-android.apk
+            ```
+
+            ### Features
+            - Offline vector maps powered by CoMaps engine
+            - OpenStreetMap data with Organic Maps rendering
+            - Battery-efficient event-driven rendering
+        - draft: 'no'
+        - files_to_upload: |-
+            $AAB_PATH
+            $APK_PATH
+            $BUILD_INFO_PATH
     meta:
       bitrise.io:
         stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PIPELINES
-# ═══════════════════════════════════════════════════════════════════════════════
-
 pipelines:
-  # CI Pipeline - runs on push and PR
   build-android:
     workflows:
       build-android: {}
-
-  # Release Pipeline - runs on tag push
   build-release:
     workflows:
       build-android: {}
       release:
         depends_on:
-          - build-android
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# APP CONFIGURATION
-# ═══════════════════════════════════════════════════════════════════════════════
-
+        - build-android
 meta:
   bitrise.io:
     stack: osx-xcode-16.4.x
     machine_type_id: g2.mac.large
-
 app:
   envs:
-    - BITRISE_FLUTTER_PROJECT_LOCATION: example
-      opts:
-        is_expand: false
-    - GITHUB_RELEASE_REPO: https://github.com/bangonkali/agus-maps-flutter
-      opts:
-        is_expand: false
+  - BITRISE_FLUTTER_PROJECT_LOCATION: example
+    opts:
+      is_expand: false
+  - GITHUB_RELEASE_REPO: https://github.com/bangonkali/agus-maps-flutter
+    opts:
+      is_expand: false
