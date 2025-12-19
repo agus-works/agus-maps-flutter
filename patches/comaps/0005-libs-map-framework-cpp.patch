@@ -1,0 +1,31 @@
+diff --git a/libs/map/framework.cpp b/libs/map/framework.cpp
+index ba683261..87ba32fc 100644
+--- a/libs/map/framework.cpp
++++ b/libs/map/framework.cpp
+@@ -339,19 +339,25 @@ Framework::Framework(FrameworkParams const & params, bool loadMaps)
+   m_storage.SetDownloadingPolicy(&m_storageDownloadingPolicy);
+   m_storage.SetStartDownloadingCallback([this]() { UpdatePlacePageInfoForCurrentSelection(); });
+ 
++  LOG(LDEBUG, ("About to call SetRouterImpl..."));
+   m_routingManager.SetRouterImpl(RouterType::Vehicle);
++  LOG(LDEBUG, ("SetRouterImpl complete"));
+ 
++  LOG(LDEBUG, ("About to call UpdateMinBuildingsTapZoom..."));
+   UpdateMinBuildingsTapZoom();
++  LOG(LDEBUG, ("UpdateMinBuildingsTapZoom complete"));
+ 
+   LOG(LINFO, ("System languages:", languages::GetPreferred()));
+ 
++  LOG(LDEBUG, ("About to call editor.SetDelegate..."));
+   editor.SetDelegate(make_unique<search::EditorDelegate>(m_featuresFetcher.GetDataSource()));
++  LOG(LDEBUG, ("editor.SetDelegate complete"));
+   editor.SetInvalidateFn([this]() { InvalidateRect(GetCurrentViewport()); });
+ 
+   /// @todo Uncomment when we will integrate a traffic provider.
+   // m_trafficManager.SetCurrentDataVersion(m_storage.GetCurrentDataVersion());
+   // m_trafficManager.SetSimplifiedColorScheme(LoadTrafficSimplifiedColors());
+-  // m_trafficManager.SetEnabled(LoadTrafficEnabled());
++  // m_trafficManager.SetEnabled(LoadTrafficEnabled()));
+ 
+   m_isolinesManager.SetEnabled(LoadIsolinesEnabled());
+ 

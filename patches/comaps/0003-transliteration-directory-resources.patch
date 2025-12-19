@@ -1,57 +1,57 @@
-From 60100b8431fb7079aa06e3857b234332b6dd6a24 Mon Sep 17 00:00:00 2001
-From: GitHub Copilot <copilot@github.com>
-Date: Fri, 19 Dec 2025 07:22:10 +0000
-Subject: [PATCH] fix: transliteration loader for directory-based resources
-
-When ResourcesDir points to a filesystem directory (not a ZIP file),
-use direct file access instead of ZipFileReader::UnzipFile.
-
-This enables the plugin to work with extracted assets rather than
-requiring an APK ZIP file.
----
- libs/indexer/transliteration_loader.cpp | 26 ++++++++++++++++++++-----
- 1 file changed, 21 insertions(+), 5 deletions(-)
-
 diff --git a/libs/indexer/transliteration_loader.cpp b/libs/indexer/transliteration_loader.cpp
-index 9ef60ab6..e268e86e 100644
+index 9ef60ab6..2ee0506c 100644
 --- a/libs/indexer/transliteration_loader.cpp
 +++ b/libs/indexer/transliteration_loader.cpp
-@@ -19,14 +19,30 @@ void InitTransliterationInstanceWithDefaultDirs()
+@@ -17,19 +17,48 @@ void InitTransliterationInstanceWithDefaultDirs()
+ 
+ #if defined(OMIM_OS_ANDROID)
    char const kICUDataFile[] = "icudt75l.dat";
-   if (!pl.IsFileExistsByFullPath(base::JoinPath(pl.WritableDir(), kICUDataFile)))
+-  if (!pl.IsFileExistsByFullPath(base::JoinPath(pl.WritableDir(), kICUDataFile)))
++  std::string const resourcesDir = pl.ResourcesDir();
++  std::string const writableDir = pl.WritableDir();
++  std::string const srcPath = base::JoinPath(resourcesDir, kICUDataFile);
++  std::string const dstPath = base::JoinPath(writableDir, kICUDataFile);
++  
++  // Check if the file already exists in writable dir
++  if (pl.IsFileExistsByFullPath(dstPath))
    {
--    try
-+    // Check if ResourcesDir is a directory (not a ZIP file)
-+    std::string const resourcesDir = pl.ResourcesDir();
-+    std::string const srcPath = base::JoinPath(resourcesDir, kICUDataFile);
-+    
-+    if (!ZipFileReader::IsZip(resourcesDir) && pl.IsFileExistsByFullPath(srcPath))
++    LOG(LDEBUG, ("ICU data file already exists at:", dstPath));
++    Transliteration::Instance().Init(writableDir);
++    return;
++  }
++  
++  // If ResourcesDir is a directory (not a ZIP file), check if ICU file is there
++  if (!ZipFileReader::IsZip(resourcesDir))
++  {
++    if (pl.IsFileExistsByFullPath(srcPath))
++    {
++      LOG(LDEBUG, ("ICU data file found in resources directory:", srcPath));
++      // Use resources dir directly for transliteration
++      Transliteration::Instance().Init(resourcesDir);
++      return;
++    }
++    else
++    {
++      LOG(LWARNING, ("ICU data file not found in resources directory:", srcPath));
++    }
++  }
++  else
++  {
++    // ResourcesDir is a ZIP file (APK), extract the ICU data
+     try
      {
 -      ZipFileReader::UnzipFile(pl.ResourcesDir(), std::string("assets/") + kICUDataFile,
 -                               pl.WritableDir() + kICUDataFile);
-+      // ResourcesDir is a directory, use file directly from filesystem
-+      LOG(LDEBUG, ("Using ICU data from directory:", srcPath));
-+      // File already accessible in resourcesDir, use that path directly
-+      Transliteration::Instance().Init(resourcesDir);
-+      return;
++      ZipFileReader::UnzipFile(resourcesDir, std::string("assets/") + kICUDataFile, dstPath);
++      LOG(LDEBUG, ("Extracted ICU data from ZIP to:", dstPath));
      }
--    catch (RootException const & e)
-+    else
+     catch (RootException const & e)
      {
--      LOG(LWARNING, ("Can't get transliteration data file \"", kICUDataFile, "\", reason:", e.Msg()));
-+      // ResourcesDir is a ZIP, extract the file
-+      try
-+      {
-+        ZipFileReader::UnzipFile(resourcesDir, std::string("assets/") + kICUDataFile,
-+                                 pl.WritableDir() + kICUDataFile);
-+      }
-+      catch (RootException const & e)
-+      {
-+        LOG(LWARNING, ("Can't get transliteration data file \"", kICUDataFile, "\", reason:", e.Msg()));
-+      }
+       LOG(LWARNING, ("Can't get transliteration data file \"", kICUDataFile, "\", reason:", e.Msg()));
      }
    }
-   Transliteration::Instance().Init(pl.WritableDir());
--- 
-2.52.0
-
+-  Transliteration::Instance().Init(pl.WritableDir());
++  Transliteration::Instance().Init(writableDir);
+ #else
+   Transliteration::Instance().Init(pl.ResourcesDir());
+ #endif
