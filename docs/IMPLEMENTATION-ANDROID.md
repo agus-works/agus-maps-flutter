@@ -1,5 +1,97 @@
 # Android Implementation Plan (MVP)
 
+## Quick Start: Build & Run
+
+### Prerequisites
+
+- Flutter SDK 3.24+ installed
+- Android SDK with NDK 27.2.12479018 (or set in `android/build.gradle`)
+- A connected Android device or emulator (API 24+)
+- ~5GB disk space for CoMaps build artifacts
+
+### Debug Mode (Full debugging, slower)
+
+Debug mode enables hot reload, step-through debugging, and verbose logging for both Flutter and native layers.
+
+```bash
+# 1. Bootstrap CoMaps dependencies (first time only)
+./scripts/bootstrap_android.sh
+
+# 2. Copy CoMaps data files (first time only)
+./scripts/copy_comaps_data.sh
+
+# 3. Run in debug mode
+cd example
+flutter run --debug
+
+# For verbose native logs, use logcat:
+adb logcat -s AgusMapsFlutterNative:D CoMaps:D AgusGuiThread:D
+```
+
+**Debug mode characteristics:**
+- Flutter: Hot reload enabled, Dart DevTools available
+- Native: Debug symbols included, assertions enabled, detailed logging
+- Performance: Slower due to debug overhead, unoptimized native code
+- APK size: ~300MB+ (includes debug symbols)
+
+### Release Mode (High performance, battery efficient)
+
+Release mode produces an optimized build suitable for production use and accurate performance profiling.
+
+```bash
+# 1. Bootstrap CoMaps dependencies (first time only)
+./scripts/bootstrap_android.sh
+
+# 2. Copy CoMaps data files (first time only) 
+./scripts/copy_comaps_data.sh
+
+# 3. Build and run in release mode
+cd example
+flutter run --release
+
+# Or build an APK for installation
+flutter build apk --release
+adb install build/app/outputs/flutter-apk/app-release.apk
+```
+
+**Release mode characteristics:**
+- Flutter: AOT compiled, tree-shaken, minified
+- Native: `-O3` optimization, no debug symbols, no assertions
+- Performance: Full speed, minimal battery usage
+- APK size: ~100MB (stripped, compressed)
+
+### Profile Mode (For Android Studio Profiler)
+
+Profile mode is optimized but includes profiling hooks for CPU/memory/GPU analysis.
+
+```bash
+cd example
+flutter run --profile
+```
+
+Then in Android Studio:
+1. Open **View → Tool Windows → Profiler**
+2. Select your device and app process
+3. Record CPU, Memory, or Energy traces
+
+### Native-Only Debugging (Advanced)
+
+To debug C++ code in Android Studio:
+
+1. Open the `example/android` folder in Android Studio
+2. Set breakpoints in `src/*.cpp` files
+3. Run → Debug 'app' with LLDB debugger selected
+4. Native breakpoints will hit during execution
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `COMAPS_TAG` | `v2025.12.11-2` | CoMaps git tag to checkout |
+| `ANDROID_NDK_HOME` | Auto-detected | Path to Android NDK |
+
+---
+
 ## Goal
 Get the Android example app to:
 
