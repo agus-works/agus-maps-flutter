@@ -5,12 +5,6 @@ project_type: flutter
 trigger_map:
 - tag: v*
   pipeline: build-release
-- push_branch: main
-  pipeline: build-android
-- push_branch: develop
-  pipeline: build-android
-- pull_request_source_branch: "*"
-  pipeline: build-android
 workflows:
   build-android:
     summary: Build Android AAB and APK
