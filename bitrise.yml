@@ -55,6 +55,10 @@ workflows:
             envman add --key NDK_HOME --value "$ANDROID_HOME/ndk/$NDK_VERSION"
 
             echo "NDK installed at: $ANDROID_HOME/ndk/$NDK_VERSION"
+    - restore-cache@1:
+        title: Restore CoMaps Cache
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
         title: Fetch CoMaps Source
         inputs:
@@ -76,12 +80,15 @@ workflows:
             cd thirdparty/comaps
             git submodule update --init --recursive --depth 1
 
-            # Clean up unnecessary directories to save disk space
-            echo "=== Cleaning up CoMaps to save disk space ==="
-            rm -rf android iphone qt xcode tools generator docs packaging 2>/dev/null || true
-
             echo "Disk space after CoMaps fetch:"
             df -h /
+    - save-cache@1:
+        title: Save CoMaps Cache
+        run_if: "true"
+        is_always_run: true
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - paths: thirdparty/comaps
     - script@1:
         title: Apply CoMaps Patches
         inputs:
