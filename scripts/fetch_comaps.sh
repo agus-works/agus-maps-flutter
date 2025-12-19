@@ -6,12 +6,19 @@ set -euo pipefail
 # Environment variables:
 #   COMAPS_TAG: git tag/commit to checkout.
 #              Defaults to v2025.12.11-2.
+#   COMAPS_USE_HTTPS: if set to "true", uses HTTPS instead of SSH (for CI)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 THIRDPARTY_DIR="$ROOT_DIR/thirdparty"
 COMAPS_DIR="$THIRDPARTY_DIR/comaps"
 
-COMAPS_REPO="git@github.com:comaps/comaps.git"
+# Use HTTPS in CI environments (GitHub Actions sets CI=true)
+if [[ "${COMAPS_USE_HTTPS:-}" == "true" ]] || [[ "${CI:-}" == "true" ]]; then
+  COMAPS_REPO="https://github.com/comaps/comaps.git"
+else
+  COMAPS_REPO="git@github.com:comaps/comaps.git"
+fi
+
 COMAPS_TAG_DEFAULT="v2025.12.11-2"
 COMAPS_TAG="${COMAPS_TAG:-$COMAPS_TAG_DEFAULT}"
 

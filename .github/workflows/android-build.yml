@@ -1,0 +1,328 @@
+# GitHub Actions workflow for building Agus Maps Flutter Android app
+#
+# Outputs:
+#   - agus-maps-android.aab (Android App Bundle for Play Store)
+#   - agus-maps-android.apk (Universal APK for direct installation)
+#
+# Supported architectures: armeabi-v7a, arm64-v8a, x86_64
+
+name: Build Android
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+
+env:
+  FLUTTER_VERSION: '3.27.0'
+  JAVA_VERSION: '17'
+  COMAPS_TAG: 'v2025.12.11-2'
+
+jobs:
+  build-android:
+    name: Build Android AAB & APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      # ─────────────────────────────────────────────────────────────────
+      # 1. Checkout repository with submodules
+      # ─────────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ─────────────────────────────────────────────────────────────────
+      # 2. Set up Java (required for Android SDK)
+      # ─────────────────────────────────────────────────────────────────
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'gradle'
+
+      # ─────────────────────────────────────────────────────────────────
+      # 3. Set up Flutter
+      # ─────────────────────────────────────────────────────────────────
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:'
+          cache-path: '${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:'
+
+      - name: Verify Flutter installation
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      # ─────────────────────────────────────────────────────────────────
+      # 4. Set up Android SDK & NDK
+      # ─────────────────────────────────────────────────────────────────
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 11076708
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager --install "ndk;27.2.12479018" "cmake;3.22.1"
+          sdkmanager --licenses | grep -v "^$" | sed 's/.*//g' | xargs -I {} sh -c 'yes | sdkmanager --licenses > /dev/null 2>&1 || true'
+
+      - name: Set NDK environment
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> $GITHUB_ENV
+
+      # ─────────────────────────────────────────────────────────────────
+      # 5. Cache CoMaps dependencies
+      # ─────────────────────────────────────────────────────────────────
+      - name: Cache CoMaps thirdparty
+        uses: actions/cache@v4
+        id: cache-comaps
+        with:
+          path: |
+            thirdparty/comaps
+          key: comaps-${{ env.COMAPS_TAG }}-${{ hashFiles('patches/comaps/*.patch') }}
+          restore-keys: |
+            comaps-${{ env.COMAPS_TAG }}-
+
+      # ─────────────────────────────────────────────────────────────────
+      # 6. Bootstrap CoMaps (fetch, patch, prepare boost)
+      # ─────────────────────────────────────────────────────────────────
+      - name: Fetch CoMaps
+        if: steps.cache-comaps.outputs.cache-hit != 'true'
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+        run: |
+          # Use HTTPS instead of SSH for GitHub Actions
+          mkdir -p thirdparty
+          if [ ! -d "thirdparty/comaps/.git" ]; then
+            git clone https://github.com/comaps/comaps.git thirdparty/comaps
+          fi
+          cd thirdparty/comaps
+          git fetch --tags --prune
+          git checkout --detach "$COMAPS_TAG"
+          git submodule update --init --recursive
+
+      - name: Apply CoMaps patches
+        run: |
+          chmod +x scripts/apply_comaps_patches.sh
+          ./scripts/apply_comaps_patches.sh
+
+      - name: Build Boost headers
+        run: |
+          cd thirdparty/comaps/3party/boost
+          if [ ! -d "boost" ]; then
+            ./bootstrap.sh
+            ./b2 headers
+          fi
+
+      - name: Copy fonts to assets
+        run: |
+          mkdir -p example/android/app/src/main/assets
+          cp -r thirdparty/comaps/data/fonts example/android/app/src/main/assets/
+
+      # ─────────────────────────────────────────────────────────────────
+      # 7. Copy CoMaps data files
+      # ─────────────────────────────────────────────────────────────────
+      - name: Copy CoMaps data files
+        run: |
+          chmod +x scripts/copy_comaps_data.sh
+          ./scripts/copy_comaps_data.sh
+
+      # ─────────────────────────────────────────────────────────────────
+      # 8. Get Flutter dependencies
+      # ─────────────────────────────────────────────────────────────────
+      - name: Get Flutter dependencies (root)
+        run: flutter pub get
+
+      - name: Get Flutter dependencies (example)
+        working-directory: example
+        run: flutter pub get
+
+      # ─────────────────────────────────────────────────────────────────
+      # 9. Build Android App Bundle (AAB)
+      # ─────────────────────────────────────────────────────────────────
+      - name: Build Android App Bundle (AAB)
+        working-directory: example
+        run: |
+          flutter build appbundle --release \
+            --build-name=1.0.0 \
+            --build-number=${{ github.run_number }}
+
+      - name: Rename AAB
+        run: |
+          mkdir -p build/outputs
+          cp example/build/app/outputs/bundle/release/app-release.aab \
+             build/outputs/agus-maps-android.aab
+
+      # ─────────────────────────────────────────────────────────────────
+      # 10. Build Universal APK (all architectures)
+      # ─────────────────────────────────────────────────────────────────
+      - name: Build Universal APK
+        working-directory: example
+        run: |
+          flutter build apk --release \
+            --build-name=1.0.0 \
+            --build-number=${{ github.run_number }}
+
+      - name: Rename APK
+        run: |
+          cp example/build/app/outputs/flutter-apk/app-release.apk \
+             build/outputs/agus-maps-android.apk
+
+      # ─────────────────────────────────────────────────────────────────
+      # 11. Build Split APKs (per architecture) - optional
+      # ─────────────────────────────────────────────────────────────────
+      - name: Build Split APKs (per architecture)
+        working-directory: example
+        run: |
+          flutter build apk --release --split-per-abi \
+            --build-name=1.0.0 \
+            --build-number=${{ github.run_number }}
+
+      - name: Copy Split APKs
+        run: |
+          mkdir -p build/outputs/split-apks
+          cp example/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+             build/outputs/split-apks/agus-maps-android-armeabi-v7a.apk || true
+          cp example/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+             build/outputs/split-apks/agus-maps-android-arm64-v8a.apk || true
+          cp example/build/app/outputs/flutter-apk/app-x86_64-release.apk \
+             build/outputs/split-apks/agus-maps-android-x86_64.apk || true
+
+      # ─────────────────────────────────────────────────────────────────
+      # 12. Generate build info
+      # ─────────────────────────────────────────────────────────────────
+      - name: Generate build info
+        run: |
+          cat > build/outputs/BUILD_INFO.txt << EOF
+          Agus Maps Flutter - Android Build
+          ==================================
+          
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Build Number: ${{ github.run_number }}
+          Git SHA: ${{ github.sha }}
+          Git Ref: ${{ github.ref }}
+          
+          Flutter Version: ${{ env.FLUTTER_VERSION }}
+          Java Version: ${{ env.JAVA_VERSION }}
+          CoMaps Version: ${{ env.COMAPS_TAG }}
+          
+          Artifacts:
+          - agus-maps-android.aab (Android App Bundle - for Play Store)
+          - agus-maps-android.apk (Universal APK - for direct install)
+          - split-apks/ (Per-architecture APKs for smaller downloads)
+          
+          Supported Architectures:
+          - armeabi-v7a (32-bit ARM)
+          - arm64-v8a (64-bit ARM)
+          - x86_64 (64-bit x86, for emulators)
+          
+          Installation:
+          adb install agus-maps-android.apk
+          EOF
+
+      # ─────────────────────────────────────────────────────────────────
+      # 13. Upload artifacts
+      # ─────────────────────────────────────────────────────────────────
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-maps-android-aab
+          path: build/outputs/agus-maps-android.aab
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload Universal APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-maps-android-apk
+          path: build/outputs/agus-maps-android.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload Split APKs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-maps-android-split-apks
+          path: build/outputs/split-apks/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Build Info
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-info
+          path: build/outputs/BUILD_INFO.txt
+          retention-days: 30
+
+      # ─────────────────────────────────────────────────────────────────
+      # 14. Create GitHub Release (on tag push)
+      # ─────────────────────────────────────────────────────────────────
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/outputs/agus-maps-android.aab
+            build/outputs/agus-maps-android.apk
+            build/outputs/split-apks/*.apk
+            build/outputs/BUILD_INFO.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') || contains(github.ref, '-rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─────────────────────────────────────────────────────────────────
+      # 15. Summary
+      # ─────────────────────────────────────────────────────────────────
+      - name: Build Summary
+        run: |
+          echo "## 🎉 Android Build Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Size | Description |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|-------------|" >> $GITHUB_STEP_SUMMARY
+          
+          AAB_SIZE=$(du -h build/outputs/agus-maps-android.aab | cut -f1)
+          APK_SIZE=$(du -h build/outputs/agus-maps-android.apk | cut -f1)
+          
+          echo "| agus-maps-android.aab | $AAB_SIZE | Android App Bundle (Play Store) |" >> $GITHUB_STEP_SUMMARY
+          echo "| agus-maps-android.apk | $APK_SIZE | Universal APK (Direct Install) |" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -d "build/outputs/split-apks" ]; then
+            for apk in build/outputs/split-apks/*.apk; do
+              if [ -f "$apk" ]; then
+                APK_NAME=$(basename "$apk")
+                APK_SIZE=$(du -h "$apk" | cut -f1)
+                ARCH=$(echo "$APK_NAME" | sed 's/agus-maps-android-\(.*\)\.apk/\1/')
+                echo "| $APK_NAME | $APK_SIZE | $ARCH architecture |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "- **Flutter**: ${{ env.FLUTTER_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **CoMaps**: ${{ env.COMAPS_TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
