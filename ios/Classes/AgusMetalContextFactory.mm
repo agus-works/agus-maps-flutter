@@ -11,9 +11,27 @@ extern "C" void agus_notify_frame_ready(void);
 
 #pragma mark - AgusMetalDrawable
 
-/// Fake CAMetalDrawable that wraps our CVPixelBuffer-backed texture
+/// Fake CAMetalDrawable that wraps our CVPixelBuffer-backed texture.
+/// 
 /// This allows us to use MetalBaseContext's rendering pipeline while
 /// rendering to a texture instead of a CAMetalLayer.
+///
+/// IMPORTANT: CAMetalDrawable is normally created by CAMetalLayer and has
+/// many private/internal methods that Metal framework calls. Apple's docs
+/// explicitly say "Don't implement this protocol yourself." We do it anyway
+/// because we need to render to a CVPixelBuffer for Flutter's FlutterTexture.
+///
+/// The private methods below were discovered through crash logs showing
+/// "unrecognized selector" errors. They are called by Metal's internal
+/// command buffer submission and drawable lifecycle management.
+///
+/// WHY CRASHES ONLY ON SECOND LAUNCH:
+/// On first launch, the Framework and DrapeEngine are created fresh. Metal
+/// initializes its internal state and may cache certain drawable behaviors.
+/// On second launch (app reopened from background or cold start with cached
+/// settings), Metal's internal state may take different code paths that
+/// call these private methods. Additionally, Framework recreation triggers
+/// different initialization sequences that exercise more of Metal's API.
 @interface AgusMetalDrawable : NSObject <CAMetalDrawable>
 @property (nonatomic, strong) id<MTLTexture> texture;
 @property (nonatomic, strong) CAMetalLayer *layer;
@@ -31,31 +49,22 @@ extern "C" void agus_notify_frame_ready(void);
     return self;
 }
 
+#pragma mark - MTLDrawable Protocol (Public)
+
 - (void)present {
     // No-op: We don't present to a layer, Flutter will read from CVPixelBuffer
 }
 
 - (void)presentAtTime:(CFTimeInterval)presentationTime {
-    // No-op
+    // No-op: No vsync-based presentation needed
 }
 
 - (void)presentAfterMinimumDuration:(CFTimeInterval)duration {
-    // No-op
+    // No-op: No minimum duration presentation needed
 }
 
 - (void)addPresentedHandler:(MTLDrawablePresentedHandler)block {
     // Call the handler immediately since we're not presenting to screen
-    if (block) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            block(self);
-        });
-    }
-}
-
-// Internal method called by MTLCommandBuffer's presentDrawable:
-// This is a private API that CAMetalDrawable implements
-- (void)addPresentScheduledHandler:(void (^)(id<MTLDrawable>))block {
-    // Call the handler immediately since we don't schedule presentation
     if (block) {
         dispatch_async(dispatch_get_main_queue(), ^{
             block(self);
@@ -69,6 +78,75 @@ extern "C" void agus_notify_frame_ready(void);
 
 - (NSUInteger)drawableID {
     return 0;
+}
+
+#pragma mark - Private Methods (Metal Framework Internal)
+
+// These methods are called internally by Metal framework during command buffer
+// submission, drawable lifecycle management, and GPU synchronization.
+// They are not documented but are required for a fake CAMetalDrawable to work.
+
+/// Called by Metal to schedule presentation. Part of internal drawable queue management.
+- (void)addPresentScheduledHandler:(void (^)(id<MTLDrawable>))block {
+    if (block) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            block(self);
+        });
+    }
+}
+
+/// Called by Metal to mark the drawable as "touched" or in-use.
+/// Part of drawable lifecycle tracking.
+- (void)touch {
+    // No-op: We manage our own lifecycle via CVPixelBuffer
+}
+
+/// Called by Metal to get the underlying object for internal management.
+/// Returns self since we are the base object.
+- (id)baseObject {
+    return self;
+}
+
+/// Called by Metal to get the drawable's size for internal calculations.
+- (CGSize)drawableSize {
+    if (_texture) {
+        return CGSizeMake(_texture.width, _texture.height);
+    }
+    return CGSizeZero;
+}
+
+/// Called by Metal for internal synchronization. Returns nil since we don't
+/// use a CAMetalLayer's internal synchronization primitives.
+- (id)iosurface {
+    // Return nil - we manage IOSurface through CVPixelBuffer separately
+    return nil;
+}
+
+/// Called by Metal to check if drawable is still valid for rendering.
+- (BOOL)isValid {
+    return _texture != nil;
+}
+
+/// Called by Metal for GPU-CPU synchronization during presentation.
+- (void)setDrawableAvailableSemaphore:(dispatch_semaphore_t)semaphore {
+    // No-op: We don't use semaphore-based synchronization
+}
+
+/// Called by Metal to get synchronization semaphore.
+- (dispatch_semaphore_t)drawableAvailableSemaphore {
+    return nil;
+}
+
+// Note: retainCount cannot be overridden under ARC - it's managed by the runtime
+
+/// Called by Metal for drawable identification in debugging/profiling.
+- (NSString *)description {
+    return [NSString stringWithFormat:@"<AgusMetalDrawable: %p texture=%@>", self, _texture];
+}
+
+/// Called by Metal for debugging purposes.
+- (NSString *)debugDescription {
+    return [self description];
 }
 
 @end
@@ -120,21 +198,26 @@ public:
         return m_renderTexture;
     }
     
-    /// Override Present() - no longer notifies Flutter here
-    /// Frame notifications are now handled via df::SetActiveFrameCallback
-    /// which only triggers when isActiveFrame is true in FrontendRenderer
+    /// Override Present() - also notifies Flutter for initial frames
+    /// This ensures the initial map content is displayed even if isActiveFrame
+    /// isn't set during the very first few render cycles.
     void Present() override
     {
         // Call base class Present() to do the actual Metal rendering
         dp::metal::MetalBaseContext::Present();
         
-        // Note: Frame notification moved to df::SetActiveFrameCallback
-        // This ensures we only notify Flutter when map content actually changed,
-        // not on every Present() call (which happens even when suspended)
+        // For the first few frames after DrapeEngine creation, always notify Flutter
+        // This handles the case where initial tiles are being loaded but isActiveFrame
+        // might not be true yet. After initial frames, we rely on df::SetActiveFrameCallback.
+        if (m_initialFrameCount > 0) {
+            m_initialFrameCount--;
+            agus_notify_frame_ready();
+        }
     }
     
 private:
     id<MTLTexture> m_renderTexture;
+    int m_initialFrameCount = 120;  // Notify for ~2 seconds at 60fps to ensure initial content shows
 };
 
 /// Upload context for background texture uploads

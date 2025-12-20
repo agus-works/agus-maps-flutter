@@ -446,10 +446,10 @@ static void notifyFlutterFrameReady(void) {
     }
 }
 
-/// Legacy function for backward compatibility - now only used if Present() still calls it
+/// Called by Present() to notify Flutter that a frame was rendered
+/// Used for initial frames and as fallback when df::SetActiveFrameCallback doesn't trigger
 extern "C" void agus_notify_frame_ready(void) {
-    // This is now a no-op because we use df::SetActiveFrameCallback instead
-    // The callback is only invoked when isActiveFrame is true in FrontendRenderer
+    notifyFlutterFrameReady();
 }
 
 #pragma mark - Render Frame

@@ -90,6 +90,45 @@ To debug C++ code in Android Studio:
 | `COMAPS_TAG` | `v2025.12.11-2` | CoMaps git tag to checkout |
 | `ANDROID_NDK_HOME` | Auto-detected | Path to Android NDK |
 
+### Standalone Launch (Without Connected Laptop)
+
+Unlike iOS, Android **does allow** debug builds to be launched standalone from the home screen. However, for optimal performance and battery life, use Release mode:
+
+```bash
+cd example
+
+# Build and install Release APK
+flutter build apk --release
+adb install build/app/outputs/flutter-apk/app-release.apk
+
+# Or run directly
+flutter run --release -d <device-id>
+```
+
+After installing, you can disconnect the laptop and launch the app from the home screen.
+
+**Note:** Debug builds can also be launched standalone on Android, but they will:
+- Run significantly slower (JIT compilation, no tree-shaking)
+- Use more battery (debug logging, unoptimized code)
+- Have larger APK size (~300MB vs ~100MB)
+
+### Build Configuration: DEBUG/RELEASE Preprocessor Definitions
+
+CoMaps' `base/base.hpp` has a compile-time assertion requiring exactly one of `DEBUG` or `RELEASE`/`NDEBUG` to be defined. This is handled in [src/CMakeLists.txt](../src/CMakeLists.txt):
+
+```cmake
+# Debug/Release compile definitions (required by base.hpp)
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    $<$<CONFIG:Debug>:DEBUG>
+    $<$<CONFIG:Release>:RELEASE>
+    $<$<CONFIG:Release>:NDEBUG>
+)
+```
+
+This ensures:
+- **Debug builds:** `DEBUG=1` is defined
+- **Release builds:** `RELEASE=1` and `NDEBUG=1` are defined
+
 ---
 
 ## Goal

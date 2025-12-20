@@ -1024,30 +1024,50 @@ class _DownloadsTabState extends State<DownloadsTab> {
       }
     }
 
-    return ListView(
-      children: [
-        // Result count when searching
-        if (_searchQuery.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              'Found ${regionsToShow.length} region${regionsToShow.length == 1 ? '' : 's'}',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-          ),
+    // Build a flat list of items for ListView.builder
+    // This is much more efficient than using spread operators with 1000+ items
+    final items = <_ListItem>[];
+    
+    // Search result count
+    if (_searchQuery.isNotEmpty) {
+      items.add(_ListItem.searchCount(regionsToShow.length));
+    }
+    
+    // Downloaded section
+    if (downloaded.isNotEmpty) {
+      items.add(_ListItem.header('Installed (${downloaded.length})', Colors.green));
+      for (final r in downloaded) {
+        items.add(_ListItem.region(r, isDownloaded: true));
+      }
+    }
+    
+    // Available section
+    if (available.isNotEmpty) {
+      items.add(_ListItem.header('Available (${available.length})', Colors.blue));
+      for (final r in available) {
+        items.add(_ListItem.region(r, isDownloaded: false));
+      }
+    }
 
-        // Downloaded section
-        if (downloaded.isNotEmpty) ...[
-          _buildSectionHeader('Installed (${downloaded.length})', Colors.green),
-          ...downloaded.map((r) => _buildRegionTile(r, isDownloaded: true)),
-        ],
-
-        // Available section
-        if (available.isNotEmpty) ...[
-          _buildSectionHeader('Available (${available.length})', Colors.blue),
-          ...available.map((r) => _buildRegionTile(r, isDownloaded: false)),
-        ],
-      ],
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        switch (item.type) {
+          case _ListItemType.searchCount:
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                'Found ${item.count} region${item.count == 1 ? '' : 's'}',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              ),
+            );
+          case _ListItemType.header:
+            return _buildSectionHeader(item.title!, item.color!);
+          case _ListItemType.region:
+            return _buildRegionTile(item.region!, isDownloaded: item.isDownloaded!);
+        }
+      },
     );
   }
 
@@ -1114,16 +1134,16 @@ class _DownloadsTabState extends State<DownloadsTab> {
   ) {
     if (isDownloading && progress != null) {
       return SizedBox(
-        width: 60,
+        width: 72,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              width: 24,
-              height: 24,
+              width: 20,
+              height: 20,
               child: CircularProgressIndicator(value: progress, strokeWidth: 2),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             Text(
               '${(progress * 100).toInt()}%',
               style: const TextStyle(fontSize: 11),
@@ -1167,4 +1187,35 @@ class _DownloadsTabState extends State<DownloadsTab> {
           : 'Max $kMaxConcurrentDownloads concurrent downloads',
     );
   }
+}
+
+/// Item types for the virtualized list
+enum _ListItemType { searchCount, header, region }
+
+/// Helper class for ListView.builder items
+class _ListItem {
+  final _ListItemType type;
+  final int? count;
+  final String? title;
+  final Color? color;
+  final MwmRegion? region;
+  final bool? isDownloaded;
+
+  const _ListItem._({
+    required this.type,
+    this.count,
+    this.title,
+    this.color,
+    this.region,
+    this.isDownloaded,
+  });
+
+  factory _ListItem.searchCount(int count) =>
+      _ListItem._(type: _ListItemType.searchCount, count: count);
+
+  factory _ListItem.header(String title, Color color) =>
+      _ListItem._(type: _ListItemType.header, title: title, color: color);
+
+  factory _ListItem.region(MwmRegion region, {required bool isDownloaded}) =>
+      _ListItem._(type: _ListItemType.region, region: region, isDownloaded: isDownloaded);
 }

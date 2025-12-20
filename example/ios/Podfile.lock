@@ -36,13 +36,13 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/storage_space/ios"
 
 SPEC CHECKSUMS:
-  agus_maps_flutter: 4264eb2f0cd3ddedfdf85a3c62b38486c66418da
+  agus_maps_flutter: 2c246f66a8d4a714050372ba9e43c5b7e1f3cf98
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   storage_space: cb6dcfec9288e8adaa229233ed0585759a340280
 
-PODFILE CHECKSUM: 18192ed58ac964189d1aa12816d1ae0ffd853a54
+PODFILE CHECKSUM: cef015e3a06404ed65f515158f52e88672a63185
 
 COCOAPODS: 1.16.2

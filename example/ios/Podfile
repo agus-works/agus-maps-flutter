@@ -44,6 +44,28 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++23'
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.6'
+      
+      # CoMaps requires DEBUG or RELEASE/NDEBUG to be defined (see base/base.hpp)
+      # Add config-specific preprocessor definitions
+      existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+      existing = [existing] if existing.is_a?(String)
+      
+      if config.name == 'Debug'
+        # Debug: add DEBUG=1
+        unless existing.any? { |d| d.include?('DEBUG=') }
+          existing << 'DEBUG=1'
+        end
+      else
+        # Release/Profile: add NDEBUG=1 and RELEASE=1
+        unless existing.any? { |d| d.include?('NDEBUG') }
+          existing << 'NDEBUG=1'
+        end
+        unless existing.any? { |d| d.include?('RELEASE=') }
+          existing << 'RELEASE=1'
+        end
+      end
+      
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = existing
     end
   end
 end
