@@ -400,8 +400,8 @@ Builds the Flutter example app for iOS simulator:
 2. **Phase 2:** FlutterTexture + CVPixelBuffer integration ✅
 3. **Phase 3:** Plugin registration + FFI working ✅
 4. **Phase 4:** Metal rendering context + Framework creation ✅
-5. **Phase 5:** Touch/gesture handling 🚧 ← Current
-6. **Phase 6:** Real device testing + code signing
+5. **Phase 5:** Touch/gesture handling ✅
+6. **Phase 6:** Real device testing + code signing 🚧 ← Current
 
 ---
 
@@ -478,29 +478,118 @@ int comaps_register_single_map(const char* fullPath) {
 
 ---
 
-## Phase 5: Touch/Gesture Handling (Next Steps)
+## Phase 5: Touch/Gesture Handling (Completed)
 
-The FFI touch handling is implemented in Phase 4, but the Swift side needs to forward touch events:
+Touch handling on iOS uses Flutter's built-in `Listener` widget, **not** native UIKit gesture recognizers. This is because we're using `FlutterTexture` (not a platform view), so touch events are handled entirely within Flutter and forwarded via FFI.
 
-1. Add gesture recognizers to the map view
-2. Forward touch events via `comaps_touch()` FFI call
-3. Handle multi-touch for pinch-to-zoom
+### Architecture
 
-```swift
-// In Swift plugin - forward touch events to native
-@objc func handlePan(_ gesture: UIPanGestureRecognizer) {
-    let location = gesture.location(in: view)
-    let type: Int32 = gesture.state == .began ? 1 : 
-                      gesture.state == .changed ? 2 : 3
-    comaps_touch(type, 0, Float(location.x), Float(location.y), -1, 0, 0)
-}
 ```
+┌─────────────────────────────────────────────────────────────┐
+│ Flutter Dart Layer                                          │
+│   AgusMap widget                                            │
+│     └─ Listener widget captures PointerEvents               │
+│         └─ _sendTouchEvent() converts to physical pixels    │
+│             └─ sendTouchEvent() calls FFI comaps_touch()    │
+├─────────────────────────────────────────────────────────────┤
+│ Native iOS (agus_maps_flutter_ios.mm)                       │
+│   comaps_touch() → df::TouchEvent → Framework::TouchEvent() │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Details
+
+1. **Flutter `Listener` widget** wraps the `Texture` widget in `AgusMap`:
+   ```dart
+   Listener(
+     onPointerDown: _handlePointerDown,
+     onPointerMove: _handlePointerMove,
+     onPointerUp: _handlePointerUp,
+     onPointerCancel: _handlePointerCancel,
+     child: Texture(textureId: _textureId!),
+   )
+   ```
+
+2. **Coordinate conversion** scales logical pixels to physical pixels:
+   ```dart
+   void _sendTouchEvent(TouchType type, int pointerId, Offset position) {
+     final x1 = position.dx * _devicePixelRatio;
+     final y1 = position.dy * _devicePixelRatio;
+     sendTouchEvent(type, pointerId, x1, y1, id2: id2, x2: x2, y2: y2);
+   }
+   ```
+
+3. **Multitouch support** tracks active pointers for pinch-to-zoom:
+   ```dart
+   final Map<int, Offset> _activePointers = {};
+   // Second pointer passed to native when available
+   ```
+
+4. **FFI binding** in `agus_maps_flutter_bindings_generated.dart`:
+   ```dart
+   void comaps_touch(int type, int id1, double x1, double y1, 
+                     int id2, double x2, double y2);
+   ```
+
+5. **Native forwarding** in `agus_maps_flutter_ios.mm`:
+   ```cpp
+   void comaps_touch(int type, int id1, float x1, float y1, 
+                     int id2, float x2, float y2) {
+     df::TouchEvent event;
+     switch (type) {
+       case 1: event.SetTouchType(df::TouchEvent::TOUCH_DOWN); break;
+       case 2: event.SetTouchType(df::TouchEvent::TOUCH_MOVE); break;
+       case 3: event.SetTouchType(df::TouchEvent::TOUCH_UP); break;
+       case 4: event.SetTouchType(df::TouchEvent::TOUCH_CANCEL); break;
+     }
+     g_framework->TouchEvent(event);
+   }
+   ```
+
+### Why Not Native Gesture Recognizers?
+
+- `FlutterTexture` renders to a GPU texture that Flutter composites
+- The texture is displayed via Flutter's `Texture` widget
+- Flutter owns the view hierarchy, not UIKit
+- Touch events naturally flow through Flutter's gesture system
+- This is simpler and avoids Swift↔C++ bridging complexity
 
 ---
 
-## Phase 6: Real Device Testing + Code Signing
+## Phase 6: Real Device Testing + Code Signing (Current)
 
-- Test on physical iOS device
-- Configure code signing for development
-- Verify Metal rendering performance
-- Test memory usage and battery impact
+### Tasks
+
+- [ ] Test on physical iOS device
+- [ ] Configure code signing for development
+- [ ] Verify Metal rendering performance
+- [ ] Test memory usage and battery impact
+- [ ] Verify touch responsiveness (pan, zoom, tap)
+- [ ] Test map loading from Documents directory
+
+### Code Signing Setup
+
+For development testing on a physical device:
+
+1. Open `example/ios/Runner.xcworkspace` in Xcode
+2. Select the Runner target → Signing & Capabilities
+3. Select your development team
+4. Xcode will create provisioning profile automatically
+
+### Running on Device
+
+```bash
+cd example
+flutter run --release -d <device-id>
+
+# List available devices
+flutter devices
+```
+
+### Performance Profiling
+
+Use Xcode Instruments for:
+- Metal System Trace (GPU performance)
+- Time Profiler (CPU usage)
+- Allocations (memory usage)
+- Energy Log (battery impact)
