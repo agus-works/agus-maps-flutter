@@ -8,23 +8,49 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# CoMaps Options
-set(SKIP_TESTS ON CACHE BOOL "" FORCE)
-set(SKIP_QT_GUI ON CACHE BOOL "" FORCE)
-set(WITH_SYSTEM_PROVIDED_3PARTY OFF CACHE BOOL "" FORCE)
-set(SKIP_ANDROID_JNI ON CACHE BOOL "" FORCE)
-set(SKIP_PROTOBUF_CHECK ON CACHE BOOL "" FORCE)
-set(SKIP_TOOLS ON CACHE BOOL "" FORCE)
+# ============================================================================
+# Build Mode Detection
+# ============================================================================
+# USE_PREBUILT_COMAPS: Set by Gradle for external consumers with pre-built libs
+# PREBUILT_DIR: Path to pre-built libraries (e.g., android/prebuilt/<abi>)
+# COMAPS_HEADERS_DIR: Path to downloaded headers (e.g., android/headers)
+option(USE_PREBUILT_COMAPS "Use pre-built CoMaps libraries instead of building from source" OFF)
+set(PREBUILT_DIR "" CACHE PATH "Path to pre-built CoMaps libraries")
+set(COMAPS_HEADERS_DIR "" CACHE PATH "Path to downloaded CoMaps headers")
 
-# Force non-Android platform to use filesystem-based GetReader instead of ZipFileReader
-# We provide our own platform implementation in agus_platform.cpp
-set(PLATFORM_ANDROID FALSE CACHE BOOL "" FORCE)
-set(PLATFORM_LINUX TRUE CACHE BOOL "" FORCE)
-set(PLATFORM_DESKTOP TRUE CACHE BOOL "" FORCE)
+if(USE_PREBUILT_COMAPS)
+  message(STATUS "=== Using pre-built CoMaps libraries ===")
+  message(STATUS "PREBUILT_DIR: ${PREBUILT_DIR}")
+  message(STATUS "COMAPS_HEADERS_DIR: ${COMAPS_HEADERS_DIR}")
+else()
+  message(STATUS "=== Building CoMaps from source ===")
+endif()
 
-# Build CoMaps
-add_subdirectory(../thirdparty/comaps build/comaps)
+# ============================================================================
+# CoMaps Configuration
+# ============================================================================
+if(NOT USE_PREBUILT_COMAPS)
+  # CoMaps Options - only needed when building from source
+  set(SKIP_TESTS ON CACHE BOOL "" FORCE)
+  set(SKIP_QT_GUI ON CACHE BOOL "" FORCE)
+  set(WITH_SYSTEM_PROVIDED_3PARTY OFF CACHE BOOL "" FORCE)
+  set(SKIP_ANDROID_JNI ON CACHE BOOL "" FORCE)
+  set(SKIP_PROTOBUF_CHECK ON CACHE BOOL "" FORCE)
+  set(SKIP_TOOLS ON CACHE BOOL "" FORCE)
 
+  # Force non-Android platform to use filesystem-based GetReader instead of ZipFileReader
+  # We provide our own platform implementation in agus_platform.cpp
+  set(PLATFORM_ANDROID FALSE CACHE BOOL "" FORCE)
+  set(PLATFORM_LINUX TRUE CACHE BOOL "" FORCE)
+  set(PLATFORM_DESKTOP TRUE CACHE BOOL "" FORCE)
+
+  # Build CoMaps
+  add_subdirectory(../thirdparty/comaps build/comaps)
+endif()
+
+# ============================================================================
+# Agus Maps Flutter Library
+# ============================================================================
 add_library(agus_maps_flutter SHARED
   "agus_maps_flutter.cpp"
   "agus_platform.cpp"
@@ -36,24 +62,67 @@ set_target_properties(agus_maps_flutter PROPERTIES
   OUTPUT_NAME "agus_maps_flutter"
 )
 
-target_include_directories(agus_maps_flutter PRIVATE
-  "../thirdparty/comaps"
-  "../thirdparty/comaps/libs"
-  "../thirdparty/comaps/3party/boost"
-  "../thirdparty/comaps/android/sdk/src/main/cpp" 
-)
+# ============================================================================
+# Include Directories
+# ============================================================================
+if(USE_PREBUILT_COMAPS AND COMAPS_HEADERS_DIR)
+  # External consumer: use downloaded headers
+  target_include_directories(agus_maps_flutter PRIVATE
+    "${COMAPS_HEADERS_DIR}/comaps"
+    "${COMAPS_HEADERS_DIR}/comaps/libs"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/boost"
+  )
+  message(STATUS "Using headers from: ${COMAPS_HEADERS_DIR}/comaps")
+else()
+  # In-repo build: use thirdparty source headers
+  target_include_directories(agus_maps_flutter PRIVATE
+    "../thirdparty/comaps"
+    "../thirdparty/comaps/libs"
+    "../thirdparty/comaps/3party/boost"
+    "../thirdparty/comaps/android/sdk/src/main/cpp" 
+  )
+endif()
 
-# Link CoMaps libraries
-target_link_libraries(agus_maps_flutter
-  PRIVATE
-  map
-  platform
-  coding
-  geometry
-  base
-  drape
-  drape_frontend
-)
+# ============================================================================
+# Link Libraries
+# ============================================================================
+if(USE_PREBUILT_COMAPS)
+  # External consumer: link against pre-built static libraries
+  # The pre-built libraries are organized by ABI in PREBUILT_DIR
+  if(ANDROID)
+    set(PREBUILT_ABI_DIR "${PREBUILT_DIR}/${ANDROID_ABI}")
+    
+    if(EXISTS "${PREBUILT_ABI_DIR}/libagus_maps_flutter.so")
+      # If we have the full shared library, just use it directly
+      # This is the expected case for pre-built distribution
+      message(STATUS "Found pre-built shared library at ${PREBUILT_ABI_DIR}")
+      
+      # Import the pre-built shared library
+      add_library(prebuilt_agus_maps SHARED IMPORTED)
+      set_target_properties(prebuilt_agus_maps PROPERTIES
+        IMPORTED_LOCATION "${PREBUILT_ABI_DIR}/libagus_maps_flutter.so"
+      )
+      
+      # For pre-built mode, we just need to copy the library
+      # The SHARED library declaration above will handle linking
+      target_link_libraries(agus_maps_flutter PRIVATE prebuilt_agus_maps)
+    else()
+      message(FATAL_ERROR "Pre-built library not found at ${PREBUILT_ABI_DIR}")
+    endif()
+  endif()
+else()
+  # In-repo build: link against built CoMaps libraries
+  target_link_libraries(agus_maps_flutter
+    PRIVATE
+    map
+    platform
+    coding
+    geometry
+    base
+    drape
+    drape_frontend
+  )
+endif()
 
 target_compile_definitions(agus_maps_flutter PUBLIC DART_SHARED_LIB)
 

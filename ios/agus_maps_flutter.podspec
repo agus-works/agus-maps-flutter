@@ -16,13 +16,13 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
   s.author           = { 'Agus Maps' => 'agus@example.com' }
   s.source           = { :path => '.' }
 
-  # Download pre-built XCFramework before pod install
+  # Download pre-built XCFramework and headers before pod install
   s.prepare_command = <<-CMD
     cd "$(dirname "$0")/.."
-    if [ -x "./scripts/download_ios_xcframework.sh" ]; then
-      ./scripts/download_ios_xcframework.sh
+    if [ -x "./scripts/download_libs.sh" ]; then
+      ./scripts/download_libs.sh ios
     else
-      echo "Warning: download_ios_xcframework.sh not found or not executable"
+      echo "Warning: download_libs.sh not found or not executable"
     fi
   CMD
 

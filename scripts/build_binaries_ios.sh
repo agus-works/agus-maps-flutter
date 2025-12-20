@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build CoMaps XCFramework for iOS
+# Build CoMaps native binaries for iOS
 #
 # This script builds the CoMaps C++ libraries for iOS (device + simulator)
 # and packages them into a universal XCFramework.
@@ -17,12 +17,12 @@ set -euo pipefail
 #   BUILD_TYPE: Debug or Release (default: Release)
 #
 # Output:
-#   ios/Frameworks/CoMaps.xcframework
+#   build/agus-binaries-ios/CoMaps.xcframework
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMAPS_DIR="$ROOT_DIR/thirdparty/comaps"
 BUILD_DIR="$ROOT_DIR/build/ios"
-OUTPUT_DIR="$ROOT_DIR/ios/Frameworks"
+OUTPUT_DIR="$ROOT_DIR/build/agus-binaries-ios"
 
 IOS_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET:-15.6}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
@@ -173,7 +173,7 @@ create_xcframework() {
 # Main build process
 main() {
     log_info "========================================="
-    log_info "Building CoMaps XCFramework for iOS"
+    log_info "Building CoMaps Binaries for iOS"
     log_info "========================================="
     log_info "iOS Deployment Target: $IOS_DEPLOYMENT_TARGET"
     log_info "Build Type: $BUILD_TYPE"
@@ -186,7 +186,9 @@ main() {
     # Clean previous builds
     log_info "Cleaning previous builds..."
     rm -rf "$BUILD_DIR"
+    rm -rf "$OUTPUT_DIR"
     mkdir -p "$BUILD_DIR"
+    mkdir -p "$OUTPUT_DIR"
     
     # Build for device (arm64)
     build_for_platform "iphoneos" "arm64"
@@ -205,7 +207,7 @@ main() {
     log_info "XCFramework: $OUTPUT_DIR/CoMaps.xcframework"
     log_info ""
     log_info "To create a release artifact:"
-    log_info "  cd $OUTPUT_DIR && zip -r CoMaps.xcframework.zip CoMaps.xcframework"
+    log_info "  cd $OUTPUT_DIR && zip -r agus-binaries-ios.zip CoMaps.xcframework"
 }
 
 main "$@"

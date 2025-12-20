@@ -6,10 +6,216 @@ trigger_map:
 - tag: v*
   pipeline: build-release
 workflows:
+  build-headers:
+    summary: Bundle CoMaps headers for all platforms
+    description: |
+      Bundles required C++ headers from CoMaps for compilation on all platforms.
+      This is shared across iOS, Android, and other platform builds.
+    steps:
+    - git-clone@8:
+        inputs:
+        - fetch_tags: 'yes'
+    - script@1:
+        title: Set Environment Variables
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            envman add --key COMAPS_TAG --value "v2025.12.11-2"
+    - restore-cache@1:
+        title: Restore CoMaps Cache
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+    - script@1:
+        title: Fetch CoMaps Source
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            echo "=== Fetching CoMaps $COMAPS_TAG ==="
+
+            mkdir -p thirdparty
+
+            if [ ! -d "thirdparty/comaps/.git" ]; then
+              git clone --depth 1 --branch "$COMAPS_TAG" \
+                https://github.com/comaps/comaps.git thirdparty/comaps
+            fi
+
+            cd thirdparty/comaps
+            git submodule update --init --recursive --depth 1
+    - save-cache@1:
+        title: Save CoMaps Cache
+        run_if: "true"
+        is_always_run: true
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - paths: thirdparty/comaps
+    - script@1:
+        title: Apply CoMaps Patches
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            chmod +x scripts/apply_comaps_patches.sh
+            ./scripts/apply_comaps_patches.sh
+    - script@1:
+        title: Bundle Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            echo "=== Bundling headers for all platforms ==="
+            chmod +x scripts/bundle_headers.sh
+            ./scripts/bundle_headers.sh
+
+            echo "=== Headers tarball created ==="
+            ls -lh build/agus-headers.tar.gz
+    - script@1:
+        title: Prepare Headers Artifact
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            mkdir -p $BITRISE_DEPLOY_DIR
+            cp build/agus-headers.tar.gz $BITRISE_DEPLOY_DIR/
+
+            echo "=== Headers artifact ==="
+            ls -lh $BITRISE_DEPLOY_DIR/agus-headers.tar.gz
+
+            envman add --key HEADERS_PATH --value "$BITRISE_DEPLOY_DIR/agus-headers.tar.gz"
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - pipeline_intermediate_files: |-
+            $BITRISE_DEPLOY_DIR/agus-headers.tar.gz:HEADERS_PATH
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
+        machine_type_id: g2.mac.large
+  build-android-native:
+    summary: Build CoMaps native libraries for Android
+    description: |
+      Builds the CoMaps C++ libraries for Android (arm64-v8a, armeabi-v7a, x86_64)
+      and packages them for consumption by the Flutter plugin.
+    steps:
+    - git-clone@8:
+        inputs:
+        - fetch_tags: 'yes'
+    - script@1:
+        title: Set Environment Variables
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            envman add --key COMAPS_TAG --value "v2025.12.11-2"
+            envman add --key NDK_VERSION --value "27.2.12479018"
+            envman add --key CMAKE_VERSION --value "3.22.1"
+            envman add --key BUILD_TYPE --value "Release"
+    - script@1:
+        title: Install Android SDK Components (NDK & CMake)
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            echo "=== Installing Android NDK and CMake ==="
+
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            if [ ! -f "$SDKMANAGER" ]; then
+              SDKMANAGER="$ANDROID_HOME/tools/bin/sdkmanager"
+            fi
+
+            yes | $SDKMANAGER --licenses > /dev/null 2>&1 || true
+            $SDKMANAGER "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
+
+            envman add --key ANDROID_NDK_HOME --value "$ANDROID_HOME/ndk/$NDK_VERSION"
+            envman add --key NDK_HOME --value "$ANDROID_HOME/ndk/$NDK_VERSION"
+
+            echo "NDK installed at: $ANDROID_HOME/ndk/$NDK_VERSION"
+    - script@1:
+        title: Install Ninja
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            brew install ninja || true
+    - restore-cache@1:
+        title: Restore CoMaps Cache
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+    - script@1:
+        title: Fetch CoMaps Source
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            echo "=== Fetching CoMaps $COMAPS_TAG ==="
+
+            mkdir -p thirdparty
+
+            if [ ! -d "thirdparty/comaps/.git" ]; then
+              git clone --depth 1 --branch "$COMAPS_TAG" \
+                https://github.com/comaps/comaps.git thirdparty/comaps
+            fi
+
+            cd thirdparty/comaps
+            git submodule update --init --recursive --depth 1
+    - save-cache@1:
+        title: Save CoMaps Cache
+        run_if: "true"
+        is_always_run: true
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - paths: thirdparty/comaps
+    - script@1:
+        title: Apply CoMaps Patches
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            chmod +x scripts/apply_comaps_patches.sh
+            ./scripts/apply_comaps_patches.sh
+    - script@1:
+        title: Build Android Native Libraries
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            chmod +x scripts/build_binaries_android.sh
+            ./scripts/build_binaries_android.sh
+
+            echo "=== Android binaries built ==="
+            ls -la build/agus-binaries-android/
+    - script@1:
+        title: Prepare Android Binaries Artifact
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            mkdir -p $BITRISE_DEPLOY_DIR
+            cp build/agus-binaries-android.zip $BITRISE_DEPLOY_DIR/
+
+            echo "=== Android binaries artifact ==="
+            ls -lh $BITRISE_DEPLOY_DIR/agus-binaries-android.zip
+
+            envman add --key ANDROID_BINARIES_PATH --value "$BITRISE_DEPLOY_DIR/agus-binaries-android.zip"
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - pipeline_intermediate_files: |-
+            $BITRISE_DEPLOY_DIR/agus-binaries-android.zip:ANDROID_BINARIES_PATH
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
+        machine_type_id: g2.mac.large
   build-android:
     summary: Build Android AAB and APK
     description: |
-      Fetches CoMaps native engine, applies patches, and builds Android artifacts.
+      Downloads pre-built native libraries and builds Android artifacts.
       Outputs AAB for Play Store and APK for direct installation.
     steps:
     - git-clone@8:
@@ -55,21 +261,55 @@ workflows:
             envman add --key NDK_HOME --value "$ANDROID_HOME/ndk/$NDK_VERSION"
 
             echo "NDK installed at: $ANDROID_HOME/ndk/$NDK_VERSION"
+    - pull-intermediate-files@1:
+        title: Download Pre-built Binaries and Headers
     - restore-cache@1:
         title: Restore CoMaps Cache
         inputs:
         - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
-        title: Fetch CoMaps Source
+        title: Setup Pre-built Binaries
         inputs:
         - content: |
             #!/bin/bash
             set -e
 
-            echo "=== Fetching CoMaps $COMAPS_TAG ==="
-            echo "Disk space before:"
-            df -h /
+            echo "=== Setting up pre-built Android binaries ==="
 
+            # Check for intermediate files from build-android-native
+            if [ -f "$ANDROID_BINARIES_PATH" ]; then
+              echo "Using Android binaries from intermediate files"
+              mkdir -p android/prebuilt
+              unzip -o "$ANDROID_BINARIES_PATH" -d android/prebuilt/
+              
+              # Move contents up if extracted with subdirectory
+              if [ -d "android/prebuilt/agus-binaries-android" ]; then
+                mv android/prebuilt/agus-binaries-android/* android/prebuilt/
+                rmdir android/prebuilt/agus-binaries-android
+              fi
+            else
+              echo "Android binaries not found in intermediate files"
+              echo "Building from source will be used via Gradle"
+            fi
+
+            # Check for headers from build-headers
+            if [ -f "$HEADERS_PATH" ]; then
+              echo "Using headers from intermediate files"
+              mkdir -p android/headers
+              tar -xzf "$HEADERS_PATH" -C android/headers/
+            fi
+
+            ls -la android/prebuilt/ 2>/dev/null || echo "No prebuilt directory yet"
+            ls -la android/headers/ 2>/dev/null || echo "No headers directory yet"
+    - script@1:
+        title: Fetch CoMaps Source (for thirdparty headers)
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            # We need CoMaps source for in-repo builds
+            # External consumers use downloaded headers
             mkdir -p thirdparty
 
             if [ ! -d "thirdparty/comaps/.git" ]; then
@@ -79,9 +319,6 @@ workflows:
 
             cd thirdparty/comaps
             git submodule update --init --recursive --depth 1
-
-            echo "Disk space after CoMaps fetch:"
-            df -h /
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: "true"
@@ -239,7 +476,7 @@ workflows:
       bitrise.io:
         stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
-  build-ios-xcframework:
+  build-ios-native:
     summary: Build CoMaps XCFramework for iOS
     description: |
       Builds the CoMaps C++ libraries for iOS (device + simulator) and packages
@@ -321,26 +558,13 @@ workflows:
             #!/bin/bash
             set -e
 
-            chmod +x scripts/build_ios_xcframework.sh
-            ./scripts/build_ios_xcframework.sh
+            chmod +x scripts/build_binaries_ios.sh
+            ./scripts/build_binaries_ios.sh
 
             echo "=== XCFramework built ==="
-            ls -la ios/Frameworks/
+            ls -la build/agus-binaries-ios/
     - script@1:
-        title: Bundle iOS Headers
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-
-            echo "=== Bundling iOS headers for external consumers ==="
-            chmod +x scripts/bundle_ios_headers.sh
-            ./scripts/bundle_ios_headers.sh
-
-            echo "=== Headers tarball created ==="
-            ls -lh ios/CoMaps-headers.tar.gz
-    - script@1:
-        title: Prepare XCFramework Artifact
+        title: Prepare iOS Binaries Artifact
         inputs:
         - content: |
             #!/bin/bash
@@ -349,24 +573,18 @@ workflows:
             mkdir -p $BITRISE_DEPLOY_DIR
 
             # Zip the XCFramework
-            cd ios/Frameworks
-            zip -r $BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip CoMaps.xcframework
+            cd build/agus-binaries-ios
+            zip -r $BITRISE_DEPLOY_DIR/agus-binaries-ios.zip CoMaps.xcframework
             cd ../..
 
-            # Copy headers tarball
-            cp ios/CoMaps-headers.tar.gz $BITRISE_DEPLOY_DIR/
+            echo "=== iOS binaries artifact ==="
+            ls -lh $BITRISE_DEPLOY_DIR/agus-binaries-ios.zip
 
-            echo "=== iOS artifacts ==="
-            ls -lh $BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip
-            ls -lh $BITRISE_DEPLOY_DIR/CoMaps-headers.tar.gz
-
-            envman add --key XCFRAMEWORK_PATH --value "$BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip"
-            envman add --key HEADERS_PATH --value "$BITRISE_DEPLOY_DIR/CoMaps-headers.tar.gz"
+            envman add --key IOS_BINARIES_PATH --value "$BITRISE_DEPLOY_DIR/agus-binaries-ios.zip"
     - deploy-to-bitrise-io@2:
         inputs:
         - pipeline_intermediate_files: |-
-            $BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip:XCFRAMEWORK_PATH
-            $BITRISE_DEPLOY_DIR/CoMaps-headers.tar.gz:HEADERS_PATH
+            $BITRISE_DEPLOY_DIR/agus-binaries-ios.zip:IOS_BINARIES_PATH
     meta:
       bitrise.io:
         stack: osx-xcode-16.4.x
@@ -374,7 +592,7 @@ workflows:
   build-ios:
     summary: Build iOS App (Simulator)
     description: |
-      Downloads pre-built XCFramework and builds the Flutter example app
+      Downloads pre-built XCFramework and headers, then builds the Flutter example app
       for iOS Simulator (unsigned, for testing).
     steps:
     - git-clone@8:
@@ -393,29 +611,39 @@ workflows:
         - version: "$FLUTTER_VERSION"
         - is_update: 'false'
     - pull-intermediate-files@1:
-        title: Download XCFramework
+        title: Download Pre-built Binaries and Headers
     - script@1:
-        title: Extract XCFramework
+        title: Setup Pre-built Binaries and Headers
         inputs:
         - content: |
             #!/bin/bash
             set -e
 
+            echo "=== Setting up pre-built iOS XCFramework ==="
+
             mkdir -p ios/Frameworks
 
-            # Check for pulled intermediate file
-            if [ -f "$XCFRAMEWORK_PATH" ]; then
+            # Check for iOS binaries from build-ios-native
+            if [ -f "$IOS_BINARIES_PATH" ]; then
               echo "Using XCFramework from intermediate files"
-              unzip -o "$XCFRAMEWORK_PATH" -d ios/Frameworks/
+              unzip -o "$IOS_BINARIES_PATH" -d ios/Frameworks/
             else
               echo "XCFramework not found in intermediate files, downloading..."
-              chmod +x scripts/download_ios_xcframework.sh
-              FORCE_DOWNLOAD=true ./scripts/download_ios_xcframework.sh
+              chmod +x scripts/download_libs.sh
+              FORCE_DOWNLOAD=true ./scripts/download_libs.sh ios
+            fi
+
+            # Check for headers from build-headers
+            if [ -f "$HEADERS_PATH" ]; then
+              echo "Using headers from intermediate files"
+              mkdir -p ios/Headers
+              tar -xzf "$HEADERS_PATH" -C ios/Headers/
             fi
 
             ls -la ios/Frameworks/
+            ls -la ios/Headers/ 2>/dev/null || echo "No headers directory"
     - restore-cache@1:
-        title: Restore CoMaps Cache (for headers)
+        title: Restore CoMaps Cache (for thirdparty headers)
         inputs:
         - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
@@ -537,19 +765,21 @@ workflows:
 
             ### Downloads
 
-            #### Android
+            #### Native Libraries (for plugin consumers)
+            - **agus-headers.tar.gz** - Header files required for compilation (all platforms)
+            - **agus-binaries-ios.zip** - Pre-built CoMaps XCFramework for iOS
+            - **agus-binaries-android.zip** - Pre-built CoMaps native libraries for Android
+
+            #### Example Apps
             - **agus-maps-android.aab** - Android App Bundle (for Play Store upload)
             - **agus-maps-android.apk** - Universal APK (for direct installation)
-
-            #### iOS
-            - **CoMaps.xcframework.zip** - Pre-built CoMaps native libraries for iOS
-            - **CoMaps-headers.tar.gz** - Header files required for iOS compilation
             - **agus-maps-ios-simulator.app.zip** - iOS Simulator app (unsigned, for testing)
 
             ### Plugin Installation
 
-            When you add this plugin to your Flutter project, the iOS build will automatically
-            download `CoMaps.xcframework.zip` and `CoMaps-headers.tar.gz` during `pod install`.
+            When you add this plugin to your Flutter project:
+            - **iOS:** The build will automatically download `agus-binaries-ios.zip` and `agus-headers.tar.gz` during `pod install`
+            - **Android:** The build will automatically download `agus-binaries-android.zip` and `agus-headers.tar.gz` during Gradle sync
 
             ### Installation (Example App)
 
@@ -572,11 +802,12 @@ workflows:
             - Zero-copy GPU texture sharing (Metal on iOS, OpenGL ES on Android)
         - draft: 'no'
         - files_to_upload: |-
+            $HEADERS_PATH
+            $IOS_BINARIES_PATH
+            $ANDROID_BINARIES_PATH
             $AAB_PATH
             $APK_PATH
             $BUILD_INFO_PATH
-            $XCFRAMEWORK_PATH
-            $HEADERS_PATH
             $IOS_SIMULATOR_APP_PATH
     meta:
       bitrise.io:
@@ -585,22 +816,40 @@ workflows:
 pipelines:
   build-android:
     workflows:
-      build-android: {}
+      build-headers: {}
+      build-android-native:
+        depends_on:
+        - build-headers
+      build-android:
+        depends_on:
+        - build-android-native
   build-ios:
     workflows:
-      build-ios-xcframework: {}
+      build-headers: {}
+      build-ios-native:
+        depends_on:
+        - build-headers
       build-ios:
         depends_on:
-        - build-ios-xcframework
+        - build-ios-native
   build-release:
     workflows:
-      build-ios-xcframework: {}
-      build-android: {}
+      build-headers: {}
+      build-ios-native:
+        depends_on:
+        - build-headers
+      build-android-native:
+        depends_on:
+        - build-headers
+      build-android:
+        depends_on:
+        - build-android-native
       build-ios:
         depends_on:
-        - build-ios-xcframework
+        - build-ios-native
       release:
         depends_on:
+        - build-headers
         - build-android
         - build-ios
 meta:
