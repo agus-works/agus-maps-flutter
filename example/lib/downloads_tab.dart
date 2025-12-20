@@ -533,13 +533,15 @@ class _DownloadsTabState extends State<DownloadsTab> {
     try {
       final dir = await getApplicationDocumentsDirectory();
       final filePath = '${dir.path}/${region.fileName}';
-      final file = File(filePath);
+      final tempPath = '$filePath.download'; // Temp file to prevent corrupted .mwm on crash
+      final tempFile = File(tempPath);
+      final finalFile = File(filePath);
 
-      // Stream directly to file to avoid memory exhaustion on iOS.
-      // Large map files (100MB+) would otherwise cause EXC_RESOURCE.
+      // Stream to temp file first. If app is killed during download,
+      // the partial .download file won't be loaded by RegisterAllMaps().
       final bytesWritten = await _mirrorService.downloadToFile(
         url,
-        file,
+        tempFile,
         onProgress: (received, total) {
           if (mounted && total > 0) {
             setState(() {
@@ -548,6 +550,12 @@ class _DownloadsTabState extends State<DownloadsTab> {
           }
         },
       );
+
+      // Rename temp file to final .mwm only after successful download
+      if (await finalFile.exists()) {
+        await finalFile.delete();
+      }
+      await tempFile.rename(filePath);
 
       // Save metadata
       await widget.mwmStorage.upsert(
