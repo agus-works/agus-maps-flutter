@@ -32,3 +32,6 @@ migrate_working_dir/
 /build/
 /coverage/
 thirdparty/comaps
+
+# iOS vendored frameworks (downloaded during pod install)
+ios/Frameworks/

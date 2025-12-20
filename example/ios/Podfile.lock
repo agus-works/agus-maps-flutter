@@ -1,0 +1,48 @@
+PODS:
+  - agus_maps_flutter (0.0.1):
+    - Flutter
+  - connectivity_plus (0.0.1):
+    - Flutter
+  - Flutter (1.0.0)
+  - path_provider_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - storage_space (0.0.1):
+    - Flutter
+
+DEPENDENCIES:
+  - agus_maps_flutter (from `.symlinks/plugins/agus_maps_flutter/ios`)
+  - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
+  - Flutter (from `Flutter`)
+  - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
+  - storage_space (from `.symlinks/plugins/storage_space/ios`)
+
+EXTERNAL SOURCES:
+  agus_maps_flutter:
+    :path: ".symlinks/plugins/agus_maps_flutter/ios"
+  connectivity_plus:
+    :path: ".symlinks/plugins/connectivity_plus/ios"
+  Flutter:
+    :path: Flutter
+  path_provider_foundation:
+    :path: ".symlinks/plugins/path_provider_foundation/darwin"
+  shared_preferences_foundation:
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
+  storage_space:
+    :path: ".symlinks/plugins/storage_space/ios"
+
+SPEC CHECKSUMS:
+  agus_maps_flutter: 4986172aba52c14a0379f6d3adcdfc70457bb7b3
+  connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
+  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
+  storage_space: cb6dcfec9288e8adaa229233ed0585759a340280
+
+PODFILE CHECKSUM: 18192ed58ac964189d1aa12816d1ae0ffd853a54
+
+COCOAPODS: 1.16.2

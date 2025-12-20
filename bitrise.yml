@@ -239,6 +239,262 @@ workflows:
       bitrise.io:
         stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
+  build-ios-xcframework:
+    summary: Build CoMaps XCFramework for iOS
+    description: |
+      Builds the CoMaps C++ libraries for iOS (device + simulator) and packages
+      them into a universal XCFramework. Publishes to GitHub Releases for
+      consumption by the Flutter plugin.
+    steps:
+    - git-clone@8:
+        inputs:
+        - fetch_tags: 'yes'
+    - script@1:
+        title: Set Environment Variables
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            envman add --key COMAPS_TAG --value "v2025.12.11-2"
+            envman add --key IOS_DEPLOYMENT_TARGET --value "15.6"
+            envman add --key BUILD_TYPE --value "Release"
+    - restore-cache@1:
+        title: Restore CoMaps Cache
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+    - script@1:
+        title: Fetch CoMaps Source
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            echo "=== Fetching CoMaps $COMAPS_TAG ==="
+
+            mkdir -p thirdparty
+
+            if [ ! -d "thirdparty/comaps/.git" ]; then
+              git clone --depth 1 --branch "$COMAPS_TAG" \
+                https://github.com/comaps/comaps.git thirdparty/comaps
+            fi
+
+            cd thirdparty/comaps
+            git submodule update --init --recursive --depth 1
+    - save-cache@1:
+        title: Save CoMaps Cache
+        run_if: "true"
+        is_always_run: true
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - paths: thirdparty/comaps
+    - script@1:
+        title: Apply CoMaps Patches
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            chmod +x scripts/apply_comaps_patches.sh
+            ./scripts/apply_comaps_patches.sh
+    - script@1:
+        title: Build Boost Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd thirdparty/comaps/3party/boost
+            if [ ! -d "boost" ]; then
+              echo "=== Building Boost headers ==="
+              ./bootstrap.sh
+              ./b2 headers
+            fi
+    - script@1:
+        title: Install Ninja
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            brew install ninja || true
+    - script@1:
+        title: Build XCFramework
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            chmod +x scripts/build_ios_xcframework.sh
+            ./scripts/build_ios_xcframework.sh
+
+            echo "=== XCFramework built ==="
+            ls -la ios/Frameworks/
+    - script@1:
+        title: Prepare XCFramework Artifact
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            mkdir -p $BITRISE_DEPLOY_DIR
+
+            # Zip the XCFramework
+            cd ios/Frameworks
+            zip -r $BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip CoMaps.xcframework
+
+            echo "=== XCFramework artifact ==="
+            ls -lh $BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip
+
+            envman add --key XCFRAMEWORK_PATH --value "$BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip"
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - pipeline_intermediate_files: |-
+            $BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip:XCFRAMEWORK_PATH
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
+        machine_type_id: g2.mac.large
+  build-ios:
+    summary: Build iOS App (Simulator)
+    description: |
+      Downloads pre-built XCFramework and builds the Flutter example app
+      for iOS Simulator (unsigned, for testing).
+    steps:
+    - git-clone@8:
+        inputs:
+        - fetch_tags: 'yes'
+    - script@1:
+        title: Set Environment Variables
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            envman add --key FLUTTER_VERSION --value "3.27.0"
+            envman add --key COMAPS_TAG --value "v2025.12.11-2"
+    - flutter-installer@0:
+        inputs:
+        - version: "$FLUTTER_VERSION"
+        - is_update: 'false'
+    - pull-intermediate-files@1:
+        title: Download XCFramework
+    - script@1:
+        title: Extract XCFramework
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            mkdir -p ios/Frameworks
+
+            # Check for pulled intermediate file
+            if [ -f "$XCFRAMEWORK_PATH" ]; then
+              echo "Using XCFramework from intermediate files"
+              unzip -o "$XCFRAMEWORK_PATH" -d ios/Frameworks/
+            else
+              echo "XCFramework not found in intermediate files, downloading..."
+              chmod +x scripts/download_ios_xcframework.sh
+              FORCE_DOWNLOAD=true ./scripts/download_ios_xcframework.sh
+            fi
+
+            ls -la ios/Frameworks/
+    - restore-cache@1:
+        title: Restore CoMaps Cache (for headers)
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+    - script@1:
+        title: Fetch CoMaps Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            # We need CoMaps headers for compilation even though we use pre-built XCFramework
+            mkdir -p thirdparty
+
+            if [ ! -d "thirdparty/comaps/.git" ]; then
+              git clone --depth 1 --branch "$COMAPS_TAG" \
+                https://github.com/comaps/comaps.git thirdparty/comaps
+            fi
+
+            cd thirdparty/comaps
+            git submodule update --init --recursive --depth 1
+    - script@1:
+        title: Build Boost Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd thirdparty/comaps/3party/boost
+            if [ ! -d "boost" ]; then
+              ./bootstrap.sh
+              ./b2 headers
+            fi
+    - script@1:
+        title: Copy CoMaps Assets
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            chmod +x scripts/copy_comaps_data.sh
+            ./scripts/copy_comaps_data.sh
+    - restore-dart-cache@2: {}
+    - script@1:
+        title: Get Flutter Dependencies
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            flutter pub get
+            cd example && flutter pub get
+    - save-dart-cache@1: {}
+    - cocoapods-install@2:
+        inputs:
+        - podfile_path: example/ios/Podfile
+    - flutter-analyze@0:
+        inputs:
+        - project_location: "$BITRISE_FLUTTER_PROJECT_LOCATION"
+    - script@1:
+        title: Build iOS Simulator App
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd example
+
+            # Build for simulator (no code signing required)
+            flutter build ios --simulator --debug \
+              --build-name=1.0.0 \
+              --build-number=$BITRISE_BUILD_NUMBER
+    - script@1:
+        title: Prepare iOS Artifacts
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            mkdir -p $BITRISE_DEPLOY_DIR
+
+            # The simulator .app bundle
+            APP_PATH="example/build/ios/iphonesimulator/Runner.app"
+
+            if [ -d "$APP_PATH" ]; then
+              # Zip the .app bundle
+              cd example/build/ios/iphonesimulator
+              zip -r $BITRISE_DEPLOY_DIR/agus-maps-ios-simulator.app.zip Runner.app
+
+              echo "=== iOS Simulator App ==="
+              ls -lh $BITRISE_DEPLOY_DIR/agus-maps-ios-simulator.app.zip
+
+              envman add --key IOS_SIMULATOR_APP_PATH --value "$BITRISE_DEPLOY_DIR/agus-maps-ios-simulator.app.zip"
+            else
+              echo "Warning: Simulator app not found at $APP_PATH"
+            fi
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - pipeline_intermediate_files: |-
+            $BITRISE_DEPLOY_DIR/agus-maps-ios-simulator.app.zip:IOS_SIMULATOR_APP_PATH
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
+        machine_type_id: g2.mac.large
   release:
     summary: Publish to GitHub Releases
     description: Downloads artifacts and publishes to GitHub Releases.
@@ -260,24 +516,41 @@ workflows:
             Automated release from Bitrise build #$BITRISE_BUILD_NUMBER
 
             ### Downloads
+
+            #### Android
             - **agus-maps-android.aab** - Android App Bundle (for Play Store upload)
             - **agus-maps-android.apk** - Universal APK (for direct installation)
-            - **Split APKs** - Per-architecture builds for smaller download sizes
+
+            #### iOS
+            - **CoMaps.xcframework.zip** - Pre-built CoMaps native libraries for iOS
+            - **agus-maps-ios-simulator.app.zip** - iOS Simulator app (unsigned, for testing)
 
             ### Installation
+
+            #### Android
             ```bash
             adb install agus-maps-android.apk
+            ```
+
+            #### iOS Simulator
+            ```bash
+            unzip agus-maps-ios-simulator.app.zip
+            xcrun simctl install booted Runner.app
+            xcrun simctl launch booted app.agus.maps.agus_maps_flutter_example
             ```
 
             ### Features
             - Offline vector maps powered by CoMaps engine
             - OpenStreetMap data with Organic Maps rendering
             - Battery-efficient event-driven rendering
+            - Zero-copy GPU texture sharing (Metal on iOS, OpenGL ES on Android)
         - draft: 'no'
         - files_to_upload: |-
             $AAB_PATH
             $APK_PATH
             $BUILD_INFO_PATH
+            $XCFRAMEWORK_PATH
+            $IOS_SIMULATOR_APP_PATH
     meta:
       bitrise.io:
         stack: osx-xcode-16.4.x
@@ -286,12 +559,23 @@ pipelines:
   build-android:
     workflows:
       build-android: {}
+  build-ios:
+    workflows:
+      build-ios-xcframework: {}
+      build-ios:
+        depends_on:
+        - build-ios-xcframework
   build-release:
     workflows:
+      build-ios-xcframework: {}
       build-android: {}
+      build-ios:
+        depends_on:
+        - build-ios-xcframework
       release:
         depends_on:
         - build-android
+        - build-ios
 meta:
   bitrise.io:
     stack: osx-xcode-16.4.x
