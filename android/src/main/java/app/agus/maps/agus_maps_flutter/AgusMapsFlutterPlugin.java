@@ -170,21 +170,15 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
 
   /**
    * Called from native code when an active frame is rendered.
-   * This notifies Flutter that a new frame is available for display.
-   * Only called when map content actually changed (not on every render loop iteration).
+   * With SurfaceProducer, frames are automatically picked up by the Flutter engine
+   * when rendered to the surface. This callback can be used for debugging/logging
+   * if needed, but no explicit notification to Flutter is required.
    */
   @SuppressWarnings("unused") // Called from native code
   public void onFrameReady() {
-    if (surfaceProducer != null) {
-      // Schedule frame notification on main thread
-      mainHandler.post(() -> {
-        if (surfaceProducer != null) {
-          // Request a new frame from Flutter
-          // This triggers the texture to be updated
-          textureRegistry.registerImageTexture(surfaceProducer);
-        }
-      });
-    }
+    // SurfaceProducer automatically notifies Flutter when frames are rendered
+    // to the Surface. No explicit registration is needed.
+    // This callback is kept for potential debugging purposes.
   }
 
   private String extractMap(String assetPath) throws IOException {
