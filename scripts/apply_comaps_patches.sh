@@ -26,6 +26,13 @@ fi
 
 pushd "$COMAPS_DIR" >/dev/null
 
+# Reset any existing modifications before applying patches
+# This ensures a clean slate when re-running the script
+echo "[apply_comaps_patches] resetting working tree to HEAD..."
+git reset HEAD -- . >/dev/null 2>&1 || true
+git checkout -- .
+git clean -fd
+
 for patch in "${PATCHES[@]}"; do
   echo "[apply_comaps_patches] applying $(basename "$patch")"
   # --3way helps across tags when context is close; fail loudly if it can't apply.

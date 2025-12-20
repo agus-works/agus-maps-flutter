@@ -47,6 +47,7 @@ flutter:
         pluginClass: AgusMapsFlutterPlugin
         ffiPlugin: true
       ios:
+        pluginClass: AgusMapsFlutterPlugin
         ffiPlugin: true
       linux:
         ffiPlugin: true

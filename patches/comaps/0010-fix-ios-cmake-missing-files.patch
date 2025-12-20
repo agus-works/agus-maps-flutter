@@ -1,0 +1,36 @@
+From: Agus Maps Flutter <noreply@agus.app>
+Date: Fri, 20 Dec 2024 00:00:00 +0000
+Subject: [PATCH] fix: remove non-existent http_user_agent_ios.mm from iOS CMake
+
+The http_user_agent_ios.mm file is referenced in CMakeLists.txt but
+doesn't exist in the repository. This causes CMake configuration to
+fail for iOS builds. Remove the reference since the functionality
+appears to be unused.
+
+Also add http_session_manager.mm which is needed for iOS networking.
+
+diff --git a/libs/platform/CMakeLists.txt b/libs/platform/CMakeLists.txt
+index 1234567..abcdefg 100644
+--- a/libs/platform/CMakeLists.txt
++++ b/libs/platform/CMakeLists.txt
+@@ -67,19 +67,19 @@ if (PLATFORM_IPHONE)
+   append(SRC
+     background_downloader_ios.h
+     background_downloader_ios.mm
+     gui_thread_apple.mm
+     http_thread_apple.h
+     http_thread_apple.mm
+     http_client_apple.mm
+     http_uploader_apple.mm
+-    http_user_agent_ios.mm
+     localization.mm
+     locale.mm
+     network_policy_ios.h
+     network_policy_ios.mm
++    http_session_manager.mm
+     platform_ios.mm
+     platform_unix_impl.cpp
+     platform_unix_impl.hpp
+     secure_storage_ios.mm
+     socket_apple.mm
+   )
