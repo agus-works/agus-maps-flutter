@@ -129,7 +129,8 @@ static constexpr auto kMinFrameInterval = std::chrono::milliseconds(16); // ~60f
 static std::atomic<bool> g_frameNotificationPending{false};
 
 // JNI global refs for frame notification callback
-static JavaVM* g_javaVM = nullptr;
+// g_javaVM is defined in agus_gui_thread.cpp and shared
+extern JavaVM* g_javaVM;
 static jobject g_pluginInstance = nullptr;
 static jmethodID g_notifyFrameReadyMethod = nullptr;
 
@@ -430,10 +431,10 @@ FFI_PLUGIN_EXPORT void comaps_debug_list_mwms() {
         }
         
         __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
-            "  MWM: %s [%s] version=%d scales=[%d-%d] bounds=[%.4f,%.4f - %.4f,%.4f] status=%d",
+            "  MWM: %s [%s] version=%lld scales=[%d-%d] bounds=[%.4f,%.4f - %.4f,%.4f] status=%d",
             info->GetCountryName().c_str(),
             typeStr,
-            info->GetVersion(),
+            static_cast<long long>(info->GetVersion()),
             info->m_minScale,
             info->m_maxScale,
             bounds.minX(), bounds.minY(),
@@ -486,13 +487,6 @@ FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
     
     __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
         "=== END point check ===");
-}
-
-// JNI_OnLoad - save JavaVM reference for frame notification callbacks
-extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    g_javaVM = vm;
-    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "JNI_OnLoad: JavaVM saved");
-    return JNI_VERSION_1_6;
 }
 
 // Initialize frame notification callback - called from Kotlin/Java plugin
