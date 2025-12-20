@@ -1,4 +1,7 @@
 // The Android Gradle Plugin builds the native code with the Android NDK.
+// This build.gradle supports two modes:
+// 1. In-repo build: Uses thirdparty/comaps source (for development)
+// 2. External consumer: Uses pre-built libraries from GitHub Releases
 
 group = "app.agus.maps.agus_maps_flutter"
 version = "1.0"
@@ -23,6 +26,43 @@ rootProject.allprojects {
 }
 
 apply plugin: "com.android.library"
+
+// Detect if we're in the plugin repository (in-repo build)
+// or being consumed as a dependency (external consumer)
+def isInRepo = file("${projectDir}/../.git").exists() && 
+               file("${projectDir}/../thirdparty/comaps").exists()
+
+def prebuiltDir = file("${projectDir}/prebuilt")
+def headersDir = file("${projectDir}/headers")
+
+// For external consumers, we need to download pre-built libraries
+if (!isInRepo) {
+    task downloadPrebuiltLibraries {
+        description = "Download pre-built CoMaps libraries for external consumers"
+        
+        doFirst {
+            println "=== Downloading pre-built CoMaps libraries ==="
+            
+            def downloadScript = file("${projectDir}/../scripts/download_libs.sh")
+            if (downloadScript.exists()) {
+                exec {
+                    commandLine 'bash', downloadScript.absolutePath, 'android'
+                    workingDir projectDir.parentFile
+                }
+            } else {
+                println "Warning: download_libs.sh not found, expecting pre-built libraries to exist"
+            }
+        }
+    }
+    
+    // Run download before native build
+    tasks.whenTaskAdded { task ->
+        if (task.name.contains("CMake") || task.name.contains("Ninja") || 
+            task.name.contains("externalNativeBuild")) {
+            task.dependsOn downloadPrebuiltLibraries
+        }
+    }
+}
 
 android {
     namespace = "app.agus.maps.agus_maps_flutter"
@@ -59,5 +99,27 @@ android {
 
     defaultConfig {
         minSdk = 24
+        
+        // Pass CMake arguments based on build mode
+        externalNativeBuild {
+            cmake {
+                // Let CMake know if pre-built libraries are available
+                if (prebuiltDir.exists() && prebuiltDir.listFiles()?.length > 0) {
+                    arguments "-DUSE_PREBUILT_COMAPS=ON",
+                              "-DPREBUILT_DIR=${prebuiltDir.absolutePath}"
+                    println "Using pre-built CoMaps libraries from: ${prebuiltDir.absolutePath}"
+                } else if (!isInRepo) {
+                    println "Warning: Pre-built libraries not found and not in repo. Build may fail."
+                } else {
+                    println "Building CoMaps from source (in-repo development mode)"
+                }
+                
+                // Pass headers directory if available (for external consumers)
+                if (headersDir.exists() && file("${headersDir}/comaps").exists()) {
+                    arguments "-DCOMAPS_HEADERS_DIR=${headersDir.absolutePath}"
+                    println "Using downloaded headers from: ${headersDir.absolutePath}"
+                }
+            }
+        }
     }
 }

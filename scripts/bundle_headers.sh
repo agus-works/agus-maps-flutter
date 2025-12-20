@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Bundle CoMaps headers for iOS plugin distribution
+# Bundle CoMaps headers for all platforms
 #
 # This script collects all header files from thirdparty/comaps/ and packages
 # them into a tarball for external consumers who don't have access to the
 # full thirdparty source checkout.
 #
+# The headers are platform-agnostic and shared across iOS, Android, Linux,
+# Windows, and macOS builds.
+#
 # Output:
-#   ios/CoMaps-headers.tar.gz (ready for upload to GitHub Releases)
-#   Intermediate staging at: build/ios_headers_staging/
+#   build/agus-headers.tar.gz (ready for upload to GitHub Releases)
+#   Intermediate staging at: build/headers_staging/
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMAPS_DIR="$ROOT_DIR/thirdparty/comaps"
-STAGING_DIR="$ROOT_DIR/build/ios_headers_staging"
-OUTPUT_FILE="$ROOT_DIR/ios/CoMaps-headers.tar.gz"
+STAGING_DIR="$ROOT_DIR/build/headers_staging"
+OUTPUT_FILE="$ROOT_DIR/build/agus-headers.tar.gz"
 
 # Colors for output
 RED='\033[0;31m'
@@ -213,7 +216,7 @@ show_stats() {
 # Main
 main() {
     log_info "========================================="
-    log_info "CoMaps iOS Headers Bundler"
+    log_info "CoMaps Headers Bundler"
     log_info "========================================="
     
     check_comaps_source
