@@ -100,6 +100,16 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
       '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/glm"',
       '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party"',
       '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/utfcpp/source"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/jansson/jansson/src"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/jansson"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/expat/expat/lib"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/icu/icu/source/common"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/icu/icu/source/i18n"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/freetype/include"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/harfbuzz/harfbuzz/src"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/minizip/minizip"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/pugixml/pugixml/src"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/protobuf/protobuf/src"',
     ].join(' '),
     
     # Preprocessor definitions
