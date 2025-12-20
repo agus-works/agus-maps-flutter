@@ -78,6 +78,25 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
   # iOS platform version (matches CoMaps requirement)
   s.platform = :ios, '15.6'
 
+  # ============================================================================
+  # Dual-path header detection for in-repo vs external consumers
+  # ============================================================================
+  # In-repo (example app): thirdparty/comaps exists → use local headers
+  # External consumer: thirdparty/comaps doesn't exist → use downloaded Headers/
+  # ============================================================================
+  
+  in_repo = File.exist?(File.join(__dir__, '..', 'thirdparty', 'comaps'))
+  
+  if in_repo
+    # In-repo build: use thirdparty/comaps headers
+    header_base = '$(PODS_TARGET_SRCROOT)/../thirdparty/comaps'
+    header_3party = "#{header_base}/3party"
+  else
+    # External consumer: use downloaded Headers/comaps
+    header_base = '$(PODS_TARGET_SRCROOT)/Headers/comaps'
+    header_3party = "#{header_base}/3party"
+  end
+
   # Build settings
   s.pod_target_xcconfig = {
     # C++ language standard
@@ -100,22 +119,22 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
     # Header search paths for CoMaps includes
     'HEADER_SEARCH_PATHS' => [
       '"$(PODS_TARGET_SRCROOT)/../src"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/libs"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/boost"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/glm"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/utfcpp/source"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/jansson/jansson/src"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/jansson"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/expat/expat/lib"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/icu/icu/source/common"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/icu/icu/source/i18n"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/freetype/include"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/harfbuzz/harfbuzz/src"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/minizip/minizip"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/pugixml/pugixml/src"',
-      '"$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/3party/protobuf/protobuf/src"',
+      "\"#{header_base}\"",
+      "\"#{header_base}/libs\"",
+      "\"#{header_3party}/boost\"",
+      "\"#{header_3party}/glm\"",
+      "\"#{header_3party}\"",
+      "\"#{header_3party}/utfcpp/source\"",
+      "\"#{header_3party}/jansson/jansson/src\"",
+      "\"#{header_3party}/jansson\"",
+      "\"#{header_3party}/expat/expat/lib\"",
+      "\"#{header_3party}/icu/icu/source/common\"",
+      "\"#{header_3party}/icu/icu/source/i18n\"",
+      "\"#{header_3party}/freetype/include\"",
+      "\"#{header_3party}/harfbuzz/harfbuzz/src\"",
+      "\"#{header_3party}/minizip/minizip\"",
+      "\"#{header_3party}/pugixml/pugixml/src\"",
+      "\"#{header_3party}/protobuf/protobuf/src\"",
     ].join(' '),
     
     # Preprocessor definitions
