@@ -398,61 +398,109 @@ Builds the Flutter example app for iOS simulator:
 
 1. **Phase 1:** XCFramework build + distribution ✅
 2. **Phase 2:** FlutterTexture + CVPixelBuffer integration ✅
-3. **Phase 3:** Plugin registration + FFI working ✅ ← Current
-4. **Phase 4:** Metal rendering context + Framework creation 🚧
-5. **Phase 5:** Touch/gesture handling
+3. **Phase 3:** Plugin registration + FFI working ✅
+4. **Phase 4:** Metal rendering context + Framework creation ✅
+5. **Phase 5:** Touch/gesture handling 🚧 ← Current
 6. **Phase 6:** Real device testing + code signing
 
 ---
 
-## Technical Details: Remaining Work
+## Phase 4 Implementation Details (Completed)
 
-### 1. Framework Creation (`agus_native_set_surface`)
+### Framework Creation
 
-The current stub needs to instantiate the CoMaps Framework:
+The `agus_native_set_surface()` function in `agus_maps_flutter_ios.mm` now:
+
+1. Creates Framework with FrameworkParams on first surface creation
+2. Creates `AgusMetalContextFactory` from CVPixelBuffer for Metal rendering
+3. Wraps in `ThreadSafeFactory` for thread-safe context access
+4. Creates DrapeEngine with `dp::ApiVersion::Metal`
+5. Enables rendering via `Framework::SetRenderingEnabled()`
 
 ```cpp
-// In agus_maps_flutter_ios.mm
-void agus_native_set_surface(void* pixelBuffer, int width, int height, FrameReadyCallback callback, void* context) {
-    CVPixelBufferRef buffer = (CVPixelBufferRef)pixelBuffer;
+void agus_native_set_surface(int64_t textureId, CVPixelBufferRef pixelBuffer, 
+                              int32_t width, int32_t height, float density) {
+    // Create Framework on this thread if not already created
+    if (!g_framework) {
+        FrameworkParams params;
+        params.m_enableDiffs = false;
+        g_framework = std::make_unique<Framework>(params, false /* loadMaps */);
+        g_framework->RegisterAllMaps();
+    }
     
-    // 1. Create Metal context factory
-    auto metalContextFactory = std::make_unique<AgusMetalContextFactory>(buffer);
+    // Create Metal context factory with the CVPixelBuffer
+    m2::PointU screenSize(width, height);
+    auto metalFactory = new agus::AgusMetalContextFactory(pixelBuffer, screenSize);
+    g_threadSafeFactory = make_unique_dp<dp::ThreadSafeFactory>(metalFactory);
     
-    // 2. Create Framework with Metal context
-    // Framework::Params params;
-    // params.m_glContextFactory = std::move(metalContextFactory);
-    // g_framework = std::make_unique<Framework>(std::move(params));
+    // Create DrapeEngine with Metal API
+    Framework::DrapeCreationParams p;
+    p.m_apiVersion = dp::ApiVersion::Metal;
+    p.m_surfaceWidth = width;
+    p.m_surfaceHeight = height;
+    p.m_visualScale = density;
+    g_framework->CreateDrapeEngine(make_ref(g_threadSafeFactory), std::move(p));
     
-    // 3. Store callback for frame notifications
-    g_frameReadyCallback = callback;
-    g_callbackContext = context;
+    g_framework->SetRenderingEnabled(make_ref(g_threadSafeFactory));
 }
 ```
 
-### 2. DrapeEngine Integration
+### Touch Events
 
-The `AgusMetalContextFactory` needs to provide EGL-like context for DrapeEngine:
+Touch events are forwarded via `comaps_touch()` using `df::TouchEvent`:
 
-- `getDrawContext()` - Returns Metal command queue wrapper
-- `getResourcesUploadContext()` - Returns upload context for texture loading
-- `createContext()` - Creates new rendering context
+```cpp
+void comaps_touch(int type, int id1, float x1, float y1, int id2, float x2, float y2) {
+    df::TouchEvent event;
+    switch (type) {
+        case 1: event.SetTouchType(df::TouchEvent::TOUCH_DOWN); break;
+        case 2: event.SetTouchType(df::TouchEvent::TOUCH_MOVE); break;
+        case 3: event.SetTouchType(df::TouchEvent::TOUCH_UP); break;
+        case 4: event.SetTouchType(df::TouchEvent::TOUCH_CANCEL); break;
+    }
+    // Set touch points and forward to Framework
+    g_framework->TouchEvent(event);
+}
+```
 
-### 3. Render Loop
+### Map Registration
 
-Flutter calls `copyPixelBuffer` on FlutterTexture when it needs a frame. The native side should:
+Single map registration via `platform::LocalCountryFile`:
 
-1. Render to CVPixelBuffer's IOSurface via Metal
-2. Call `callback(context)` to notify Flutter a new frame is ready
-3. Flutter then calls `copyPixelBuffer` to get the latest frame
+```cpp
+int comaps_register_single_map(const char* fullPath) {
+    platform::LocalCountryFile file = platform::LocalCountryFile::MakeTemporary(fullPath);
+    file.SyncWithDisk();
+    auto result = g_framework->RegisterMap(file);
+    return result.second == MwmSet::RegResult::Success ? 0 : -1;
+}
+```
 
-### 4. Touch Events
+---
 
-Forward from Swift to C to Framework:
+## Phase 5: Touch/Gesture Handling (Next Steps)
+
+The FFI touch handling is implemented in Phase 4, but the Swift side needs to forward touch events:
+
+1. Add gesture recognizers to the map view
+2. Forward touch events via `comaps_touch()` FFI call
+3. Handle multi-touch for pinch-to-zoom
 
 ```swift
-// In Swift plugin
-override func onPointerEvent(_ event: FlutterPointerEvent) {
-    agus_native_touch(Int32(event.type.rawValue), Float(event.x), Float(event.y))
+// In Swift plugin - forward touch events to native
+@objc func handlePan(_ gesture: UIPanGestureRecognizer) {
+    let location = gesture.location(in: view)
+    let type: Int32 = gesture.state == .began ? 1 : 
+                      gesture.state == .changed ? 2 : 3
+    comaps_touch(type, 0, Float(location.x), Float(location.y), -1, 0, 0)
 }
 ```
+
+---
+
+## Phase 6: Real Device Testing + Code Signing
+
+- Test on physical iOS device
+- Configure code signing for development
+- Verify Metal rendering performance
+- Test memory usage and battery impact
