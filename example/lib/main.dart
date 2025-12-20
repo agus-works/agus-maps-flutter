@@ -331,6 +331,7 @@ class _MyAppState extends State<MyApp> {
       initialZoom: kDefaultLocation.zoom,
       onMapReady: _onMapReady,
       controller: _mapController,
+      isVisible: _currentTabIndex == 0, // Only resize when map tab is active
     );
   }
 

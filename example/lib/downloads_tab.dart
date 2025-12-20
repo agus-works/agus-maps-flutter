@@ -535,8 +535,11 @@ class _DownloadsTabState extends State<DownloadsTab> {
       final filePath = '${dir.path}/${region.fileName}';
       final file = File(filePath);
 
-      final bytes = await _mirrorService.downloadWithProgress(
+      // Stream directly to file to avoid memory exhaustion on iOS.
+      // Large map files (100MB+) would otherwise cause EXC_RESOURCE.
+      final bytesWritten = await _mirrorService.downloadToFile(
         url,
+        file,
         onProgress: (received, total) {
           if (mounted && total > 0) {
             setState(() {
@@ -546,14 +549,12 @@ class _DownloadsTabState extends State<DownloadsTab> {
         },
       );
 
-      await file.writeAsBytes(bytes);
-
       // Save metadata
       await widget.mwmStorage.upsert(
         MwmMetadata(
           regionName: region.name,
           snapshotVersion: _selectedSnapshot!.version,
-          fileSize: bytes.length,
+          fileSize: bytesWritten,
           downloadDate: DateTime.now(),
           filePath: filePath,
           isBundled: false,
@@ -565,7 +566,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
       debugPrint('Registered ${region.name}: result=$result');
 
       // Update disk space
-      _availableSpaceBytes -= bytes.length;
+      _availableSpaceBytes -= bytesWritten;
 
       // Notify parent
       widget.onMapsChanged?.call();

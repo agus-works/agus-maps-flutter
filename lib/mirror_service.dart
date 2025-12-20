@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -247,10 +248,57 @@ class MirrorService {
     }
   }
 
-  /// Download a file with progress callback.
+  /// Download a file directly to disk with progress callback.
+  ///
+  /// Streams data directly to the destination file to avoid holding
+  /// the entire file in memory. This is critical for large map files
+  /// (100MB+) to prevent iOS memory exhaustion (EXC_RESOURCE).
+  ///
+  /// [destination] is the file to write to (will be created/overwritten).
+  /// [onProgress] is called with (bytesReceived, totalBytes).
+  /// Returns the total number of bytes written.
+  Future<int> downloadToFile(
+    String url,
+    File destination, {
+    void Function(int received, int total)? onProgress,
+  }) async {
+    final request = http.Request('GET', Uri.parse(url));
+    final response = await _client.send(request);
+
+    if (response.statusCode != 200) {
+      throw Exception('Download failed: HTTP ${response.statusCode}');
+    }
+
+    final contentLength = response.contentLength ?? 0;
+    int received = 0;
+
+    // Ensure parent directory exists
+    await destination.parent.create(recursive: true);
+
+    // Stream directly to file - never hold entire file in memory
+    final sink = destination.openWrite();
+    try {
+      await for (final chunk in response.stream) {
+        sink.add(chunk);
+        received += chunk.length;
+        onProgress?.call(received, contentLength);
+      }
+    } finally {
+      await sink.close();
+    }
+
+    return received;
+  }
+
+  /// Download a file with progress callback (legacy in-memory version).
+  ///
+  /// **WARNING:** This method accumulates the entire file in memory.
+  /// For large files, use [downloadToFile] instead to stream directly
+  /// to disk and avoid memory exhaustion on iOS.
   ///
   /// Returns the downloaded bytes.
   /// [onProgress] is called with (bytesReceived, totalBytes).
+  @Deprecated('Use downloadToFile() for large files to avoid memory exhaustion')
   Future<List<int>> downloadWithProgress(
     String url, {
     void Function(int received, int total)? onProgress,
