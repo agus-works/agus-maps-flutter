@@ -86,12 +86,18 @@ get_patch_for_file() {
         "libs/platform/platform_android.cpp") echo "0002-platform-directory-resources.patch" ;;
         "libs/indexer/transliteration_loader.cpp") echo "0003-transliteration-directory-resources.patch" ;;
         "libs/drape/gl_functions.cpp") echo "0004-fix-android-gl-function-pointers.patch" ;;
+        "libs/map/framework.cpp") echo "0005-libs-map-framework-cpp.patch" ;;
+        "libs/map/routing_manager.cpp") echo "0006-libs-map-routing_manager-cpp.patch" ;;
+        "libs/routing/routing_session.cpp") echo "0007-libs-routing-routing_session-cpp.patch" ;;
+        "libs/routing/speed_camera_manager.cpp") echo "0008-libs-routing-speed_camera_manager-cpp.patch" ;;
+        "libs/drape/gl_includes.hpp") echo "0009-fix-android-gl3stub-include-path.patch" ;;
+        "libs/platform/CMakeLists.txt") echo "0010-fix-ios-cmake-missing-files.patch" ;;
         *) echo "" ;;
     esac
 }
 
 # Track new files that need patches
-NEW_PATCH_NUM=5
+NEW_PATCH_NUM=11
 TIMESTAMP=$(date +%Y%m%d)
 
 if $DRY_RUN; then

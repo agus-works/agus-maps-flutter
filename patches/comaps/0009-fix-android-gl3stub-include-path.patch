@@ -1,17 +1,8 @@
-From: Agus Maps Flutter <noreply@agus.app>
-Date: Fri, 20 Dec 2024 00:00:00 +0000
-Subject: [PATCH] fix: use GLES3 headers directly for Android API 24+
-
-Since we target Android API 24+ which has native GLES 3.0 support,
-we can use the system GLES3 headers directly instead of the gl3stub
-dynamic loader. This avoids the complex include path to the Android
-SDK's gl3stub.h file.
-
 diff --git a/libs/drape/gl_includes.hpp b/libs/drape/gl_includes.hpp
-index 1234567..abcdefg 100644
+index 57a68d12..3611f316 100644
 --- a/libs/drape/gl_includes.hpp
 +++ b/libs/drape/gl_includes.hpp
-@@ -18,9 +18,10 @@ extern "C" {
+@@ -18,9 +18,10 @@
  #elif defined(OMIM_OS_ANDROID)
  #define GL_GLEXT_PROTOTYPES
  #include <EGL/egl.h>

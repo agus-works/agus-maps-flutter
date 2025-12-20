@@ -35,6 +35,14 @@ Adds debug logging to `routing_session.cpp` for tracking session lifecycle event
 ### 0008-libs-routing-speed_camera_manager-cpp.patch
 Adds debug logging to `speed_camera_manager.cpp` and adds null-check guard for the speed camera clear callback to prevent crashes when the callback is not set.
 
+### 0009-fix-android-gl3stub-include-path.patch
+Switches Android OpenGL ES headers from GLES2 + gl3stub.h to native GLES3 headers. Since we target Android API 24+ which has native GLES 3.0 support, we can use `<GLES3/gl3.h>` directly instead of the complex gl3stub dynamic loader path.
+
+### 0010-fix-ios-cmake-missing-files.patch
+Fixes iOS CMakeLists.txt by:
+- Removing non-existent `http_user_agent_ios.mm` reference that causes CMake configuration to fail
+- Adding `http_session_manager.mm` which is needed for iOS networking
+
 ## Policy
 
 - Prefer a clean bridge layer in this repo.
