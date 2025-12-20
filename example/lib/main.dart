@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 import 'package:agus_maps_flutter/mwm_storage.dart';
+import 'package:path_provider/path_provider.dart';
 import 'downloads_tab.dart';
 import 'settings_tab.dart';
 
@@ -85,6 +86,12 @@ class _MyAppState extends State<MyApp> {
       // Initialize MWM storage
       _log('Initializing MWM storage...');
       _mwmStorage = await MwmStorage.create();
+
+      // Clean up any partial downloads from interrupted sessions.
+      // These are .mwm.download files that were being written when the app was killed.
+      // If not cleaned up, RegisterAllMaps() would try to load them and crash.
+      _log('Cleaning up partial downloads...');
+      await _cleanupPartialDownloads();
 
       // Validate existing metadata against actual files on disk.
       // After reinstall, SharedPreferences may persist but files are deleted.
@@ -230,6 +237,34 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         _debug += '$msg\n';
       });
+    }
+  }
+
+  /// Clean up partial downloads from interrupted sessions.
+  ///
+  /// When the app is killed during a download, the partial .mwm.download file
+  /// remains on disk. If not cleaned up, RegisterAllMaps() might crash trying
+  /// to load corrupted/incomplete map files.
+  Future<void> _cleanupPartialDownloads() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final files = dir.listSync();
+      int cleanedCount = 0;
+
+      for (final entity in files) {
+        if (entity is File && entity.path.endsWith('.mwm.download')) {
+          _log('Removing partial download: ${entity.path}');
+          await entity.delete();
+          cleanedCount++;
+        }
+      }
+
+      if (cleanedCount > 0) {
+        _log('Cleaned up $cleanedCount partial download(s)');
+      }
+    } catch (e) {
+      _log('Warning: Failed to clean up partial downloads: $e');
+      // Don't rethrow - cleanup failure shouldn't prevent app startup
     }
   }
 
