@@ -102,6 +102,7 @@ bundle_comaps_headers() {
     local libs=(
         "base"
         "coding"
+        "cppjansson"
         "drape"
         "drape_frontend"
         "editor"
