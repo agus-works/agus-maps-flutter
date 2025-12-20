@@ -32,6 +32,7 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   private int surfaceWidth = 0;
   private int surfaceHeight = 0;
   private float density = 2.0f;
+  private android.os.Handler mainHandler;
   
   static {
       System.loadLibrary("agus_maps_flutter");
@@ -43,6 +44,10 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     channel.setMethodCallHandler(this);
     context = flutterPluginBinding.getApplicationContext();
     textureRegistry = flutterPluginBinding.getTextureRegistry();
+    mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    
+    // Initialize native frame callback
+    nativeInitFrameCallback();
     
     // Get display metrics for proper density
     WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
@@ -160,6 +165,27 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   private native void nativeOnSurfaceChanged(long textureId, Surface surface, int width, int height, float density);
   private native void nativeOnSurfaceDestroyed();
   private native void nativeOnSizeChanged(int width, int height);
+  private native void nativeInitFrameCallback();
+  private native void nativeCleanupFrameCallback();
+
+  /**
+   * Called from native code when an active frame is rendered.
+   * This notifies Flutter that a new frame is available for display.
+   * Only called when map content actually changed (not on every render loop iteration).
+   */
+  @SuppressWarnings("unused") // Called from native code
+  public void onFrameReady() {
+    if (surfaceProducer != null) {
+      // Schedule frame notification on main thread
+      mainHandler.post(() -> {
+        if (surfaceProducer != null) {
+          // Request a new frame from Flutter
+          // This triggers the texture to be updated
+          textureRegistry.registerImageTexture(surfaceProducer);
+        }
+      });
+    }
+  }
 
   private String extractMap(String assetPath) throws IOException {
     android.util.Log.d("AgusMapsFlutter", "Extracting asset: " + assetPath);
@@ -260,6 +286,8 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    // Cleanup native frame callback
+    nativeCleanupFrameCallback();
     channel.setMethodCallHandler(null);
   }
 }

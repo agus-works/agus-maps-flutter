@@ -16,6 +16,18 @@ import CoreVideo
 /// 4. Flutter samples the texture directly (zero-copy via IOSurface)
 public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
+    // MARK: - Shared Instance for native callbacks
+    
+    /// Shared instance for native code to notify when frames are ready
+    private static weak var sharedInstance: AgusMapsFlutterPlugin?
+    
+    /// Called by native code when a frame is ready
+    @objc public static func notifyFrameReadyFromNative() {
+        DispatchQueue.main.async {
+            sharedInstance?.notifyFrameReady()
+        }
+    }
+    
     // MARK: - Properties
     
     private var channel: FlutterMethodChannel?
@@ -47,6 +59,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         instance.channel = channel
         instance.textureRegistry = registrar.textures()
         instance.density = UIScreen.main.scale
+        
+        // Store shared instance for native callbacks
+        AgusMapsFlutterPlugin.sharedInstance = instance
         
         // Initialize Metal device
         instance.metalDevice = MTLCreateSystemDefaultDevice()

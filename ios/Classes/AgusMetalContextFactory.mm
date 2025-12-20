@@ -3,20 +3,97 @@
 #include "base/assert.hpp"
 #include "base/logging.hpp"
 
+#import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
+
+// Forward declaration for frame ready notification
+extern "C" void agus_notify_frame_ready(void);
+
+#pragma mark - AgusMetalDrawable
+
+/// Fake CAMetalDrawable that wraps our CVPixelBuffer-backed texture
+/// This allows us to use MetalBaseContext's rendering pipeline while
+/// rendering to a texture instead of a CAMetalLayer.
+@interface AgusMetalDrawable : NSObject <CAMetalDrawable>
+@property (nonatomic, strong) id<MTLTexture> texture;
+@property (nonatomic, strong) CAMetalLayer *layer;
+- (instancetype)initWithTexture:(id<MTLTexture>)texture;
+@end
+
+@implementation AgusMetalDrawable
+
+- (instancetype)initWithTexture:(id<MTLTexture>)texture {
+    self = [super init];
+    if (self) {
+        _texture = texture;
+        _layer = nil;  // We don't have a layer - rendering to texture
+    }
+    return self;
+}
+
+- (void)present {
+    // No-op: We don't present to a layer, Flutter will read from CVPixelBuffer
+}
+
+- (void)presentAtTime:(CFTimeInterval)presentationTime {
+    // No-op
+}
+
+- (void)presentAfterMinimumDuration:(CFTimeInterval)duration {
+    // No-op
+}
+
+- (void)addPresentedHandler:(MTLDrawablePresentedHandler)block {
+    // Call the handler immediately since we're not presenting to screen
+    if (block) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            block(self);
+        });
+    }
+}
+
+// Internal method called by MTLCommandBuffer's presentDrawable:
+// This is a private API that CAMetalDrawable implements
+- (void)addPresentScheduledHandler:(void (^)(id<MTLDrawable>))block {
+    // Call the handler immediately since we don't schedule presentation
+    if (block) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            block(self);
+        });
+    }
+}
+
+- (CFTimeInterval)presentedTime {
+    return CACurrentMediaTime();
+}
+
+- (NSUInteger)drawableID {
+    return 0;
+}
+
+@end
+
+#pragma mark - C++ Context Classes
+
+// Static drawable holder for the draw context
+static AgusMetalDrawable* g_currentDrawable = nil;
+
 namespace
 {
 
 /// Draw context that renders to a CVPixelBuffer-backed texture
 /// This enables zero-copy texture sharing with Flutter
-/// 
-/// MetalBaseContext expects a DrawableRequest callback that returns
-/// a CAMetalDrawable. Since we render to a texture (not a CAMetalLayer),
-/// we provide a null callback and manage our render target directly.
 class DrawMetalContext : public dp::metal::MetalBaseContext
 {
 public:
     DrawMetalContext(id<MTLDevice> device, id<MTLTexture> renderTexture, m2::PointU const & screenSize)
-        : dp::metal::MetalBaseContext(device, screenSize, nullptr)  // null drawable request - we use texture
+        : dp::metal::MetalBaseContext(device, screenSize, [renderTexture]() -> id<CAMetalDrawable> {
+            // Return our fake drawable wrapping the texture
+            if (!g_currentDrawable || g_currentDrawable.texture != renderTexture) {
+                g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:renderTexture];
+            }
+            return g_currentDrawable;
+        })
         , m_renderTexture(renderTexture)
     {
         LOG(LINFO, ("DrawMetalContext created:", screenSize.x, "x", screenSize.y));
@@ -25,6 +102,8 @@ public:
     void SetRenderTexture(id<MTLTexture> texture, m2::PointU const & screenSize)
     {
         m_renderTexture = texture;
+        // Update the global drawable
+        g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:texture];
         Resize(screenSize.x, screenSize.y);
     }
     
@@ -41,6 +120,19 @@ public:
         return m_renderTexture;
     }
     
+    /// Override Present() - no longer notifies Flutter here
+    /// Frame notifications are now handled via df::SetActiveFrameCallback
+    /// which only triggers when isActiveFrame is true in FrontendRenderer
+    void Present() override
+    {
+        // Call base class Present() to do the actual Metal rendering
+        dp::metal::MetalBaseContext::Present();
+        
+        // Note: Frame notification moved to df::SetActiveFrameCallback
+        // This ensures we only notify Flutter when map content actually changed,
+        // not on every Present() call (which happens even when suspended)
+    }
+    
 private:
     id<MTLTexture> m_renderTexture;
 };
@@ -52,7 +144,10 @@ class UploadMetalContext : public dp::metal::MetalBaseContext
 {
 public:
     explicit UploadMetalContext(id<MTLDevice> device)
-        : dp::metal::MetalBaseContext(device, {}, nullptr)  // null drawable request - upload only
+        : dp::metal::MetalBaseContext(device, {}, []() -> id<CAMetalDrawable> {
+            // Upload context should never request a drawable
+            return nil;
+        })
     {
         LOG(LINFO, ("UploadMetalContext created"));
     }
