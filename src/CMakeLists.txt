@@ -74,6 +74,7 @@ if(USE_PREBUILT_COMAPS AND COMAPS_HEADERS_DIR)
     "${COMAPS_HEADERS_DIR}/comaps/3party/utfcpp/source"
     "${COMAPS_HEADERS_DIR}/comaps/3party/glm"
     "${COMAPS_HEADERS_DIR}/comaps/3party/pugixml/pugixml/src"
+    "${COMAPS_HEADERS_DIR}/comaps/3party"
   )
   message(STATUS "Using headers from: ${COMAPS_HEADERS_DIR}/comaps")
 else()
@@ -85,6 +86,7 @@ else()
     "../thirdparty/comaps/3party/utfcpp/source"
     "../thirdparty/comaps/3party/glm"
     "../thirdparty/comaps/3party/pugixml/pugixml/src"
+    "../thirdparty/comaps/3party"
     "../thirdparty/comaps/android/sdk/src/main/cpp" 
   )
 endif()

@@ -60,6 +60,18 @@ workflows:
             chmod +x scripts/apply_comaps_patches.sh
             ./scripts/apply_comaps_patches.sh
     - script@1:
+        title: Build Boost Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd thirdparty/comaps/3party/boost
+            if [ ! -d "boost" ]; then
+              echo "=== Building Boost headers ==="
+              ./bootstrap.sh
+              ./b2 headers
+            fi
+    - script@1:
         title: Bundle Headers
         inputs:
         - content: |

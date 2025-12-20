@@ -177,6 +177,24 @@ bundle_3party_headers() {
     # Protobuf
     copy_headers "$COMAPS_DIR/3party/protobuf/protobuf/src" "comaps/3party/protobuf/protobuf/src"
     
+    # Succinct (compressed data structures)
+    copy_headers "$COMAPS_DIR/3party/succinct" "comaps/3party/succinct"
+    
+    # Skarupke (hash maps)
+    copy_headers "$COMAPS_DIR/3party/skarupke" "comaps/3party/skarupke"
+    
+    # kdtree++ (spatial indexing)
+    copy_headers "$COMAPS_DIR/3party/kdtree++" "comaps/3party/kdtree++"
+    
+    # opening_hours (OSM opening hours parser)
+    copy_headers "$COMAPS_DIR/3party/opening_hours" "comaps/3party/opening_hours"
+    
+    # just_gtfs (GTFS parser)
+    copy_headers "$COMAPS_DIR/3party/just_gtfs" "comaps/3party/just_gtfs"
+    
+    # GL headers
+    copy_headers "$COMAPS_DIR/3party/GL" "comaps/3party/GL"
+    
     # Other 3party headers at root level
     for item in "$COMAPS_DIR/3party"/*.h "$COMAPS_DIR/3party"/*.hpp; do
         if [[ -f "$item" ]]; then
