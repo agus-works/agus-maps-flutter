@@ -5,7 +5,8 @@
 #include <mutex>
 
 // Store JavaVM globally for getting JNIEnv from any thread
-static JavaVM* g_javaVM = nullptr;
+// This is shared with agus_maps_flutter.cpp
+JavaVM* g_javaVM = nullptr;
 static jclass g_uiThreadClass = nullptr;
 static jmethodID g_forwardMethod = nullptr;
 static std::mutex g_jniMutex;
