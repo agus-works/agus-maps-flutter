@@ -693,6 +693,14 @@ workflows:
             flutter pub get
             cd example && flutter pub get
     - save-dart-cache@1: {}
+    - script@1:
+        title: Precache iOS Flutter Artifacts
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            echo "=== Precaching iOS Flutter artifacts ==="
+            flutter precache --ios
     - cocoapods-install@2:
         inputs:
         - podfile_path: example/ios/Podfile
