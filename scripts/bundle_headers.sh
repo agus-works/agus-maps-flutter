@@ -64,9 +64,10 @@ copy_headers() {
     mkdir -p "$dest"
     
     # Copy all header files preserving directory structure
-    # Include: .h, .hpp, .hxx, .inc files
+    # Include: .h, .hpp, .hxx, .inc, .inl files
     # Use -L to follow symlinks (important for Boost headers which are symlinked)
-    find -L "$src" -type f \( -name "*.h" -o -name "*.hpp" -o -name "*.hxx" -o -name "*.inc" \) \
+    # Note: .inl files are used by GLM for inline implementations
+    find -L "$src" -type f \( -name "*.h" -o -name "*.hpp" -o -name "*.hxx" -o -name "*.inc" -o -name "*.inl" \) \
         -exec sh -c '
             src_base="$1"
             dest_base="$2"
