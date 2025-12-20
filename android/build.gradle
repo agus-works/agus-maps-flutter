@@ -103,21 +103,23 @@ android {
         // Pass CMake arguments based on build mode
         externalNativeBuild {
             cmake {
-                // Let CMake know if pre-built libraries are available
-                if (prebuiltDir.exists() && prebuiltDir.listFiles()?.length > 0) {
+                // Only use pre-built libraries for external consumers (not in-repo)
+                // In-repo builds (CI or local dev) should build from source using thirdparty/comaps
+                // Pre-built mode is for external consumers who don't have the full source
+                if (!isInRepo && prebuiltDir.exists() && prebuiltDir.listFiles()?.length > 0) {
                     arguments "-DUSE_PREBUILT_COMAPS=ON",
                               "-DPREBUILT_DIR=${prebuiltDir.absolutePath}"
                     println "Using pre-built CoMaps libraries from: ${prebuiltDir.absolutePath}"
-                } else if (!isInRepo) {
-                    println "Warning: Pre-built libraries not found and not in repo. Build may fail."
-                } else {
+                    
+                    // Pass headers directory for external consumers
+                    if (headersDir.exists() && file("${headersDir}/comaps").exists()) {
+                        arguments "-DCOMAPS_HEADERS_DIR=${headersDir.absolutePath}"
+                        println "Using downloaded headers from: ${headersDir.absolutePath}"
+                    }
+                } else if (isInRepo) {
                     println "Building CoMaps from source (in-repo development mode)"
-                }
-                
-                // Pass headers directory if available (for external consumers)
-                if (headersDir.exists() && file("${headersDir}/comaps").exists()) {
-                    arguments "-DCOMAPS_HEADERS_DIR=${headersDir.absolutePath}"
-                    println "Using downloaded headers from: ${headersDir.absolutePath}"
+                } else {
+                    println "Warning: Pre-built libraries not found and not in repo. Build may fail."
                 }
             }
         }
