@@ -67,26 +67,46 @@ set_target_properties(agus_maps_flutter PROPERTIES
 # ============================================================================
 if(USE_PREBUILT_COMAPS AND COMAPS_HEADERS_DIR)
   # External consumer: use downloaded headers
+  # Note: Include paths must match iOS podspec HEADER_SEARCH_PATHS
   target_include_directories(agus_maps_flutter PRIVATE
     "${COMAPS_HEADERS_DIR}/comaps"
     "${COMAPS_HEADERS_DIR}/comaps/libs"
+    "${COMAPS_HEADERS_DIR}/comaps/3party"
     "${COMAPS_HEADERS_DIR}/comaps/3party/boost"
     "${COMAPS_HEADERS_DIR}/comaps/3party/utfcpp/source"
     "${COMAPS_HEADERS_DIR}/comaps/3party/glm"
     "${COMAPS_HEADERS_DIR}/comaps/3party/pugixml/pugixml/src"
-    "${COMAPS_HEADERS_DIR}/comaps/3party"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/jansson/jansson/src"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/jansson"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/expat/expat/lib"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/icu/icu/source/common"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/icu/icu/source/i18n"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/freetype/include"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/harfbuzz/harfbuzz/src"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/minizip/minizip"
+    "${COMAPS_HEADERS_DIR}/comaps/3party/protobuf/protobuf/src"
   )
   message(STATUS "Using headers from: ${COMAPS_HEADERS_DIR}/comaps")
 else()
   # In-repo build: use thirdparty source headers
+  # Note: Include paths must match iOS podspec HEADER_SEARCH_PATHS
   target_include_directories(agus_maps_flutter PRIVATE
     "../thirdparty/comaps"
     "../thirdparty/comaps/libs"
+    "../thirdparty/comaps/3party"
     "../thirdparty/comaps/3party/boost"
     "../thirdparty/comaps/3party/utfcpp/source"
     "../thirdparty/comaps/3party/glm"
     "../thirdparty/comaps/3party/pugixml/pugixml/src"
-    "../thirdparty/comaps/3party"
+    "../thirdparty/comaps/3party/jansson/jansson/src"
+    "../thirdparty/comaps/3party/jansson"
+    "../thirdparty/comaps/3party/expat/expat/lib"
+    "../thirdparty/comaps/3party/icu/icu/source/common"
+    "../thirdparty/comaps/3party/icu/icu/source/i18n"
+    "../thirdparty/comaps/3party/freetype/include"
+    "../thirdparty/comaps/3party/harfbuzz/harfbuzz/src"
+    "../thirdparty/comaps/3party/minizip/minizip"
+    "../thirdparty/comaps/3party/protobuf/protobuf/src"
     "../thirdparty/comaps/android/sdk/src/main/cpp" 
   )
 endif()
