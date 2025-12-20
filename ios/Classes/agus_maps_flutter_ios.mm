@@ -189,19 +189,13 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
 }
 
 FFI_PLUGIN_EXPORT int comaps_deregister_map(const char* fullPath) {
-    NSLog(@"[AgusMapsFlutter] comaps_deregister_map: %s", fullPath);
+    NSLog(@"[AgusMapsFlutter] comaps_deregister_map: %s (not implemented)", fullPath);
     
-    if (!g_framework) {
-        return -1;
-    }
+    // TODO: Implement map deregistration when needed
+    // Framework only exposes const DataSource, and DeregisterMap requires non-const
+    // For MVP, maps are registered at startup and not deregistered at runtime
     
-    try {
-        g_framework->DeregisterMap(platform::LocalCountryFile::MakeTemporary(fullPath));
-        return 0;
-    } catch (std::exception const & e) {
-        NSLog(@"[AgusMapsFlutter] Exception deregistering map: %s", e.what());
-        return -2;
-    }
+    return -1;  // Not implemented
 }
 
 FFI_PLUGIN_EXPORT int comaps_get_registered_maps_count(void) {
