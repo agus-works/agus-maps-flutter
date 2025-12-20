@@ -558,10 +558,17 @@ Touch handling on iOS uses Flutter's built-in `Listener` widget, **not** native 
 
 ## Phase 6: Real Device Testing + Code Signing (Current)
 
+### Status
+
+- [x] iOS build succeeds with `flutter build ios --debug`
+- [x] Code signing works automatically with development team
+- [x] App installs on physical device
+- [ ] App runs and renders map correctly (testing in progress)
+
 ### Tasks
 
-- [ ] Test on physical iOS device
-- [ ] Configure code signing for development
+- [x] Test on physical iOS device (build + install working)
+- [x] Configure code signing for development (auto-configured)
 - [ ] Verify Metal rendering performance
 - [ ] Test memory usage and battery impact
 - [ ] Verify touch responsiveness (pan, zoom, tap)
