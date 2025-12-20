@@ -25,6 +25,8 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 #include <android/log.h>
 #include <jni.h>
 #include <android/native_window_jni.h>
+#include <chrono>
+#include <atomic>
 
 #include "base/logging.hpp"
 #include "map/framework.hpp"
@@ -32,6 +34,7 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 #include "drape/graphics_context_factory.hpp"
 #include "drape_frontend/visual_params.hpp"
 #include "drape_frontend/user_event_stream.hpp"
+#include "drape_frontend/active_frame_callback.hpp"
 #include "geometry/mercator.hpp"
 #include "agus_ogl.hpp"
 
@@ -120,6 +123,63 @@ static int g_surfaceHeight = 0;
 static float g_density = 2.0f;
 static bool g_drapeEngineCreated = false;
 
+// Frame notification timing for 60fps rate limiting (Option 2)
+static std::chrono::steady_clock::time_point g_lastFrameNotification;
+static constexpr auto kMinFrameInterval = std::chrono::milliseconds(16); // ~60fps
+static std::atomic<bool> g_frameNotificationPending{false};
+
+// JNI global refs for frame notification callback
+static JavaVM* g_javaVM = nullptr;
+static jobject g_pluginInstance = nullptr;
+static jmethodID g_notifyFrameReadyMethod = nullptr;
+
+/// Internal function to notify Android/Flutter about a new frame
+static void notifyFlutterFrameReady() {
+    // Rate limiting (Option 2): Enforce 60fps max
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = now - g_lastFrameNotification;
+    if (elapsed < kMinFrameInterval) {
+        return;  // Too soon, skip this notification
+    }
+    
+    // Throttle: if a notification is already pending, skip this one
+    bool expected = false;
+    if (!g_frameNotificationPending.compare_exchange_strong(expected, true)) {
+        return;  // Already a notification pending, skip
+    }
+    
+    g_lastFrameNotification = now;
+    
+    // Call back to Java/Flutter on the main thread
+    if (g_javaVM && g_pluginInstance && g_notifyFrameReadyMethod) {
+        JNIEnv* env = nullptr;
+        bool attached = false;
+        
+        int status = g_javaVM->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+        if (status == JNI_EDETACHED) {
+            if (g_javaVM->AttachCurrentThread(&env, nullptr) == JNI_OK) {
+                attached = true;
+            } else {
+                g_frameNotificationPending.store(false);
+                return;
+            }
+        }
+        
+        if (env) {
+            env->CallVoidMethod(g_pluginInstance, g_notifyFrameReadyMethod);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            }
+        }
+        
+        if (attached) {
+            g_javaVM->DetachCurrentThread();
+        }
+    }
+    
+    g_frameNotificationPending.store(false);
+}
+
 static void createDrapeEngineIfNeeded(int width, int height, float density) {
     if (g_drapeEngineCreated || !g_framework) {
         return;
@@ -134,6 +194,13 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
         __android_log_print(ANDROID_LOG_WARN, "AgusMapsFlutterNative", "createDrapeEngine: Factory not valid");
         return;
     }
+    
+    // Register active frame callback BEFORE creating DrapeEngine
+    // This callback is invoked only when isActiveFrame is true (Option 3)
+    df::SetActiveFrameCallback([]() {
+        notifyFlutterFrameReady();
+    });
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "createDrapeEngine: Active frame callback registered");
     
     Framework::DrapeCreationParams p;
     p.m_apiVersion = dp::ApiVersion::OpenGLES3;
@@ -419,4 +486,53 @@ FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
     
     __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
         "=== END point check ===");
+}
+
+// JNI_OnLoad - save JavaVM reference for frame notification callbacks
+extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    g_javaVM = vm;
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "JNI_OnLoad: JavaVM saved");
+    return JNI_VERSION_1_6;
+}
+
+// Initialize frame notification callback - called from Kotlin/Java plugin
+extern "C" JNIEXPORT void JNICALL
+Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeInitFrameCallback(
+    JNIEnv* env, jobject thiz) {
+    
+    // Create global reference to plugin instance
+    if (g_pluginInstance) {
+        env->DeleteGlobalRef(g_pluginInstance);
+    }
+    g_pluginInstance = env->NewGlobalRef(thiz);
+    
+    // Get the method ID for onFrameReady callback
+    jclass cls = env->GetObjectClass(thiz);
+    g_notifyFrameReadyMethod = env->GetMethodID(cls, "onFrameReady", "()V");
+    
+    if (g_notifyFrameReadyMethod) {
+        __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", 
+            "nativeInitFrameCallback: Frame notification callback initialized");
+    } else {
+        __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative", 
+            "nativeInitFrameCallback: Failed to find onFrameReady method");
+    }
+}
+
+// Cleanup frame notification callback
+extern "C" JNIEXPORT void JNICALL
+Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeCleanupFrameCallback(
+    JNIEnv* env, jobject thiz) {
+    
+    if (g_pluginInstance) {
+        env->DeleteGlobalRef(g_pluginInstance);
+        g_pluginInstance = nullptr;
+    }
+    g_notifyFrameReadyMethod = nullptr;
+    
+    // Clear the active frame callback
+    df::SetActiveFrameCallback(nullptr);
+    
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", 
+        "nativeCleanupFrameCallback: Frame notification callback cleaned up");
 }

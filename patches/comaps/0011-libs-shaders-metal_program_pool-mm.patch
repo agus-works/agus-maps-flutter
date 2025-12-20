@@ -1,0 +1,45 @@
+diff --git a/libs/shaders/metal_program_pool.mm b/libs/shaders/metal_program_pool.mm
+index 3803d93c..0e7a8bbd 100644
+--- a/libs/shaders/metal_program_pool.mm
++++ b/libs/shaders/metal_program_pool.mm
+@@ -217,7 +217,40 @@ MetalProgramPool::MetalProgramPool(id<MTLDevice> device)
+ {
+   ProgramParams::Init();
+ 
++  // Search for metallib in various bundles (main bundle, framework bundles)
+   NSString * libPath = [[NSBundle mainBundle] pathForResource:@"shaders_metal" ofType:@"metallib"];
++  
++  // If not found in main bundle, search in all loaded bundles (for CocoaPods/frameworks)
++  if (!libPath)
++  {
++    for (NSBundle *bundle in [NSBundle allBundles])
++    {
++      libPath = [bundle pathForResource:@"shaders_metal" ofType:@"metallib"];
++      if (libPath)
++      {
++        NSLog(@"Found shaders_metal.metallib in bundle: %@", [bundle bundlePath]);
++        break;
++      }
++    }
++  }
++  
++  // Also search in all frameworks
++  if (!libPath)
++  {
++    for (NSBundle *bundle in [NSBundle allFrameworks])
++    {
++      libPath = [bundle pathForResource:@"shaders_metal" ofType:@"metallib"];
++      if (libPath)
++      {
++        NSLog(@"Found shaders_metal.metallib in framework: %@", [bundle bundlePath]);
++        break;
++      }
++    }
++  }
++
++  CHECK(libPath != nil, ("shaders_metal.metallib not found in any bundle!"));
++  NSLog(@"Loading Metal shaders from: %@", libPath);
++
+   NSError * error = nil;
+   m_library = [m_device newLibraryWithFile:libPath error:&error];
+   if (error)

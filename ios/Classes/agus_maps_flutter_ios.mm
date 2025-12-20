@@ -14,6 +14,8 @@
 
 #include <string>
 #include <memory>
+#include <atomic>
+#include <chrono>
 
 // CoMaps Framework includes
 #include "base/logging.hpp"
@@ -22,6 +24,7 @@
 #include "drape/graphics_context_factory.hpp"
 #include "drape_frontend/visual_params.hpp"
 #include "drape_frontend/user_event_stream.hpp"
+#include "drape_frontend/active_frame_callback.hpp"
 #include "geometry/mercator.hpp"
 
 // Our Metal context factory
@@ -49,6 +52,9 @@ static int64_t g_textureId = -1;
 // Frame ready callback
 typedef void (*FrameReadyCallback)(void);
 static FrameReadyCallback g_frameReadyCallback = nullptr;
+
+// Forward declaration for active frame notification
+static void notifyFlutterFrameReady(void);
 
 #pragma mark - Logging
 
@@ -271,6 +277,13 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
         return;
     }
     
+    // Register active frame callback BEFORE creating DrapeEngine
+    // This callback is invoked only when isActiveFrame is true (Option 3)
+    df::SetActiveFrameCallback([]() {
+        notifyFlutterFrameReady();
+    });
+    NSLog(@"[AgusMapsFlutter] Active frame callback registered");
+    
     Framework::DrapeCreationParams p;
     p.m_apiVersion = dp::ApiVersion::Metal;  // Use Metal on iOS
     p.m_surfaceWidth = width;
@@ -383,12 +396,60 @@ extern "C" FFI_PLUGIN_EXPORT void agus_set_frame_ready_callback(FrameReadyCallba
     g_frameReadyCallback = callback;
 }
 
-extern "C" void agus_notify_frame_ready(void) {
+// Frame notification timing for 60fps rate limiting (Option 2)
+static std::chrono::steady_clock::time_point g_lastFrameNotification;
+static constexpr auto kMinFrameInterval = std::chrono::milliseconds(16); // ~60fps
+
+// Throttling flag to prevent queuing too many frame notifications
+static std::atomic<bool> g_frameNotificationPending{false};
+
+/// Internal function to notify Flutter about a new frame
+/// Called from the DrapeEngine render thread via df::SetActiveFrameCallback
+static void notifyFlutterFrameReady(void) {
+    // Rate limiting (Option 2): Enforce 60fps max
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = now - g_lastFrameNotification;
+    if (elapsed < kMinFrameInterval) {
+        return;  // Too soon, skip this notification
+    }
+    
+    // Throttle: if a notification is already pending, skip this one
+    // This prevents memory buildup from queued dispatch_async calls
+    bool expected = false;
+    if (!g_frameNotificationPending.compare_exchange_strong(expected, true)) {
+        return;  // Already a notification pending, skip
+    }
+    
+    g_lastFrameNotification = now;
+    
     if (g_frameReadyCallback) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            g_frameNotificationPending.store(false);
             g_frameReadyCallback();
         });
+    } else {
+        // Fallback: call Swift static method directly if no callback is set
+        dispatch_async(dispatch_get_main_queue(), ^{
+            g_frameNotificationPending.store(false);
+            // Use NSClassFromString to avoid direct Swift dependency
+            Class pluginClass = NSClassFromString(@"agus_maps_flutter.AgusMapsFlutterPlugin");
+            if (pluginClass) {
+                SEL selector = NSSelectorFromString(@"notifyFrameReadyFromNative");
+                if ([pluginClass respondsToSelector:selector]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                    [pluginClass performSelector:selector];
+#pragma clang diagnostic pop
+                }
+            }
+        });
     }
+}
+
+/// Legacy function for backward compatibility - now only used if Present() still calls it
+extern "C" void agus_notify_frame_ready(void) {
+    // This is now a no-op because we use df::SetActiveFrameCallback instead
+    // The callback is only invoked when isActiveFrame is true in FrontendRenderer
 }
 
 #pragma mark - Render Frame

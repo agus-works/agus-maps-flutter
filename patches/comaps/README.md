@@ -43,6 +43,21 @@ Fixes iOS CMakeLists.txt by:
 - Removing non-existent `http_user_agent_ios.mm` reference that causes CMake configuration to fail
 - Adding `http_session_manager.mm` which is needed for iOS networking
 
+### 0011-libs-shaders-metal_program_pool-mm.patch
+Fixes Metal shader library loading by searching multiple bundles for `shaders_metal.metallib`. Flutter plugins build the Metal shaders as a standalone library that gets bundled separately from the main app bundle. This patch extends the search path to find the library in either location.
+
+### 0012-active-frame-callback.patch
+Adds an efficient active frame callback mechanism to DrapeEngine's FrontendRenderer. This allows embedders (like Flutter plugins) to be notified only when map content actually changed (`isActiveFrame` is true), rather than on every Present() call.
+
+Changes:
+- Adds `active_frame_callback.hpp` and `active_frame_callback.cpp` with thread-safe callback registration
+- Modifies `frontend_renderer.cpp` to call `NotifyActiveFrame()` when `isActiveFrame` is true
+- Updates `CMakeLists.txt` to include the new files
+
+This enables:
+1. **Option 3 (Active Frame Detection)**: Only notify Flutter when content changed
+2. Combined with **Option 2 (60fps Rate Limiting)** in the plugin code for battery/CPU efficiency
+
 ## Policy
 
 - Prefer a clean bridge layer in this repo.

@@ -45,6 +45,12 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
     'Classes/AgusMetalContextFactory.h'
   ]
 
+  # Resource bundles for Metal shaders
+  # Use resource_bundles to ensure shaders end up in the app's main bundle
+  s.resource_bundles = {
+    'agus_maps_flutter_shaders' => ['Resources/shaders_metal.metallib']
+  }
+
   # Vendored CoMaps XCFramework (downloaded by prepare_command)
   s.vendored_frameworks = 'Frameworks/CoMaps.xcframework'
 
