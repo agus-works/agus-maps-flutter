@@ -78,6 +78,21 @@ class DownloadsTab extends StatefulWidget {
 }
 ```
 
+## Related: Download Streaming (Critical for iOS)
+
+Because `IndexedStack` keeps the map widget in memory during downloads, it's **critical** that downloads stream directly to disk rather than buffering in memory. Without streaming, downloading a 200MB+ map file while the map is retained would cause iOS to kill the app (`EXC_RESOURCE: high watermark memory limit exceeded`).
+
+**Solution:** `MirrorService.downloadToFile()` streams download chunks directly to an `IOSink` instead of accumulating in a `List<int>`. See [mirror_service.dart](../lib/mirror_service.dart).
+
+```dart
+// ✅ Correct: Stream to disk (constant memory)
+await mirrorService.downloadToFile(url, destinationFile, onProgress: ...);
+
+// ❌ Wrong: Buffer entire file in RAM (causes EXC_RESOURCE on iOS)
+final bytes = await mirrorService.downloadWithProgress(url, onProgress: ...);
+await file.writeAsBytes(bytes);
+```
+
 ## Decision
 
 **By Design** - This is the correct architecture for maintaining map state. The example app already passes `isVisible` to `DownloadsTab` for optimization.

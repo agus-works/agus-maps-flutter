@@ -219,6 +219,16 @@ class AgusMap extends StatefulWidget {
   /// If not provided, the map can only be controlled via gestures.
   final AgusMapController? controller;
 
+  /// Whether the map is currently visible.
+  ///
+  /// When false, resize operations are skipped to avoid unnecessary
+  /// memory allocations (e.g., CVPixelBuffer recreation on iOS).
+  /// This is important when using IndexedStack where the map widget
+  /// remains in the tree but is not visible.
+  ///
+  /// The resize will be applied when the map becomes visible again.
+  final bool isVisible;
+
   const AgusMap({
     super.key,
     this.initialLat,
@@ -226,6 +236,7 @@ class AgusMap extends StatefulWidget {
     this.initialZoom,
     this.onMapReady,
     this.controller,
+    this.isVisible = true,
   });
 
   @override
@@ -238,9 +249,30 @@ class _AgusMapState extends State<AgusMap> {
   bool _surfaceCreated = false;
   double _devicePixelRatio = 1.0;
 
+  // Track pending resize to apply when becoming visible
+  Size? _pendingResizeSize;
+  double? _pendingResizePixelRatio;
+
   @override
   void initState() {
     super.initState();
+  }
+
+  @override
+  void didUpdateWidget(AgusMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Apply pending resize when becoming visible
+    if (widget.isVisible && !oldWidget.isVisible) {
+      if (_pendingResizeSize != null && _pendingResizePixelRatio != null) {
+        debugPrint('[AgusMap] Applying deferred resize on visibility change');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _handleResize(_pendingResizeSize!, _pendingResizePixelRatio!);
+          _pendingResizeSize = null;
+          _pendingResizePixelRatio = null;
+        });
+      }
+    }
   }
 
   Future<void> _createSurface(Size logicalSize, double pixelRatio) async {
@@ -357,18 +389,28 @@ class _AgusMapState extends State<AgusMap> {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
         final pixelRatio = MediaQuery.of(context).devicePixelRatio;
 
-        // Create surface on first layout
+        // Create surface on first layout (only if visible)
         if (!_surfaceCreated && size.width > 0 && size.height > 0) {
-          // Use post-frame callback to avoid calling during build
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _createSurface(size, pixelRatio);
-          });
+          if (widget.isVisible) {
+            // Use post-frame callback to avoid calling during build
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _createSurface(size, pixelRatio);
+            });
+          }
         } else if (_surfaceCreated &&
             (_currentSize != size || _devicePixelRatio != pixelRatio)) {
           // Handle resize or pixel ratio change
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _handleResize(size, pixelRatio);
-          });
+          if (widget.isVisible) {
+            // Apply resize immediately when visible
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _handleResize(size, pixelRatio);
+            });
+          } else {
+            // Defer resize until visible to avoid unnecessary memory allocations
+            // (e.g., keyboard open/close causing CVPixelBuffer recreation on iOS)
+            _pendingResizeSize = size;
+            _pendingResizePixelRatio = pixelRatio;
+          }
         }
 
         if (_textureId == null) {
