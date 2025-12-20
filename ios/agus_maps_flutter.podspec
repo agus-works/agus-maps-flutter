@@ -138,11 +138,9 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
     ].join(' '),
     
     # Preprocessor definitions
-    'GCC_PREPROCESSOR_DEFINITIONS' => [
-      'OMIM_METAL_AVAILABLE=1',
-      'PLATFORM_IPHONE=1',
-      '$(inherited)'
-    ].join(' '),
+    # CoMaps requires either DEBUG or RELEASE/NDEBUG to be defined (see base/base.hpp)
+    # Base definitions that apply to all configurations
+    'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) OMIM_METAL_AVAILABLE=1 PLATFORM_IPHONE=1',
   }
   
   # User target settings

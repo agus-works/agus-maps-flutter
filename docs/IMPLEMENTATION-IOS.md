@@ -78,6 +78,35 @@ flutter build ios --simulator --debug
 flutter run -d "iPhone 15 Pro Simulator"
 ```
 
+### Standalone Launch (Without Connected Laptop)
+
+**Important:** Debug builds **cannot** be launched standalone from the iOS home screen. This is a Flutter/iOS security restriction.
+
+If you try to launch a debug build from the home screen (without Xcode or Flutter tools connected), the app will fail immediately with:
+
+```
+[ERROR:flutter/runtime/ptrace_check.cc(75)] Could not call ptrace(PT_TRACE_ME): Operation not permitted
+
+Cannot create a FlutterEngine instance in debug mode without Flutter tooling or Xcode.
+To launch in debug mode in iOS 14+, run flutter run from Flutter tools, run from an IDE 
+with a Flutter IDE plugin or run the iOS project from Xcode.
+Alternatively profile and release mode apps can be launched from the home screen.
+```
+
+**Solution:** Use Release or Profile mode for standalone device testing:
+
+```bash
+cd example
+
+# Release mode (recommended for standalone use)
+flutter run --release -d <device-id>
+
+# Or Profile mode (includes profiling hooks)
+flutter run --profile -d <device-id>
+```
+
+After installing via `flutter run --release`, you can disconnect the laptop and launch the app from the home screen.
+
 ---
 
 ## Goal
@@ -447,7 +476,59 @@ class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
 }
 ```
 
-### 2. CVPixelBuffer with IOSurface (Zero-Copy)
+### 2. AgusMetalDrawable (Fake CAMetalDrawable)
+
+Since we render to a CVPixelBuffer for Flutter's `FlutterTexture` instead of a `CAMetalLayer`, we need a custom implementation of `CAMetalDrawable`. This is explicitly against Apple's documentation which states "Don't implement this protocol yourself."
+
+However, CoMaps' `MetalBaseContext` expects a `CAMetalDrawable` to render into. Our `AgusMetalDrawable` wraps a CVPixelBuffer-backed `MTLTexture` and presents it as a drawable.
+
+#### Private Methods Problem
+
+`CAMetalDrawable` has many **private/undocumented methods** that Metal framework calls internally during:
+- Command buffer submission
+- Drawable lifecycle management  
+- GPU-CPU synchronization
+- Internal caching and reference counting
+
+When these private methods are missing, the app crashes with:
+```
+'-[AgusMetalDrawable touch]: unrecognized selector sent to instance'
+'-[AgusMetalDrawable baseObject]: unrecognized selector sent to instance'
+```
+
+#### Why Crashes Only on Second Launch?
+
+The crashes typically occur on the **second app launch** (not the first) due to:
+
+1. **Metal Internal State Caching:** On first launch, Metal initializes fresh state. On subsequent launches, Metal may take different code paths that access cached drawable behaviors, triggering calls to private methods that weren't called during initial setup.
+
+2. **Framework Recreation Timing:** On cold start with persisted settings (like `settings.ini`), the Framework initialization sequence differs. It may skip certain "first-run" paths and exercise different Metal API interactions.
+
+3. **CoMaps State Restoration:** When the app has cached map state (view position, loaded tiles), DrapeEngine's initialization triggers different rendering paths that call additional drawable methods.
+
+4. **Background/Foreground Transitions:** If the app was backgrounded and reopened, Metal's internal drawable pool management may call lifecycle methods not used during initial creation.
+
+#### Implemented Private Methods
+
+| Method | Purpose |
+|--------|---------|
+| `touch` | Marks drawable as in-use for lifecycle tracking |
+| `baseObject` | Returns underlying object for internal management |
+| `drawableSize` | Returns drawable dimensions for calculations |
+| `iosurface` | Returns IOSurface (nil for us - managed separately) |
+| `isValid` | Checks if drawable can still be rendered to |
+| `addPresentScheduledHandler:` | Schedules presentation callbacks |
+| `setDrawableAvailableSemaphore:` | GPU-CPU synchronization |
+| `drawableAvailableSemaphore` | Returns synchronization semaphore |
+
+#### Future-Proofing
+
+If new crashes occur with "unrecognized selector", check the crash log for the method name and add a stub implementation that either:
+- Returns a sensible default (`nil`, `0`, `self`, `YES`)
+- Calls handlers immediately (for block-based methods)
+- Does nothing (for notification/lifecycle methods)
+
+### 3. CVPixelBuffer with IOSurface (Zero-Copy)
 
 ```objc
 // Create CVPixelBuffer backed by IOSurface for zero-copy GPU sharing
@@ -465,7 +546,7 @@ CVPixelBufferCreate(kCFAllocatorDefault, width, height,
                     &pixelBuffer);
 ```
 
-### 3. Metal Texture from CVPixelBuffer
+### 4. Metal Texture from CVPixelBuffer
 
 ```objc
 // Create Metal texture cache
@@ -481,7 +562,7 @@ CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, textureCache,
 id<MTLTexture> metalTexture = CVMetalTextureGetTexture(cvMetalTexture);
 ```
 
-### 4. GUI Thread (dispatch_async)
+### 5. GUI Thread (dispatch_async)
 
 ```objc
 // Post task to iOS main thread
@@ -565,6 +646,71 @@ Builds the Flutter example app for iOS simulator:
 - [x] Surface creation with CVPixelBuffer
 - [x] Texture ID returned to Flutter
 - [x] Map registration FFI call succeeds (returns 0)
+
+### Build Configuration: DEBUG/RELEASE Preprocessor Definitions
+
+CoMaps' `base/base.hpp` has a compile-time assertion that requires **exactly one** of `DEBUG` or `RELEASE`/`NDEBUG` to be defined:
+
+```cpp
+#if defined(DEBUG)
+  #define MY_DEBUG_DEFINED 1
+#else
+  #define MY_DEBUG_DEFINED 0
+#endif
+
+#if defined(NDEBUG) || defined(RELEASE)
+  #define MY_RELEASE_DEFINED 1
+#else
+  #define MY_RELEASE_DEFINED 0
+#endif
+
+static_assert(MY_DEBUG_DEFINED ^ MY_RELEASE_DEFINED, 
+    "Either Debug or Release should be defined, but not both");
+```
+
+#### Problem
+
+When building Release mode for iOS, the build would fail with:
+```
+Static assertion failed: Either Debug or Release should be defined, but not both
+```
+
+This happens because:
+1. Xcode's Release configuration defines `NDEBUG` automatically
+2. But the podspec also needs to set `RELEASE=1` for CoMaps' internal code paths
+3. Similarly, Debug configuration needs `DEBUG=1` explicitly
+
+#### Solution: Podfile post_install Hook
+
+The fix requires adding configuration-specific preprocessor definitions via a `post_install` hook in the example app's `Podfile`:
+
+```ruby
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      # Existing settings...
+      
+      # Add DEBUG/RELEASE definitions for CoMaps
+      if config.name == 'Debug'
+        existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = existing + ['DEBUG=1']
+      else
+        # Release and Profile configurations
+        existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = existing + ['NDEBUG=1', 'RELEASE=1']
+      end
+    end
+  end
+end
+```
+
+After modifying the Podfile, regenerate the Xcode project:
+
+```bash
+cd example/ios
+rm -rf Pods Podfile.lock
+pod install
+```
 
 ### Known Limitations (Current State)
 - ⚠️ Metal-only (no OpenGL ES fallback)
