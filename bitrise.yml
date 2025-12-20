@@ -327,6 +327,19 @@ workflows:
             echo "=== XCFramework built ==="
             ls -la ios/Frameworks/
     - script@1:
+        title: Bundle iOS Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            echo "=== Bundling iOS headers for external consumers ==="
+            chmod +x scripts/bundle_ios_headers.sh
+            ./scripts/bundle_ios_headers.sh
+
+            echo "=== Headers tarball created ==="
+            ls -lh ios/CoMaps-headers.tar.gz
+    - script@1:
         title: Prepare XCFramework Artifact
         inputs:
         - content: |
@@ -338,15 +351,22 @@ workflows:
             # Zip the XCFramework
             cd ios/Frameworks
             zip -r $BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip CoMaps.xcframework
+            cd ../..
 
-            echo "=== XCFramework artifact ==="
+            # Copy headers tarball
+            cp ios/CoMaps-headers.tar.gz $BITRISE_DEPLOY_DIR/
+
+            echo "=== iOS artifacts ==="
             ls -lh $BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip
+            ls -lh $BITRISE_DEPLOY_DIR/CoMaps-headers.tar.gz
 
             envman add --key XCFRAMEWORK_PATH --value "$BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip"
+            envman add --key HEADERS_PATH --value "$BITRISE_DEPLOY_DIR/CoMaps-headers.tar.gz"
     - deploy-to-bitrise-io@2:
         inputs:
         - pipeline_intermediate_files: |-
             $BITRISE_DEPLOY_DIR/CoMaps.xcframework.zip:XCFRAMEWORK_PATH
+            $BITRISE_DEPLOY_DIR/CoMaps-headers.tar.gz:HEADERS_PATH
     meta:
       bitrise.io:
         stack: osx-xcode-16.4.x
@@ -523,9 +543,15 @@ workflows:
 
             #### iOS
             - **CoMaps.xcframework.zip** - Pre-built CoMaps native libraries for iOS
+            - **CoMaps-headers.tar.gz** - Header files required for iOS compilation
             - **agus-maps-ios-simulator.app.zip** - iOS Simulator app (unsigned, for testing)
 
-            ### Installation
+            ### Plugin Installation
+
+            When you add this plugin to your Flutter project, the iOS build will automatically
+            download `CoMaps.xcframework.zip` and `CoMaps-headers.tar.gz` during `pod install`.
+
+            ### Installation (Example App)
 
             #### Android
             ```bash
@@ -550,6 +576,7 @@ workflows:
             $APK_PATH
             $BUILD_INFO_PATH
             $XCFRAMEWORK_PATH
+            $HEADERS_PATH
             $IOS_SIMULATOR_APP_PATH
     meta:
       bitrise.io:

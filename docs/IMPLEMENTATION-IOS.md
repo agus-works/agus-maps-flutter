@@ -329,6 +329,63 @@ s.vendored_frameworks = 'Frameworks/CoMaps.xcframework'
 
 ---
 
+## Plugin Distribution for External Consumers
+
+### Overview
+
+When developers install this plugin in their own Flutter projects (via pub.dev or git), they need:
+1. **CoMaps.xcframework.zip** — Pre-built static libraries
+2. **CoMaps-headers.tar.gz** — Header files required for compilation
+
+Both artifacts are published to GitHub Releases and automatically downloaded during `pod install`.
+
+### In-Repo vs External Consumer Detection
+
+The download script uses dual-mode detection:
+
+| Scenario | Detection | Behavior |
+|----------|-----------|----------|
+| **In-repo (example app)** | `.git` exists AND `thirdparty/comaps` exists | Skip download, use local headers |
+| **External consumer** | No `.git` or no `thirdparty/comaps` | Download from GitHub Releases, fail loudly on error |
+
+### Header Distribution
+
+External consumers don't have access to `thirdparty/comaps/` (it's git-ignored and not published). Instead:
+
+1. **Bitrise CI** bundles all headers from `thirdparty/comaps/` into `CoMaps-headers.tar.gz`
+2. **Download script** fetches and extracts headers to `ios/Headers/`
+3. **Podspec** uses conditional header paths:
+   - In-repo: `$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/...`
+   - External: `$(PODS_TARGET_SRCROOT)/Headers/...`
+
+### Version Verification
+
+The download script verifies that the GitHub Release version matches `pubspec.yaml`:
+- Extracts version from `pubspec.yaml` (e.g., `0.0.1`)
+- Downloads from `https://github.com/.../releases/download/v0.0.1/`
+- **Fails loudly** if version mismatch or download fails (external consumers only)
+
+### GitHub Release Artifacts
+
+Each release includes:
+
+| Artifact | Size (approx) | Purpose |
+|----------|---------------|---------|
+| `CoMaps.xcframework.zip` | ~150MB | Pre-built static libraries (device + simulator) |
+| `CoMaps-headers.tar.gz` | ~50-100MB | Header files for compilation |
+| `agus-maps-android.aab` | ~50MB | Android App Bundle |
+| `agus-maps-android.apk` | ~80MB | Universal Android APK |
+
+### Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/bundle_ios_headers.sh` | Bundles headers from `thirdparty/comaps/` into tarball |
+| `scripts/download_ios_xcframework.sh` | Downloads XCFramework + headers (dual-mode) |
+| `scripts/build_ios_xcframework.sh` | Builds XCFramework from source |
+
+---
+
 ## File Structure
 
 ### Plugin Files (ios/)
