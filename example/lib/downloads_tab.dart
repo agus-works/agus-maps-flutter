@@ -439,22 +439,10 @@ class _DownloadsTabState extends State<DownloadsTab> {
           '${storageSpace.usagePercent}% used',
         );
       } else {
-        // Desktop platforms - use df command
-        final dir = await getApplicationDocumentsDirectory();
-        final stat = await Process.run('df', ['-B1', dir.path]);
-        if (stat.exitCode == 0) {
-          final lines = (stat.stdout as String).split('\n');
-          if (lines.length > 1) {
-            final parts = lines[1].split(RegExp(r'\s+'));
-            if (parts.length >= 4) {
-              _availableSpaceBytes = int.tryParse(parts[3]) ?? 0;
-              debugPrint(
-                '[Downloads] Disk space from df: '
-                '${(_availableSpaceBytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB free',
-              );
-            }
-          }
-        }
+        // Desktop platforms (macOS, Linux, Windows) - skip disk space check
+        // Use a large default to allow downloads without restrictions
+        _availableSpaceBytes = 100 * 1024 * 1024 * 1024; // 100 GB
+        debugPrint('[Downloads] Desktop platform - skipping disk space check');
       }
     } catch (e, stackTrace) {
       debugPrint('[Downloads] Error getting disk space: $e');

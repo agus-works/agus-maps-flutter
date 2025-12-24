@@ -1,0 +1,12 @@
+diff --git a/3party/icu/CMakeLists.txt b/3party/icu/CMakeLists.txt
+index 7b8df431..715be69d 100644
+--- a/3party/icu/CMakeLists.txt
++++ b/3party/icu/CMakeLists.txt
+@@ -144,6 +144,7 @@ add_library(icuuc
+   icu/icu4c/source/common/uprops.h
+   icu/icu4c/source/common/uresbund.cpp
+   icu/icu4c/source/common/uresdata.cpp
++  icu/icu4c/source/common/ures_cnv.cpp
+   icu/icu4c/source/common/uresimp.h
+   icu/icu4c/source/common/uscript.cpp
+   icu/icu4c/source/common/uscript_props.cpp
