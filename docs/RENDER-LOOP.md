@@ -1,6 +1,6 @@
 # Render Loop Comparison: CoMaps Native vs Flutter Plugin
 
-This document provides a detailed comparison between CoMaps' native app render loop (using DrapeEngine) and our Flutter plugin implementations on iOS and Android. This serves as a reference for achieving implementation parity and for future ports to macOS, Windows, and Linux.
+This document provides a detailed comparison between CoMaps' native app render loop (using DrapeEngine) and our Flutter plugin implementations on iOS, Android, and macOS. This serves as a reference for achieving implementation parity and for future ports to Windows and Linux.
 
 ---
 
@@ -696,18 +696,54 @@ public void onFrameReady() {
 
 ## 11. Future Platform Notes (macOS, Windows, Linux)
 
-### macOS
+### macOS (Implemented)
 
-**Expected approach:**
-- Similar to iOS but using `NSView` + `CAMetalLayer` or offscreen CVPixelBuffer
-- Metal API available, same as iOS
-- `AgusMetalContextFactory` can be reused with minor changes
+**Implementation approach:**
+- Same as iOS: CVPixelBuffer backed by IOSurface for zero-copy GPU texture sharing
+- Metal API identical between iOS and macOS
+- `AgusMetalContextFactory` reused directly from iOS implementation
 - Frame notification via `DispatchQueue.main.async`
+- Uses `FlutterMacOS` framework with `FlutterTexture` protocol
 
-**Key considerations:**
-- AppKit vs UIKit differences
-- No `CVPixelBuffer` on macOS - may need `IOSurface` directly or `MTKView`
-- Window resizing is common - ensure smooth resize handling
+**Thread Architecture:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Main Thread (macOS)                              │
+│  • Flutter engine runs here                                          │
+│  • AgusMapsFlutterPlugin.swift handles MethodChannel                │
+│  • CVPixelBuffer creation and texture registration                  │
+│  • textureFrameAvailable() called here (via DispatchQueue.main)     │
+└───────────────────────────────┬─────────────────────────────────────┘
+                                │ CVPixelBuffer shared (IOSurface)
+                                ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                      FrontendRenderer Thread                          │
+│  • Same as native - managed by DrapeEngine                           │
+│  • Renders to MTLTexture backed by CVPixelBuffer                     │
+│  • df::NotifyActiveFrame() → DispatchQueue.main → Flutter            │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                      BackendRenderer Thread                           │
+│  • Same as native - managed by DrapeEngine                           │
+│  • Uses UploadMetalContext (headless)                                │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**Key differences from iOS:**
+- Uses `AppKit` instead of `UIKit`
+- Data stored in `~/Library/Application Support/<bundle>` instead of Documents
+- `NSScreen.main?.backingScaleFactor` instead of `UIScreen.main.scale`
+- Minimum deployment: macOS 12.0 (Monterey) for Metal 3 features
+- Window resizing is common - Metal context handles resize via `UpdateSurface()`
+
+**Files:**
+- Plugin: `macos/Classes/AgusMapsFlutterPlugin.swift`
+- Metal context: `macos/Classes/AgusMetalContextFactory.mm` (identical to iOS)
+- FFI bridge: `macos/Classes/agus_maps_flutter_macos.mm`
+- Platform init: `macos/Classes/AgusPlatformMacOS.mm`
 
 ### Windows
 
@@ -755,8 +791,8 @@ For all desktop platforms, consider:
 
 3. **Configuration via compile-time flags**:
    ```cpp
-   #if defined(AGUS_PLATFORM_MACOS)
-   // Metal
+   #if defined(AGUS_PLATFORM_MACOS) || defined(PLATFORM_MAC)
+   // Metal - same as iOS
    #elif defined(AGUS_PLATFORM_WINDOWS)
    // Vulkan or DX11
    #elif defined(AGUS_PLATFORM_LINUX)
@@ -771,6 +807,7 @@ For all desktop platforms, consider:
 - CoMaps source: `thirdparty/comaps/libs/drape_frontend/frontend_renderer.cpp`
 - CoMaps Metal context: `thirdparty/comaps/libs/drape/metal/metal_base_context.mm`
 - iOS implementation: `ios/Classes/AgusMetalContextFactory.mm`, `agus_maps_flutter_ios.mm`
+- macOS implementation: `macos/Classes/AgusMetalContextFactory.mm`, `agus_maps_flutter_macos.mm`
 - Android implementation: `src/agus_ogl.cpp`, `src/agus_maps_flutter.cpp`
 - Active frame callback patch: `patches/comaps/0012-active-frame-callback.patch`
 

@@ -1,0 +1,122 @@
+diff --git a/libs/platform/platform_mac.mm b/libs/platform/platform_mac.mm
+index ec5d7482..64d7687f 100644
+--- a/libs/platform/platform_mac.mm
++++ b/libs/platform/platform_mac.mm
+@@ -1,14 +1,24 @@
+ #include "platform/platform.hpp"
++#include "platform/platform_unix_impl.hpp"
++#include "platform/measurement_utils.hpp"
++#include "platform/settings.hpp"
+ 
+ #include "base/file_name_utils.hpp"
+ #include "base/logging.hpp"
+ 
++#include "coding/file_reader.hpp"
++
+ #include "std/target_os.hpp"
+ 
+ #include <memory>
++#include <sstream>
+ #include <string>
+ #include <utility>
+ 
++#include <boost/regex.hpp>
++
++#include <mach/mach.h>
++
+ #include <Foundation/NSAutoreleasePool.h>
+ #include <Foundation/NSBundle.h>
+ #include <Foundation/NSFileManager.h>
+@@ -207,3 +217,92 @@ time_t Platform::GetFileModificationTime(std::string const & path)
+   // TODO(AB): Refactor to return std::optional<time_t>.
+   return 0;
+ }
++
++// static
++Platform::EError Platform::MkDir(std::string const & dirName)
++{
++  if (::mkdir(dirName.c_str(), 0755))
++    return ErrnoToError();
++  return Platform::ERR_OK;
++}
++
++void Platform::GetFilesByRegExp(std::string const & directory, boost::regex const & regexp, FilesList & res)
++{
++  pl::EnumerateFilesByRegExp(directory, regexp, res);
++}
++
++void Platform::GetAllFiles(std::string const & directory, FilesList & res)
++{
++  pl::EnumerateFiles(directory, res);
++}
++
++bool Platform::GetFileSizeByName(std::string const & fileName, uint64_t & size) const
++{
++  try
++  {
++    return GetFileSizeByFullPath(ReadPathForFile(fileName), size);
++  }
++  catch (RootException const &)
++  {
++    return false;
++  }
++}
++
++std::unique_ptr<ModelReader> Platform::GetReader(std::string const & file, std::string searchScope) const
++{
++  return std::make_unique<FileReader>(ReadPathForFile(file, std::move(searchScope)), READER_CHUNK_LOG_SIZE,
++                                      READER_CHUNK_LOG_COUNT);
++}
++
++int Platform::VideoMemoryLimit() const { return 8 * 1024 * 1024; }
++
++int Platform::PreCachingDepth() const { return 2; }
++
++std::string Platform::GetMemoryInfo() const
++{
++  struct task_basic_info info;
++  mach_msg_type_number_t size = sizeof(info);
++  kern_return_t const kerr =
++      task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t)&info, &size);
++  std::stringstream ss;
++  if (kerr == KERN_SUCCESS)
++  {
++    ss << "Memory info: Resident_size = " << info.resident_size / 1024
++       << "KB; virtual_size = " << info.resident_size / 1024
++       << "KB; suspend_count = " << info.suspend_count << " policy = " << info.policy;
++  }
++  else
++  {
++    ss << "Error with task_info(): " << mach_error_string(kerr);
++  }
++  return ss.str();
++}
++
++std::string Platform::Version() const
++{
++  /// @note Do not change version format, it is parsed on server side.
++  NSBundle * mainBundle = [NSBundle mainBundle];
++  NSString * version = [mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
++  NSString * build = [mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"];
++  if (version && build)
++    return std::string{version.UTF8String} + '-' + build.UTF8String + '-' + OMIM_OS_NAME;
++  return std::string{"0.0.0-0-"} + OMIM_OS_NAME;
++}
++
++void Platform::SetupMeasurementSystem() const
++{
++  auto units = measurement_utils::Units::Metric;
++  if (settings::Get(settings::kMeasurementUnits, units))
++    return;
++  BOOL const isMetric =
++      [[[NSLocale autoupdatingCurrentLocale] objectForKey:NSLocaleUsesMetricSystem] boolValue];
++  units = isMetric ? measurement_utils::Units::Metric : measurement_utils::Units::Imperial;
++  settings::Set(settings::kMeasurementUnits, units);
++}
++
++////////////////////////////////////////////////////////////////////////
++extern Platform & GetPlatform()
++{
++  static Platform platform;
++  return platform;
++}

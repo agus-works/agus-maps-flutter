@@ -51,6 +51,7 @@ usage() {
     echo "Platforms:"
     echo "  ios      Download iOS XCFramework and headers"
     echo "  android  Download Android static libraries and headers"
+    echo "  macos    Download macOS XCFramework and headers"
     echo ""
     echo "Environment variables:"
     echo "  LIBS_VERSION    Version tag to download (default: from pubspec.yaml)"
@@ -401,6 +402,150 @@ main_android_external() {
 }
 
 # ============================================================================
+# macOS Platform Functions
+# ============================================================================
+
+setup_macos_paths() {
+    MACOS_OUTPUT_DIR="$ROOT_DIR/macos/Frameworks"
+    MACOS_HEADERS_DIR="$ROOT_DIR/macos/Headers"
+    MACOS_RESOURCES_DIR="$ROOT_DIR/macos/Resources"
+    MACOS_XCFRAMEWORK_PATH="$MACOS_OUTPUT_DIR/CoMaps.xcframework"
+    MACOS_XCFRAMEWORK_ZIP="$MACOS_OUTPUT_DIR/agus-binaries-macos.zip"
+    MACOS_HEADERS_TAR="$MACOS_HEADERS_DIR/agus-headers.tar.gz"
+}
+
+download_macos_binaries() {
+    local version=$1
+    download_file "$version" "agus-binaries-macos.zip" "$MACOS_XCFRAMEWORK_ZIP"
+}
+
+download_macos_headers() {
+    local version=$1
+    download_file "$version" "agus-headers.tar.gz" "$MACOS_HEADERS_TAR"
+}
+
+extract_macos_binaries() {
+    log_info "Extracting macOS XCFramework..."
+    
+    rm -rf "$MACOS_XCFRAMEWORK_PATH"
+    unzip -q -o "$MACOS_XCFRAMEWORK_ZIP" -d "$MACOS_OUTPUT_DIR"
+    rm -f "$MACOS_XCFRAMEWORK_ZIP"
+    
+    if [[ ! -d "$MACOS_XCFRAMEWORK_PATH" ]]; then
+        log_error "XCFramework extraction failed - directory not found"
+        exit 1
+    fi
+    
+    log_info "Extracted to: $MACOS_XCFRAMEWORK_PATH"
+}
+
+extract_macos_headers() {
+    log_info "Extracting headers..."
+    
+    find "$MACOS_HEADERS_DIR" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \; 2>/dev/null || true
+    tar -xzf "$MACOS_HEADERS_TAR" -C "$MACOS_HEADERS_DIR"
+    rm -f "$MACOS_HEADERS_TAR"
+    
+    if [[ ! -d "$MACOS_HEADERS_DIR/comaps" ]]; then
+        log_error "Headers extraction failed - comaps directory not found"
+        exit 1
+    fi
+    
+    log_info "Extracted to: $MACOS_HEADERS_DIR/comaps"
+}
+
+check_existing_macos_binaries() {
+    if [[ -d "$MACOS_XCFRAMEWORK_PATH" && -f "$MACOS_XCFRAMEWORK_PATH/Info.plist" ]]; then
+        if [[ "${FORCE_DOWNLOAD:-}" != "true" ]]; then
+            log_info "XCFramework already exists at $MACOS_XCFRAMEWORK_PATH"
+            return 0
+        fi
+        log_info "Force download requested, re-downloading..."
+    fi
+    return 1
+}
+
+check_existing_macos_headers() {
+    if [[ -d "$MACOS_HEADERS_DIR/comaps" ]]; then
+        if [[ "${FORCE_DOWNLOAD:-}" != "true" ]]; then
+            log_info "Headers already exist at $MACOS_HEADERS_DIR/comaps"
+            return 0
+        fi
+        log_info "Force download requested, re-downloading..."
+    fi
+    return 1
+}
+
+main_macos_in_repo() {
+    log_info "========================================="
+    log_info "CoMaps macOS Setup (In-Repo Build)"
+    log_info "========================================="
+    log_info ""
+    log_info "Detected in-repo development environment."
+    log_info "Using local thirdparty headers from:"
+    log_info "  $ROOT_DIR/thirdparty/comaps"
+    log_info ""
+    
+    setup_macos_paths
+    mkdir -p "$MACOS_OUTPUT_DIR"
+    mkdir -p "$MACOS_RESOURCES_DIR"
+    
+    if check_existing_macos_binaries; then
+        log_info "XCFramework ready!"
+    else
+        local version
+        version=$(get_version)
+        log_info "Attempting to download XCFramework ($version)..."
+        download_macos_binaries "$version"
+        extract_macos_binaries
+    fi
+    
+    log_info "========================================="
+    log_info "In-repo macOS setup complete!"
+    log_info "========================================="
+}
+
+main_macos_external() {
+    log_info "========================================="
+    log_info "CoMaps macOS Setup (External Consumer)"
+    log_info "========================================="
+    
+    setup_macos_paths
+    mkdir -p "$MACOS_OUTPUT_DIR"
+    mkdir -p "$MACOS_HEADERS_DIR"
+    mkdir -p "$MACOS_RESOURCES_DIR"
+    
+    local version
+    version=$(get_version)
+    log_info "Plugin version: $version"
+    
+    local needs_binaries=false
+    local needs_headers=false
+    
+    if ! check_existing_macos_binaries; then
+        needs_binaries=true
+    fi
+    
+    if ! check_existing_macos_headers; then
+        needs_headers=true
+    fi
+    
+    if [[ "$needs_binaries" == "true" ]]; then
+        download_macos_binaries "$version"
+        extract_macos_binaries
+    fi
+    
+    if [[ "$needs_headers" == "true" ]]; then
+        download_macos_headers "$version"
+        extract_macos_headers
+    fi
+    
+    log_info "========================================="
+    log_info "External consumer macOS setup complete!"
+    log_info "========================================="
+}
+
+# ============================================================================
 # Main Entry Point
 # ============================================================================
 
@@ -424,6 +569,13 @@ main() {
                 main_android_in_repo
             else
                 main_android_external
+            fi
+            ;;
+        macos)
+            if is_in_repo; then
+                main_macos_in_repo
+            else
+                main_macos_external
             fi
             ;;
         *)
