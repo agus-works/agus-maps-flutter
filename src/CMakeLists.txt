@@ -32,6 +32,7 @@ endif()
 if(NOT USE_PREBUILT_COMAPS)
   # CoMaps Options - only needed when building from source
   set(SKIP_TESTS ON CACHE BOOL "" FORCE)
+  set(SKIP_QT ON CACHE BOOL "" FORCE)
   set(SKIP_QT_GUI ON CACHE BOOL "" FORCE)
   set(WITH_SYSTEM_PROVIDED_3PARTY OFF CACHE BOOL "" FORCE)
   set(SKIP_ANDROID_JNI ON CACHE BOOL "" FORCE)

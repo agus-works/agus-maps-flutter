@@ -103,6 +103,7 @@ build_for_platform() {
         -DPLATFORM_IPHONE=ON \
         -DPLATFORM_DESKTOP=OFF \
         -DSKIP_TESTS=ON \
+        -DSKIP_QT=ON \
         -DSKIP_QT_GUI=ON \
         -DSKIP_TOOLS=ON \
         -DSKIP_PROTOBUF_CHECK=ON \

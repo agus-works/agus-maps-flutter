@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d0ecf6e3..de69c6cd 100644
+index d0ecf6e3..55056731 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -150,7 +150,7 @@ find_package(Threads REQUIRED)
@@ -11,18 +11,18 @@ index d0ecf6e3..de69c6cd 100644
    list(APPEND qt_components Core Network)
    if (NOT SKIP_QT_GUI OR NOT SKIP_TESTS OR PYBINDINGS)
      list(APPEND qt_components Widgets)
-@@ -212,26 +212,28 @@ endif()
+@@ -212,26 +212,29 @@ endif()
  # Fix for #include <boost/regex.hpp>
  include_directories("${OMIM_ROOT}/3party/boost")
  
 -# Used in qt/ and shaders/
--find_package(Python3 REQUIRED COMPONENTS Interpreter)
-+# Used in qt/ and shaders/ - only needed for desktop builds with Qt
-+if (PLATFORM_DESKTOP AND NOT SKIP_QT)
-+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
++# Python3 is used in shaders/ for shader preprocessing (all platforms)
+ find_package(Python3 REQUIRED COMPONENTS Interpreter)
  
 -execute_process(
 -    COMMAND ${Python3_EXECUTABLE} -c "import google.protobuf; 
++# Protobuf check is only needed for desktop builds with Qt (generator tools)
++if (PLATFORM_DESKTOP AND NOT SKIP_QT)
 +  execute_process(
 +      COMMAND ${Python3_EXECUTABLE} -c "import google.protobuf; 
  print(google.protobuf.__version__)"
