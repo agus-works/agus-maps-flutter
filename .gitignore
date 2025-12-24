@@ -44,3 +44,12 @@ ios/Headers/
 
 # iOS headers staging directory (created during bundle_ios_headers.sh)
 build/ios_headers_staging/
+
+# macOS vendored frameworks (downloaded during pod install)
+macos/Frameworks/
+
+# macOS resources (copied during build)
+macos/Resources/
+
+# Android native libraries (downloaded during build)
+android/src/main/jniLibs/
