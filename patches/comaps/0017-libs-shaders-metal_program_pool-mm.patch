@@ -1,5 +1,5 @@
 diff --git a/libs/shaders/metal_program_pool.mm b/libs/shaders/metal_program_pool.mm
-index 0e7a8bbd..94709add 100644
+index 3803d93c..94709add 100644
 --- a/libs/shaders/metal_program_pool.mm
 +++ b/libs/shaders/metal_program_pool.mm
 @@ -5,6 +5,8 @@
@@ -11,10 +11,40 @@ index 0e7a8bbd..94709add 100644
  #include <cstdint>
  #include <utility>
  #include <vector>
-@@ -247,6 +249,99 @@ MetalProgramPool::MetalProgramPool(id<MTLDevice> device)
-       }
-     }
-   }
+@@ -217,7 +219,133 @@ MetalProgramPool::MetalProgramPool(id<MTLDevice> device)
+ {
+   ProgramParams::Init();
+ 
++  // Search for metallib in various bundles (main bundle, framework bundles)
+   NSString * libPath = [[NSBundle mainBundle] pathForResource:@"shaders_metal" ofType:@"metallib"];
++  
++  // If not found in main bundle, search in all loaded bundles (for CocoaPods/frameworks)
++  if (!libPath)
++  {
++    for (NSBundle *bundle in [NSBundle allBundles])
++    {
++      libPath = [bundle pathForResource:@"shaders_metal" ofType:@"metallib"];
++      if (libPath)
++      {
++        NSLog(@"Found shaders_metal.metallib in bundle: %@", [bundle bundlePath]);
++        break;
++      }
++    }
++  }
++  
++  // Also search in all frameworks
++  if (!libPath)
++  {
++    for (NSBundle *bundle in [NSBundle allFrameworks])
++    {
++      libPath = [bundle pathForResource:@"shaders_metal" ofType:@"metallib"];
++      if (libPath)
++      {
++        NSLog(@"Found shaders_metal.metallib in framework: %@", [bundle bundlePath]);
++        break;
++      }
++    }
++  }
 +  
 +  // Search for nested .bundle directories inside frameworks (CocoaPods resource_bundles)
 +  if (!libPath)
@@ -108,6 +138,10 @@ index 0e7a8bbd..94709add 100644
 +    }
 +  }
 +#endif
- 
-   CHECK(libPath != nil, ("shaders_metal.metallib not found in any bundle!"));
-   NSLog(@"Loading Metal shaders from: %@", libPath);
++
++  CHECK(libPath != nil, ("shaders_metal.metallib not found in any bundle!"));
++  NSLog(@"Loading Metal shaders from: %@", libPath);
++
+   NSError * error = nil;
+   m_library = [m_device newLibraryWithFile:libPath error:&error];
+   if (error)
