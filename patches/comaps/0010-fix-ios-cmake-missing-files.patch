@@ -1,8 +1,16 @@
 diff --git a/libs/platform/CMakeLists.txt b/libs/platform/CMakeLists.txt
-index 10ab3009..1caa2d53 100644
+index c26e864b..124900f0 100644
 --- a/libs/platform/CMakeLists.txt
 +++ b/libs/platform/CMakeLists.txt
-@@ -90,7 +90,26 @@ elseif(${PLATFORM_ANDROID})
+@@ -72,7 +72,6 @@ if (PLATFORM_IPHONE)
+     http_thread_apple.mm
+     http_client_apple.mm
+     http_uploader_apple.mm
+-    http_user_agent_ios.mm
+     localization.mm
+     locale.mm
+     network_policy_ios.h
+@@ -90,7 +89,26 @@ elseif(${PLATFORM_ANDROID})
      platform_unix_impl.hpp
      trace_android.cpp
    )
@@ -30,7 +38,7 @@ index 10ab3009..1caa2d53 100644
    # Find bash first, on Windows it can be either in Git or in WSL
    find_program(BASH bash REQUIRED HINTS "$ENV{ProgramFiles}/Git/bin")
    # Generate version header file.
-@@ -175,9 +194,9 @@ endif()
+@@ -175,9 +193,9 @@ endif()
  target_link_libraries(${PROJECT_NAME}
    geometry  # mercator::YToLat
    coding

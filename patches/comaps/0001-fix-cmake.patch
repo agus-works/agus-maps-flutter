@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d0ecf6e3..e4a9d388 100644
+index d0ecf6e3..de69c6cd 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -150,7 +150,7 @@ find_package(Threads REQUIRED)
@@ -17,8 +17,8 @@ index d0ecf6e3..e4a9d388 100644
  
 -# Used in qt/ and shaders/
 -find_package(Python3 REQUIRED COMPONENTS Interpreter)
-+# Used in qt/ and shaders/ - only needed for desktop builds
-+if (PLATFORM_DESKTOP)
++# Used in qt/ and shaders/ - only needed for desktop builds with Qt
++if (PLATFORM_DESKTOP AND NOT SKIP_QT)
 +  find_package(Python3 REQUIRED COMPONENTS Interpreter)
  
 -execute_process(
