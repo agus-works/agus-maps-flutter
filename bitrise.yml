@@ -763,6 +763,307 @@ workflows:
       bitrise.io:
         stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
+  build-macos-native:
+    summary: Build CoMaps XCFramework for macOS
+    description: |
+      Builds the CoMaps C++ libraries for macOS (arm64 + x86_64) and packages
+      them into a universal XCFramework.
+    steps:
+    - git-clone@8:
+        inputs:
+        - fetch_tags: 'yes'
+    - script@1:
+        title: Set Environment Variables
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            envman add --key COMAPS_TAG --value "v2025.12.11-2"
+            envman add --key MACOS_DEPLOYMENT_TARGET --value "12.0"
+            envman add --key BUILD_TYPE --value "Release"
+    - restore-cache@1:
+        title: Restore CoMaps Cache
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+    - script@1:
+        title: Fetch CoMaps Source
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            echo "=== Fetching CoMaps $COMAPS_TAG ==="
+
+            mkdir -p thirdparty
+
+            if [ ! -d "thirdparty/comaps/.git" ]; then
+              git clone --depth 1 --branch "$COMAPS_TAG" \
+                https://github.com/comaps/comaps.git thirdparty/comaps
+            fi
+
+            cd thirdparty/comaps
+            git submodule update --init --recursive --depth 1
+    - save-cache@1:
+        title: Save CoMaps Cache
+        run_if: "true"
+        is_always_run: true
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - paths: thirdparty/comaps
+    - script@1:
+        title: Apply CoMaps Patches
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            chmod +x scripts/apply_comaps_patches.sh
+            ./scripts/apply_comaps_patches.sh
+    - script@1:
+        title: Build Boost Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd thirdparty/comaps/3party/boost
+            if [ ! -d "boost" ]; then
+              echo "=== Building Boost headers ==="
+              ./bootstrap.sh
+              ./b2 headers
+            fi
+    - script@1:
+        title: Install Ninja
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            brew install ninja || true
+    - script@1:
+        title: Build macOS XCFramework
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            chmod +x scripts/build_binaries_macos.sh
+            ./scripts/build_binaries_macos.sh
+
+            echo "=== macOS XCFramework built ==="
+            ls -la build/agus-binaries-macos/
+    - script@1:
+        title: Prepare macOS Binaries Artifact
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            mkdir -p $BITRISE_DEPLOY_DIR
+
+            # Zip the XCFramework
+            cd build/agus-binaries-macos
+            zip -r $BITRISE_DEPLOY_DIR/agus-binaries-macos.zip CoMaps.xcframework
+            cd ../..
+
+            echo "=== macOS binaries artifact ==="
+            ls -lh $BITRISE_DEPLOY_DIR/agus-binaries-macos.zip
+
+            envman add --key MACOS_BINARIES_PATH --value "$BITRISE_DEPLOY_DIR/agus-binaries-macos.zip"
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - pipeline_intermediate_files: |-
+            $BITRISE_DEPLOY_DIR/agus-binaries-macos.zip:MACOS_BINARIES_PATH
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
+        machine_type_id: g2.mac.large
+  build-macos:
+    summary: Build macOS App
+    description: |
+      Downloads pre-built XCFramework and headers, then builds the Flutter example app
+      for macOS.
+    steps:
+    - git-clone@8:
+        inputs:
+        - fetch_tags: 'yes'
+    - script@1:
+        title: Set Environment Variables
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            envman add --key FLUTTER_VERSION --value "3.27.0"
+            envman add --key COMAPS_TAG --value "v2025.12.11-2"
+    - flutter-installer@0:
+        inputs:
+        - version: "$FLUTTER_VERSION"
+        - is_update: 'false'
+    - pull-intermediate-files@1:
+        title: Download Pre-built Binaries and Headers
+    - script@1:
+        title: Setup Pre-built Binaries and Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            echo "=== Setting up pre-built macOS XCFramework ==="
+
+            mkdir -p macos/Frameworks
+
+            # Check for macOS binaries from build-macos-native
+            if [ -f "$MACOS_BINARIES_PATH" ]; then
+              echo "Using XCFramework from intermediate files"
+              unzip -o "$MACOS_BINARIES_PATH" -d macos/Frameworks/
+            else
+              echo "XCFramework not found in intermediate files, downloading..."
+              chmod +x scripts/download_libs.sh
+              FORCE_DOWNLOAD=true ./scripts/download_libs.sh macos
+            fi
+
+            # Check for headers from build-headers
+            if [ -f "$HEADERS_PATH" ]; then
+              echo "Using headers from intermediate files"
+              mkdir -p macos/Headers
+              tar -xzf "$HEADERS_PATH" -C macos/Headers/
+            fi
+
+            ls -la macos/Frameworks/
+            ls -la macos/Headers/ 2>/dev/null || echo "No headers directory"
+    - restore-cache@1:
+        title: Restore CoMaps Cache (for thirdparty headers)
+        inputs:
+        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+    - script@1:
+        title: Fetch CoMaps Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            # We need CoMaps headers for compilation even though we use pre-built XCFramework
+            mkdir -p thirdparty
+
+            if [ ! -d "thirdparty/comaps/.git" ]; then
+              git clone --depth 1 --branch "$COMAPS_TAG" \
+                https://github.com/comaps/comaps.git thirdparty/comaps
+            fi
+
+            cd thirdparty/comaps
+            git submodule update --init --recursive --depth 1
+    - script@1:
+        title: Build Boost Headers
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd thirdparty/comaps/3party/boost
+            if [ ! -d "boost" ]; then
+              ./bootstrap.sh
+              ./b2 headers
+            fi
+    - script@1:
+        title: Apply CoMaps Patches
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            chmod +x scripts/apply_comaps_patches.sh
+            ./scripts/apply_comaps_patches.sh
+    - script@1:
+        title: Copy Metal Shaders
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            # Copy Metal shaders from iOS build if available
+            if [ -f "build/metal_shaders/shaders_metal.metallib" ]; then
+              mkdir -p macos/Resources
+              cp build/metal_shaders/shaders_metal.metallib macos/Resources/
+            elif [ -f "ios/Frameworks/CoMaps.xcframework/ios-arm64/libcomaps.a" ]; then
+              # Try to get from iOS framework resources
+              echo "Looking for metallib in iOS framework..."
+            fi
+
+            # Ensure metallib exists in macos/Resources
+            if [ ! -f "macos/Resources/shaders_metal.metallib" ]; then
+              echo "Warning: shaders_metal.metallib not found, may need to build iOS first"
+            fi
+    - script@1:
+        title: Copy CoMaps Assets
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            chmod +x scripts/copy_comaps_data.sh
+            ./scripts/copy_comaps_data.sh
+    - restore-dart-cache@2: {}
+    - script@1:
+        title: Get Flutter Dependencies
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            flutter pub get
+            cd example && flutter pub get
+    - save-dart-cache@1: {}
+    - script@1:
+        title: Precache macOS Flutter Artifacts
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            echo "=== Precaching macOS Flutter artifacts ==="
+            flutter precache --macos
+    - cocoapods-install@2:
+        inputs:
+        - podfile_path: example/macos/Podfile
+    - flutter-analyze@0:
+        inputs:
+        - project_location: "$BITRISE_FLUTTER_PROJECT_LOCATION"
+    - script@1:
+        title: Build macOS Release App
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            cd example
+
+            flutter build macos --release \
+              --build-name=1.0.0 \
+              --build-number=$BITRISE_BUILD_NUMBER
+    - script@1:
+        title: Prepare macOS Artifacts
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+
+            mkdir -p $BITRISE_DEPLOY_DIR
+
+            # The macOS .app bundle
+            APP_PATH="example/build/macos/Build/Products/Release/agus_maps_flutter_example.app"
+
+            if [ -d "$APP_PATH" ]; then
+              # Zip the .app bundle
+              cd example/build/macos/Build/Products/Release
+              zip -r $BITRISE_DEPLOY_DIR/agus-maps-macos.app.zip agus_maps_flutter_example.app
+
+              echo "=== macOS App ==="
+              ls -lh $BITRISE_DEPLOY_DIR/agus-maps-macos.app.zip
+
+              envman add --key MACOS_APP_PATH --value "$BITRISE_DEPLOY_DIR/agus-maps-macos.app.zip"
+            else
+              echo "Warning: macOS app not found at $APP_PATH"
+            fi
+    - deploy-to-bitrise-io@2:
+        inputs:
+        - pipeline_intermediate_files: |-
+            $BITRISE_DEPLOY_DIR/agus-maps-macos.app.zip:MACOS_APP_PATH
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.4.x
+        machine_type_id: g2.mac.large
   release:
     summary: Publish to GitHub Releases
     description: Downloads artifacts and publishes to GitHub Releases.
@@ -789,11 +1090,13 @@ workflows:
             - **agus-headers.tar.gz** - Header files required for compilation (all platforms)
             - **agus-binaries-ios.zip** - Pre-built CoMaps XCFramework for iOS
             - **agus-binaries-android.zip** - Pre-built CoMaps native libraries for Android
+            - **agus-binaries-macos.zip** - Pre-built CoMaps XCFramework for macOS
 
             #### Example Apps
             - **agus-maps-android.aab** - Android App Bundle (for Play Store upload)
             - **agus-maps-android.apk** - Universal APK (for direct installation)
             - **agus-maps-ios-simulator.app.zip** - iOS Simulator app (unsigned, for testing)
+            - **agus-maps-macos.app.zip** - macOS app (unsigned, for testing)
 
             ### Plugin Installation
 
@@ -825,10 +1128,12 @@ workflows:
             $HEADERS_PATH
             $IOS_BINARIES_PATH
             $ANDROID_BINARIES_PATH
+            $MACOS_BINARIES_PATH
             $AAB_PATH
             $APK_PATH
             $BUILD_INFO_PATH
             $IOS_SIMULATOR_APP_PATH
+            $MACOS_APP_PATH
     meta:
       bitrise.io:
         stack: osx-xcode-16.4.x
@@ -852,6 +1157,15 @@ pipelines:
       build-ios:
         depends_on:
         - build-ios-native
+  build-macos:
+    workflows:
+      build-headers: {}
+      build-macos-native:
+        depends_on:
+        - build-headers
+      build-macos:
+        depends_on:
+        - build-macos-native
   build-release:
     workflows:
       build-headers: {}
@@ -861,17 +1175,24 @@ pipelines:
       build-android-native:
         depends_on:
         - build-headers
+      build-macos-native:
+        depends_on:
+        - build-headers
       build-android:
         depends_on:
         - build-android-native
       build-ios:
         depends_on:
         - build-ios-native
+      build-macos:
+        depends_on:
+        - build-macos-native
       release:
         depends_on:
         - build-headers
         - build-android
         - build-ios
+        - build-macos
 meta:
   bitrise.io:
     stack: osx-xcode-16.4.x
