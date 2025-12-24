@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index dccb5b7e..ff7b1247 100644
+index d0ecf6e3..e4a9d388 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -152,7 +152,7 @@ find_package(Threads REQUIRED)
+@@ -150,7 +150,7 @@ find_package(Threads REQUIRED)
  
  # Scripts
  
@@ -11,3 +11,50 @@ index dccb5b7e..ff7b1247 100644
    list(APPEND qt_components Core Network)
    if (NOT SKIP_QT_GUI OR NOT SKIP_TESTS OR PYBINDINGS)
      list(APPEND qt_components Widgets)
+@@ -212,26 +212,28 @@ endif()
+ # Fix for #include <boost/regex.hpp>
+ include_directories("${OMIM_ROOT}/3party/boost")
+ 
+-# Used in qt/ and shaders/
+-find_package(Python3 REQUIRED COMPONENTS Interpreter)
++# Used in qt/ and shaders/ - only needed for desktop builds
++if (PLATFORM_DESKTOP)
++  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+ 
+-execute_process(
+-    COMMAND ${Python3_EXECUTABLE} -c "import google.protobuf; 
++  execute_process(
++      COMMAND ${Python3_EXECUTABLE} -c "import google.protobuf; 
+ print(google.protobuf.__version__)"
+-    RESULT_VARIABLE PROTOBUF_CHECK
+-    OUTPUT_VARIABLE PROTOBUF_VERSION
+-    OUTPUT_STRIP_TRAILING_WHITESPACE
+-    ERROR_QUIET
+-)
+-
+-if(PROTOBUF_CHECK EQUAL 0)
+-    if(PROTOBUF_VERSION VERSION_LESS "4.0.0")
+-        message(STATUS "Python protobuf ${PROTOBUF_VERSION} found (< 4.0)")
+-    else()
+-        message(FATAL_ERROR "Python protobuf ${PROTOBUF_VERSION} found, but version < 4.0 required")
+-    endif()
+-else()
+-    message(FATAL_ERROR "Python protobuf not found. Install version <4.0")
++      RESULT_VARIABLE PROTOBUF_CHECK
++      OUTPUT_VARIABLE PROTOBUF_VERSION
++      OUTPUT_STRIP_TRAILING_WHITESPACE
++      ERROR_QUIET
++  )
++
++  if(PROTOBUF_CHECK EQUAL 0)
++      if(PROTOBUF_VERSION VERSION_LESS "4.0.0")
++          message(STATUS "Python protobuf ${PROTOBUF_VERSION} found (< 4.0)")
++      else()
++          message(FATAL_ERROR "Python protobuf ${PROTOBUF_VERSION} found, but version < 4.0 required")
++      endif()
++  else()
++      message(FATAL_ERROR "Python protobuf not found. Install version <4.0")
++  endif()
+ endif()
+ 
+ 
