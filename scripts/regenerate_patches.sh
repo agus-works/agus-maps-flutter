@@ -92,12 +92,13 @@ get_patch_for_file() {
         "libs/routing/speed_camera_manager.cpp") echo "0008-libs-routing-speed_camera_manager-cpp.patch" ;;
         "libs/drape/gl_includes.hpp") echo "0009-fix-android-gl3stub-include-path.patch" ;;
         "libs/platform/CMakeLists.txt") echo "0010-fix-ios-cmake-missing-files.patch" ;;
+        "libs/platform/platform.cpp") echo "0018-fix-shutdown-threads-null-safety.patch" ;;
         *) echo "" ;;
     esac
 }
 
 # Track new files that need patches
-NEW_PATCH_NUM=11
+NEW_PATCH_NUM=19
 TIMESTAMP=$(date +%Y%m%d)
 
 if $DRY_RUN; then

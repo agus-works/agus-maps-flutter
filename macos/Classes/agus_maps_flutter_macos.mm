@@ -111,7 +111,37 @@ FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* w
     AgusPlatformMacOS_InitPaths(resourcePath, writablePath);
     g_platformInitialized = true;
     
+    // Register for app termination notification to clean up framework properly
+    // This prevents crashes during static destruction order issues
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationWillTerminateNotification
+                                                          object:nil
+                                                           queue:[NSOperationQueue mainQueue]
+                                                      usingBlock:^(NSNotification * _Nonnull note) {
+            NSLog(@"[AgusMapsFlutter] App terminating, cleaning up Framework...");
+            if (g_framework) {
+                g_drapeEngineCreated = false;
+                g_framework.reset();
+                NSLog(@"[AgusMapsFlutter] Framework destroyed");
+            }
+        }];
+    });
+    
     NSLog(@"[AgusMapsFlutter] Platform initialized, Framework deferred to surface creation");
+}
+
+/// Explicitly shutdown the CoMaps framework
+/// Call this before app termination to ensure clean shutdown
+FFI_PLUGIN_EXPORT void comaps_shutdown(void) {
+    NSLog(@"[AgusMapsFlutter] comaps_shutdown called");
+    
+    if (g_framework) {
+        g_drapeEngineCreated = false;
+        g_framework.reset();
+        g_platformInitialized = false;
+        NSLog(@"[AgusMapsFlutter] Framework shutdown complete");
+    }
 }
 
 FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path) {

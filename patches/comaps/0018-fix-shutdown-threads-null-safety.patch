@@ -1,0 +1,36 @@
+diff --git a/libs/platform/platform.cpp b/libs/platform/platform.cpp
+index 33f3be41..66978522 100644
+--- a/libs/platform/platform.cpp
++++ b/libs/platform/platform.cpp
+@@ -332,16 +332,24 @@ unsigned Platform::CpuCores()
+ 
+ void Platform::ShutdownThreads()
+ {
+-  ASSERT(m_networkThread && m_fileThread && m_backgroundThread, ());
+-  ASSERT(!m_networkThread->IsShutDown(), ());
+-  ASSERT(!m_fileThread->IsShutDown(), ());
+-  ASSERT(!m_backgroundThread->IsShutDown(), ());
++  // Handle case where threads were never started or already shut down
++  // This can happen during app termination when static destruction order
++  // causes Framework to be destroyed after Platform state is invalid
++  if (!m_networkThread || !m_fileThread || !m_backgroundThread)
++    return;
++
++  // Check if already shut down to avoid double-shutdown crashes
++  if (m_networkThread->IsShutDown() && m_fileThread->IsShutDown() && m_backgroundThread->IsShutDown())
++    return;
+ 
+   m_batteryTracker.UnsubscribeAll();
+ 
+-  m_networkThread->ShutdownAndJoin();
+-  m_fileThread->ShutdownAndJoin();
+-  m_backgroundThread->ShutdownAndJoin();
++  if (m_networkThread && !m_networkThread->IsShutDown())
++    m_networkThread->ShutdownAndJoin();
++  if (m_fileThread && !m_fileThread->IsShutDown())
++    m_fileThread->ShutdownAndJoin();
++  if (m_backgroundThread && !m_backgroundThread->IsShutDown())
++    m_backgroundThread->ShutdownAndJoin();
+ }
+ 
+ void Platform::RunThreads()
