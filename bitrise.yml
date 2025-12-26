@@ -1082,33 +1082,20 @@ workflows:
         - body: |
             ## Agus Maps Flutter - $BITRISE_GIT_TAG
 
-            Automated release from Bitrise build #$BITRISE_BUILD_NUMBER
+            Offline vector maps for Flutter powered by the CoMaps engine.
 
-            ### Downloads
+            📖 **[Full Installation Guide](https://github.com/bangonkali/agus-maps-flutter/blob/main/docs/RELEASE.md)**
 
-            #### Native Libraries (for plugin consumers)
-            - **agus-headers.tar.gz** - Header files required for compilation (all platforms)
-            - **agus-binaries-ios.zip** - Pre-built CoMaps XCFramework for iOS
-            - **agus-binaries-android.zip** - Pre-built CoMaps native libraries for Android
-            - **agus-binaries-macos.zip** - Pre-built CoMaps XCFramework for macOS
+            ---
 
-            #### Example Apps
-            - **agus-maps-android.aab** - Android App Bundle (for Play Store upload)
-            - **agus-maps-android.apk** - Universal APK (for direct installation)
-            - **agus-maps-ios-simulator.app.zip** - iOS Simulator app (unsigned, for testing)
-            - **agus-maps-macos.app.zip** - macOS app (unsigned, for testing)
+            ### Quick Start
 
-            ### Plugin Installation
-
-            When you add this plugin to your Flutter project:
-            - **iOS:** The build will automatically download `agus-binaries-ios.zip` and `agus-headers.tar.gz` during `pod install`
-            - **Android:** The build will automatically download `agus-binaries-android.zip` and `agus-headers.tar.gz` during Gradle sync
-
-            ### Installation (Example App)
-
-            #### Android
+            #### Android (APK)
             ```bash
+            # Via ADB
             adb install agus-maps-android.apk
+            
+            # Or download APK directly on device and tap to install
             ```
 
             #### iOS Simulator
@@ -1118,11 +1105,55 @@ workflows:
             xcrun simctl launch booted app.agus.maps.agus_maps_flutter_example
             ```
 
+            #### macOS
+            ```bash
+            unzip agus-maps-macos.app.zip
+            xattr -cr agus_maps_flutter_example.app  # Remove quarantine
+            open agus_maps_flutter_example.app
+            ```
+
+            ---
+
+            ### Downloads
+
+            #### 📱 Example Apps (Ready to Install)
+            | Platform | File | Description |
+            |----------|------|-------------|
+            | Android | `agus-maps-android.apk` | Universal APK - install via ADB or directly |
+            | Android | `agus-maps-android.aab` | App Bundle - for Play Store upload only |
+            | iOS | `agus-maps-ios-simulator.app.zip` | Simulator only (debug, unsigned) |
+            | macOS | `agus-maps-macos.app.zip` | Universal binary (release, unsigned) |
+
+            #### 📦 Native Libraries (For Plugin Integration)
+            | Platform | File | Description |
+            |----------|------|-------------|
+            | All | `agus-headers.tar.gz` | C++ headers for compilation |
+            | iOS | `agus-binaries-ios.zip` | XCFramework (device + simulator) |
+            | Android | `agus-binaries-android.zip` | Native .so libraries (arm64, armv7, x86_64) |
+            | macOS | `agus-binaries-macos.zip` | XCFramework (arm64 + x86_64) |
+
+            ---
+
             ### Features
-            - Offline vector maps powered by CoMaps engine
-            - OpenStreetMap data with Organic Maps rendering
-            - Battery-efficient event-driven rendering
-            - Zero-copy GPU texture sharing (Metal on iOS, OpenGL ES on Android)
+            - 🗺️ Offline vector maps powered by CoMaps/Organic Maps engine
+            - 🌍 OpenStreetMap data with beautiful cartography
+            - 🔋 Battery-efficient event-driven rendering
+            - ⚡ Zero-copy GPU texture sharing (Metal on Apple, OpenGL ES on Android)
+            - 📍 Search, routing, and POI information
+
+            ---
+
+            ### Requirements
+            - **Android**: API 24+ (Android 7.0+)
+            - **iOS**: iOS 15.6+ (Simulator only for this build)
+            - **macOS**: macOS 12.0+ (Monterey)
+
+            ---
+
+            ### Build Info
+            - Build Number: $BITRISE_BUILD_NUMBER
+            - Flutter: 3.27.0
+            - CoMaps: v2025.12.11-2
         - draft: 'no'
         - files_to_upload: |-
             $HEADERS_PATH
