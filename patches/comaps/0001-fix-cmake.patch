@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d0ecf6e3..3ba5e1af 100644
+index d0ecf6e3..9d3038be 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -22,7 +22,8 @@ if (POLICY CMP0156)
@@ -78,3 +78,11 @@ index d0ecf6e3..3ba5e1af 100644
  endif()
  
  
+@@ -252,6 +257,6 @@ endif()
+ 
+ omim_add_test_subdirectory(libs/qt_tstfrm)
+ 
+-if (PLATFORM_ANDROID)
++if (PLATFORM_ANDROID AND NOT SKIP_ANDROID_JNI)
+   add_subdirectory(android/sdk/src/main/cpp)
+ endif()
