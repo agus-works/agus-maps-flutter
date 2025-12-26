@@ -14,12 +14,41 @@
 #include <unordered_map>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <cstring>  // for strerror
 #include <boost/regex.hpp>
+
+// Platform base class constructor (required for derived class)
+Platform::Platform()
+{
+  // Empty constructor - initialization done in AgusPlatform::Init/InitPaths
+}
+
+// static
+time_t Platform::GetFileCreationTime(std::string const & path)
+{
+  struct stat st;
+  if (0 == stat(path.c_str(), &st))
+    return st.st_atim.tv_sec;
+
+  LOG(LERROR, ("GetFileCreationTime stat failed for", path, "with error", strerror(errno)));
+  return 0;
+}
+
+// static
+time_t Platform::GetFileModificationTime(std::string const & path)
+{
+  struct stat st;
+  if (0 == stat(path.c_str(), &st))
+    return st.st_mtim.tv_sec;
+
+  LOG(LERROR, ("GetFileModificationTime stat failed for", path, "with error", strerror(errno)));
+  return 0;
+}
 
 class AgusPlatform : public Platform
 {
 public:
-  AgusPlatform() = default;
+  AgusPlatform() : Platform() {}
 
   void Init(std::string const & apkPath, std::string const & storagePath)
   {
