@@ -1,8 +1,18 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d0ecf6e3..55056731 100644
+index d0ecf6e3..b2f1181e 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -150,7 +150,7 @@ find_package(Threads REQUIRED)
+@@ -22,7 +22,8 @@ if (POLICY CMP0156)
+   cmake_policy(SET CMP0156 NEW)
+ endif()
+ 
+-set(OMIM_ROOT ${CMAKE_SOURCE_DIR})
++# Use CMAKE_CURRENT_SOURCE_DIR so this works when added as subdirectory
++set(OMIM_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${OMIM_ROOT}/cmake")
+ 
+ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+@@ -150,7 +151,7 @@ find_package(Threads REQUIRED)
  
  # Scripts
  
@@ -11,7 +21,7 @@ index d0ecf6e3..55056731 100644
    list(APPEND qt_components Core Network)
    if (NOT SKIP_QT_GUI OR NOT SKIP_TESTS OR PYBINDINGS)
      list(APPEND qt_components Widgets)
-@@ -212,26 +212,29 @@ endif()
+@@ -212,26 +213,29 @@ endif()
  # Fix for #include <boost/regex.hpp>
  include_directories("${OMIM_ROOT}/3party/boost")
  
