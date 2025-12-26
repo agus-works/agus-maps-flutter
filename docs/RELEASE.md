@@ -140,6 +140,8 @@ xcrun simctl boot "iPhone 14"
 
 The macOS app is an **unsigned release build**. It will work on macOS 12.0 (Monterey) or later.
 
+> ⚠️ **Note for macOS Beta Users:** Pre-built releases are compiled on macOS 15.x (Sequoia). If you're running a macOS beta (e.g., macOS 26 Tahoe), the pre-built app may not launch due to Flutter VM snapshot compatibility issues. In this case, [build from source](#building-from-source) on your machine.
+
 #### Installation Steps
 
 ```bash
