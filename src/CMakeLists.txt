@@ -30,6 +30,14 @@ endif()
 # CoMaps Configuration
 # ============================================================================
 if(NOT USE_PREBUILT_COMAPS)
+  # CoMaps source directory - needed for OMIM_ROOT
+  set(COMAPS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/comaps")
+  get_filename_component(COMAPS_SOURCE_DIR "${COMAPS_SOURCE_DIR}" ABSOLUTE)
+  
+  # Set OMIM_ROOT before including CoMaps - this is required for CMake module path
+  set(OMIM_ROOT "${COMAPS_SOURCE_DIR}" CACHE PATH "" FORCE)
+  list(APPEND CMAKE_MODULE_PATH "${COMAPS_SOURCE_DIR}/cmake")
+  
   # CoMaps Options - only needed when building from source
   set(SKIP_TESTS ON CACHE BOOL "" FORCE)
   set(SKIP_QT ON CACHE BOOL "" FORCE)
@@ -39,14 +47,12 @@ if(NOT USE_PREBUILT_COMAPS)
   set(SKIP_PROTOBUF_CHECK ON CACHE BOOL "" FORCE)
   set(SKIP_TOOLS ON CACHE BOOL "" FORCE)
 
-  # Force non-Android platform to use filesystem-based GetReader instead of ZipFileReader
-  # We provide our own platform implementation in agus_platform.cpp
-  set(PLATFORM_ANDROID FALSE CACHE BOOL "" FORCE)
-  set(PLATFORM_LINUX TRUE CACHE BOOL "" FORCE)
-  set(PLATFORM_DESKTOP TRUE CACHE BOOL "" FORCE)
+  # Platform detection is handled by OmimPlatform.cmake based on CMAKE_SYSTEM_NAME
+  # - For Android: SKIP_ANDROID_JNI tells CoMaps to use our external platform impl
+  # - For other platforms: SKIP_QT tells CoMaps to use dummy implementations
 
   # Build CoMaps
-  add_subdirectory(../thirdparty/comaps build/comaps)
+  add_subdirectory("${COMAPS_SOURCE_DIR}" build/comaps)
 endif()
 
 # ============================================================================
