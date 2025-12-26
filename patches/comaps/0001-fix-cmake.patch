@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d0ecf6e3..b2f1181e 100644
+index d0ecf6e3..3ba5e1af 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -22,7 +22,8 @@ if (POLICY CMP0156)
@@ -21,7 +21,17 @@ index d0ecf6e3..b2f1181e 100644
    list(APPEND qt_components Core Network)
    if (NOT SKIP_QT_GUI OR NOT SKIP_TESTS OR PYBINDINGS)
      list(APPEND qt_components Widgets)
-@@ -212,26 +213,29 @@ endif()
+@@ -170,7 +171,8 @@ if (NOT PLATFORM_IPHONE AND NOT PLATFORM_ANDROID)
+ endif()
+ 
+ # To allow #include "base/file_name.hpp" in all sources.
+-include_directories("${CMAKE_HOME_DIRECTORY}" "${CMAKE_HOME_DIRECTORY}/libs" "${CMAKE_HOME_DIRECTORY}/tools")
++# Use OMIM_ROOT instead of CMAKE_HOME_DIRECTORY so this works when added as subdirectory
++include_directories("${OMIM_ROOT}" "${OMIM_ROOT}/libs" "${OMIM_ROOT}/tools")
+ 
+ if (USE_PCH)
+   message(STATUS "Precompiled headers are ON")
+@@ -212,26 +214,29 @@ endif()
  # Fix for #include <boost/regex.hpp>
  include_directories("${OMIM_ROOT}/3party/boost")
  
