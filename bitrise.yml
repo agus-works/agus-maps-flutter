@@ -153,6 +153,14 @@ workflows:
             #!/bin/bash
             set -e
             brew install ninja || true
+    - script@1:
+        title: Install Python Dependencies
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            # Install protobuf for CoMaps build (version <4.0 required)
+            pip3 install 'protobuf<4.0' || pip install 'protobuf<4.0' || true
     - restore-cache@1:
         title: Restore CoMaps Cache
         inputs:
@@ -564,6 +572,14 @@ workflows:
             set -e
             brew install ninja || true
     - script@1:
+        title: Install Python Dependencies
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            # Install protobuf for CoMaps build (version <4.0 required)
+            pip3 install 'protobuf<4.0' || pip install 'protobuf<4.0' || true
+    - script@1:
         title: Build XCFramework
         inputs:
         - content: |
@@ -837,6 +853,14 @@ workflows:
             #!/bin/bash
             set -e
             brew install ninja || true
+    - script@1:
+        title: Install Python Dependencies
+        inputs:
+        - content: |
+            #!/bin/bash
+            set -e
+            # Install protobuf for CoMaps build (version <4.0 required)
+            pip3 install 'protobuf<4.0' || pip install 'protobuf<4.0' || true
     - script@1:
         title: Build macOS XCFramework
         inputs:
