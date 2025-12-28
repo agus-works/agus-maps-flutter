@@ -1,0 +1,16 @@
+diff --git a/libs/drape/drape_tests/gl_functions.cpp b/libs/drape/drape_tests/gl_functions.cpp
+index 659b6f2..a6fbb01 100644
+--- a/libs/drape/drape_tests/gl_functions.cpp
++++ b/libs/drape/drape_tests/gl_functions.cpp
+@@ -64,8 +64,10 @@ uint32_t GLFunctions::glCreateShader(glConst type)
+   return MOCK_CALL(glCreateShader(type));
+ }
+ 
+-void GLFunctions::glShaderSource(uint32_t shaderID, std::string const & src, std::string const & defines)
++void GLFunctions::glShaderSource(uint32_t shaderID, std::string const & src, std::string const & defines,
++                                 std::string const & debugName)
+ {
++  (void)debugName;
+   MOCK_CALL(glShaderSource(shaderID, src));
+ }
+ 

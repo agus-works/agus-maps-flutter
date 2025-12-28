@@ -1,0 +1,21 @@
+diff --git a/libs/drape/tm_read_resources.hpp b/libs/drape/tm_read_resources.hpp
+index 1de9916..0f4f23b 100644
+--- a/libs/drape/tm_read_resources.hpp
++++ b/libs/drape/tm_read_resources.hpp
+@@ -20,9 +20,16 @@ inline void ParsePatternsList(std::string const & patternsFile, ToDo && toDo)
+   std::string line;
+   while (std::getline(is, line))
+   {
++    // Handle Windows line endings - remove trailing \r if present
++    if (!line.empty() && line.back() == '\r')
++      line.pop_back();
++    
+     buffer_vector<double, 8> pattern;
+     strings::Tokenize(line, " ", [&](std::string_view token)
+     {
++      // Skip empty tokens (can happen with multiple spaces or leading/trailing spaces)
++      if (token.empty())
++        return;
+       double d = 0.0;
+       VERIFY(strings::to_double(token, d), ());
+       pattern.push_back(d);

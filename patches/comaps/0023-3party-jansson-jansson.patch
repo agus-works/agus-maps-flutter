@@ -1,0 +1,6 @@
+diff --git a/3party/jansson/jansson b/3party/jansson/jansson
+--- a/3party/jansson/jansson
++++ b/3party/jansson/jansson
+@@ -1 +1 @@
+-Subproject commit 96d160df90016066d04d493d1d69639474ba4f20
++Subproject commit 96d160df90016066d04d493d1d69639474ba4f20-dirty

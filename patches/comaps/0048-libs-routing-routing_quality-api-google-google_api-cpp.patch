@@ -1,0 +1,43 @@
+diff --git a/libs/routing/routing_quality/api/google/google_api.cpp b/libs/routing/routing_quality/api/google/google_api.cpp
+index b37dc34..90757de 100644
+--- a/libs/routing/routing_quality/api/google/google_api.cpp
++++ b/libs/routing/routing_quality/api/google/google_api.cpp
+@@ -14,8 +14,28 @@
+ #include <sstream>
+ #include <utility>
+ 
++#ifdef _WIN32
++#include <cstdlib>
++#endif
++
+ namespace
+ {
++// Windows doesn't have tm_gmtoff, so we need a portable way to get UTC offset
++int GetUTCOffsetHours(std::tm const * date)
++{
++#ifdef _WIN32
++  // Get UTC offset using timezone/_get_timezone on Windows
++  long timezone_seconds = 0;
++  _get_timezone(&timezone_seconds);
++  // _timezone is seconds west of UTC, tm_gmtoff is seconds east
++  // Also need to account for DST
++  int dst_adjustment = date->tm_isdst > 0 ? 3600 : 0;
++  return static_cast<int>((-timezone_seconds + dst_adjustment) / 3600);
++#else
++  return static_cast<int>(date->tm_gmtoff / 3600);
++#endif
++}
++
+ auto GetNextDayAtNight(int32_t startTimeZoneUTC)
+ {
+   auto now = std::chrono::system_clock::now();
+@@ -28,8 +48,7 @@ auto GetNextDayAtNight(int32_t startTimeZoneUTC)
+ 
+   std::tm * nextDayDate = std::localtime(&nextDay);
+ 
+-  long constexpr kSecondsInHour = 3600;
+-  int const curUTCOffset = static_cast<int>(nextDayDate->tm_gmtoff / kSecondsInHour);
++  int const curUTCOffset = GetUTCOffsetHours(nextDayDate);
+ 
+   nextDayDate->tm_sec = 0;
+   nextDayDate->tm_min = 0;

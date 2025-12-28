@@ -1,0 +1,19 @@
+diff --git a/libs/drape/vertex_array_buffer.cpp b/libs/drape/vertex_array_buffer.cpp
+index 913f0fb..c41e5c8 100644
+--- a/libs/drape/vertex_array_buffer.cpp
++++ b/libs/drape/vertex_array_buffer.cpp
+@@ -84,7 +84,13 @@ public:
+       {
+         BindingDecl const & decl = binding.GetBindingDecl(i);
+         int8_t attributeLocation = m_program->GetAttributeLocation(decl.m_attributeName);
+-        assert(attributeLocation != -1);
++        if (attributeLocation == -1)
++        {
++          // Avoid crashing on missing/optimized-out attributes. Log for diagnosis and skip binding.
++          LOG(LERROR, ("Missing attribute location", decl.m_attributeName, "program", m_program->GetName(),
++                       "components", decl.m_componentCount, "stride", decl.m_stride, "offset", decl.m_offset));
++          continue;
++        }
+         GLFunctions::glEnableVertexAttribute(attributeLocation);
+         GLFunctions::glVertexAttributePointer(attributeLocation, decl.m_componentCount, decl.m_componentType, false,
+                                               decl.m_stride, decl.m_offset);

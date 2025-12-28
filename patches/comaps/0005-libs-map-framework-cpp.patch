@@ -1,5 +1,5 @@
 diff --git a/libs/map/framework.cpp b/libs/map/framework.cpp
-index ba683261..87ba32fc 100644
+index ba68326..87ba32f 100644
 --- a/libs/map/framework.cpp
 +++ b/libs/map/framework.cpp
 @@ -339,19 +339,25 @@ Framework::Framework(FrameworkParams const & params, bool loadMaps)
