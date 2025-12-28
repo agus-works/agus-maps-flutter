@@ -202,10 +202,12 @@ void scrollMap(double distanceX, double distanceY) {
 
 /// Create a map rendering surface with the given dimensions.
 /// If width/height are not specified, uses the screen size.
-Future<int> createMapSurface({int? width, int? height}) async {
+/// [density] is the device pixel ratio (e.g., 1.5 for 150% scaling on Windows).
+Future<int> createMapSurface({int? width, int? height, double? density}) async {
   final int? textureId = await _channel.invokeMethod('createMapSurface', {
     if (width != null) 'width': width,
     if (height != null) 'height': height,
+    if (density != null) 'density': density,
   });
   return textureId!;
 }
@@ -343,6 +345,7 @@ class _AgusMapState extends State<AgusMap> {
     final textureId = await createMapSurface(
       width: physicalWidth,
       height: physicalHeight,
+      density: pixelRatio,
     );
 
     if (!mounted) return;
