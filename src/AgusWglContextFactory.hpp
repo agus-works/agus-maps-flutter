@@ -92,6 +92,11 @@ private:
   GLuint m_renderTexture = 0;
   GLuint m_depthBuffer = 0;
 
+  // The most recently bound framebuffer on the draw context.
+  // CoMaps may bind its own internal FBOs during postprocess passes; we must
+  // read back from the actual final draw target rather than assuming m_framebuffer.
+  std::atomic<GLuint> m_lastBoundFramebuffer{0};
+
   // D3D11 interop
   Microsoft::WRL::ComPtr<ID3D11Device> m_d3dDevice;
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_d3dContext;
