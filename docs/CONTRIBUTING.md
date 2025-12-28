@@ -76,7 +76,7 @@ dart run ffigen --config ffigen.yaml
 **Linux/macOS:**
 ```bash
 # Clone the repository
-git clone https://github.com/agus-app/agus_maps_flutter.git
+git clone https://github.com/bangonkali/agus-maps-flutter.git
 cd agus_maps_flutter
 
 # Fetch and patch CoMaps engine
@@ -93,7 +93,7 @@ flutter run
 **Windows PowerShell:**
 ```powershell
 # Clone the repository
-git clone https://github.com/agus-app/agus_maps_flutter.git
+git clone https://github.com/bangonkali/agus-maps-flutter.git
 cd agus_maps_flutter
 
 # Fetch and patch CoMaps engine

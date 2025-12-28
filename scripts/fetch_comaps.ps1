@@ -6,12 +6,11 @@
 .DESCRIPTION
     This script clones or updates the CoMaps repository in thirdparty/comaps
     and applies all patches from patches/comaps/.
+    
+    Matches behavior of fetch_comaps.sh (uses specific tag v2025.12.11-2).
 
-.PARAMETER Branch
-    The branch to checkout. Defaults to 'master'.
-
-.PARAMETER Reset
-    If specified, performs a hard reset before applying patches.
+.PARAMETER Tag
+    The tag to checkout. Defaults to 'v2025.12.11-2'.
 
 .PARAMETER SkipPatches
     If specified, skips applying patches after checkout.
@@ -20,20 +19,20 @@
     .\scripts\fetch_comaps.ps1
 
 .EXAMPLE
-    .\scripts\fetch_comaps.ps1 -Branch develop -Reset
+    .\scripts\fetch_comaps.ps1 -Tag v2025.12.11-2
 #>
 
 param(
-    [string]$Branch = 'master',
-    [switch]$Reset,
+    [string]$Tag = 'v2025.12.11-2',
     [switch]$SkipPatches
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Configuration
-$ComapsGitUrl = 'https://github.com/AliAnalytics/comaps.git'
+# Configuration - use HTTPS URL for CoMaps (same as bash script)
+$ComapsGitUrl = 'https://github.com/comaps/comaps.git'
+$ComapsTag = 'v2025.12.11-2'
 
 # Script paths
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -45,7 +44,7 @@ $ApplyPatchesScript = Join-Path $ScriptDir 'apply_comaps_patches.ps1'
 Write-Host "=== Fetching CoMaps ===" -ForegroundColor Cyan
 Write-Host "Repository URL: $ComapsGitUrl"
 Write-Host "Target Directory: $ComapsDir"
-Write-Host "Branch: $Branch"
+Write-Host "Tag: $Tag (default: $ComapsTag)"
 Write-Host ""
 
 # Create thirdparty directory if needed
@@ -56,35 +55,25 @@ if (-not (Test-Path $ThirdpartyDir)) {
 
 # Clone or update repository
 if (Test-Path (Join-Path $ComapsDir '.git')) {
-    Write-Host "CoMaps repository already exists" -ForegroundColor Yellow
+    Write-Host "CoMaps repository already exists, fetching tags..." -ForegroundColor Yellow
     
     Push-Location $ComapsDir
     try {
-        if ($Reset) {
-            Write-Host "Performing hard reset..." -ForegroundColor Yellow
-            git fetch origin 2>&1 | Out-Null
-            git checkout $Branch 2>&1 | Out-Null
-            git reset --hard "origin/$Branch" 2>&1 | Out-Null
-            Write-Host "Reset to origin/$Branch" -ForegroundColor Green
-        } else {
-            # Just fetch updates
-            Write-Host "Fetching updates..." -ForegroundColor Gray
-            git fetch origin 2>&1 | Out-Null
-            
-            # Check current branch
-            $currentBranch = git rev-parse --abbrev-ref HEAD 2>&1
-            if ($currentBranch -ne $Branch) {
-                Write-Host "Switching to branch: $Branch" -ForegroundColor Yellow
-                git checkout $Branch 2>&1 | Out-Null
-            }
-            
-            Write-Host "Current branch: $currentBranch" -ForegroundColor Gray
+        & git fetch --tags --prune 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+        
+        Write-Host "Checking out tag: $Tag" -ForegroundColor Yellow
+        # Use detached HEAD for clean tag checkout
+        & git checkout --detach $Tag 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to checkout tag: $Tag"
+            exit 1
         }
         
         # Show current commit
         $commit = git rev-parse --short HEAD 2>&1
-        $commitMsg = git log -1 --format="%s" 2>&1
-        Write-Host "Current commit: $commit - $commitMsg" -ForegroundColor Gray
+        $describe = git describe --tags --always --dirty 2>&1
+        Write-Host "At commit: $commit ($describe)" -ForegroundColor Gray
         
     } finally {
         Pop-Location
@@ -97,13 +86,38 @@ if (Test-Path (Join-Path $ComapsDir '.git')) {
         Remove-Item -Path $ComapsDir -Recurse -Force
     }
     
-    # Clone the repository
-    $cloneArgs = @('clone', '--branch', $Branch, '--depth', '1', $ComapsGitUrl, $ComapsDir)
+    # Clone without checkout, then configure git settings before checkout
+    # This ensures autocrlf is set correctly before files are written
+    $cloneArgs = @('clone', '--no-checkout', '--branch', $Tag, '--depth', '1', $ComapsGitUrl, $ComapsDir)
+    Write-Host "Cloning (no checkout)..." -ForegroundColor Gray
     & git @cloneArgs 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
     
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to clone CoMaps repository"
         exit 1
+    }
+    
+    # Configure git to preserve line endings BEFORE checkout
+    # This is critical for patch application to work correctly
+    Push-Location $ComapsDir
+    try {
+        Write-Host "Configuring git settings..." -ForegroundColor Gray
+        & git config core.autocrlf false
+        & git config core.eol lf
+        
+        Write-Host "Checking out files..." -ForegroundColor Gray
+        & git checkout HEAD 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to checkout files"
+            exit 1
+        }
+        
+        $commit = git rev-parse --short HEAD 2>&1
+        $describe = git describe --tags --always 2>&1
+        Write-Host "At commit: $commit ($describe)" -ForegroundColor Gray
+    } finally {
+        Pop-Location
     }
     
     Write-Host "Cloned successfully" -ForegroundColor Green
