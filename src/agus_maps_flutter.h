@@ -42,6 +42,11 @@ FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom);
 // Invalidate the current viewport to force tile reload
 FFI_PLUGIN_EXPORT void comaps_invalidate(void);
 
+// Force complete redraw by triggering UpdateMapStyle
+// This clears all render groups and forces complete tile re-request
+// Call after registering maps to ensure tiles are loaded
+FFI_PLUGIN_EXPORT void comaps_force_redraw(void);
+
 // Touch event handling
 // type: 1=TOUCH_DOWN, 2=TOUCH_MOVE, 3=TOUCH_UP, 4=TOUCH_CANCEL
 // id1, x1, y1: first touch pointer

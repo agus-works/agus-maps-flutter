@@ -172,6 +172,21 @@ FFI_PLUGIN_EXPORT void comaps_invalidate(void) {
     }
 }
 
+FFI_PLUGIN_EXPORT void comaps_force_redraw(void) {
+    NSLog(@"[AgusMapsFlutter] comaps_force_redraw - triggering full tile reload");
+    if (g_framework) {
+        // Step 1: Update map style - clears render groups and forces tile re-request
+        MapStyle currentStyle = g_framework->GetMapStyle();
+        g_framework->SetMapStyle(currentStyle);
+        
+        // Step 2: InvalidateRendering posts high-priority message to force re-render
+        g_framework->InvalidateRendering();
+        
+        // Step 3: Invalidate viewport rect
+        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+    }
+}
+
 FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int id2, float x2, float y2) {
     if (!g_framework || !g_drapeEngineCreated) {
         return;

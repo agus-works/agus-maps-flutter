@@ -276,18 +276,18 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 - [x] Plugin-to-FFI bridge for surface lifecycle
 - [x] D3D11 shared texture with DXGI handle
 - [x] Frame callback registration
+- [x] SetFramebuffer fix for offscreen FBO binding (nullptr case)
+- [x] Touch event handling (pan/zoom via mouse drag)
 
 ### In Progress 🔄
 
-- [ ] Validate D3D11 texture content is correctly rendered
-- [ ] Debug OpenGL-to-D3D11 texture copy
-- [ ] Frame synchronization timing
+- [ ] Scroll wheel zoom support for desktop
+- [ ] Additional touch gesture refinements
 
 ### Not Started ❌
 
-- [ ] Touch event handling
-- [ ] Camera animation
-- [ ] Map pan/zoom gestures
+- [ ] Kinetic scrolling (fling)
+- [ ] Map animation smoothness
 
 ---
 
@@ -295,8 +295,8 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 
 - [x] Windows example app builds without errors
 - [x] Plugin creates native surface and registers Flutter texture
-- [ ] App launches and displays Gibraltar map
-- [ ] Pan/zoom gestures work correctly
+- [x] App launches and displays Gibraltar map
+- [x] Pan/zoom gestures work correctly (mouse drag)
 - [ ] Map renders at 60fps with minimal CPU usage
 - [ ] Release build is under 150MB
 
@@ -665,9 +665,26 @@ endif()
      - `comaps_register_single_map()` in C++ normalizes paths before using `MakeTemporary()`
    - **Verify:** After fix, paths in logs should show consistent backslashes: `C:\Users\...\Documents\Philippines_Luzon_South.mwm`
 
-9. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
-   - Verify `MakeCurrent()` binds `m_framebuffer` for draw context
-   - Check for CoMaps code that calls `glBindFramebuffer(GL_FRAMEBUFFER, 0)`
+9. **Rendering to wrong framebuffer - SetFramebuffer(nullptr) not binding offscreen FBO:**
+   - **Symptom:** Map background renders (brownish color) but no map features/tiles appear. Logs show "Tile added to render groups" but `uniqueColors: 1` in frame diagnostics.
+   - **Root cause:** CoMaps calls `m_context->SetFramebuffer(nullptr)` to switch to the "default" framebuffer for main rendering (see `frontend_renderer.cpp:1683`). The original Windows implementation treated `nullptr` as "do nothing", leaving the OpenGL framebuffer bound to 0 (screen).
+   - **Why tiles still load:** Tile loading happens in `BackendRenderer` and sends `FlushTile` messages to `FrontendRenderer`. The tiles ARE being added to render groups, but when `RenderScene()` draws them, it's rendering to framebuffer 0 (invisible), not our offscreen FBO.
+   - **Fix:** `AgusWglContext::SetFramebuffer()` must bind our offscreen FBO when `nullptr` is passed, similar to Qt's implementation:
+     ```cpp
+     // Before (broken):
+     void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer) {
+         // Not used for default framebuffer (empty!)
+     }
+     
+     // After (fixed):
+     void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer) {
+         if (framebuffer)
+             framebuffer->Bind();  // Bind the provided FBO
+         else if (m_isDraw && m_factory)
+             glBindFramebuffer(GL_FRAMEBUFFER, m_factory->m_framebuffer);  // Bind our FBO
+     }
+     ```
+   - **Reference:** Qt's `QtRenderOGLContext::SetFramebuffer()` in `qtoglcontext.cpp` shows the correct pattern - it binds `m_backFrame` when framebuffer is nullptr.
 
 10. **Stale data extraction:** Old data files without symbol textures.
    - Delete `Documents\agus_maps_flutter\.comaps_data_extracted` marker file
