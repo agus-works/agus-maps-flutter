@@ -31,6 +31,21 @@ So each locale directory must be explicitly listed in `example/pubspec.yaml`.
 Windows extraction uses a marker file: `Documents/agus_maps_flutter/.comaps_data_extracted`.
 The plugin validates the extracted data directory; if required files are missing, it automatically re-extracts and overwrites from the bundled `flutter_assets`.
 
+## Windows Blank/White Map: Framebuffer Readback Mismatch
+
+If assets are present and CoMaps appears to be loading tiles, but the Flutter texture stays blank/white, check for logs like:
+
+- `SetFramebuffer: Binding provided FBO (postprocess pass)`
+- `CopyToSharedTexture(): ... centerRGBA: 0 0 0 0`
+
+### Why this happens
+
+CoMaps may bind a *provided* framebuffer during its postprocess/final composition pass. If the Windows interop path always reads pixels from the plugin's offscreen FBO, it can consistently capture a cleared/transparent buffer even though rendering is happening.
+
+### Fix
+
+The Windows OpenGL→D3D11 copy path tracks the most recently bound framebuffer in `AgusWglContext::SetFramebuffer()` and reads pixels from that framebuffer in `AgusWglContextFactory::CopyToSharedTexture()`.
+
 ## Quick Start: Build & Run
 
 ### Prerequisites
@@ -45,11 +60,14 @@ The plugin validates the extracted data directory; if required files are missing
 ### First-Time Setup
 
 ```powershell
-# 1. Fetch CoMaps source and apply patches
-.\scripts\fetch_comaps.ps1
+# 1. Bootstrap the Windows environment (PowerShell 7+)
+#    - installs vcpkg dependencies (manifest mode)
+#    - fetches CoMaps and applies patches
+#    - copies CoMaps data into example assets
+.\scripts\bootstrap_windows.ps1
 
-# 2. Copy CoMaps data files to example assets (PowerShell 7+)
-.\scripts\copy_comaps_data.ps1
+# 2. (Optional) Re-copy CoMaps data into example assets
+# .\scripts\copy_comaps_data.ps1
 
 # If you prefer bash:
 #   ./scripts/copy_comaps_data.sh

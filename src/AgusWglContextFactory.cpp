@@ -23,6 +23,11 @@
 #define GL_DEPTH_STENCIL                  0x84F9
 #endif
 
+// Some Windows OpenGL headers omit this enum even when FBO functions are available.
+#ifndef GL_FRAMEBUFFER_BINDING
+#define GL_FRAMEBUFFER_BINDING            0x8CA6
+#endif
+
 // GL_BGRA_EXT for reading pixels in BGRA format (needed for D3D11 texture)
 #ifndef GL_BGRA_EXT
 #define GL_BGRA_EXT                       0x80E1
@@ -562,8 +567,13 @@ void AgusWglContextFactory::CopyToSharedTexture()
   if (!wasOurContext)
     wglMakeCurrent(m_hdc, m_drawGlrc);
 
-  // Bind framebuffer and read pixels
-  glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
+  // Bind the framebuffer that CoMaps most recently rendered into.
+  // CoMaps may bind a provided (postprocess) FBO; reading only from m_framebuffer
+  // can result in consistently blank frames even though rendering is happening.
+  GLuint fboToRead = m_lastBoundFramebuffer.load();
+  if (fboToRead == 0)
+    fboToRead = m_framebuffer;
+  glBindFramebuffer(GL_FRAMEBUFFER, fboToRead);
 
   // CRITICAL: Ensure all OpenGL rendering commands are complete before reading.
   // Without this, glReadPixels may read incomplete/stale framebuffer content.
@@ -743,6 +753,13 @@ void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
     framebuffer->Bind();
     if (s_setFramebufferLogCount % kSetFramebufferLogEveryN == 0)
       LOG(LINFO, ("SetFramebuffer: Binding provided FBO (postprocess pass)"));
+
+    if (m_isDraw && m_factory)
+    {
+      GLint bound = 0;
+      glGetIntegerv(GL_FRAMEBUFFER_BINDING, &bound);
+      m_factory->m_lastBoundFramebuffer.store(static_cast<GLuint>(bound));
+    }
   }
   else if (m_isDraw && m_factory)
   {
@@ -751,6 +768,8 @@ void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     if (s_setFramebufferLogCount % kSetFramebufferLogEveryN == 0)
       LOG(LINFO, ("SetFramebuffer(nullptr): Bound offscreen FBO", fbo, "isDraw:", m_isDraw));
+
+    m_factory->m_lastBoundFramebuffer.store(fbo);
   }
   else
   {
