@@ -62,3 +62,14 @@ patches_backup_*/
 
 # Temporary native assets directory (created during Windows build)
 example/build/native_assets/
+
+# CoMaps generated data files (copied from thirdparty/comaps/data)
+example/assets/comaps_data/
+
+# Generated/Downloaded map files
+# Keep World.mwm if it's the base map, but usually users download regions.
+# For now, let's ignore extra mwm files if they are not tracked.
+# But git status showed World.mwm as Modified, so we should decide on it.
+# If we ignore them, we should do it here.
+# example/assets/maps/*.mwm
+
