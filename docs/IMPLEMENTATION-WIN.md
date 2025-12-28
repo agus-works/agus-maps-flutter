@@ -305,6 +305,79 @@ The factor calculation `-dy / 600.0` provides smooth zoom similar to Google Maps
 - Scroll down (positive dy) → negative factor → zoom out
 - `exp(factor)` converts the linear factor to the multiplicative scale expected by Framework::Scale
 
+## Resolved: Windows DPI Scaling Not Applied
+
+### Previous Symptoms
+- Map rendered correctly at 100% Windows display scaling
+- At 150% scaling, only the top-left portion of the map had content (black corners)
+- Logs showed correct physical pixel dimensions but density=1.00:
+  ```
+  [AgusMap] Creating surface: 1265x602 logical, 1898x904 physical (ratio: 1.5)
+  [AgusMapsFlutter] agus_native_create_surface: 1898x904, density=1.00
+  ```
+- When enlarging the window, the map widget didn't scale properly
+
+### Root Cause
+The Dart `createMapSurface()` function was correctly computing physical pixel dimensions (`width * pixelRatio`), but it was NOT passing the `pixelRatio` (density) to the native Windows plugin. This caused:
+
+1. Native plugin received `density=1.0` (default) instead of `1.5`
+2. CoMaps' `DrapeEngine` initialized with `m_visualScale = 1.0`
+3. `VisualParams` singleton stored incorrect visual scale
+4. All rendering (glyphs, icons, tiles) was scaled for 100% display
+5. Content was rendered into only 1/1.5 ≈ 67% of the framebuffer
+
+**Comparison with iOS:** The iOS implementation (`AgusMapsFlutterPlugin.swift`) correctly sets `density = UIScreen.main.scale` at plugin initialization, ensuring consistent DPI handling.
+
+### How CoMaps Uses Visual Scale
+
+CoMaps stores the visual scale in a singleton `VisualParams::Instance()`:
+
+```cpp
+// thirdparty/comaps/libs/drape_frontend/visual_params.cpp
+void VisualParams::Init(double vs, uint32_t tileSize) {
+  m_visualScale = vs;
+  // Visual scale affects:
+  // - GlyphParams (font size, gutter, sdfScale)
+  // - Resource prefix selection (mdpi/hdpi/xhdpi)
+  // - Touch target sizes
+  // - Icon/symbol sizing
+}
+```
+
+Qt's implementation (`qt/qt_common/map_widget.cpp`) demonstrates proper usage:
+```cpp
+p.m_surfaceWidth = m_ratio * width();
+p.m_surfaceHeight = m_ratio * height();
+p.m_visualScale = m_ratio;
+```
+
+### Solution
+
+Update Dart `createMapSurface()` to accept and pass the density parameter:
+
+**lib/agus_maps_flutter.dart:**
+```dart
+/// Create a map rendering surface with the given dimensions.
+/// [density] is the device pixel ratio (e.g., 1.5 for 150% Windows scaling).
+Future<int> createMapSurface({int? width, int? height, double? density}) async {
+  final int? textureId = await _channel.invokeMethod('createMapSurface', {
+    if (width != null) 'width': width,
+    if (height != null) 'height': height,
+    if (density != null) 'density': density,
+  });
+  return textureId!;
+}
+
+// In widget's _createSurface():
+final textureId = await createMapSurface(
+  width: physicalWidth,
+  height: physicalHeight,
+  density: pixelRatio,  // CRITICAL: Pass device pixel ratio
+);
+```
+
+The Windows plugin already supported the `density` parameter (defaulting to 1.0), so only the Dart side needed updating.
+
 ## Quick Start: Build & Run
 
 ### Prerequisites
