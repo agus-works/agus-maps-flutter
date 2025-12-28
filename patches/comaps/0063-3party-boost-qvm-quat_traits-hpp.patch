@@ -1,22 +1,22 @@
 diff --git a/3party/boost/libs/qvm/include/boost/qvm/quat_traits.hpp b/3party/boost/libs/qvm/include/boost/qvm/quat_traits.hpp
-index 0000001..0000002 100644
+index 2af10a2..5fb40dd 100644
 --- a/3party/boost/libs/qvm/include/boost/qvm/quat_traits.hpp
 +++ b/3party/boost/libs/qvm/include/boost/qvm/quat_traits.hpp
-@@ -79,7 +79,7 @@ write_quat_element_idx( int i, Q & q, quat_traits_scalar<Q> s )
+@@ -79,7 +79,7 @@ typename enable_if_c<
+     void>::type
+ write_quat_element_idx( int i, Q & q, typename quat_traits<Q>::scalar_type s )
      {
-     BOOST_QVM_ASSERT(i>=0);
-     BOOST_QVM_ASSERT(i<4);
 -    quat_traits<Q>::template write_element_idx(i, q) = s;
 +    quat_traits<Q>::write_element_idx(i, q) = s;
      }
  
  template <class Q>
-@@ -89,7 +89,7 @@ write_quat_element_idx( int i, Q & q, quat_traits_scalar<Q> s )
+@@ -89,7 +89,7 @@ typename enable_if_c<
+     void>::type
+ write_vec_element_idx( int i, Q & q, typename quat_traits<Q>::scalar_type s )
      {
-     BOOST_QVM_ASSERT(i>=0);
-     BOOST_QVM_ASSERT(i<4);
 -    quat_traits<Q>::template write_element_idx(i, q, s);
 +    quat_traits<Q>::write_element_idx(i, q, s);
      }
  
- } //namespace qvm_detail
+ } }
