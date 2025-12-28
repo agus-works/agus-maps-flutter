@@ -1,5 +1,5 @@
 diff --git a/libs/drape/gl_includes.hpp b/libs/drape/gl_includes.hpp
-index 57a68d12..3611f316 100644
+index 57a68d1..3611f31 100644
 --- a/libs/drape/gl_includes.hpp
 +++ b/libs/drape/gl_includes.hpp
 @@ -18,9 +18,10 @@

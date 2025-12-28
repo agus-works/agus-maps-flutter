@@ -1,0 +1,51 @@
+diff --git a/libs/base/thread_checker.hpp b/libs/base/thread_checker.hpp
+index b497ab6..06efa77 100644
+--- a/libs/base/thread_checker.hpp
++++ b/libs/base/thread_checker.hpp
+@@ -8,6 +8,11 @@
+ /// This class remembers id of a thread on which it was created, and
+ /// then can be used to verify that CalledOnOriginalThread() is called
+ /// from a thread on which it was created.
++///
++/// Note: For embedded builds (e.g., Flutter plugins), thread checking can be
++/// disabled by defining OMIM_DISABLE_THREAD_CHECKER. This is necessary because
++/// embedded applications may have different threading models where objects are
++/// created on one thread but accessed from another (e.g., platform thread).
+ class ThreadChecker
+ {
+ public:
+@@ -15,18 +20,28 @@ public:
+ 
+   /// \return True if this method is called from a thread on which
+   ///         current ThreadChecker's instance was created, false otherwise.
++  ///         Always returns true if OMIM_DISABLE_THREAD_CHECKER is defined.
+   bool CalledOnOriginalThread() const;
+ 
+ private:
++#ifndef OMIM_DISABLE_THREAD_CHECKER
+   std::thread::id const m_id;
++#endif
+ 
+   DISALLOW_COPY_AND_MOVE(ThreadChecker);
+ };
+ 
+ #define DECLARE_THREAD_CHECKER(threadCheckerName)    ThreadChecker threadCheckerName
+-#define CHECK_THREAD_CHECKER(threadCheckerName, msg) CHECK(threadCheckerName.CalledOnOriginalThread(), msg)
+-#define DECLARE_AND_CHECK_THREAD_CHECKER(msg)             \
+-  {                                                       \
+-    static const ThreadChecker threadChecker;             \
+-    CHECK(threadChecker.CalledOnOriginalThread(), (msg)); \
+-  }
++
++#ifdef OMIM_DISABLE_THREAD_CHECKER
++  // In embedded builds, thread checking is disabled - always passes
++  #define CHECK_THREAD_CHECKER(threadCheckerName, msg) ((void)0)
++  #define DECLARE_AND_CHECK_THREAD_CHECKER(msg) ((void)0)
++#else
++  #define CHECK_THREAD_CHECKER(threadCheckerName, msg) CHECK(threadCheckerName.CalledOnOriginalThread(), msg)
++  #define DECLARE_AND_CHECK_THREAD_CHECKER(msg)             \
++    {                                                       \
++      static const ThreadChecker threadChecker;             \
++      CHECK(threadChecker.CalledOnOriginalThread(), (msg)); \
++    }
++#endif

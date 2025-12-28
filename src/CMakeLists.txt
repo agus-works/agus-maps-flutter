@@ -34,6 +34,17 @@ if(NOT USE_PREBUILT_COMAPS)
   set(COMAPS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/comaps")
   get_filename_component(COMAPS_SOURCE_DIR "${COMAPS_SOURCE_DIR}" ABSOLUTE)
   
+  # On Windows with Flutter, the project may be accessed via symlinks
+  # (e.g., .plugin_symlinks/agus_maps_flutter/...). This causes:
+  # 1. MAX_PATH limit (260 chars) exceeded with deep boost headers
+  # 2. #pragma once fails when same file accessed via different paths
+  # Solution: Resolve to REALPATH before add_subdirectory so all source files
+  # use consistent resolved paths, making #pragma once work correctly.
+  if(WIN32)
+    get_filename_component(COMAPS_SOURCE_DIR "${COMAPS_SOURCE_DIR}" REALPATH)
+    message(STATUS "COMAPS_SOURCE_DIR resolved for Windows: ${COMAPS_SOURCE_DIR}")
+  endif()
+  
   # CoMaps Options - only needed when building from source
   set(SKIP_TESTS ON CACHE BOOL "" FORCE)
   set(SKIP_QT ON CACHE BOOL "" FORCE)
@@ -42,6 +53,11 @@ if(NOT USE_PREBUILT_COMAPS)
   set(SKIP_ANDROID_JNI ON CACHE BOOL "" FORCE)
   set(SKIP_PROTOBUF_CHECK ON CACHE BOOL "" FORCE)
   set(SKIP_TOOLS ON CACHE BOOL "" FORCE)
+  
+  # Skip install rules for CoMaps and its dependencies (glaze, etc.)
+  # This prevents the install() commands from trying to use generator expressions
+  # like $<TARGET_FILE_DIR:...> which don't resolve during cmake_install.cmake execution
+  set(CMAKE_SKIP_INSTALL_RULES ON CACHE BOOL "" FORCE)
 
   # Platform detection is handled by OmimPlatform.cmake based on CMAKE_SYSTEM_NAME
   # - For Android: SKIP_ANDROID_JNI tells CoMaps to use our external platform impl
@@ -51,16 +67,43 @@ if(NOT USE_PREBUILT_COMAPS)
 
   # Build CoMaps
   add_subdirectory("${COMAPS_SOURCE_DIR}" build/comaps)
+  
+  # Restore install rules after CoMaps subdirectory
+  set(CMAKE_SKIP_INSTALL_RULES OFF CACHE BOOL "" FORCE)
 endif()
 
 # ============================================================================
 # Agus Maps Flutter Library
 # ============================================================================
+
+# Platform-specific source files
+if(WIN32)
+  # Windows uses OpenGL (WGL) with D3D11 texture sharing for Flutter
+  set(PLATFORM_SOURCES
+    "agus_maps_flutter_win.cpp"
+    "agus_platform_win.cpp"
+    "AgusWglContextFactory.cpp"
+  )
+elseif(ANDROID)
+  # Android uses EGL/GLES3 implementation
+  set(PLATFORM_SOURCES
+    "agus_maps_flutter.cpp"
+    "agus_platform.cpp"
+    "agus_ogl.cpp"
+    "agus_gui_thread.cpp"
+  )
+else()
+  # Default (iOS/macOS uses Metal, handled separately in podspec)
+  set(PLATFORM_SOURCES
+    "agus_maps_flutter.cpp"
+    "agus_platform.cpp"
+    "agus_ogl.cpp"
+    "agus_gui_thread.cpp"
+  )
+endif()
+
 add_library(agus_maps_flutter SHARED
-  "agus_maps_flutter.cpp"
-  "agus_platform.cpp"
-  "agus_ogl.cpp"
-  "agus_gui_thread.cpp"
+  ${PLATFORM_SOURCES}
 )
 
 set_target_properties(agus_maps_flutter PROPERTIES
@@ -94,26 +137,32 @@ if(USE_PREBUILT_COMAPS AND COMAPS_HEADERS_DIR)
   message(STATUS "Using headers from: ${COMAPS_HEADERS_DIR}/comaps")
 else()
   # In-repo build: use thirdparty source headers
+  # IMPORTANT: Use absolute paths to avoid symlink issues with Flutter builds
+  # (Flutter creates symlinks in example/windows/flutter/ephemeral/.plugin_symlinks)
+  # Using COMAPS_SOURCE_DIR which is already resolved to absolute path
   # Note: Include paths must match iOS podspec HEADER_SEARCH_PATHS
   target_include_directories(agus_maps_flutter PRIVATE
-    "../thirdparty/comaps"
-    "../thirdparty/comaps/libs"
-    "../thirdparty/comaps/3party"
-    "../thirdparty/comaps/3party/boost"
-    "../thirdparty/comaps/3party/utfcpp/source"
-    "../thirdparty/comaps/3party/glm"
-    "../thirdparty/comaps/3party/pugixml/pugixml/src"
-    "../thirdparty/comaps/3party/jansson/jansson/src"
-    "../thirdparty/comaps/3party/jansson"
-    "../thirdparty/comaps/3party/expat/expat/lib"
-    "../thirdparty/comaps/3party/icu/icu/source/common"
-    "../thirdparty/comaps/3party/icu/icu/source/i18n"
-    "../thirdparty/comaps/3party/freetype/include"
-    "../thirdparty/comaps/3party/harfbuzz/harfbuzz/src"
-    "../thirdparty/comaps/3party/minizip/minizip"
-    "../thirdparty/comaps/3party/protobuf/protobuf/src"
-    "../thirdparty/comaps/android/sdk/src/main/cpp" 
+    "${COMAPS_SOURCE_DIR}"
+    "${COMAPS_SOURCE_DIR}/libs"
+    "${COMAPS_SOURCE_DIR}/3party"
+    "${COMAPS_SOURCE_DIR}/3party/utfcpp/source"
+    "${COMAPS_SOURCE_DIR}/3party/glm"
+    "${COMAPS_SOURCE_DIR}/3party/pugixml/pugixml/src"
+    "${COMAPS_SOURCE_DIR}/3party/jansson/jansson/src"
+    "${COMAPS_SOURCE_DIR}/3party/jansson"
+    "${COMAPS_SOURCE_DIR}/3party/expat/expat/lib"
+    "${COMAPS_SOURCE_DIR}/3party/icu/icu/source/common"
+    "${COMAPS_SOURCE_DIR}/3party/icu/icu/source/i18n"
+    "${COMAPS_SOURCE_DIR}/3party/freetype/include"
+    "${COMAPS_SOURCE_DIR}/3party/harfbuzz/harfbuzz/src"
+    "${COMAPS_SOURCE_DIR}/3party/minizip/minizip"
+    "${COMAPS_SOURCE_DIR}/3party/protobuf/protobuf/src"
+    "${COMAPS_SOURCE_DIR}/android/sdk/src/main/cpp" 
   )
+  # Add boost modular include directories (set by CoMaps CMakeLists.txt)
+  if(BOOST_INCLUDE_DIRS)
+    target_include_directories(agus_maps_flutter PRIVATE ${BOOST_INCLUDE_DIRS})
+  endif()
 endif()
 
 # ============================================================================
@@ -187,4 +236,35 @@ if (ANDROID)
   target_link_options(agus_maps_flutter PRIVATE "-Wl,-z,max-page-size=16384")
   # Allow our stubs to override libplatform.a definitions
   target_link_options(agus_maps_flutter PRIVATE "-Wl,--allow-multiple-definition")
+endif()
+
+# ============================================================================
+# Windows Platform Configuration
+# ============================================================================
+if(WIN32)
+  message(STATUS "=== Configuring Windows OpenGL Build ===")
+  
+  # Windows platform definitions
+  target_compile_definitions(agus_maps_flutter PRIVATE
+    OMIM_OS_WINDOWS
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
+  )
+  
+  # Link Windows system libraries (OpenGL, D3D11 for texture sharing)
+  target_link_libraries(agus_maps_flutter PRIVATE
+    opengl32
+    d3d11
+    dxgi
+    dxguid
+  )
+  
+  # MSVC-specific flags
+  if(MSVC)
+    target_compile_options(agus_maps_flutter PRIVATE
+      /W3
+      /wd4251  # Disable DLL-interface warnings for STL
+      /wd4275  # Disable non-DLL-interface base class warnings
+    )
+  endif()
 endif()

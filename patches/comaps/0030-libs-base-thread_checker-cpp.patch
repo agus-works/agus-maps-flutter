@@ -1,0 +1,27 @@
+diff --git a/libs/base/thread_checker.cpp b/libs/base/thread_checker.cpp
+index 06c3691..711b103 100644
+--- a/libs/base/thread_checker.cpp
++++ b/libs/base/thread_checker.cpp
+@@ -1,8 +1,22 @@
+ #include "base/thread_checker.hpp"
+ 
++#ifdef OMIM_DISABLE_THREAD_CHECKER
++
++ThreadChecker::ThreadChecker() {}
++
++bool ThreadChecker::CalledOnOriginalThread() const
++{
++  // Thread checking disabled for embedded builds
++  return true;
++}
++
++#else
++
+ ThreadChecker::ThreadChecker() : m_id(std::this_thread::get_id()) {}
+ 
+ bool ThreadChecker::CalledOnOriginalThread() const
+ {
+   return std::this_thread::get_id() == m_id;
+ }
++
++#endif

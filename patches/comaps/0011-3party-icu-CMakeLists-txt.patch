@@ -1,5 +1,5 @@
 diff --git a/3party/icu/CMakeLists.txt b/3party/icu/CMakeLists.txt
-index 7b8df431..715be69d 100644
+index 7b8df43..715be69 100644
 --- a/3party/icu/CMakeLists.txt
 +++ b/3party/icu/CMakeLists.txt
 @@ -144,6 +144,7 @@ add_library(icuuc

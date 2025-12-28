@@ -1,0 +1,14 @@
+diff --git a/libs/drape/gl_functions.hpp b/libs/drape/gl_functions.hpp
+index 11007ef..0758831 100644
+--- a/libs/drape/gl_functions.hpp
++++ b/libs/drape/gl_functions.hpp
+@@ -82,7 +82,8 @@ public:
+ 
+   /// Shaders support
+   static uint32_t glCreateShader(glConst type);
+-  static void glShaderSource(uint32_t shaderID, std::string const & src, std::string const & defines);
++  static void glShaderSource(uint32_t shaderID, std::string const & src, std::string const & defines,
++                             std::string const & debugName = {});
+   static bool glCompileShader(uint32_t shaderID, std::string & errorLog);
+   static void glDeleteShader(uint32_t shaderID);
+ 

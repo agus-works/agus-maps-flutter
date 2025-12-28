@@ -1,0 +1,13 @@
+diff --git a/libs/search/search_quality/samples_generation_tool/samples_generation_tool.cpp b/libs/search/search_quality/samples_generation_tool/samples_generation_tool.cpp
+index 5bdce89..a5614b9 100644
+--- a/libs/search/search_quality/samples_generation_tool/samples_generation_tool.cpp
++++ b/libs/search/search_quality/samples_generation_tool/samples_generation_tool.cpp
+@@ -179,7 +179,7 @@ void ModifyHouse(uint8_t lang, string & str)
+   if (str.empty())
+     return;
+ 
+-  if (lang == StringUtf8Multilang::GetLangIndex("ru") && isdigit(str[0]))
++  if (lang == StringUtf8Multilang::GetLangIndex("ru") && isdigit(static_cast<unsigned char>(str[0])))
+   {
+     uniform_int_distribution<size_t> dis(0, 4);
+     auto const r = dis(g_rng);

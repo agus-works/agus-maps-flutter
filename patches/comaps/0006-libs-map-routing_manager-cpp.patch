@@ -1,5 +1,5 @@
 diff --git a/libs/map/routing_manager.cpp b/libs/map/routing_manager.cpp
-index 5034ed81..691b615b 100644
+index 5034ed8..691b615 100644
 --- a/libs/map/routing_manager.cpp
 +++ b/libs/map/routing_manager.cpp
 @@ -521,18 +521,27 @@ void RoutingManager::SetRouterImpl(RouterType type)

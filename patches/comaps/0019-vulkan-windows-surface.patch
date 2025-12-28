@@ -1,0 +1,28 @@
+diff --git a/libs/drape/vulkan/vulkan_layers.cpp b/libs/drape/vulkan/vulkan_layers.cpp
+index 79518a7..e7e92b9 100644
+--- a/libs/drape/vulkan/vulkan_layers.cpp
++++ b/libs/drape/vulkan/vulkan_layers.cpp
+@@ -32,6 +32,12 @@ char const * const kInstanceExtensions[] = {
+ #if defined(OMIM_OS_LINUX)
+     "VK_KHR_xlib_surface",
+ #endif
++#if defined(OMIM_OS_WINDOWS)
++    "VK_KHR_win32_surface",
++    "VK_EXT_debug_utils",
++    "VK_KHR_get_physical_device_properties2",
++    "VK_KHR_external_memory_capabilities",
++#endif
+ };
+ 
+ char const * const kDeviceExtensions[] = {
+@@ -39,6 +45,10 @@ char const * const kDeviceExtensions[] = {
+ #if defined(OMIM_OS_MAC)
+     "VK_KHR_portability_subset",
+ #endif
++#if defined(OMIM_OS_WINDOWS)
++    "VK_KHR_external_memory",
++    "VK_KHR_external_memory_win32",
++#endif
+ };
+ 
+ char const * const kValidationLayers[] = {

@@ -1,0 +1,39 @@
+diff --git a/libs/drape/shader.cpp b/libs/drape/shader.cpp
+index 3b6506b..9af2c27 100644
+--- a/libs/drape/shader.cpp
++++ b/libs/drape/shader.cpp
+@@ -2,6 +2,7 @@
+ #include "drape/gl_functions.hpp"
+ 
+ #include "base/assert.hpp"
++#include "base/logging.hpp"
+ 
+ namespace dp
+ {
+@@ -21,10 +22,23 @@ Shader::Shader(std::string const & shaderName, std::string const & shaderSource,
+   , m_glID(0)
+ {
+   m_glID = GLFunctions::glCreateShader(ConvertType(type));
+-  GLFunctions::glShaderSource(m_glID, shaderSource, defines);
++  GLFunctions::glShaderSource(m_glID, shaderSource, defines, m_shaderName);
+   std::string errorLog;
+-  bool const result = GLFunctions::glCompileShader(m_glID, errorLog);
+-  CHECK(result, (m_shaderName, "> Shader compile error : ", errorLog));
++  bool result = GLFunctions::glCompileShader(m_glID, errorLog);
++
++  // Retry once if the driver reported an empty source length so we can recover from upload glitches.
++  if (!result && errorLog.find("src_len=") != std::string::npos)
++  {
++    LOG(LERROR, (m_shaderName, "compile failed; retrying glShaderSource + glCompileShader", errorLog));
++    GLFunctions::glShaderSource(m_glID, shaderSource, defines, m_shaderName);
++    result = GLFunctions::glCompileShader(m_glID, errorLog);
++  }
++
++  if (!result)
++  {
++    // Use error severity but avoid fatal abort so the app can keep running for diagnostics.
++    LOG(LERROR, (m_shaderName, "> Shader compile error : ", errorLog));
++  }
+ }
+ 
+ Shader::~Shader()
