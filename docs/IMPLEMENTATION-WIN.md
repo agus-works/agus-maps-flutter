@@ -101,6 +101,26 @@ glViewport(0, 0, m_width, m_height);
 glScissor(0, 0, m_width, m_height);
 ```
 
+## Resolved: Viewport Resize Not Updating Scissor
+
+### Previous Symptoms
+- Map rendered correctly at initial size
+- After window resize, map content was clipped to the original size
+- Logs showed scissor rect (1898 x 904) while viewport was (2579 x 1623)
+- Corners beyond original size rendered as black/transparent
+
+### Root Cause
+`AgusWglContext::SetViewport()` only called `glViewport()`, but CoMaps' `OGLContext::SetViewport()` (in `drape/oglcontext.cpp:175-178`) calls **both** `glViewport()` AND `glScissor()`. When `DrapeEngine::Resize()` triggers a viewport update via `Viewport::Apply()`, the scissor wasn't being updated.
+
+### Fix
+Match CoMaps' behavior by setting scissor in SetViewport:
+```cpp
+void AgusWglContext::SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+    glViewport(x, y, w, h);
+    glScissor(x, y, w, h);  // CRITICAL: Must match CoMaps' OGLContext behavior
+}
+```
+
 ## Quick Start: Build & Run
 
 ### Prerequisites
@@ -378,10 +398,11 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 - [x] Frame callback registration
 - [x] SetFramebuffer fix for offscreen FBO binding (nullptr case)
 - [x] Touch event handling (pan/zoom via mouse drag)
+- [x] Scroll wheel zoom support for desktop
+- [x] SetViewport fix for scissor update on resize
 
 ### In Progress 🔄
 
-- [ ] Scroll wheel zoom support for desktop
 - [ ] Additional touch gesture refinements
 
 ### Not Started ❌
@@ -397,6 +418,7 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 - [x] Plugin creates native surface and registers Flutter texture
 - [x] App launches and displays Gibraltar map
 - [x] Pan/zoom gestures work correctly (mouse drag)
+- [x] Window resize works correctly (map scales to new size)
 - [ ] Map renders at 60fps with minimal CPU usage
 - [ ] Release build is under 150MB
 
@@ -832,6 +854,19 @@ endif()
      }
      ```
    - **Reference:** Qt's `QtRenderOGLContext::ApplyFramebuffer()` in `qtoglcontext.cpp` is empty.
+
+13. **Map content clipped to original size after window resize:**
+   - **Symptom:** Map renders correctly at initial size, but after resizing the window, content is clipped. Only the top-left portion (matching original size) shows map content.
+   - **Logs show:** `CopyToSharedTexture scissor: 0 0 1898 904 viewport: 0 0 2579 1623` - scissor doesn't match viewport!
+   - **Root cause:** `SetViewport()` only called `glViewport()`, but CoMaps' `OGLContext::SetViewport()` also updates `glScissor()`.
+   - **Fix:** `SetViewport()` must update both viewport AND scissor:
+     ```cpp
+     void SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+         glViewport(x, y, w, h);
+         glScissor(x, y, w, h);  // Match CoMaps' OGLContext behavior
+     }
+     ```
+   - **Reference:** CoMaps' `OGLContext::SetViewport()` in `drape/oglcontext.cpp:175-178`.
 
 **Debugging:**
 - Enable frame logging in `AgusWglContextFactory::CopyToSharedTexture()` to see `hasContent` status

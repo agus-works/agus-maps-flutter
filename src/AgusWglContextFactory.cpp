@@ -1022,7 +1022,13 @@ void AgusWglContext::SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
   // NOTE: SetViewport is called very frequently (many times per frame).
   // Logging disabled to reduce noise. Enable for debugging viewport issues.
   // LOG(LINFO, ("SetViewport:", x, y, w, h));
+  
+  // CRITICAL: CoMaps' OGLContext::SetViewport() sets BOTH viewport AND scissor
+  // (see drape/oglcontext.cpp:175-178). When the viewport changes (e.g., on resize),
+  // the scissor must also be updated or rendering will be clipped to the old size.
   glViewport(x, y, w, h);
+  glScissor(static_cast<GLint>(x), static_cast<GLint>(y),
+            static_cast<GLsizei>(w), static_cast<GLsizei>(h));
 }
 
 void AgusWglContext::SetDepthTestEnabled(bool enabled)
