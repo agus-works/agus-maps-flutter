@@ -46,6 +46,61 @@ CoMaps may bind a *provided* framebuffer during its postprocess/final compositio
 
 The Windows OpenGL→D3D11 copy path tracks the most recently bound framebuffer in `AgusWglContext::SetFramebuffer()` and reads pixels from that framebuffer in `AgusWglContextFactory::CopyToSharedTexture()`.
 
+## Resolved: ApplyFramebuffer Override Bug
+
+### Previous Symptoms
+- Map showed brownish/tan background color (the clear color)
+- Tiles were being loaded and added to render groups
+- `uniqueColors: 1` in frame diagnostics (only clear color visible)
+- Scissor test was correctly set to full framebuffer size
+
+### Root Cause
+`ApplyFramebuffer()` was incorrectly re-binding our offscreen FBO, overriding the postprocess FBO that `SetFramebuffer()` had just bound.
+
+In CoMaps' rendering pipeline:
+1. `SetFramebuffer(postprocessFBO)` - binds postprocess FBO for rendering
+2. `ApplyFramebuffer(label)` - called for Metal/Vulkan encoding setup; should be no-op for OpenGL
+3. `RenderScene()` - draws tiles to the currently bound FBO
+4. `SetFramebuffer(nullptr)` - returns to the default (our offscreen) FBO
+
+Our implementation was:
+```cpp
+void ApplyFramebuffer(std::string const & label) {
+    glBindFramebuffer(GL_FRAMEBUFFER, m_factory->m_framebuffer);  // WRONG!
+}
+```
+
+This meant all rendering went to FBO 1 instead of the postprocess FBO, and when CoMaps later composited the postprocess result, it was reading from an empty buffer.
+
+### Fix
+`ApplyFramebuffer()` should be empty for OpenGL (same as Qt's implementation):
+```cpp
+void ApplyFramebuffer(std::string const & label) {
+    // No-op for OpenGL - SetFramebuffer already handles binding
+}
+```
+
+## Resolved: Scissor Rect Not Initialized
+
+### Previous Symptoms
+- Only top-left corner had content (clear color)
+- All other pixels were transparent black (0,0,0,0)
+
+### Root Cause
+OpenGL scissor test was enabled in `Init()` but the scissor rectangle was never set, defaulting to (0,0,0,0) or (0,0,1,1).
+
+### Fix
+Initialize scissor rect to full framebuffer size:
+```cpp
+// In AgusWglContext::Init():
+glViewport(0, 0, width, height);
+glScissor(0, 0, width, height);
+
+// In AgusWglContextFactory::InitializeWGL() and SetSurfaceSize():
+glViewport(0, 0, m_width, m_height);
+glScissor(0, 0, m_width, m_height);
+```
+
 ## Quick Start: Build & Run
 
 ### Prerequisites
@@ -761,6 +816,22 @@ endif()
    - Delete `Documents\agus_maps_flutter\.comaps_data_extracted` marker file
    - Delete `Documents\agus_maps_flutter\` folder contents
    - Rebuild and run to force fresh extraction
+
+12. **ApplyFramebuffer overriding postprocess FBO:**
+   - **Symptom:** Map shows only brownish/tan clear color. `uniqueColors: 1` in frame diagnostics. Tiles are being loaded and added to render groups.
+   - **Root cause:** `ApplyFramebuffer()` was incorrectly re-binding our offscreen FBO after `SetFramebuffer()` had bound the postprocess FBO.
+   - **Why this matters:** CoMaps uses a postprocess renderer that creates its own FBOs. The flow is:
+     1. `SetFramebuffer(postprocessFBO)` - binds postprocess FBO
+     2. `ApplyFramebuffer(label)` - for Metal/Vulkan encoding; should be no-op for OpenGL
+     3. `RenderScene()` - draws to current FBO
+     4. `SetFramebuffer(nullptr)` - returns to default FBO
+   - **Fix:** Make `ApplyFramebuffer()` empty for OpenGL (Qt's implementation is also empty):
+     ```cpp
+     void ApplyFramebuffer(std::string const & label) {
+         // No-op for OpenGL - SetFramebuffer already handles binding
+     }
+     ```
+   - **Reference:** Qt's `QtRenderOGLContext::ApplyFramebuffer()` in `qtoglcontext.cpp` is empty.
 
 **Debugging:**
 - Enable frame logging in `AgusWglContextFactory::CopyToSharedTexture()` to see `hasContent` status
