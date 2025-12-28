@@ -29,16 +29,59 @@ endif()
 set(PROJECT_NAME "agus_maps_flutter")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
+# This value is used when generating builds using this plugin, so it must
+# not be changed
+set(PLUGIN_NAME "agus_maps_flutter_plugin")
+
+# C++17 for std::filesystem
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ============================================================================
+# Flutter Plugin (MethodChannel handler)
+# ============================================================================
+# The plugin DLL handles MethodChannel communication with Dart
+add_library(${PLUGIN_NAME} SHARED
+  "agus_maps_flutter_plugin.cpp"
+)
+
+# Apply standard Flutter plugin compile definitions
+apply_standard_settings(${PLUGIN_NAME})
+
+# FLUTTER_PLUGIN_IMPL tells the header to use dllexport
+set_target_properties(${PLUGIN_NAME} PROPERTIES
+  CXX_VISIBILITY_PRESET hidden
+)
+target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
+
+# Link Flutter wrapper for MethodChannel support
+target_link_libraries(${PLUGIN_NAME} PRIVATE flutter flutter_wrapper_plugin)
+
+# Link Windows system libraries
+target_link_libraries(${PLUGIN_NAME} PRIVATE
+  shell32  # For SHGetKnownFolderPath
+  ole32    # For CoTaskMemFree
+)
+
+# Include directories for Flutter plugin headers
+target_include_directories(${PLUGIN_NAME} PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+
+# ============================================================================
+# Native CoMaps Library (FFI bindings)
+# ============================================================================
 # Invoke the build for native code shared with the other target platforms.
-# This can be changed to accommodate different builds.
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../src" "${CMAKE_CURRENT_BINARY_DIR}/shared")
 
+# ============================================================================
+# Bundled Libraries
+# ============================================================================
 # List of absolute paths to libraries that should be bundled with the plugin.
-# This list could contain prebuilt libraries, or libraries created by an
-# external build triggered from this build file.
 set(agus_maps_flutter_bundled_libraries
-  # Defined in ../src/CMakeLists.txt.
-  # This can be changed to accommodate different builds.
+  # The plugin DLL (MethodChannel handler)
+  $<TARGET_FILE:${PLUGIN_NAME}>
+  # The native CoMaps FFI library
   $<TARGET_FILE:agus_maps_flutter>
   PARENT_SCOPE
 )
