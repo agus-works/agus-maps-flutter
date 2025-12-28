@@ -239,10 +239,13 @@ workflows:
         stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
   build-android:
-    summary: Build Android AAB and APK
+    summary: Build Android Example App (AAB and APK)
     description: |
-      Downloads pre-built native libraries and builds Android artifacts.
-      Outputs AAB for Play Store and APK for direct installation.
+      Downloads pre-built native libraries and builds the Android example app.
+      Outputs AAB and APK for testing the agus_maps_flutter plugin.
+      
+      NOTE: These are EXAMPLE APP builds from ./example/, demonstrating plugin usage.
+      They are not intended for Play Store distribution.
     steps:
     - git-clone@8:
         inputs:
@@ -651,10 +654,13 @@ workflows:
         stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
   build-ios:
-    summary: Build iOS App (Simulator)
+    summary: Build iOS Example App (Simulator)
     description: |
       Downloads pre-built XCFramework and headers, then builds the Flutter example app
       for iOS Simulator (unsigned, for testing).
+      
+      NOTE: This is an EXAMPLE APP build from ./example/, demonstrating plugin usage.
+      It is not intended for App Store distribution.
     steps:
     - git-clone@8:
         inputs:
@@ -934,10 +940,13 @@ workflows:
         stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
   build-macos:
-    summary: Build macOS App
+    summary: Build macOS Example App
     description: |
       Downloads pre-built XCFramework and headers, then builds the Flutter example app
       for macOS.
+      
+      NOTE: This is an EXAMPLE APP build from ./example/, demonstrating plugin usage.
+      It is not intended for Mac App Store distribution.
     steps:
     - git-clone@8:
         inputs:
@@ -1123,8 +1132,14 @@ workflows:
         stack: osx-xcode-16.4.x
         machine_type_id: g2.mac.large
   release:
-    summary: Publish to GitHub Releases
-    description: Downloads artifacts and publishes to GitHub Releases.
+    summary: Publish Example App and Binaries to GitHub Releases
+    description: |
+      Downloads artifacts and publishes to GitHub Releases.
+      
+      IMPORTANT: The mobile and desktop apps published here are EXAMPLE APPS
+      demonstrating the agus_maps_flutter plugin. They are NOT production apps
+      intended for App Store/Play Store distribution. The source code is in ./example/
+      and serves as a reference implementation for developers integrating the plugin.
     steps:
     - git-clone@8:
         inputs:
