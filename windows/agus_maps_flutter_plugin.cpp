@@ -643,11 +643,14 @@ void AgusMapsFlutterPlugin::HandleResizeMapSurface(
     const FlutterMethodCall& call,
     std::unique_ptr<FlutterMethodResult> result) {
     
-    OutputDebugStringA("[AgusMapsFlutter] resizeMapSurface called\n");
+    std::fprintf(stderr, "[AgusMapsFlutter] resizeMapSurface method call received\n");
+    std::fflush(stderr);
     
     // Parse arguments
     const auto* arguments = std::get_if<flutter::EncodableMap>(call.arguments());
     if (!arguments) {
+        std::fprintf(stderr, "[AgusMapsFlutter] resizeMapSurface: Invalid arguments\n");
+        std::fflush(stderr);
         result->Error("INVALID_ARGUMENT", "Expected map arguments");
         return;
     }
@@ -673,17 +676,21 @@ void AgusMapsFlutterPlugin::HandleResizeMapSurface(
         }
     }
     
-    char msg[256];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Resizing surface: %dx%d\n", width, height);
-    OutputDebugStringA(msg);
+    std::fprintf(stderr, "[AgusMapsFlutter] Resizing surface to %dx%d\n", width, height);
+    std::fflush(stderr);
     
     // Update stored dimensions
     surface_width_ = width;
     surface_height_ = height;
     
-    // Call native resize
+    // Call native resize function
     if (g_fnOnSizeChanged) {
+        std::fprintf(stderr, "[AgusMapsFlutter] Calling g_fnOnSizeChanged(%d, %d)\n", width, height);
+        std::fflush(stderr);
         g_fnOnSizeChanged(width, height);
+    } else {
+        std::fprintf(stderr, "[AgusMapsFlutter] WARNING: g_fnOnSizeChanged is null!\n");
+        std::fflush(stderr);
     }
     
     result->Success(flutter::EncodableValue(true));
