@@ -23,6 +23,11 @@
 #define GL_DEPTH_STENCIL                  0x84F9
 #endif
 
+// GL_BGRA_EXT for reading pixels in BGRA format (needed for D3D11 texture)
+#ifndef GL_BGRA_EXT
+#define GL_BGRA_EXT                       0x80E1
+#endif
+
 // OpenGL FBO function pointer types
 typedef void (APIENTRY *PFNGLGENFRAMEBUFFERSPROC)(GLsizei n, GLuint *framebuffers);
 typedef void (APIENTRY *PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei n, const GLuint *framebuffers);
@@ -599,6 +604,11 @@ void AgusWglContextFactory::CopyToSharedTexture()
 
     // Copy staging to shared texture
     m_d3dContext->CopyResource(m_sharedTexture.Get(), m_stagingTexture.Get());
+    
+    // CRITICAL: Flush the D3D11 context to ensure the copy is complete
+    // before Flutter's GPU process samples the shared texture.
+    // Without this, Flutter may sample stale/incomplete data.
+    m_d3dContext->Flush();
   }
   else
   {

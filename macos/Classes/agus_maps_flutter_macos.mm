@@ -160,6 +160,15 @@ FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
     
     if (g_framework) {
         g_framework->SetViewportCenter(m2::PointD(mercator::FromLatLon(lat, lon)), zoom);
+        // Force invalidate to ensure tiles reload
+        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+    }
+}
+
+FFI_PLUGIN_EXPORT void comaps_invalidate(void) {
+    NSLog(@"[AgusMapsFlutter] comaps_invalidate");
+    if (g_framework) {
+        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
     }
 }
 
