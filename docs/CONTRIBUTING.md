@@ -73,6 +73,7 @@ dart run ffigen --config ffigen.yaml
 
 ### Initial Setup
 
+**Linux/macOS:**
 ```bash
 # Clone the repository
 git clone https://github.com/agus-app/agus_maps_flutter.git
@@ -80,6 +81,23 @@ cd agus_maps_flutter
 
 # Fetch and patch CoMaps engine
 ./scripts/bootstrap_android.sh
+
+# Get Flutter dependencies
+flutter pub get
+
+# Build and run example
+cd example
+flutter run
+```
+
+**Windows PowerShell:**
+```powershell
+# Clone the repository
+git clone https://github.com/agus-app/agus_maps_flutter.git
+cd agus_maps_flutter
+
+# Fetch and patch CoMaps engine
+.\scripts\bootstrap_android.ps1
 
 # Get Flutter dependencies
 flutter pub get
@@ -105,8 +123,14 @@ flutter run
 
 The `thirdparty/comaps` directory contains a patched checkout of CoMaps. Patches are maintained in `patches/comaps/` and applied via:
 
+**Linux/macOS:**
 ```bash
 ./scripts/apply_comaps_patches.sh
+```
+
+**Windows PowerShell:**
+```powershell
+.\scripts\apply_comaps_patches.ps1
 ```
 
 | Patch | Purpose |

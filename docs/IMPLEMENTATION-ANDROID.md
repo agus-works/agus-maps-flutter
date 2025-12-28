@@ -13,12 +13,29 @@
 
 Debug mode enables hot reload, step-through debugging, and verbose logging for both Flutter and native layers.
 
+**Linux/macOS:**
 ```bash
 # 1. Bootstrap CoMaps dependencies (first time only)
 ./scripts/bootstrap_android.sh
 
 # 2. Copy CoMaps data files (first time only)
 ./scripts/copy_comaps_data.sh
+
+# 3. Run in debug mode
+cd example
+flutter run --debug
+
+# For verbose native logs, use logcat:
+adb logcat -s AgusMapsFlutterNative:D CoMaps:D AgusGuiThread:D
+```
+
+**Windows PowerShell:**
+```powershell
+# 1. Bootstrap CoMaps dependencies (first time only)
+.\scripts\bootstrap_android.ps1
+
+# 2. Copy CoMaps data files (first time only)
+.\scripts\copy_comaps_data.ps1
 
 # 3. Run in debug mode
 cd example
@@ -38,12 +55,30 @@ adb logcat -s AgusMapsFlutterNative:D CoMaps:D AgusGuiThread:D
 
 Release mode produces an optimized build suitable for production use and accurate performance profiling.
 
+**Linux/macOS:**
 ```bash
 # 1. Bootstrap CoMaps dependencies (first time only)
 ./scripts/bootstrap_android.sh
 
 # 2. Copy CoMaps data files (first time only) 
 ./scripts/copy_comaps_data.sh
+
+# 3. Build and run in release mode
+cd example
+flutter run --release
+
+# Or build an APK for installation
+flutter build apk --release
+adb install build/app/outputs/flutter-apk/app-release.apk
+```
+
+**Windows PowerShell:**
+```powershell
+# 1. Bootstrap CoMaps dependencies (first time only)
+.\scripts\bootstrap_android.ps1
+
+# 2. Copy CoMaps data files (first time only) 
+.\scripts\copy_comaps_data.ps1
 
 # 3. Build and run in release mode
 cd example
@@ -164,7 +199,13 @@ We pin and fetch the CoMaps repo into `thirdparty/comaps`.
 
 Commands:
 
+**Linux/macOS:**
 - `./scripts/bootstrap_android.sh`
+  - Clones/updates CoMaps to `thirdparty/comaps` at the desired tag.
+  - Applies any patches from `patches/comaps/*.patch`.
+
+**Windows PowerShell:**
+- `.\scripts\bootstrap_android.ps1`
   - Clones/updates CoMaps to `thirdparty/comaps` at the desired tag.
   - Applies any patches from `patches/comaps/*.patch`.
 

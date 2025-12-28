@@ -357,7 +357,10 @@ The `thirdparty/comaps` directory contains a modified checkout of the CoMaps sou
 | `0003-transliteration-directory-resources.patch` | Directory-based ICU data file loading |
 | `0004-fix-android-gl-function-pointers.patch` | Android GL function pointer resolution via `eglGetProcAddress` |
 
-**Note:** After cloning the repository, run `./scripts/apply_comaps_patches.sh` to apply these patches to a fresh CoMaps checkout.
+**Note:** After cloning the repository, apply patches to a fresh CoMaps checkout:
+
+- **Linux/macOS:** `./scripts/apply_comaps_patches.sh`
+- **Windows PowerShell:** `.\scripts\apply_comaps_patches.ps1`
 
 ### **A.3 Known Issues**
 
