@@ -75,6 +75,36 @@ target_include_directories(${PLUGIN_NAME} PUBLIC
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../src" "${CMAKE_CURRENT_BINARY_DIR}/shared")
 
 # ============================================================================
+# Find Runtime Dependencies
+# ============================================================================
+# CoMaps uses zlib via find_package(ZLIB), which on Windows with vcpkg
+# results in a dynamic library dependency on zlib1.dll
+find_package(ZLIB REQUIRED)
+
+# Get the zlib DLL path for bundling
+# vcpkg installs zlib1.dll in the bin directory
+if(ZLIB_FOUND)
+  get_filename_component(ZLIB_LIB_DIR "${ZLIB_LIBRARY_RELEASE}" DIRECTORY)
+  get_filename_component(ZLIB_ROOT_DIR "${ZLIB_LIB_DIR}" DIRECTORY)
+  set(ZLIB_DLL "${ZLIB_ROOT_DIR}/bin/zlib1.dll")
+  if(EXISTS "${ZLIB_DLL}")
+    message(STATUS "Found zlib DLL: ${ZLIB_DLL}")
+  else()
+    # Fallback: check vcpkg installed directory
+    if(DEFINED ENV{VCPKG_ROOT})
+      set(ZLIB_DLL "$ENV{VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll")
+    elseif(EXISTS "C:/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll")
+      set(ZLIB_DLL "C:/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll")
+    endif()
+    if(EXISTS "${ZLIB_DLL}")
+      message(STATUS "Found zlib DLL (fallback): ${ZLIB_DLL}")
+    else()
+      message(WARNING "zlib1.dll not found - app may fail to load")
+    endif()
+  endif()
+endif()
+
+# ============================================================================
 # Bundled Libraries
 # ============================================================================
 # List of absolute paths to libraries that should be bundled with the plugin.
@@ -83,5 +113,7 @@ set(agus_maps_flutter_bundled_libraries
   $<TARGET_FILE:${PLUGIN_NAME}>
   # The native CoMaps FFI library
   $<TARGET_FILE:agus_maps_flutter>
+  # Runtime dependencies
+  "${ZLIB_DLL}"
   PARENT_SCOPE
 )

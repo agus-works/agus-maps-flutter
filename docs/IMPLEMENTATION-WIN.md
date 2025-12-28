@@ -51,6 +51,7 @@ flutter build windows --release
 **Build output:**
 - `agus_maps_flutter_plugin.dll` (~135KB) - MethodChannel handler
 - `agus_maps_flutter.dll` (~10MB) - Native CoMaps FFI library
+- `zlib1.dll` (~100KB) - Compression library dependency (from vcpkg)
 
 ---
 
@@ -308,6 +309,19 @@ For Flutter texture integration:
 **Cause:** Plugin not registered with Flutter.  
 **Solution:** Ensure `pubspec.yaml` has `pluginClass: AgusMapsFlutterPluginCApi` under `windows:` platform.
 
+### "Failed to load dynamic library 'agus_maps_flutter.dll': The specified module could not be found" (error code: 126)
+
+**Cause:** Missing DLL dependency (e.g., `zlib1.dll`).  
+**Solution:** Ensure `windows/CMakeLists.txt` bundles all runtime dependencies:
+```cmake
+set(agus_maps_flutter_bundled_libraries
+  $<TARGET_FILE:${PLUGIN_NAME}>
+  $<TARGET_FILE:agus_maps_flutter>
+  "${ZLIB_DLL}"  # From vcpkg
+  PARENT_SCOPE
+)
+```
+
 ### Build fails with MAX_PATH exceeded
 
 **Cause:** Symlinks in Flutter's `.plugin_symlinks` create long paths.  
@@ -317,6 +331,18 @@ For Flutter texture integration:
 
 **Cause:** Boost modular headers need specific include order.  
 **Solution:** CoMaps patches add missing includes and fix ordering.
+
+### vcpkg not found after flutter clean
+
+**Cause:** Flutter clean removes CMake cache; vcpkg toolchain must be in example app's CMakeLists.txt.  
+**Solution:** Add vcpkg integration before `project()` in `example/windows/CMakeLists.txt`:
+```cmake
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  if(EXISTS "C:/vcpkg/scripts/buildsystems/vcpkg.cmake")
+    set(CMAKE_TOOLCHAIN_FILE "C:/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+  endif()
+endif()
+```
 
 ---
 
