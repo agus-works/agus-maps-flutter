@@ -4,7 +4,8 @@
 
 **Build Status:** ✅ Compiles and links successfully  
 **Plugin Registration:** ✅ MethodChannel handler implemented  
-**Rendering:** 🔄 WIP - OpenGL context created, texture sharing in progress  
+**Rendering:** ✅ OpenGL context created, D3D11 texture sharing implemented  
+**Surface Bridge:** ✅ Plugin now calls FFI library for surface creation  
 
 ## Quick Start: Build & Run
 
@@ -124,6 +125,26 @@ The Windows implementation uses WGL/OpenGL for CoMaps rendering with D3D11 share
 ```
 
 ### Key Implementation Details
+
+The Windows plugin (`agus_maps_flutter_plugin.dll`) acts as a bridge between Flutter and the FFI library (`agus_maps_flutter.dll`):
+
+1. **Surface Creation Flow:**
+   - Dart calls `createMapSurface()` via MethodChannel
+   - Plugin loads FFI library (`agus_maps_flutter.dll`) dynamically
+   - Plugin calls `agus_native_create_surface()` which creates Framework + DrapeEngine + WGL context
+   - Plugin registers D3D11 shared texture with Flutter's `TextureRegistrar`
+   - Returns texture ID to Dart for display in `Texture` widget
+
+2. **Texture Sharing:**
+   - Native code renders via OpenGL (WGL context)
+   - OpenGL framebuffer is copied to D3D11 staging texture
+   - D3D11 shared texture is exposed via DXGI shared handle
+   - Flutter samples the texture directly (zero-copy)
+
+3. **Frame Synchronization:**
+   - Native `agus_set_frame_ready_callback()` notifies plugin of new frames
+   - Plugin calls `TextureRegistrar::MarkTextureFrameAvailable()`
+   - Flutter schedules next frame to sample the updated texture
 
 | Aspect | iOS/macOS (Metal) | Windows (OpenGL) |
 |--------|-------------------|------------------|
@@ -249,14 +270,18 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 - [x] `getApkPath` - Return executable directory
 - [x] WGL OpenGL context factory (AgusWglContextFactory)
 - [x] CMake integration with vcpkg
+- [x] `createMapSurface` - Creates Framework, DrapeEngine, registers D3D11 texture
+- [x] `resizeMapSurface` - Updates surface dimensions
+- [x] `destroyMapSurface` - Cleans up native resources
+- [x] Plugin-to-FFI bridge for surface lifecycle
+- [x] D3D11 shared texture with DXGI handle
+- [x] Frame callback registration
 
 ### In Progress 🔄
 
-- [ ] `createMapSurface` - Create render texture (returns placeholder)
-- [ ] `resizeMapSurface` - Resize texture
-- [ ] `destroyMapSurface` - Cleanup texture
-- [ ] D3D11/OpenGL texture interop for Flutter
-- [ ] Frame rendering loop integration
+- [ ] Validate D3D11 texture content is correctly rendered
+- [ ] Debug OpenGL-to-D3D11 texture copy
+- [ ] Frame synchronization timing
 
 ### Not Started ❌
 
@@ -269,6 +294,7 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 ## Acceptance Criteria
 
 - [x] Windows example app builds without errors
+- [x] Plugin creates native surface and registers Flutter texture
 - [ ] App launches and displays Gibraltar map
 - [ ] Pan/zoom gestures work correctly
 - [ ] Map renders at 60fps with minimal CPU usage
@@ -277,6 +303,60 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 ---
 
 ## Known Issues & Considerations
+
+### Thread Checker for Embedded Builds
+
+CoMaps uses thread checkers to verify certain classes (like `BookmarkManager`) are accessed from their original thread. In embedded Flutter builds, threading models differ from native apps, causing thread checker assertions to fail.
+
+**Solution:** The Windows build defines `OMIM_DISABLE_THREAD_CHECKER` which disables these checks:
+```cmake
+target_compile_definitions(agus_maps_flutter PRIVATE
+  OMIM_OS_WINDOWS
+  OMIM_DISABLE_THREAD_CHECKER  # Required for Flutter embedded builds
+)
+```
+
+This is supported by patches 0030 and 0031 which modify `thread_checker.cpp` and `thread_checker.hpp`.
+
+### WGL Context Management
+
+Windows uses native WGL for OpenGL context management. Critical considerations:
+
+1. **Context Preservation:** Methods like `GetRendererName()` and `GetRendererVersion()` must not release the current context since the caller expects it to remain current after the call.
+
+2. **Context Restoration:** Methods like `SetSurfaceSize()` and `CopyToSharedTexture()` save and restore the previous context to avoid disrupting the render thread.
+
+3. **MakeCurrent Logging:** Debug builds include logging when `wglMakeCurrent` fails, helping diagnose context issues.
+
+Example of correct context management:
+```cpp
+void SomeMethod()
+{
+  // Save current context
+  HGLRC prevContext = wglGetCurrentContext();
+  HDC prevDC = wglGetCurrentDC();
+  
+  // Do GL operations
+  wglMakeCurrent(m_hdc, m_glrc);
+  // ... GL calls ...
+  
+  // Restore previous context
+  if (prevContext != nullptr)
+    wglMakeCurrent(prevDC, prevContext);
+  else
+    wglMakeCurrent(nullptr, nullptr);
+}
+```
+
+### Native OpenGL vs ANGLE/EGL
+
+The Windows build uses native WGL/OpenGL, NOT ANGLE/EGL. This affects:
+
+- Context checking: Use `wglGetCurrentContext()` instead of `eglGetCurrentContext()`
+- Extension loading: Use `wglGetProcAddress()` for GL extensions
+- Headers: Include `<windows.h>` and `<GL/gl.h>` instead of EGL headers
+
+The patch `0004-fix-android-gl-function-pointers.patch` handles this by using `#ifdef OMIM_OS_WINDOWS` to select the correct API.
 
 ### MSVC Compatibility
 
@@ -303,6 +383,18 @@ For Flutter texture integration:
 ---
 
 ## Troubleshooting
+
+### "Could NOT find ZLIB (missing: ZLIB_LIBRARY ZLIB_INCLUDE_DIR)"
+
+**Cause:** CMake is using the wrong vcpkg installation (e.g., Visual Studio's bundled vcpkg instead of your installed C:\vcpkg).
+
+**Solution:**
+1. Install zlib via vcpkg: `C:\vcpkg\vcpkg.exe install zlib:x64-windows --classic`
+2. The example's `CMakeLists.txt` now forces use of C:\vcpkg if it has zlib installed
+3. Clean the build directory: `Remove-Item -Recurse -Force example\build\windows`
+4. Rebuild: `flutter build windows --release`
+
+The CMakeLists.txt checks for the actual presence of `zlib.lib` before selecting a vcpkg installation, ensuring it uses a vcpkg that actually has the required packages.
 
 ### "MissingPluginException: No implementation found for method extractMap"
 

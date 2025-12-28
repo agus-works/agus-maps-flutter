@@ -1,8 +1,8 @@
 diff --git a/libs/drape/gl_functions.cpp b/libs/drape/gl_functions.cpp
-index 6e06b24..c859320 100644
+index 6e06b24..75d3c7b 100644
 --- a/libs/drape/gl_functions.cpp
 +++ b/libs/drape/gl_functions.cpp
-@@ -10,10 +10,21 @@
+@@ -10,10 +10,25 @@
  #include "std/target_os.hpp"
  
  #include <algorithm>
@@ -17,14 +17,18 @@ index 6e06b24..c859320 100644
 +#include <EGL/egl.h>
 +#endif
 +
-+// Include EGL for Windows when using ANGLE
++// For Windows with WGL (not ANGLE/EGL), we need the GL header
 +#if defined(OMIM_OS_WINDOWS)
-+#include <EGL/egl.h>
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <windows.h>
++#include <GL/gl.h>
 +#endif
  
  #if defined(OMIM_OS_WINDOWS)
  #define DP_APIENTRY __stdcall
-@@ -37,6 +48,39 @@ BoundMap g_boundBuffers;
+@@ -37,6 +52,39 @@ BoundMap g_boundBuffers;
  std::mutex g_boundBuffersMutex;
  #endif
  
@@ -64,7 +68,7 @@ index 6e06b24..c859320 100644
  inline GLboolean convert(bool v)
  {
    return static_cast<GLboolean>(v ? GL_TRUE : GL_FALSE);
-@@ -84,6 +128,8 @@ typedef void(DP_APIENTRY * TglDeleteShaderFn)(GLuint shaderID);
+@@ -84,6 +132,8 @@ typedef void(DP_APIENTRY * TglDeleteShaderFn)(GLuint shaderID);
  typedef void(DP_APIENTRY * TglGetShaderivFn)(GLuint shaderID, GLenum name, GLint * p);
  typedef void(DP_APIENTRY * TglGetShaderInfoLogFn)(GLuint shaderID, GLsizei maxLength, GLsizei * length,
                                                    GLchar * infoLog);
@@ -73,7 +77,7 @@ index 6e06b24..c859320 100644
  
  typedef GLuint(DP_APIENTRY * TglCreateProgramFn)();
  typedef void(DP_APIENTRY * TglAttachShaderFn)(GLuint programID, GLuint shaderID);
-@@ -165,6 +211,26 @@ TglCompileShaderFn glCompileShaderFn = nullptr;
+@@ -165,6 +215,26 @@ TglCompileShaderFn glCompileShaderFn = nullptr;
  TglDeleteShaderFn glDeleteShaderFn = nullptr;
  TglGetShaderivFn glGetShaderivFn = nullptr;
  TglGetShaderInfoLogFn glGetShaderInfoLogFn = nullptr;
@@ -100,42 +104,46 @@ index 6e06b24..c859320 100644
  
  TglCreateProgramFn glCreateProgramFn = nullptr;
  TglAttachShaderFn glAttachShaderFn = nullptr;
-@@ -212,19 +278,29 @@ bool s_inited = false;
+@@ -212,26 +282,43 @@ bool s_inited = false;
  }  // namespace
  
  #ifdef OMIM_OS_WINDOWS
-+// On Windows with ANGLE, GL functions are exported directly from libGLESv2.dll
-+// We can just use the direct function pointers - no need for eglGetProcAddress
-+// for core GLES functions. Extension functions may still need eglGetProcAddress.
++// On Windows with WGL, modern GL functions (GL 2.0+) MUST be loaded via wglGetProcAddress
++// as they are not exported from opengl32.lib (which only has GL 1.1 functions).
  template <typename TFunc>
  TFunc LoadExtension(std::string const & ext)
  {
--  TFunc func = reinterpret_cast<TFunc>(wglGetProcAddress(ext.c_str()));
-+  // First try eglGetProcAddress (needed for some extensions)
-+  TFunc func = reinterpret_cast<TFunc>(eglGetProcAddress(ext.c_str()));
++  // First try wglGetProcAddress (needed for extensions and modern GL functions)
+   TFunc func = reinterpret_cast<TFunc>(wglGetProcAddress(ext.c_str()));
    if (func == nullptr)
    {
--    func = reinterpret_cast<TFunc>(wglGetProcAddress((ext + "EXT").c_str()));
--    ASSERT(func, ());
 +    // Try with OES suffix for OpenGL ES extensions
-+    func = reinterpret_cast<TFunc>(eglGetProcAddress((ext + "OES").c_str()));
++    func = reinterpret_cast<TFunc>(wglGetProcAddress((ext + "OES").c_str()));
 +  }
 +  if (func == nullptr)
 +  {
 +    // Try with EXT suffix
-+    func = reinterpret_cast<TFunc>(eglGetProcAddress((ext + "EXT").c_str()));
+     func = reinterpret_cast<TFunc>(wglGetProcAddress((ext + "EXT").c_str()));
+-    ASSERT(func, ());
    }
 -
++  if (func == nullptr)
++  {
++    // Try with ARB suffix for ARB extensions
++    func = reinterpret_cast<TFunc>(wglGetProcAddress((ext + "ARB").c_str()));
++  }
    return func;
  }
 -#define LOAD_GL_FUNC(type, func) LoadExtension<type>(#func);
-+// For Windows with ANGLE, use direct linking for core functions
-+// The libGLESv2.lib import library provides these symbols
-+#define LOAD_GL_FUNC(type, func) static_cast<type>(&::func)
++// For GL 1.1 core functions that ARE in opengl32.lib (glClear, glViewport, etc.)
++#define LOAD_GL11_FUNC(type, func) static_cast<type>(&::func)
++// For GL 2.0+ functions that must be loaded via wglGetProcAddress
++#define LOAD_GL_FUNC(type, func) LoadExtension<type>(#func)
  #else
++#define LOAD_GL11_FUNC(type, func) static_cast<type>(&::func)
  #define LOAD_GL_FUNC(type, func) static_cast<type>(&::func)
  #endif
-@@ -232,6 +308,7 @@ TFunc LoadExtension(std::string const & ext)
+ 
  void GLFunctions::Init(dp::ApiVersion apiVersion)
  {
    std::lock_guard const lock(s_mutex);
@@ -143,7 +151,7 @@ index 6e06b24..c859320 100644
    if (s_inited)
      return;
  
-@@ -241,13 +318,29 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+@@ -241,13 +328,29 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
  
  #if !defined(OMIM_OS_WINDOWS)
    // OpenGL ES3 api is the same for all systems, except WINDOWS.
@@ -180,16 +188,16 @@ index 6e06b24..c859320 100644
  
    glClearColorFn = LOAD_GL_FUNC(TglClearColorFn, glClearColor);
    glClearFn = LOAD_GL_FUNC(TglClearFn, glClear);
-@@ -255,6 +348,8 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+@@ -255,6 +358,8 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
    glScissorFn = LOAD_GL_FUNC(TglScissorFn, glScissor);
    glFlushFn = LOAD_GL_FUNC(TglFlushFn, glFlush);
  #else  // OMIM_OS_WINDOWS
-+  // On Windows with ANGLE, use direct linking via libGLESv2.lib import library
-+  // The LOAD_GL_FUNC macro resolves to static_cast<type>(&::func)
++  // On Windows with WGL, use wglGetProcAddress for modern GL functions
++  // and direct linking for GL 1.1 core functions
    glGenVertexArraysFn = LOAD_GL_FUNC(TglGenVertexArraysFn, glGenVertexArrays);
    glBindVertexArrayFn = LOAD_GL_FUNC(TglBindVertexArrayFn, glBindVertexArray);
    glDeleteVertexArrayFn = LOAD_GL_FUNC(TglDeleteVertexArrayFn, glDeleteVertexArrays);
-@@ -263,11 +358,12 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+@@ -263,11 +368,12 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
    glFlushMappedBufferRangeFn = LOAD_GL_FUNC(TglFlushMappedBufferRangeFn, glFlushMappedBufferRange);
    glGetStringiFn = LOAD_GL_FUNC(TglGetStringiFn, glGetStringi);
  
@@ -198,16 +206,16 @@ index 6e06b24..c859320 100644
 -  glViewportFn = ::glViewport;
 -  glScissorFn = ::glScissor;
 -  glFlushFn = ::glFlush;
-+  // Core GL functions
-+  glClearColorFn = LOAD_GL_FUNC(TglClearColorFn, glClearColor);
-+  glClearFn = LOAD_GL_FUNC(TglClearFn, glClear);
-+  glViewportFn = LOAD_GL_FUNC(TglViewportFn, glViewport);
-+  glScissorFn = LOAD_GL_FUNC(TglScissorFn, glScissor);
-+  glFlushFn = LOAD_GL_FUNC(TglFlushFn, glFlush);
++  // Core GL 1.1 functions - available in opengl32.lib
++  glClearColorFn = LOAD_GL11_FUNC(TglClearColorFn, glClearColor);
++  glClearFn = LOAD_GL11_FUNC(TglClearFn, glClear);
++  glViewportFn = LOAD_GL11_FUNC(TglViewportFn, glViewport);
++  glScissorFn = LOAD_GL11_FUNC(TglScissorFn, glScissor);
++  glFlushFn = LOAD_GL11_FUNC(TglFlushFn, glFlush);
  #endif
  
    glStencilFuncSeparateFn = LOAD_GL_FUNC(TglStencilFuncSeparateFn, glStencilFuncSeparate);
-@@ -296,6 +392,7 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+@@ -296,6 +402,7 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
    glDeleteShaderFn = LOAD_GL_FUNC(TglDeleteShaderFn, glDeleteShader);
    glGetShaderivFn = LOAD_GL_FUNC(TglGetShaderivFn, glGetShaderiv);
    glGetShaderInfoLogFn = LOAD_GL_FUNC(TglGetShaderInfoLogFn, glGetShaderInfoLog);
@@ -215,7 +223,7 @@ index 6e06b24..c859320 100644
  
    glCreateProgramFn = LOAD_GL_FUNC(TglCreateProgramFn, glCreateProgram);
    glAttachShaderFn = LOAD_GL_FUNC(TglAttachShaderFn, glAttachShader);
-@@ -334,6 +431,15 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+@@ -334,6 +441,15 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
    glBindFramebufferFn = LOAD_GL_FUNC(TglBindFramebufferFn, glBindFramebuffer);
    glFramebufferTexture2DFn = LOAD_GL_FUNC(TglFramebufferTexture2DFn, glFramebufferTexture2D);
    glCheckFramebufferStatusFn = LOAD_GL_FUNC(TglCheckFramebufferStatusFn, glCheckFramebufferStatus);
@@ -231,23 +239,23 @@ index 6e06b24..c859320 100644
  }
  
  bool GLFunctions::glHasExtension(std::string const & name)
-@@ -637,16 +743,46 @@ void GLFunctions::glFlushMappedBufferRange(glConst target, uint32_t offset, uint
+@@ -637,16 +753,46 @@ void GLFunctions::glFlushMappedBufferRange(glConst target, uint32_t offset, uint
  uint32_t GLFunctions::glCreateShader(glConst type)
  {
    ASSERT_EQUAL(CurrentApiVersion, dp::ApiVersion::OpenGLES3, ());
 -  ASSERT(glCreateShaderFn != nullptr, ());
 +  
-+  // Check if we have a current EGL context
++  // Check if we have a current OpenGL context
 +#ifdef OMIM_OS_WINDOWS
-+  EGLContext currentCtx = eglGetCurrentContext();
-+  if (currentCtx == EGL_NO_CONTEXT)
++  HGLRC currentCtx = wglGetCurrentContext();
++  if (currentCtx == nullptr)
 +  {
-+    fprintf(stderr, "[GL_FUNCTIONS] WARNING: No EGL context current when creating shader!\n");
++    fprintf(stderr, "[GL_FUNCTIONS] WARNING: No WGL context current when creating shader!\n");
 +    fflush(stderr);
 +  }
 +  else
 +  {
-+    fprintf(stderr, "[GL_FUNCTIONS] EGL context: %p\n", currentCtx);
++    fprintf(stderr, "[GL_FUNCTIONS] WGL context: %p\n", currentCtx);
 +    fflush(stderr);
 +  }
 +#endif
@@ -281,7 +289,7 @@ index 6e06b24..c859320 100644
  
    std::string fullSrc;
    if (src.find("#version") != std::string::npos)
-@@ -661,28 +797,211 @@ void GLFunctions::glShaderSource(uint32_t shaderID, std::string const & src, std
+@@ -661,28 +807,211 @@ void GLFunctions::glShaderSource(uint32_t shaderID, std::string const & src, std
      fullSrc = defines + src;
    }
  
@@ -295,7 +303,7 @@ index 6e06b24..c859320 100644
 +#ifdef OMIM_OS_WINDOWS
 +  if (g_shaderVerboseLogs)
 +  {
-+    EGLContext currentCtx = eglGetCurrentContext();
++    HGLRC currentCtx = wglGetCurrentContext();
 +    fprintf(stderr, "[GL_FUNCTIONS] glShaderSource ctx=%p shader=%u name=%s len=%zu\n", currentCtx, shaderID,
 +            shaderLabel.c_str(), fullSrc.size());
 +    fflush(stderr);
@@ -502,7 +510,7 @@ index 6e06b24..c859320 100644
    return false;
  }
  
-@@ -690,7 +1009,12 @@ void GLFunctions::glDeleteShader(uint32_t shaderID)
+@@ -690,7 +1019,12 @@ void GLFunctions::glDeleteShader(uint32_t shaderID)
  {
    ASSERT_EQUAL(CurrentApiVersion, dp::ApiVersion::OpenGLES3, ());
    ASSERT(glDeleteShaderFn != nullptr, ());
@@ -516,7 +524,7 @@ index 6e06b24..c859320 100644
  }
  
  uint32_t GLFunctions::glCreateProgram()
-@@ -757,7 +1081,15 @@ int8_t GLFunctions::glGetAttribLocation(uint32_t programID, std::string const &
+@@ -757,7 +1091,15 @@ int8_t GLFunctions::glGetAttribLocation(uint32_t programID, std::string const &
    ASSERT(glGetAttribLocationFn != nullptr, ());
    int result = glGetAttribLocationFn(programID, name.c_str());
    GLCHECKCALL();

@@ -249,6 +249,10 @@ if(WIN32)
     OMIM_OS_WINDOWS
     WIN32_LEAN_AND_MEAN
     NOMINMAX
+    # Disable thread checker for embedded builds - Flutter has different threading model
+    # where objects may be created on platform thread but accessed from render thread.
+    # See patches/comaps/0030-libs-base-thread_checker-cpp.patch and 0031 for details.
+    OMIM_DISABLE_THREAD_CHECKER
   )
   
   # Link Windows system libraries (OpenGL, D3D11 for texture sharing)
