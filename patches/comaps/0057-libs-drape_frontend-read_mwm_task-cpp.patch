@@ -1,0 +1,36 @@
+diff --git a/libs/drape_frontend/read_mwm_task.cpp b/libs/drape_frontend/read_mwm_task.cpp
+index 9b7c253..2135882 100644
+--- a/libs/drape_frontend/read_mwm_task.cpp
++++ b/libs/drape_frontend/read_mwm_task.cpp
+@@ -1,5 +1,7 @@
+ #include "drape_frontend/read_mwm_task.hpp"
+ 
++#include "base/logging.hpp"
++
+ namespace df
+ {
+ ReadMWMTask::ReadMWMTask(MapDataProvider & model) : m_model(model)
+@@ -44,13 +46,23 @@ void ReadMWMTask::Do()
+ 
+   std::shared_ptr<TileInfo> tile = m_tileInfo.lock();
+   if (tile == nullptr)
++  {
++    LOG(LINFO, ("ReadMWMTask::Do: tile is null"));
+     return;
++  }
++
++  LOG(LINFO, ("ReadMWMTask::Do: Processing tile", tile->GetTileKey().m_x, ",", 
++              tile->GetTileKey().m_y, "@", tile->GetTileKey().m_zoomLevel));
++
+   try
+   {
+     tile->ReadFeatures(m_model);
++    LOG(LINFO, ("ReadMWMTask::Do: ReadFeatures completed for tile", tile->GetTileKey().m_x, ",",
++                tile->GetTileKey().m_y));
+   }
+   catch (TileInfo::ReadCanceledException &)
+   {
++    LOG(LINFO, ("ReadMWMTask::Do: ReadFeatures cancelled"));
+     return;
+   }
+ }
