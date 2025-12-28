@@ -1,0 +1,75 @@
+Agus Maps Flutter
+Copyright 2024 Agus Maps Flutter Contributors
+
+This product includes software developed by:
+
+================================================================================
+CoMaps (https://comaps.app/)
+================================================================================
+Licensed under the Apache License, Version 2.0
+Copyright (c) CoMaps Contributors
+
+CoMaps is a fork of Organic Maps, which is itself a fork of MAPS.ME.
+
+================================================================================
+Organic Maps (https://organicmaps.app/)
+================================================================================
+Licensed under the Apache License, Version 2.0
+Copyright (c) Organic Maps OÜ
+
+Organic Maps is a privacy-focused, offline maps application.
+Please include a visible, human-readable mention of the "Organic Maps Project"
+and a clickable link to https://organicmaps.app in any derived works.
+
+================================================================================
+MAPS.ME
+================================================================================
+Licensed under the Apache License, Version 2.0
+Copyright (c) MapsWithMe GmbH
+
+================================================================================
+OpenStreetMap Data
+================================================================================
+Map data © OpenStreetMap contributors
+Licensed under the Open Database License (ODbL)
+https://www.openstreetmap.org/copyright
+
+The map data used in MWM files is derived from OpenStreetMap and is available
+under the Open Database License. For more information, see:
+https://opendatacommons.org/licenses/odbl/
+
+================================================================================
+Third-Party Libraries
+================================================================================
+
+This software includes the following third-party libraries:
+
+Flutter SDK and Dart packages:
+- ffi (BSD-3-Clause) - dart.dev
+- plugin_platform_interface (BSD-3-Clause) - flutter.dev
+- shared_preferences (BSD-3-Clause) - flutter.dev
+- http (BSD-3-Clause) - dart.dev
+- path_provider (BSD-3-Clause) - flutter.dev
+- cupertino_icons (MIT) - flutter.dev
+
+CoMaps/Organic Maps third-party dependencies (included via CoMaps):
+- Boost C++ Libraries (Boost Software License 1.0)
+- ICU - International Components for Unicode (ICU License)
+- FreeType (FreeType License / GPL2)
+- Protocol Buffers (BSD-3-Clause) - Google
+- Jansson (MIT)
+- gflags (BSD-3-Clause) - Google
+- Various other libraries - see CoMaps repository for complete list
+
+================================================================================
+Attribution Requirements
+================================================================================
+
+When using this software, please ensure you:
+
+1. Include this NOTICE file in distributions
+2. Display OpenStreetMap attribution: "© OpenStreetMap contributors"
+3. Include Organic Maps attribution as requested by the project
+4. Comply with the Apache License 2.0 requirements for all modifications
+
+================================================================================
