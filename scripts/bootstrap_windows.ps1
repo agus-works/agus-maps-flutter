@@ -120,6 +120,16 @@ if (Test-Path $fetchScript) {
     Write-Warning "fetch_comaps.ps1 not found, skipping CoMaps setup"
 }
 
+Write-Host ""
+Write-Host "=== Step 5: Copy CoMaps data into example assets ===" -ForegroundColor Yellow
+
+$copyDataPs1 = Join-Path $ScriptDir "copy_comaps_data.ps1"
+if (Test-Path $copyDataPs1) {
+    & $copyDataPs1
+} else {
+    Write-Warning "copy_comaps_data.ps1 not found. You can run scripts/copy_comaps_data.sh in bash instead."
+}
+
 # ============================================================================
 # Done
 # ============================================================================

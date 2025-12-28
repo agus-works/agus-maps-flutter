@@ -212,6 +212,7 @@ private:
     std::string ExtractMapAsset(const std::string& assetPath);
     std::string ExtractAllDataFiles();
     void ExtractDirectory(const fs::path& sourcePath, const fs::path& destPath);
+    bool DataDirLooksComplete(const fs::path& dataDir);
 
     flutter::PluginRegistrarWindows* registrar_;
     flutter::TextureRegistrar* texture_registrar_;
@@ -405,7 +406,9 @@ std::string AgusMapsFlutterPlugin::ExtractAllDataFiles() {
     // Marker file to track extraction
     fs::path markerFile = dataDir / ".comaps_data_extracted";
 
-    if (fs::exists(markerFile)) {
+    // If we previously extracted but the directory is missing required files
+    // (common when assets list changes), re-extract.
+    if (fs::exists(markerFile) && DataDirLooksComplete(dataDir)) {
         OutputDebugStringA(("[AgusMapsFlutter] Data already extracted at: " + dataDir.string() + "\n").c_str());
         return dataDir.string();
     }
@@ -420,9 +423,11 @@ std::string AgusMapsFlutterPlugin::ExtractAllDataFiles() {
     fs::path assetsDir = fs::path(exeDir) / "data" / "flutter_assets";
     fs::path sourceDataDir = assetsDir / "assets" / "comaps_data";
 
-    if (fs::exists(sourceDataDir) && fs::is_directory(sourceDataDir)) {
-        ExtractDirectory(sourceDataDir, dataDir);
+    if (!fs::exists(sourceDataDir) || !fs::is_directory(sourceDataDir)) {
+        throw std::runtime_error("CoMaps data assets directory not found in flutter_assets: " + sourceDataDir.string());
     }
+
+    ExtractDirectory(sourceDataDir, dataDir);
 
     // Create marker file
     std::ofstream marker(markerFile);
@@ -441,11 +446,32 @@ void AgusMapsFlutterPlugin::ExtractDirectory(
             fs::create_directories(destItem);
             ExtractDirectory(entry.path(), destItem);
         } else if (entry.is_regular_file()) {
-            if (!fs::exists(destItem)) {
-                fs::copy_file(entry.path(), destItem);
-            }
+            // Always overwrite to keep extracted data in sync with bundled assets.
+            fs::copy_file(entry.path(), destItem, fs::copy_options::overwrite_existing);
         }
     }
+}
+
+bool AgusMapsFlutterPlugin::DataDirLooksComplete(const fs::path& dataDir) {
+    // Keep this list small and representative.
+    // If any are missing, we force a re-extract.
+    const fs::path requiredFiles[] = {
+        dataDir / "classificator.txt",
+        dataDir / "types.txt",
+        dataDir / "drules_proto.bin",
+        dataDir / "packed_polygons.bin",
+        dataDir / "transit_colors.txt",
+        dataDir / "countries-strings" / "en.json" / "localize.json",
+        dataDir / "categories-strings" / "en.json" / "localize.json",
+    };
+
+    for (const auto& p : requiredFiles) {
+        if (!fs::exists(p)) {
+            OutputDebugStringA(("[AgusMapsFlutter] Data incomplete, missing: " + p.string() + "\n").c_str());
+            return false;
+        }
+    }
+    return true;
 }
 
 void AgusMapsFlutterPlugin::HandleGetApkPath(

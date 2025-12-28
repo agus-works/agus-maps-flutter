@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'dart:ffi' hide Size;
 import 'dart:io';
 import 'dart:isolate';
@@ -362,6 +363,15 @@ class _AgusMapState extends State<AgusMap> {
   // Track active pointers for multitouch
   final Map<int, Offset> _activePointers = {};
 
+  // Synthetic pinch for desktop scroll/trackpad gestures.
+  // We only activate this when there are no real pointers down.
+  Timer? _syntheticGestureEndTimer;
+  bool _syntheticPinchActive = false;
+  double _syntheticPinchRadiusLogical = 24.0;
+  Offset _syntheticFocalPointLogical = Offset.zero;
+  static const int _syntheticPointer1 = 900001;
+  static const int _syntheticPointer2 = 900002;
+
   void _handlePointerDown(PointerDownEvent event) {
     _activePointers[event.pointer] = event.localPosition;
     _sendTouchEvent(TouchType.down, event.pointer, event.localPosition);
@@ -381,6 +391,53 @@ class _AgusMapState extends State<AgusMap> {
     _sendTouchEvent(TouchType.cancel, event.pointer, event.localPosition);
     _activePointers.remove(event.pointer);
   }
+
+  void _endSyntheticPinch() {
+    if (!_syntheticPinchActive) return;
+    final p1 = _syntheticFocalPointLogical.translate(-_syntheticPinchRadiusLogical, 0);
+    final p2 = _syntheticFocalPointLogical.translate(_syntheticPinchRadiusLogical, 0);
+    _sendTouchEvent(TouchType.up, _syntheticPointer1, p1);
+    _sendTouchEvent(TouchType.up, _syntheticPointer2, p2);
+    _syntheticPinchActive = false;
+  }
+
+  void _updateSyntheticPinch({required Offset focalPointLogical, required double radiusLogical}) {
+    _syntheticFocalPointLogical = focalPointLogical;
+    _syntheticPinchRadiusLogical = radiusLogical.clamp(8.0, 220.0);
+
+    final p1 = focalPointLogical.translate(-_syntheticPinchRadiusLogical, 0);
+    final p2 = focalPointLogical.translate(_syntheticPinchRadiusLogical, 0);
+
+    if (!_syntheticPinchActive) {
+      _sendTouchEvent(TouchType.down, _syntheticPointer1, p1);
+      _sendTouchEvent(TouchType.down, _syntheticPointer2, p2);
+      _syntheticPinchActive = true;
+    } else {
+      _sendTouchEvent(TouchType.move, _syntheticPointer1, p1);
+      _sendTouchEvent(TouchType.move, _syntheticPointer2, p2);
+    }
+
+    _syntheticGestureEndTimer?.cancel();
+    _syntheticGestureEndTimer = Timer(const Duration(milliseconds: 120), _endSyntheticPinch);
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
+    if (_activePointers.isNotEmpty) return; // don't interfere with real drag/pinch
+
+    if (event is PointerScrollEvent) {
+      // Scroll up -> zoom in, scroll down -> zoom out.
+      // Map scroll delta into a pinch radius change.
+      final dy = event.scrollDelta.dy;
+      final zoomFactor = (dy / 120.0).clamp(-3.0, 3.0);
+      final nextRadius = _syntheticPinchRadiusLogical * (1.0 - (zoomFactor * 0.10));
+      _updateSyntheticPinch(
+        focalPointLogical: event.localPosition,
+        radiusLogical: nextRadius,
+      );
+    }
+  }
+
 
   void _sendTouchEvent(TouchType type, int pointerId, Offset position) {
     // Use cached pixel ratio for coordinate conversion (matches surface dimensions)
@@ -447,6 +504,7 @@ class _AgusMapState extends State<AgusMap> {
           onPointerMove: _handlePointerMove,
           onPointerUp: _handlePointerUp,
           onPointerCancel: _handlePointerCancel,
+          onPointerSignal: _handlePointerSignal,
           child: Texture(textureId: _textureId!),
         );
       },

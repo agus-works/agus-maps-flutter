@@ -27,6 +27,7 @@ ESSENTIAL_FILES=(
     "drules_proto.bin"
     "drules_proto_default_light.bin"
     "drules_proto_default_dark.bin"
+    "transit_colors.txt"
     "colors.txt"
     "patterns.txt"
     "editor.config"
@@ -58,15 +59,15 @@ fi
 # Copy symbols (needed for rendering)
 if [ -d "$COMAPS_DATA/symbols" ]; then
     mkdir -p "$DEST_DATA/symbols"
-    # Copy mdpi symbols for initial testing
-    if [ -d "$COMAPS_DATA/symbols/mdpi" ]; then
-        cp -r "$COMAPS_DATA/symbols/mdpi" "$DEST_DATA/symbols/"
-        echo "  ✓ symbols/mdpi/"
-    fi
-    if [ -d "$COMAPS_DATA/symbols/xhdpi" ]; then
-        cp -r "$COMAPS_DATA/symbols/xhdpi" "$DEST_DATA/symbols/"
-        echo "  ✓ symbols/xhdpi/"
-    fi
+    cp -r "$COMAPS_DATA/symbols/"* "$DEST_DATA/symbols/"
+    echo "  ✓ symbols/"
+fi
+
+# Copy styles (needed for rendering)
+if [ -d "$COMAPS_DATA/styles" ]; then
+    mkdir -p "$DEST_DATA/styles"
+    cp -r "$COMAPS_DATA/styles/"* "$DEST_DATA/styles/"
+    echo "  ✓ styles/"
 fi
 
 echo ""
