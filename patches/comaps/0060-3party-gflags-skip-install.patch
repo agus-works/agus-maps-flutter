@@ -1,7 +1,7 @@
-diff --git a/CMakeLists.txt b/CMakeLists.txt
+diff --git a/3party/gflags/CMakeLists.txt b/3party/gflags/CMakeLists.txt
 index a664bb1..d54d70a 100644
---- a/CMakeLists.txt
-+++ b/CMakeLists.txt
+--- a/3party/gflags/CMakeLists.txt
++++ b/3party/gflags/CMakeLists.txt
 @@ -520,10 +520,17 @@ endif ()
  
  # ----------------------------------------------------------------------------
