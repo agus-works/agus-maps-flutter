@@ -686,7 +686,33 @@ endif()
      ```
    - **Reference:** Qt's `QtRenderOGLContext::SetFramebuffer()` in `qtoglcontext.cpp` shows the correct pattern - it binds `m_backFrame` when framebuffer is nullptr.
 
-10. **Stale data extraction:** Old data files without symbol textures.
+10. **Missing OpenGL state initialization - Init() empty:**
+   - **Symptom:** Map background renders but tiles/features don't appear, even after fixing SetFramebuffer. Logs show tiles being added to render groups.
+   - **Root cause:** CoMaps' `OGLContext::Init()` sets up critical OpenGL state (depth testing, face culling, scissor test) that the rendering code expects. Our `AgusWglContext::Init()` was empty, leaving GL state in an undefined configuration.
+   - **Why this matters:** CoMaps' rendering code assumes `GL_SCISSOR_TEST` is enabled (it uses glScissor for viewport clipping). Without proper depth test setup, 3D elements may render incorrectly.
+   - **Fix:** Implement `AgusWglContext::Init()` matching `OGLContext::Init()`:
+     ```cpp
+     void AgusWglContext::Init(dp::ApiVersion apiVersion) {
+         // Pixel alignment for texture uploads
+         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+         
+         // Depth testing setup
+         glClearDepth(1.0);
+         glDepthFunc(GL_LEQUAL);
+         glDepthMask(GL_TRUE);
+         
+         // Face culling - important for proper rendering
+         glFrontFace(GL_CW);
+         glCullFace(GL_BACK);
+         glEnable(GL_CULL_FACE);
+         
+         // Scissor test - CRITICAL: CoMaps expects scissor to be enabled
+         glEnable(GL_SCISSOR_TEST);
+     }
+     ```
+   - **Reference:** CoMaps' `OGLContext::Init()` in `drape/oglcontext.cpp` shows the expected initialization.
+
+11. **Stale data extraction:** Old data files without symbol textures.
    - Delete `Documents\agus_maps_flutter\.comaps_data_extracted` marker file
    - Delete `Documents\agus_maps_flutter\` folder contents
    - Rebuild and run to force fresh extraction
