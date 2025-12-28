@@ -688,6 +688,14 @@ void AgusMapsFlutterPlugin::HandleResizeMapSurface(
         std::fprintf(stderr, "[AgusMapsFlutter] Calling g_fnOnSizeChanged(%d, %d)\n", width, height);
         std::fflush(stderr);
         g_fnOnSizeChanged(width, height);
+        
+        // CRITICAL: Notify Flutter that the texture has been updated after resize
+        // This ensures Flutter samples the new texture with updated dimensions
+        if (texture_id_ >= 0 && texture_registrar_) {
+            texture_registrar_->MarkTextureFrameAvailable(texture_id_);
+            std::fprintf(stderr, "[AgusMapsFlutter] MarkTextureFrameAvailable called after resize\n");
+            std::fflush(stderr);
+        }
     } else {
         std::fprintf(stderr, "[AgusMapsFlutter] WARNING: g_fnOnSizeChanged is null!\n");
         std::fflush(stderr);
