@@ -111,6 +111,18 @@ private:
   // State
   int m_width = 0;
   int m_height = 0;
+  
+  // Track the size at which the most recent frame was ACTUALLY rendered.
+  // This is critical for resize handling: when SetSurfaceSize() is called,
+  // m_width/m_height are updated immediately to the target size, but the
+  // FBO still contains content rendered at the OLD size until the DrapeEngine
+  // completes a new frame at the new size.
+  // CopyToSharedTexture() must read pixels at m_renderedWidth/m_renderedHeight,
+  // not at m_width/m_height, to avoid reading garbage/black pixels beyond
+  // the actually-rendered content.
+  std::atomic<int> m_renderedWidth{0};
+  std::atomic<int> m_renderedHeight{0};
+  
   std::atomic<bool> m_presentAvailable{true};
   std::function<void()> m_frameCallback;
   std::function<void()> m_keepAliveCallback;  // Called to keep render loop active

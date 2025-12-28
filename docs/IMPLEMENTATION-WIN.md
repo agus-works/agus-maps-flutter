@@ -185,6 +185,72 @@ void AgusWglContext::Resize(uint32_t w, uint32_t h)
 
 This ensures both the external resize path (Dart → Plugin → Native) and the internal resize path (DrapeEngine → Context) properly update the rendering resources.
 
+## Resolved: Resize Causes Black Bands at Edges
+
+### Previous Symptoms
+- Map displayed correctly at initial size
+- When enlarging the window, the new edges showed black/transparent bands
+- Logs showed viewport/scissor at OLD size while `m_width`/`m_height` at NEW size:
+  ```
+  CopyToSharedTexture scissor: 0 0 1678 1076 viewport: 0 0 1678 1076
+  Frame 1140 size: 1683 x 1079
+  ```
+- Bottom-right corner pixels read as `0 0 0 0` (transparent black)
+
+### Root Cause
+A timing race condition between resize notification and frame rendering:
+
+1. User resizes window → `SetSurfaceSize(newW, newH)` called
+2. `SetSurfaceSize()` immediately updates `m_width`/`m_height` to new dimensions
+3. `SetSurfaceSize()` recreates D3D11 texture at new size
+4. **BUT** the currently-rendering frame was started BEFORE the resize
+5. Frame completes → `Present()` → `CopyToSharedTexture()` called
+6. `CopyToSharedTexture()` reads `m_width × m_height` pixels (NEW size)
+7. But the FBO content was rendered at OLD viewport/scissor size
+8. Reading pixels beyond the rendered region yields garbage/black
+
+The key insight: OpenGL viewport/scissor represent the ACTUAL rendered size, while `m_width`/`m_height` represent the TARGET size. During resize transition, these may differ.
+
+### Solution: Use Viewport Size for Pixel Readback
+
+Query the OpenGL viewport at readback time and use THAT size for `glReadPixels()`:
+
+```cpp
+void AgusWglContextFactory::CopyToSharedTexture()
+{
+  // Query the current viewport to determine actual rendered size
+  GLint viewport[4];
+  glGetIntegerv(GL_VIEWPORT, viewport);
+  int readWidth = viewport[2];
+  int readHeight = viewport[3];
+  
+  // Clamp to target dimensions
+  if (readWidth > m_width) readWidth = m_width;
+  if (readHeight > m_height) readHeight = m_height;
+  
+  // Read pixels at RENDERED size, not target size
+  std::vector<uint8_t> pixels(readWidth * readHeight * 4);
+  glReadPixels(0, 0, readWidth, readHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+  
+  // Copy to D3D11 staging texture, handling size mismatch
+  if (readWidth == m_width && readHeight == m_height) {
+    // Fast path: sizes match
+  } else {
+    // Clear texture, then copy rendered portion
+    // This prevents garbage pixels in expanded regions
+  }
+}
+```
+
+This approach:
+- Ensures we only read pixels that were actually rendered
+- Handles the resize transition gracefully (shows old-size frame in new-size texture)
+- Clears the expanded region to prevent garbage/artifacts
+
+### Comparison with Qt Implementation
+
+Qt's `QtRenderOGLContext` uses a different approach: power-of-2 buffer allocation with triple buffering. This pre-allocates larger buffers so resize only needs to update `m_frameRect` (the active region) rather than reallocating. Our approach is simpler but may show a brief visual artifact during resize where the old-size content is displayed in the new-size widget until the next frame renders at the new size.
+
 ## Resolved: Scroll Wheel Zoom Not Working
 
 ### Previous Symptoms
