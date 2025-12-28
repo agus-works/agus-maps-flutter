@@ -1,0 +1,24 @@
+diff --git a/3party/boost/libs/gil/include/boost/gil/algorithm.hpp b/3party/boost/libs/gil/include/boost/gil/algorithm.hpp
+index 0000001..0000002 100644
+--- a/3party/boost/libs/gil/include/boost/gil/algorithm.hpp
++++ b/3party/boost/libs/gil/include/boost/gil/algorithm.hpp
+@@ -1238,7 +1238,7 @@ struct inner_product_k_t
+     template <std::size_t K, class SrcIterator, class DstIterator, class Weights, class DstP>
+     static void apply(SrcIterator src, DstIterator dst, Weights& weights, DstP& dst_p)
+     {
+-        return inner_product_k_t<Size - 1>::template apply(
++        inner_product_k_t<Size - 1>::template apply<K>(
+             src, dst, weights, dst_p
+         );
+     }
+@@ -1285,7 +1285,7 @@ void inner_product_k(
+     typename std::iterator_traits<DstIterator>::value_type dst_p;
+     pixel_zeros_t<typename std::iterator_traits<DstIterator>::value_type>{}(dst_p);
+ 
+-    return detail::inner_product_k_t<Size>::template apply(
++    detail::inner_product_k_t<Size>::template apply<0>(
+         src_begin, dst, weights, dst_p
+     );
+ }
+
+
