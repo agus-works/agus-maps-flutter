@@ -18,6 +18,10 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <shlobj.h>   // For SHGetFolderPathW
+#include <dbghelp.h>  // For MiniDumpWriteDump
+
+#pragma comment(lib, "dbghelp.lib")
 
 #include <string>
 #include <memory>
@@ -25,6 +29,7 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
+#include <sstream>
 
 // CoMaps Framework includes
 #include "base/logging.hpp"
@@ -38,6 +43,105 @@
 
 // Forward declarations for Windows platform (defined in agus_platform_win.cpp)
 extern "C" void AgusPlatformWin_InitPaths(const char* resourcePath, const char* writablePath);
+
+#pragma region Crash Dump Handler
+
+/// Crash dump handler for Windows.
+/// When enabled, this captures minidumps on unhandled exceptions for debugging.
+static bool g_crashHandlerInstalled = false;
+static wchar_t g_dumpPath[MAX_PATH] = {0};
+
+/// Generate minidump file on crash
+static LONG WINAPI AgusCrashHandler(EXCEPTION_POINTERS* pExceptionInfo)
+{
+    // Build dump filename with timestamp
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    
+    wchar_t dumpFile[MAX_PATH];
+    swprintf_s(dumpFile, MAX_PATH, 
+               L"%s\\agus_maps_crash_%04d%02d%02d_%02d%02d%02d.dmp",
+               g_dumpPath, st.wYear, st.wMonth, st.wDay, 
+               st.wHour, st.wMinute, st.wSecond);
+    
+    OutputDebugStringW(L"[AgusMapsFlutter] CRASH DETECTED - Writing minidump to: ");
+    OutputDebugStringW(dumpFile);
+    OutputDebugStringW(L"\n");
+    
+    HANDLE hFile = CreateFileW(dumpFile, GENERIC_WRITE, 0, NULL, 
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    
+    if (hFile != INVALID_HANDLE_VALUE)
+    {
+        MINIDUMP_EXCEPTION_INFORMATION mdei;
+        mdei.ThreadId = GetCurrentThreadId();
+        mdei.ExceptionPointers = pExceptionInfo;
+        mdei.ClientPointers = FALSE;
+        
+        // Write minidump with full memory info for debugging
+        MINIDUMP_TYPE dumpType = static_cast<MINIDUMP_TYPE>(
+            MiniDumpWithDataSegs | 
+            MiniDumpWithHandleData |
+            MiniDumpWithThreadInfo |
+            MiniDumpWithUnloadedModules);
+        
+        if (MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(),
+                              hFile, dumpType, &mdei, NULL, NULL))
+        {
+            OutputDebugStringW(L"[AgusMapsFlutter] Minidump written successfully\n");
+        }
+        else
+        {
+            OutputDebugStringW(L"[AgusMapsFlutter] Failed to write minidump\n");
+        }
+        
+        CloseHandle(hFile);
+    }
+    else
+    {
+        OutputDebugStringW(L"[AgusMapsFlutter] Failed to create dump file\n");
+    }
+    
+    // Log exception details
+    char msg[512];
+    snprintf(msg, sizeof(msg), 
+             "[AgusMapsFlutter] Exception code: 0x%08lX at address: %p\n",
+             pExceptionInfo->ExceptionRecord->ExceptionCode,
+             pExceptionInfo->ExceptionRecord->ExceptionAddress);
+    OutputDebugStringA(msg);
+    fprintf(stderr, "%s", msg);
+    
+    // Let Windows handle the exception (will show crash dialog or terminate)
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+/// Install crash handler. Call early in initialization.
+static void installCrashHandler()
+{
+    if (g_crashHandlerInstalled)
+        return;
+    
+    // Get Documents folder for crash dumps
+    wchar_t documentsPath[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_PERSONAL, NULL, 0, documentsPath)))
+    {
+        swprintf_s(g_dumpPath, MAX_PATH, L"%s\\agus_maps_flutter", documentsPath);
+        CreateDirectoryW(g_dumpPath, NULL);  // Ensure directory exists
+    }
+    else
+    {
+        wcscpy_s(g_dumpPath, MAX_PATH, L".");
+    }
+    
+    SetUnhandledExceptionFilter(AgusCrashHandler);
+    g_crashHandlerInstalled = true;
+    
+    OutputDebugStringW(L"[AgusMapsFlutter] Crash handler installed. Dumps will be saved to: ");
+    OutputDebugStringW(g_dumpPath);
+    OutputDebugStringW(L"\n");
+}
+
+#pragma endregion
 
 #pragma region Global State
 
@@ -102,6 +206,9 @@ static void ensureLoggingConfigured() {
         base::SetLogMessageFn(&AgusLogMessage);
         base::g_LogAbortLevel = base::LCRITICAL;
         g_loggingInitialized = true;
+        
+        // Install crash handler for better diagnostics
+        installCrashHandler();
         
         OutputDebugStringA("[AgusMapsFlutter] Logging initialized\n");
         std::fprintf(stderr, "[AgusMapsFlutter] Logging initialized\n");

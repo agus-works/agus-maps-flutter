@@ -65,6 +65,18 @@ if(NOT USE_PREBUILT_COMAPS)
   # Note: OMIM_ROOT is now correctly set inside CoMaps CMakeLists.txt using
   # CMAKE_CURRENT_SOURCE_DIR, so it works when added as subdirectory
 
+  # ============================================================================
+  # Thread Checker Disable for Embedded Builds
+  # ============================================================================
+  # Flutter embedded builds have different threading models where objects may be
+  # created on the platform thread but accessed from the render thread. CoMaps
+  # uses thread checkers to verify single-thread access which causes assertions
+  # to fail in embedded contexts. Disable thread checking globally for all
+  # CoMaps libraries by defining OMIM_DISABLE_THREAD_CHECKER.
+  # This is supported by patches 0030 and 0031 (thread_checker.cpp/.hpp).
+  add_compile_definitions(OMIM_DISABLE_THREAD_CHECKER)
+  message(STATUS "Thread checker disabled for embedded Flutter builds")
+
   # Build CoMaps
   add_subdirectory("${COMAPS_SOURCE_DIR}" build/comaps)
   
@@ -249,10 +261,6 @@ if(WIN32)
     OMIM_OS_WINDOWS
     WIN32_LEAN_AND_MEAN
     NOMINMAX
-    # Disable thread checker for embedded builds - Flutter has different threading model
-    # where objects may be created on platform thread but accessed from render thread.
-    # See patches/comaps/0030-libs-base-thread_checker-cpp.patch and 0031 for details.
-    OMIM_DISABLE_THREAD_CHECKER
   )
   
   # Link Windows system libraries (OpenGL, D3D11 for texture sharing)
@@ -261,6 +269,8 @@ if(WIN32)
     d3d11
     dxgi
     dxguid
+    dbghelp   # For MiniDumpWriteDump crash handler
+    shell32   # For SHGetFolderPath
   )
   
   # MSVC-specific flags
