@@ -132,7 +132,7 @@ class _MyAppState extends State<MyApp> {
       // Record bundled maps in storage (if not already there)
       final worldFile = File(worldPath);
       final coastsFile = File(coastsPath);
-      final gibraltarFile = File(mapPath);
+      // final gibraltarFile = File(mapPath);
 
       if (!_mwmStorage!.isDownloaded('World')) {
         await _mwmStorage!.upsert(MwmMetadata(
