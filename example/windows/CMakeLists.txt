@@ -1,5 +1,27 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
+
+# ============================================================================
+# vcpkg Integration - MUST be before project()
+# ============================================================================
+# agus_maps_flutter requires vcpkg for zlib and other dependencies
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  if(DEFINED ENV{VCPKG_ROOT})
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        CACHE STRING "vcpkg toolchain file")
+    message(STATUS "Using vcpkg from VCPKG_ROOT: $ENV{VCPKG_ROOT}")
+  elseif(EXISTS "C:/vcpkg/scripts/buildsystems/vcpkg.cmake")
+    set(CMAKE_TOOLCHAIN_FILE "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        CACHE STRING "vcpkg toolchain file")
+    message(STATUS "Using vcpkg from C:/vcpkg")
+  endif()
+endif()
+
+# Set vcpkg target triplet for x64
+if(NOT DEFINED VCPKG_TARGET_TRIPLET)
+  set(VCPKG_TARGET_TRIPLET "x64-windows" CACHE STRING "vcpkg target triplet")
+endif()
+
 project(agus_maps_flutter_example LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
