@@ -223,6 +223,12 @@ class _MyAppState extends State<MyApp> {
     _log('Invalidating map viewport...');
     agus_maps_flutter.invalidateMap();
 
+    // Force a complete redraw to ensure tiles are loaded for newly registered maps
+    // This is necessary because maps are registered AFTER DrapeEngine initialization,
+    // so the engine may have calculated tile coverage before maps were available
+    _log('Forcing complete tile reload...');
+    agus_maps_flutter.forceRedraw();
+
     // Debug: List all registered MWMs and check Manila coverage
     _log('Debug: Listing all registered MWMs...');
     agus_maps_flutter.debugListMwms();

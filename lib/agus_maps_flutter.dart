@@ -133,6 +133,20 @@ void invalidateMap() {
   _bindings.comaps_invalidate();
 }
 
+/// Force a complete redraw by updating the map style.
+///
+/// This clears all render groups and forces the BackendRenderer to re-request
+/// all tiles from scratch. Use this after registering map files to ensure
+/// tiles are loaded for newly registered regions.
+///
+/// This is more heavy-handed than [invalidateMap] and should be called when
+/// maps are registered AFTER the DrapeEngine has been initialized, as the
+/// engine may have already calculated tile coverage before the maps were
+/// available.
+void forceRedraw() {
+  _bindings.comaps_force_redraw();
+}
+
 /// Touch event types
 enum TouchType {
   none, // 0
