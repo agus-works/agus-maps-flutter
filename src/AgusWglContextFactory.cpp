@@ -1017,6 +1017,18 @@ void AgusWglContext::Flush()
   glFlush();
 }
 
+void AgusWglContext::Resize(uint32_t w, uint32_t h)
+{
+  // Called by FrontendRenderer::OnResize() when the viewport changes.
+  // We delegate to the factory's SetSurfaceSize which handles all the
+  // GL resource recreation (render texture, depth buffer, D3D11 shared texture).
+  if (m_factory)
+  {
+    LOG(LINFO, ("AgusWglContext::Resize:", w, "x", h, "isDraw:", m_isDraw));
+    m_factory->SetSurfaceSize(static_cast<int>(w), static_cast<int>(h));
+  }
+}
+
 void AgusWglContext::SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
   // NOTE: SetViewport is called very frequently (many times per frame).

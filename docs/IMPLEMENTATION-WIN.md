@@ -130,6 +130,10 @@ void AgusWglContext::SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 - But Flutter wasn't sampling the new texture
 
 ### Root Cause
+Two issues were identified:
+
+**Issue 1: Flutter not notified of texture update**
+
 After resize, the Windows plugin:
 1. Updated internal `surface_width_` and `surface_height_`
 2. Called `g_fnOnSizeChanged()` to update native resources
@@ -137,7 +141,11 @@ After resize, the Windows plugin:
 
 Without `MarkTextureFrameAvailable()`, Flutter continued using its cached texture dimensions.
 
-Additionally, the Dart `Texture` widget wasn't explicitly constrained, which could cause layout issues.
+**Issue 2: Missing Context::Resize override**
+
+The `FrontendRenderer::OnResize()` function calls `m_context->Resize(sx, sy)` to allow the graphics context to update its internal resources. The base `GraphicsContext::Resize()` is a no-op, and our `AgusWglContext` didn't override it. This meant that when DrapeEngine internally triggered a resize, the context's resources weren't updated.
+
+Qt's `QtRenderOGLContext` overrides `Resize()` to recreate framebuffer objects. Our implementation needs to delegate to `AgusWglContextFactory::SetSurfaceSize()`.
 
 ### Fix
 1. Call `MarkTextureFrameAvailable()` after resize in plugin:
@@ -162,7 +170,20 @@ return SizedBox(
 );
 ```
 
-This matches macOS implementation which calls `textureRegistry?.textureFrameAvailable(textureId)` after resize.
+3. Add `Resize()` override to `AgusWglContext`:
+```cpp
+// In AgusWglContextFactory.hpp, AgusWglContext class:
+void Resize(uint32_t w, uint32_t h) override;
+
+// In AgusWglContextFactory.cpp:
+void AgusWglContext::Resize(uint32_t w, uint32_t h)
+{
+  if (m_factory)
+    m_factory->SetSurfaceSize(static_cast<int>(w), static_cast<int>(h));
+}
+```
+
+This ensures both the external resize path (Dart → Plugin → Native) and the internal resize path (DrapeEngine → Context) properly update the rendering resources.
 
 ## Resolved: Scroll Wheel Zoom Not Working
 
