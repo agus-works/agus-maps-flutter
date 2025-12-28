@@ -80,12 +80,29 @@ if (Test-Path $vcpkgExe) {
 Write-Host ""
 Write-Host "=== Step 2: Installing dependencies ===" -ForegroundColor Yellow
 
-# Install zlib for x64-windows
-Write-Host "Installing zlib:x64-windows..."
-& $vcpkgExe install zlib:x64-windows
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to install zlib"
-    exit 1
+# vcpkg.json exists in the repo, so vcpkg will run in manifest mode.
+# In manifest mode, `vcpkg install` must not receive individual port arguments.
+$manifestPath = Join-Path $RepoRoot "vcpkg.json"
+if (Test-Path $manifestPath) {
+    Write-Host "Installing dependencies from manifest (x64-windows)..."
+    Push-Location $RepoRoot
+    try {
+        & $vcpkgExe install --triplet x64-windows
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to install vcpkg dependencies from manifest"
+            exit 1
+        }
+    } finally {
+        Pop-Location
+    }
+} else {
+    # Fallback for classic mode.
+    Write-Host "Installing zlib:x64-windows (classic mode)..."
+    & $vcpkgExe install zlib:x64-windows
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to install zlib"
+        exit 1
+    }
 }
 
 Write-Host "Dependencies installed successfully" -ForegroundColor Green
