@@ -7,6 +7,30 @@
 **Rendering:** ✅ OpenGL context created, D3D11 texture sharing implemented  
 **Surface Bridge:** ✅ Plugin now calls FFI library for surface creation  
 
+## Windows Blank/White Map: Common Root Cause
+
+If the map shows a white/blank widget and logs contain errors like:
+
+- `countries-strings\en.json\localize.json doesn't exist`
+- `categories-strings\en.json\localize.json doesn't exist`
+- `transit_colors.txt doesn't exist`
+
+then the Windows build is missing required bundled CoMaps assets.
+
+### Why this happens
+
+On desktop, Flutter asset bundling does **not** automatically include files from nested subdirectories when only the parent directory is listed in `pubspec.yaml`. CoMaps stores localization data in nested folders like:
+
+- `assets/comaps_data/countries-strings/en.json/localize.json`
+- `assets/comaps_data/categories-strings/en.json/localize.json`
+
+So each locale directory must be explicitly listed in `example/pubspec.yaml`.
+
+### Repair behavior
+
+Windows extraction uses a marker file: `Documents/agus_maps_flutter/.comaps_data_extracted`.
+The plugin validates the extracted data directory; if required files are missing, it automatically re-extracts and overwrites from the bundled `flutter_assets`.
+
 ## Quick Start: Build & Run
 
 ### Prerequisites
@@ -24,8 +48,11 @@
 # 1. Fetch CoMaps source and apply patches
 .\scripts\fetch_comaps.ps1
 
-# 2. Copy CoMaps data files to example assets
-.\scripts\copy_comaps_data.sh  # Or manually copy data files
+# 2. Copy CoMaps data files to example assets (PowerShell 7+)
+.\scripts\copy_comaps_data.ps1
+
+# If you prefer bash:
+#   ./scripts/copy_comaps_data.sh
 ```
 
 ### Debug Mode
