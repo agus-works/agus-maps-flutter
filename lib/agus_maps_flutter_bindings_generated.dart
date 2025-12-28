@@ -169,6 +169,50 @@ class AgusMapsFlutterBindings {
         void Function(int, int, double, double, int, double, double)
       >();
 
+  /// Scale (zoom) the map by a factor, centered on a specific pixel point.
+  /// factor: Zoom factor (>1 zooms in, <1 zooms out). Use exp(scrollDelta) for smooth zooming.
+  /// pixelX, pixelY: Screen coordinates to zoom towards (in physical pixels)
+  /// animated: Whether to animate the zoom transition
+  /// This is the preferred method for scroll wheel zoom on desktop platforms.
+  void comaps_scale(
+    double factor,
+    double pixelX,
+    double pixelY,
+    int animated,
+  ) {
+    return _comaps_scale(factor, pixelX, pixelY, animated);
+  }
+
+  late final _comaps_scalePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Double,
+            ffi.Double,
+            ffi.Double,
+            ffi.Int,
+          )
+        >
+      >('comaps_scale');
+  late final _comaps_scale = _comaps_scalePtr
+      .asFunction<void Function(double, double, double, int)>();
+
+  /// Scroll/pan the map by pixel distance
+  /// distanceX, distanceY: Distance to scroll in physical pixels
+  void comaps_scroll(
+    double distanceX,
+    double distanceY,
+  ) {
+    return _comaps_scroll(distanceX, distanceY);
+  }
+
+  late final _comaps_scrollPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Void Function(ffi.Double, ffi.Double)>
+      >('comaps_scroll');
+  late final _comaps_scroll = _comaps_scrollPtr
+      .asFunction<void Function(double, double)>();
+
   /// Register a single MWM map file directly by full path.
   /// This bypasses the version folder scanning and registers the map file
   /// directly with the rendering engine.
