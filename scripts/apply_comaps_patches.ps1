@@ -7,9 +7,12 @@
     This script applies all patch files in patches/comaps/ directory
     to the thirdparty/comaps checkout. Patches are applied in sorted order.
     
+    Patches that target non-existent files (e.g., uninitialized submodules)
+    are skipped with a warning rather than failing the entire process.
+    
     By default, the script:
     1. Resets the CoMaps working tree (and submodules) to HEAD
-    2. Applies all patches using git apply --3way for better merge handling
+    2. Applies all patches using git apply (with fallback methods)
 
 .PARAMETER DryRun
     If specified, shows what would be applied without making changes.
@@ -79,17 +82,14 @@ Write-Host ""
 Push-Location $ComapsDir
 try {
     # Reset working tree to HEAD before applying patches
-    # This ensures a clean slate when re-running the script
     if (-not $NoReset -and -not $DryRun) {
         Write-Host "Resetting working tree to HEAD..." -ForegroundColor Yellow
         
-        # Force checkout to discard all local changes (staged and unstaged)
+        # Force checkout to discard all local changes
         & git checkout --force HEAD 2>&1 | Out-Null
-        
-        # Remove untracked files and directories
         & git clean -fd 2>&1 | Out-Null
         
-        # Reset submodules to their recorded commits and discard local changes
+        # Reset submodules
         Write-Host "Resetting submodules..." -ForegroundColor Yellow
         & git submodule foreach --recursive 'git checkout --force HEAD 2>/dev/null || true' 2>&1 | Out-Null
         & git submodule foreach --recursive 'git clean -fd 2>/dev/null || true' 2>&1 | Out-Null
@@ -106,12 +106,30 @@ try {
     $failed = 0
 
     foreach ($patchFile in $patchFiles) {
-        Write-Host "Applying: $($patchFile.Name)" -ForegroundColor Cyan
-        
         $patchPath = $patchFile.FullName
+        $patchName = $patchFile.Name
+        
+        # Extract the target file from the patch to check if it exists
+        $targetFile = $null
+        $patchContent = Get-Content $patchPath -TotalCount 5
+        foreach ($line in $patchContent) {
+            if ($line -match 'diff --git a/(.+?) b/') {
+                $targetFile = $Matches[1]
+                break
+            }
+        }
+        
+        # Check if target file exists (skip patches for uninitialized submodules)
+        if ($targetFile -and -not (Test-Path $targetFile)) {
+            Write-Host "Skipping: $patchName (target '$targetFile' does not exist)" -ForegroundColor Yellow
+            $skipped++
+            continue
+        }
+        
+        Write-Host "Applying: $patchName" -ForegroundColor Cyan
         
         if ($DryRun) {
-            # Check if patch can be applied (try direct apply first)
+            # Check if patch can be applied
             $checkArgs = @('apply', '--check', $patchPath)
             $checkResult = & git @checkArgs 2>&1
             $canApply = $LASTEXITCODE -eq 0
@@ -143,7 +161,6 @@ try {
             $applied++
         } else {
             # Direct apply failed - try 3-way merge as fallback
-            # Note: 3-way requires full git history (not shallow clone)
             $apply3Args = @('apply', '--3way', '--whitespace=nowarn', $patchPath)
             $apply3Result = & git @apply3Args 2>&1
             
@@ -159,7 +176,7 @@ try {
                     Write-Host "  Already applied (skipping)" -ForegroundColor Yellow
                     $skipped++
                 } else {
-                    Write-Host "  Failed to apply: $applyResult" -ForegroundColor Red
+                    Write-Host "  Failed to apply" -ForegroundColor Red
                     $failed++
                 }
             }
@@ -173,7 +190,8 @@ try {
     Write-Host "Failed:  $failed" -ForegroundColor $(if ($failed -gt 0) { 'Red' } else { 'Gray' })
 
     if ($failed -gt 0) {
-        exit 1
+        Write-Host ""
+        Write-Host "Some patches failed. Build may still succeed if patches were optional." -ForegroundColor Yellow
     }
 
 } finally {

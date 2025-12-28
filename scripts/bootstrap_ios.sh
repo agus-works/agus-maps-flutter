@@ -1,62 +1,101 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Bootstrap iOS dependencies.
+# ============================================================================
+# bootstrap_ios.sh - Bootstrap iOS Development Environment
+# ============================================================================
+#
+# This script sets up everything needed to build the iOS target of
+# agus_maps_flutter. It uses the shared bootstrap_common.sh for core logic.
 #
 # What it does:
-# - Ensures ./thirdparty/comaps is present at COMAPS_TAG (defaults to v2025.12.11-2)
-# - Applies optional patch files from ./patches/comaps
-# - Builds Boost headers
-# - Downloads or builds CoMaps XCFramework
+#   1. Fetch CoMaps source code
+#   2. Apply patches (superset for all platforms)
+#   3. Build Boost headers
+#   4. Copy CoMaps data files
+#   5. Download or build CoMaps XCFramework
+#
+# Usage:
+#   ./scripts/bootstrap_ios.sh [--build-xcframework]
+#
+# Options:
+#   --build-xcframework    Build XCFramework from source (slow, ~30 min)
+#                          Without this flag, downloads pre-built binaries
 #
 # Environment variables:
 #   COMAPS_TAG: git tag/commit to checkout (defaults to v2025.12.11-2)
 #   BUILD_XCFRAMEWORK: if "true", builds XCFramework locally instead of downloading
+#
+# ============================================================================
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Colors for output
-GREEN='\033[0;32m'
-NC='\033[0m'
+# Source common bootstrap functions
+# shellcheck source=bootstrap_common.sh
+source "$SCRIPT_DIR/bootstrap_common.sh"
 
-log_info() { echo -e "${GREEN}[bootstrap_ios]${NC} $1"; }
+# Parse arguments
+BUILD_XCFRAMEWORK="${BUILD_XCFRAMEWORK:-false}"
+for arg in "$@"; do
+    case $arg in
+        --build-xcframework)
+            BUILD_XCFRAMEWORK=true
+            shift
+            ;;
+    esac
+done
 
-log_info "Starting iOS bootstrap..."
+echo "========================================="
+echo "Bootstrap iOS Development Environment"
+echo "========================================="
+echo ""
 
-# Step 1: Fetch CoMaps source
-"$ROOT_DIR/scripts/fetch_comaps.sh"
+# Run common bootstrap (fetch, patch, boost, data)
+bootstrap_full "ios"
 
-# Step 2: Apply patches
-"$ROOT_DIR/scripts/apply_comaps_patches.sh"
+# iOS-specific: Get XCFramework
+log_header "Getting iOS XCFramework"
 
-# Step 3: Build Boost headers
-log_info "Preparing boost headers..."
-pushd "$ROOT_DIR/thirdparty/comaps/3party/boost" >/dev/null
-if [[ ! -d "boost" ]]; then
-  ./bootstrap.sh
-  ./b2 headers
-fi
-popd >/dev/null
+XCFRAMEWORK_PATH="$ROOT_DIR/ios/Frameworks/CoMaps.xcframework"
 
-# Step 4: Get XCFramework
-if [[ "${BUILD_XCFRAMEWORK:-}" == "true" ]]; then
-  log_info "Building XCFramework locally..."
-  "$ROOT_DIR/scripts/build_ios_xcframework.sh"
+if [[ -d "$XCFRAMEWORK_PATH" ]]; then
+    log_info "XCFramework already exists at $XCFRAMEWORK_PATH"
+elif [[ "$BUILD_XCFRAMEWORK" == "true" ]]; then
+    log_info "Building XCFramework from source (this may take ~30 minutes)..."
+    if [[ -x "$SCRIPT_DIR/build_ios_xcframework.sh" ]]; then
+        "$SCRIPT_DIR/build_ios_xcframework.sh"
+    else
+        log_error "build_ios_xcframework.sh not found"
+        exit 1
+    fi
 else
-  log_info "Downloading pre-built XCFramework..."
-  "$ROOT_DIR/scripts/download_ios_xcframework.sh" || {
-    log_info "Download failed, building locally..."
-    "$ROOT_DIR/scripts/build_ios_xcframework.sh"
-  }
+    log_info "Downloading pre-built XCFramework..."
+    if [[ -x "$SCRIPT_DIR/download_ios_xcframework.sh" ]]; then
+        "$SCRIPT_DIR/download_ios_xcframework.sh" || {
+            log_warn "Download failed, building locally..."
+            if [[ -x "$SCRIPT_DIR/build_ios_xcframework.sh" ]]; then
+                "$SCRIPT_DIR/build_ios_xcframework.sh"
+            else
+                log_error "Neither download nor build available"
+                exit 1
+            fi
+        }
+    elif [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
+        "$SCRIPT_DIR/download_libs.sh" ios || {
+            log_warn "Download failed"
+        }
+    else
+        log_warn "No download script available, you may need to build manually"
+    fi
 fi
 
-# Step 5: Copy CoMaps data files
-log_info "Copying CoMaps data files..."
-chmod +x "$ROOT_DIR/scripts/copy_comaps_data.sh"
-"$ROOT_DIR/scripts/copy_comaps_data.sh"
-
-log_info "iOS bootstrap complete!"
-log_info ""
-log_info "Next steps:"
-log_info "  cd example/ios && pod install"
-log_info "  cd .. && flutter run -d 'iPhone 15 Pro'"
+echo ""
+echo "========================================="
+echo "iOS Bootstrap Complete!"
+echo "========================================="
+echo ""
+echo "Next steps:"
+echo "  cd example/ios && pod install"
+echo "  cd .. && flutter run -d 'iPhone 15 Pro'"
+echo ""
