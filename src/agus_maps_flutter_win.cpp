@@ -428,6 +428,25 @@ FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int i
     g_framework->TouchEvent(event);
 }
 
+FFI_PLUGIN_EXPORT void comaps_scale(double factor, double pixelX, double pixelY, int animated) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    
+    // Scale the map by the given factor, centered on the pixel point
+    // This is the preferred method for scroll wheel zoom on desktop
+    g_framework->Scale(factor, m2::PointD(pixelX, pixelY), animated != 0);
+}
+
+FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    
+    // Scroll the map by the given distance
+    g_framework->Scroll(distanceX, distanceY);
+}
+
 // Helper function to normalize path separators (convert / to \ on Windows)
 static std::string NormalizePath(const char* path) {
     std::string normalized(path);
