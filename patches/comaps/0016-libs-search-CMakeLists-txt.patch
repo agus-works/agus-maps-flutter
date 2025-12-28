@@ -1,5 +1,5 @@
 diff --git a/libs/search/CMakeLists.txt b/libs/search/CMakeLists.txt
-index 94da441..98fa387 100644
+index 94da4418..98fa387c 100644
 --- a/libs/search/CMakeLists.txt
 +++ b/libs/search/CMakeLists.txt
 @@ -179,7 +179,7 @@ target_link_libraries(${PROJECT_NAME}

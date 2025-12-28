@@ -1,6 +1,0 @@
-diff --git a/3party/protobuf/protobuf b/3party/protobuf/protobuf
---- a/3party/protobuf/protobuf
-+++ b/3party/protobuf/protobuf
-@@ -1 +1 @@
--Subproject commit 9442c12e866b56369f1c53abea1261259c924a19
-+Subproject commit 9442c12e866b56369f1c53abea1261259c924a19-dirty
