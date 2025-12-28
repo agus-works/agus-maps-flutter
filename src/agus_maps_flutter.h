@@ -53,6 +53,17 @@ FFI_PLUGIN_EXPORT void comaps_force_redraw(void);
 // id2, x2, y2: second touch pointer (use -1 for id2 if single touch)
 FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int id2, float x2, float y2);
 
+// Scale (zoom) the map by a factor, centered on a specific pixel point.
+// factor: Zoom factor (>1 zooms in, <1 zooms out). Use exp(scrollDelta) for smooth zooming.
+// pixelX, pixelY: Screen coordinates to zoom towards (in physical pixels)
+// animated: Whether to animate the zoom transition
+// This is the preferred method for scroll wheel zoom on desktop platforms.
+FFI_PLUGIN_EXPORT void comaps_scale(double factor, double pixelX, double pixelY, int animated);
+
+// Scroll/pan the map by pixel distance
+// distanceX, distanceY: Distance to scroll in physical pixels
+FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY);
+
 // Register a single MWM map file directly by full path.
 // This bypasses the version folder scanning and registers the map file
 // directly with the rendering engine.

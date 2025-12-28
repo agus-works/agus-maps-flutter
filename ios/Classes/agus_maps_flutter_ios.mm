@@ -191,6 +191,25 @@ FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int i
     g_framework->TouchEvent(event);
 }
 
+FFI_PLUGIN_EXPORT void comaps_scale(double factor, double pixelX, double pixelY, int animated) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    
+    // Scale the map by the given factor, centered on the pixel point
+    // This is the preferred method for scroll wheel zoom on desktop (macOS)
+    g_framework->Scale(factor, m2::PointD(pixelX, pixelY), animated != 0);
+}
+
+FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    
+    // Scroll the map by the given distance
+    g_framework->Scroll(distanceX, distanceY);
+}
+
 FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
     NSLog(@"[AgusMapsFlutter] comaps_register_single_map: %s", fullPath);
     
