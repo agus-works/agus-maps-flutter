@@ -121,6 +121,60 @@ void AgusWglContext::SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 }
 ```
 
+## Resolved: Scroll Wheel Zoom Not Working
+
+### Previous Symptoms
+- Mouse scroll wheel caused map to pan/shift instead of zoom
+- Logs showed "Screen center changed" but zoom level stayed constant at level 6
+- Synthetic pinch gestures (via touch events) were not being interpreted correctly
+
+### Root Cause
+The Dart implementation was using synthetic two-finger pinch gestures via `comaps_touch_event()` to emulate scroll wheel zoom. However, CoMaps' touch event system interpreted these synthetic gestures as drag/pan operations rather than pinch-to-zoom.
+
+### Solution: Direct Scale API
+
+Following Qt CoMaps' implementation (`qt/qt_common/map_widget.cpp`), we now use a direct `Scale()` API:
+
+```cpp
+// Qt CoMaps scroll wheel handler:
+double const factor = e->angleDelta().y() / 3.0 / 360.0;
+m_framework.Scale(exp(factor), m2::PointD(pos.x(), pos.y()), false);
+```
+
+### Implementation
+
+**New FFI Functions (src/agus_maps_flutter.h):**
+```cpp
+FFI_PLUGIN_EXPORT void comaps_scale(double factor, double pixelX, double pixelY, int animated);
+FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY);
+```
+
+**Windows Native (src/agus_maps_flutter_win.cpp):**
+```cpp
+FFI_PLUGIN_EXPORT void comaps_scale(double factor, double pixelX, double pixelY, int animated) {
+    if (!g_framework || !g_drapeEngineCreated) return;
+    g_framework->Scale(factor, m2::PointD(pixelX, pixelY), animated != 0);
+}
+```
+
+**Dart Implementation (lib/agus_maps_flutter.dart):**
+```dart
+void _handlePointerSignal(PointerSignalEvent event) {
+  if (event is PointerScrollEvent) {
+    final dy = event.scrollDelta.dy;
+    final factor = -dy / 600.0;  // Negative because scroll down = zoom out
+    final pixelX = event.localPosition.dx * _devicePixelRatio;
+    final pixelY = event.localPosition.dy * _devicePixelRatio;
+    scaleMap(exp(factor), pixelX, pixelY, animated: false);
+  }
+}
+```
+
+The factor calculation `-dy / 600.0` provides smooth zoom similar to Google Maps, where:
+- Scroll up (negative dy) → positive factor → zoom in
+- Scroll down (positive dy) → negative factor → zoom out
+- `exp(factor)` converts the linear factor to the multiplicative scale expected by Framework::Scale
+
 ## Quick Start: Build & Run
 
 ### Prerequisites
