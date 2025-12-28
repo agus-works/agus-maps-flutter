@@ -1,6 +1,29 @@
 # CoMaps Patch Files
 
-This directory contains optional patch files (`*.patch`) that may be applied to the CoMaps checkout in `thirdparty/comaps`.
+This directory contains patch files (`*.patch`) that are applied to the CoMaps checkout in `thirdparty/comaps`.
+
+## Important Notes
+
+### Submodule Requirements
+Some patches target files within git submodules (e.g., `3party/gflags/CMakeLists.txt`). 
+For these patches to apply correctly, **ALL submodules must be fully initialized**.
+
+The bootstrap and fetch scripts ensure this by using:
+```bash
+git submodule update --init --recursive
+```
+
+**Do NOT use `--depth 1`** with submodule initialization as it may cause patches to fail.
+
+### Patch Application Behavior
+The patch application scripts (`apply_comaps_patches.sh` / `apply_comaps_patches.ps1`) will:
+1. Reset the CoMaps working tree to HEAD
+2. Reset all submodules to their recorded commits
+3. Apply patches in sorted order (0001, 0002, etc.)
+4. **Skip patches** whose target files don't exist (e.g., if a submodule wasn't initialized)
+5. Continue on non-fatal failures and report a summary
+
+This means patches for uninitialized submodules won't cause the entire process to fail.
 
 ## Active Patches
 
