@@ -526,11 +526,18 @@ endif()
    - Fix: The callback must dynamically query `g_fnGetSharedTextureHandle()` each time, not use a captured value
    - See "Dynamic Handle Lookup" section above for correct implementation
 
-3. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
+3. **D3D11 flush missing:** After copying pixels to the shared texture, `m_d3dContext->Flush()` must be called to ensure the GPU completes the copy before Flutter samples.
+   - Without flush, Flutter may sample stale/incomplete texture data
+
+4. **Map tiles not loaded:** The brownish color IS the map background - tiles may not be loading.
+   - Call `comaps_invalidate()` after registering maps to force tile reload
+   - Check logs for `comaps_set_view` calls and viewport invalidation
+
+5. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
    - Verify `MakeCurrent()` binds `m_framebuffer` for draw context
    - Check for CoMaps code that calls `glBindFramebuffer(GL_FRAMEBUFFER, 0)`
 
-4. **Stale data extraction:** Old data files without symbol textures.
+6. **Stale data extraction:** Old data files without symbol textures.
    - Delete `Documents\agus_maps_flutter\.comaps_data_extracted` marker file
    - Delete `Documents\agus_maps_flutter\` folder contents
    - Rebuild and run to force fresh extraction

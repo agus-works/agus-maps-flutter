@@ -39,6 +39,9 @@ FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path);
 
 FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom);
 
+// Invalidate the current viewport to force tile reload
+FFI_PLUGIN_EXPORT void comaps_invalidate(void);
+
 // Touch event handling
 // type: 1=TOUCH_DOWN, 2=TOUCH_MOVE, 3=TOUCH_UP, 4=TOUCH_CANCEL
 // id1, x1, y1: first touch pointer

@@ -346,13 +346,27 @@ FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path) {
 }
 
 FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
-    char msg[256];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_set_view: lat=%.6f, lon=%.6f, zoom=%d\n",
-             lat, lon, zoom);
-    OutputDebugStringA(msg);
+    LOG(LINFO, ("comaps_set_view: lat=", lat, " lon=", lon, " zoom=", zoom));
     
     if (g_framework) {
         g_framework->SetViewportCenter(m2::PointD(mercator::FromLatLon(lat, lon)), zoom);
+        
+        // Force invalidate the current viewport to ensure tiles are reloaded
+        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+        LOG(LINFO, ("comaps_set_view: Viewport invalidated"));
+    } else {
+        LOG(LWARNING, ("comaps_set_view: Framework not ready"));
+    }
+}
+
+FFI_PLUGIN_EXPORT void comaps_invalidate(void) {
+    LOG(LINFO, ("comaps_invalidate called"));
+    
+    if (g_framework) {
+        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+        LOG(LINFO, ("comaps_invalidate: Viewport invalidated"));
+    } else {
+        LOG(LWARNING, ("comaps_invalidate: Framework not ready"));
     }
 }
 

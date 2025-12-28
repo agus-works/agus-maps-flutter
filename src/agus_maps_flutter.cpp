@@ -330,8 +330,18 @@ FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
      __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "comaps_set_view: lat=%f, lon=%f, zoom=%d", lat, lon, zoom);
      if (g_framework) {
          g_framework->SetViewportCenter(m2::PointD(mercator::FromLatLon(lat, lon)), zoom);
+         // Force invalidate to ensure tiles reload
+         g_framework->InvalidateRect(g_framework->GetCurrentViewport());
      }
 }
+
+FFI_PLUGIN_EXPORT void comaps_invalidate(void) {
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "comaps_invalidate");
+    if (g_framework) {
+        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+    }
+}
+
 // Touch event types matching df::TouchEvent::ETouchType
 // 0 = TOUCH_NONE, 1 = TOUCH_DOWN, 2 = TOUCH_MOVE, 3 = TOUCH_UP, 4 = TOUCH_CANCEL
 FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int id2, float x2, float y2) {
