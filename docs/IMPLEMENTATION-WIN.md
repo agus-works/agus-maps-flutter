@@ -389,6 +389,37 @@ CoMaps was originally designed for GCC/Clang. Over 30 patches are required for M
 - Missing standard library includes
 - Boost header workarounds
 
+**MSVC `/bigobj` Flag:**
+
+Unity builds with CoMaps can exceed MSVC's default object file section limit (65,536 sections), causing error `C1128: number of sections exceeded object file format limit`. This is added globally in `thirdparty/comaps/CMakeLists.txt`:
+
+```cmake
+if (MSVC)
+  add_compile_options(/bigobj)
+endif()
+```
+
+**Multi-Config Generator Compatibility:**
+
+Visual Studio is a multi-config generator that uses `CMAKE_CONFIGURATION_TYPES` instead of `CMAKE_BUILD_TYPE`. CoMaps' `base/base.hpp` has a static assertion requiring exactly one of `DEBUG` or `RELEASE` to be defined. Use generator expressions:
+
+```cmake
+# In src/CMakeLists.txt - handle multi-config generators (Visual Studio)
+if (CMAKE_CONFIGURATION_TYPES)
+  target_compile_definitions(agus_maps_flutter PRIVATE
+    $<$<CONFIG:Debug>:DEBUG>
+    $<$<NOT:$<CONFIG:Debug>>:RELEASE>
+  )
+else()
+  # Single-config generators (Ninja, Make)
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(agus_maps_flutter PRIVATE DEBUG)
+  else()
+    target_compile_definitions(agus_maps_flutter PRIVATE RELEASE)
+  endif()
+endif()
+```
+
 ### OpenGL Context Creation
 
 Windows requires careful WGL context creation:
@@ -454,6 +485,41 @@ g_wglFactory->SetFrameCallback([]() {
 ```
 
 Without this connection, `CopyToSharedTexture()` will copy pixels to the D3D11 texture but Flutter will never be notified to sample the updated texture, resulting in a static (blank) display.
+
+### Tile Loading and View Setting Timing
+
+The `comaps_set_view()` function must use `isAnim=false` when setting the viewport center on Windows. This is a critical difference from iOS/macOS/Android implementations.
+
+**Problem:**
+When using animated view changes (`isAnim=true`, the default), the viewport change is queued as an animation. The render loop must:
+1. Process the animation event
+2. Interpolate the view over multiple frames
+3. Eventually trigger `UpdateScene()` which requests tiles
+
+On Windows, the timing between event processing and the render loop can cause tiles to never be requested:
+- `SetViewportCenter()` posts a `SetCenterEvent` to the render thread's message queue
+- The message is processed AFTER the current frame renders
+- With animation enabled, the view change doesn't immediately trigger `modelViewChanged = true`
+- The render loop may never call `UpdateScene()` with the new viewport
+
+**Solution:**
+```cpp
+// In comaps_set_view() - use isAnim=false for synchronous view setting
+g_framework->SetViewportCenter(
+    m2::PointD(mercator::FromLatLon(lat, lon)),
+    zoom,
+    false /* isAnim - CRITICAL for Windows */
+);
+```
+
+With `isAnim=false`:
+1. `SetScreen()` directly updates `m_navigator` and returns `true`
+2. This causes `breakAnim = true` → `m_modelViewChanged = true`
+3. The next render loop iteration sees `modelViewChanged = true`
+4. `UpdateScene()` is called, which requests tiles via `ResolveTileKeys()`
+
+**Why iOS/macOS/Android work with animation:**
+On these platforms, the render loop is driven by the system's VSync/display link, and the initial screen state may be properly configured before the first frame. Windows uses a custom WGL render loop where the timing differs.
 
 ---
 
@@ -532,8 +598,65 @@ endif()
 4. **Map tiles not loaded:** The brownish color IS the map background - tiles may not be loading.
    - Call `comaps_invalidate()` after registering maps to force tile reload
    - Check logs for `comaps_set_view` calls and viewport invalidation
+   - **If tiles still don't load:** Call `forceRedraw()` after registering maps - this is necessary when maps are registered AFTER DrapeEngine initialization, as the engine calculates tile coverage before maps are available
 
-5. **Path separator mismatch for downloaded maps:** Downloaded maps fail to register with "File doesn't exist" errors even though the path is correct.
+5. **DrapeEngine initialized before map registration:** When the DrapeEngine is created, it calculates which tiles to request based on the current viewport. If maps are registered AFTER this calculation, `InvalidateRect` alone may not trigger tile loading.
+   - **Solution:** Call `forceRedraw()` after registering all maps. This performs three operations:
+     1. `SetMapStyle()` - clears all render groups and forces tile re-request
+     2. `InvalidateRendering()` - posts a high-priority `InvalidateMessage` to wake up the FrontendRenderer
+     3. `InvalidateRect()` - marks the viewport as needing redraw
+   - **Example code:**
+     ```dart
+     // In _onMapReady() after registering maps:
+     agus_maps_flutter.invalidateMap();  // Light refresh
+     agus_maps_flutter.forceRedraw();    // Heavy refresh - forces complete tile reload
+     ```
+   - **Verify:** After calling `forceRedraw()`, logs should show:
+     ```
+     comaps_force_redraw called - triggering full tile reload
+     comaps_force_redraw: SetMapStyle triggered
+     comaps_force_redraw: InvalidateRendering triggered
+     comaps_force_redraw: InvalidateRect triggered
+     ```
+
+6. **Render loop stops after first frame:** The FrontendRenderer may stop rendering if it determines there's nothing to animate or update. This can happen when:
+   - Maps are registered after the initial tile coverage calculation
+   - The DrapeEngine's message queue isn't processing viewport changes properly
+   - **Symptom:** Only "Frame 0" appears in logs, even after user interaction
+   - **Solution:** The `comaps_set_view()` function now calls `InvalidateRendering()` in addition to `InvalidateRect()` to ensure the render loop wakes up when the viewport changes
+
+7. **FrontendRenderer suspends due to inactive frames:** CoMaps' `FrontendRenderer` automatically suspends after `kMaxInactiveFrames = 2` consecutive frames with no animation or activity. This is a power-saving optimization but can cause issues when:
+   - Tiles are still loading in the background
+   - The initial map setup is in progress
+   - External events (like map registration) don't trigger "activity"
+   
+   **Root cause:** In `FrontendRenderer::Routine()`, if `activeFrame` remains false for 2 consecutive frames, the renderer enters a suspended loop waiting for a wake-up message. However, tile loading completion doesn't generate an "active frame" event.
+   
+   **Solution:** Use `MakeFrameActive()` instead of `InvalidateRendering()` to ensure the render loop continues:
+   ```cpp
+   // In agus_maps_flutter_win.cpp
+   void triggerActiveFrame() {
+       if (g_framework) {
+           g_framework->GetDrapeEngine()->MakeFrameActive();
+       }
+   }
+   ```
+   
+   `MakeFrameActive()` adds an `ActiveFrameEvent` user event which sets `activeFrame = true` in the render loop, preventing suspension.
+   
+   **Initial Frame Counter:** To ensure tiles have time to load during cold start, the WGL context factory can request active frames for the first N renders:
+   ```cpp
+   // In AgusWglContextFactory.cpp
+   void AgusWglContext::Present() {
+       // ... existing present logic ...
+       if (m_factory && m_factory->m_initialFrameCount > 0) {
+           m_factory->m_initialFrameCount--;
+           m_factory->RequestActiveFrame();  // Keep render loop alive
+       }
+   }
+   ```
+
+8. **Path separator mismatch for downloaded maps:** Downloaded maps fail to register with "File doesn't exist" errors even though the path is correct.
    - **Symptom:** Log shows `Re-registering downloaded: Philippines_Luzon_South at C:\Users\...\Documents/Philippines_Luzon_South.mwm` (mixed slashes) but error says `File C:\Users\...\Philippines_Luzon_South.mwm doesn't exist` (missing `Documents` folder)
    - **Cause:** Dart's `path_provider` may return paths with forward slashes, which the C++ `base::GetDirectory()` function doesn't handle correctly on Windows
    - **Fix:** Path normalization is now handled at multiple layers:
@@ -542,18 +665,19 @@ endif()
      - `comaps_register_single_map()` in C++ normalizes paths before using `MakeTemporary()`
    - **Verify:** After fix, paths in logs should show consistent backslashes: `C:\Users\...\Documents\Philippines_Luzon_South.mwm`
 
-6. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
+9. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
    - Verify `MakeCurrent()` binds `m_framebuffer` for draw context
    - Check for CoMaps code that calls `glBindFramebuffer(GL_FRAMEBUFFER, 0)`
 
-6. **Stale data extraction:** Old data files without symbol textures.
+10. **Stale data extraction:** Old data files without symbol textures.
    - Delete `Documents\agus_maps_flutter\.comaps_data_extracted` marker file
    - Delete `Documents\agus_maps_flutter\` folder contents
    - Rebuild and run to force fresh extraction
 
 **Debugging:**
 - Enable frame logging in `AgusWglContextFactory::CopyToSharedTexture()` to see `hasContent` status
-- Check if "Frame N size: WxH hasContent: true" appears in logs
+- Check if "Frame N size: WxH hasContent: true uniqueColors: N" appears in logs
+- If `uniqueColors` is 1, only the background is being rendered (tiles not loaded)
 - If `hasContent` is true but display is blank, check texture handle staleness (cause #2)
 - If `hasContent` is false, the OpenGL FBO isn't receiving rendered content
 

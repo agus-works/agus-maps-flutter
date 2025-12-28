@@ -1,0 +1,16 @@
+diff --git a/3party/opening_hours/CMakeLists.txt b/3party/opening_hours/CMakeLists.txt
+index 52f93ae..89f6954 100644
+--- a/3party/opening_hours/CMakeLists.txt
++++ b/3party/opening_hours/CMakeLists.txt
+@@ -21,6 +21,11 @@ omim_add_library(${PROJECT_NAME} ${SRC})
+ 
+ target_include_directories(${PROJECT_NAME} INTERFACE .)
+ 
++# MSVC /bigobj needed for unity builds - many sections in opening_hours
++if(MSVC)
++  target_compile_options(${PROJECT_NAME} PRIVATE /bigobj)
++endif()
++
+ omim_add_test_subdirectory(opening_hours_tests)
+ omim_add_test_subdirectory(opening_hours_integration_tests)
+ omim_add_test_subdirectory(opening_hours_supported_features_tests)

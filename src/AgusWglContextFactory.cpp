@@ -530,6 +530,14 @@ void AgusWglContextFactory::OnFrameReady()
     m_frameCallback();
 }
 
+void AgusWglContextFactory::RequestActiveFrame()
+{
+  // Call the registered keep-alive callback to mark the next frame as active.
+  // This prevents the render loop from suspending during initial tile loading.
+  if (m_keepAliveCallback)
+    m_keepAliveCallback();
+}
+
 // Static counter for frame logging (limit spam)
 static int s_frameCount = 0;
 static const int kLogEveryNFrames = 60;  // Log once per second at 60fps
@@ -557,6 +565,10 @@ void AgusWglContextFactory::CopyToSharedTexture()
   // Bind framebuffer and read pixels
   glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
 
+  // CRITICAL: Ensure all OpenGL rendering commands are complete before reading.
+  // Without this, glReadPixels may read incomplete/stale framebuffer content.
+  glFinish();
+
   // Read pixels from OpenGL
   std::vector<uint8_t> pixels(m_width * m_height * 4);
   glReadPixels(0, 0, m_width, m_height, GL_BGRA_EXT, GL_UNSIGNED_BYTE, pixels.data());
@@ -565,14 +577,34 @@ void AgusWglContextFactory::CopyToSharedTexture()
   if (s_frameCount % kLogEveryNFrames == 0)
   {
     bool hasContent = false;
-    // Sample some pixels to see if we have content
-    for (size_t i = 0; i < pixels.size() && !hasContent; i += 1000)
+    uint32_t uniqueColors = 0;
+    uint32_t lastR = 256, lastG = 256, lastB = 256;
+    // Sample some pixels to see if we have content and color variety
+    for (size_t i = 0; i < pixels.size() && uniqueColors < 10; i += 4000)
     {
+      uint8_t b = pixels[i];
+      uint8_t g = pixels[i+1];
+      uint8_t r = pixels[i+2];
       // BGRA format - check if not black and not the clear color
-      if (pixels[i] != 0 || pixels[i+1] != 0 || pixels[i+2] != 0)
+      if (b != 0 || g != 0 || r != 0)
         hasContent = true;
+      // Count unique colors to detect if we have varied content vs solid fill
+      if (r != lastR || g != lastG || b != lastB)
+      {
+        uniqueColors++;
+        lastR = r; lastG = g; lastB = b;
+      }
     }
-    LOG(LINFO, ("Frame", s_frameCount, "size:", m_width, "x", m_height, "hasContent:", hasContent));
+    // Sample center pixel for debugging
+    size_t centerIdx = (m_height / 2 * m_width + m_width / 2) * 4;
+    uint8_t centerB = pixels[centerIdx];
+    uint8_t centerG = pixels[centerIdx + 1];
+    uint8_t centerR = pixels[centerIdx + 2];
+    uint8_t centerA = pixels[centerIdx + 3];
+    
+    LOG(LINFO, ("Frame", s_frameCount, "size:", m_width, "x", m_height, 
+                "hasContent:", hasContent, "uniqueColors:", uniqueColors,
+                "centerRGBA:", (int)centerR, (int)centerG, (int)centerB, (int)centerA));
   }
   s_frameCount++;
 
@@ -647,6 +679,19 @@ void AgusWglContext::Present()
   if (m_isDraw && m_factory)
   {
     m_factory->OnFrameReady();
+    
+    // For the first few frames after DrapeEngine creation, ALSO call MakeFrameActive
+    // to keep the render loop running. This ensures tiles load properly even when
+    // the render loop would otherwise suspend due to no "active" content.
+    // Without this, the render loop suspends after kMaxInactiveFrames (2) inactive
+    // frames, before tiles have a chance to arrive from the BackendRenderer.
+    if (m_initialFrameCount > 0)
+    {
+      m_initialFrameCount--;
+      // Request another active frame to keep the render loop running
+      // This is done by calling the factory's KeepAlive function
+      m_factory->RequestActiveFrame();
+    }
   }
 }
 

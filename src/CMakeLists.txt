@@ -221,7 +221,14 @@ endif()
 target_compile_definitions(agus_maps_flutter PUBLIC DART_SHARED_LIB)
 
 # Match CoMaps build mode definitions
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+# Use generator expressions for multi-config generators (Visual Studio, Xcode)
+if (CMAKE_CONFIGURATION_TYPES)
+  # Multi-config generator - use generator expressions
+  target_compile_definitions(agus_maps_flutter PRIVATE
+    $<$<CONFIG:Debug>:DEBUG>
+    $<$<NOT:$<CONFIG:Debug>>:RELEASE>
+  )
+elseif (CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_definitions(agus_maps_flutter PRIVATE DEBUG)
 else()
   target_compile_definitions(agus_maps_flutter PRIVATE RELEASE)
