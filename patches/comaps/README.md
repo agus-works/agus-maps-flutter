@@ -66,7 +66,12 @@ This enables:
 
 ## Usage
 
-Applied by:
+**Linux/macOS:**
 ```bash
 ./scripts/apply_comaps_patches.sh
+```
+
+**Windows PowerShell:**
+```powershell
+.\scripts\apply_comaps_patches.ps1
 ```
