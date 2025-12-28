@@ -6,12 +6,16 @@
 .DESCRIPTION
     This script applies all patch files in patches/comaps/ directory
     to the thirdparty/comaps checkout. Patches are applied in sorted order.
+    
+    By default, the script:
+    1. Resets the CoMaps working tree (and submodules) to HEAD
+    2. Applies all patches using git apply --3way for better merge handling
 
 .PARAMETER DryRun
     If specified, shows what would be applied without making changes.
 
-.PARAMETER Force
-    If specified, attempts to apply patches even if they don't apply cleanly.
+.PARAMETER NoReset
+    If specified, skips the git reset step (not recommended).
 
 .EXAMPLE
     .\scripts\apply_comaps_patches.ps1
@@ -20,12 +24,12 @@
     .\scripts\apply_comaps_patches.ps1 -DryRun
 
 .EXAMPLE
-    .\scripts\apply_comaps_patches.ps1 -Force
+    .\scripts\apply_comaps_patches.ps1 -NoReset
 #>
 
 param(
     [switch]$DryRun,
-    [switch]$Force
+    [switch]$NoReset
 )
 
 Set-StrictMode -Version Latest
@@ -74,6 +78,29 @@ Write-Host ""
 # Apply each patch
 Push-Location $ComapsDir
 try {
+    # Reset working tree to HEAD before applying patches
+    # This ensures a clean slate when re-running the script
+    if (-not $NoReset -and -not $DryRun) {
+        Write-Host "Resetting working tree to HEAD..." -ForegroundColor Yellow
+        
+        # Force checkout to discard all local changes (staged and unstaged)
+        & git checkout --force HEAD 2>&1 | Out-Null
+        
+        # Remove untracked files and directories
+        & git clean -fd 2>&1 | Out-Null
+        
+        # Reset submodules to their recorded commits and discard local changes
+        Write-Host "Resetting submodules..." -ForegroundColor Yellow
+        & git submodule foreach --recursive 'git checkout --force HEAD 2>/dev/null || true' 2>&1 | Out-Null
+        & git submodule foreach --recursive 'git clean -fd 2>/dev/null || true' 2>&1 | Out-Null
+        
+        Write-Host "Working tree reset complete" -ForegroundColor Green
+        Write-Host ""
+    } elseif ($NoReset) {
+        Write-Host "Skipping reset (-NoReset specified)" -ForegroundColor Yellow
+        Write-Host ""
+    }
+
     $applied = 0
     $skipped = 0
     $failed = 0
@@ -83,58 +110,58 @@ try {
         
         $patchPath = $patchFile.FullName
         
-        # Check if patch can be applied
-        $checkArgs = @('apply', '--check', $patchPath)
-        $checkResult = & git @checkArgs 2>&1
-        $canApply = $LASTEXITCODE -eq 0
-
         if ($DryRun) {
+            # Check if patch can be applied (try direct apply first)
+            $checkArgs = @('apply', '--check', $patchPath)
+            $checkResult = & git @checkArgs 2>&1
+            $canApply = $LASTEXITCODE -eq 0
+            
             if ($canApply) {
                 Write-Host "  [DRY RUN] Would apply successfully" -ForegroundColor Green
                 $applied++
             } else {
-                Write-Host "  [DRY RUN] Would fail or already applied" -ForegroundColor Yellow
-                $skipped++
+                # Check if already applied
+                $reverseArgs = @('apply', '--check', '--reverse', $patchPath)
+                & git @reverseArgs 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  [DRY RUN] Already applied (would skip)" -ForegroundColor Yellow
+                    $skipped++
+                } else {
+                    Write-Host "  [DRY RUN] Would fail" -ForegroundColor Red
+                    $failed++
+                }
             }
             continue
         }
 
-        if ($canApply) {
-            # Apply the patch
-            $applyArgs = @('apply', $patchPath)
-            $applyResult = & git @applyArgs 2>&1
+        # Try direct apply first (fastest, works when blob hashes match)
+        $applyArgs = @('apply', '--whitespace=nowarn', $patchPath)
+        $applyResult = & git @applyArgs 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  Applied successfully" -ForegroundColor Green
+            $applied++
+        } else {
+            # Direct apply failed - try 3-way merge as fallback
+            # Note: 3-way requires full git history (not shallow clone)
+            $apply3Args = @('apply', '--3way', '--whitespace=nowarn', $patchPath)
+            $apply3Result = & git @apply3Args 2>&1
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "  Applied successfully" -ForegroundColor Green
+                Write-Host "  Applied successfully (3-way merge)" -ForegroundColor Green
                 $applied++
             } else {
-                Write-Host "  Failed to apply: $applyResult" -ForegroundColor Red
-                $failed++
-            }
-        } else {
-            # Check if already applied by attempting reverse
-            $reverseArgs = @('apply', '--check', '--reverse', $patchPath)
-            $reverseResult = & git @reverseArgs 2>&1
-            
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "  Already applied (skipping)" -ForegroundColor Yellow
-                $skipped++
-            } elseif ($Force) {
-                # Try to apply with 3-way merge
-                Write-Host "  Attempting 3-way merge..." -ForegroundColor Yellow
-                $forceArgs = @('apply', '--3way', $patchPath)
-                $forceResult = & git @forceArgs 2>&1
+                # Check if already applied by attempting reverse
+                $reverseArgs = @('apply', '--check', '--reverse', $patchPath)
+                $reverseResult = & git @reverseArgs 2>&1
                 
                 if ($LASTEXITCODE -eq 0) {
-                    Write-Host "  Applied with 3-way merge" -ForegroundColor Green
-                    $applied++
+                    Write-Host "  Already applied (skipping)" -ForegroundColor Yellow
+                    $skipped++
                 } else {
-                    Write-Host "  Failed even with force: $forceResult" -ForegroundColor Red
+                    Write-Host "  Failed to apply: $applyResult" -ForegroundColor Red
                     $failed++
                 }
-            } else {
-                Write-Host "  Cannot apply (use -Force to attempt anyway)" -ForegroundColor Red
-                $failed++
             }
         }
     }
