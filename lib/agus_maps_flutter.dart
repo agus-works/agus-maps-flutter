@@ -122,6 +122,12 @@ void setView(double lat, double lon, int zoom) {
   _bindings.comaps_set_view(lat, lon, zoom);
 }
 
+/// Invalidate the current viewport to force tile reload.
+/// Call this after registering maps to ensure tiles are refreshed.
+void invalidateMap() {
+  _bindings.comaps_invalidate();
+}
+
 /// Touch event types
 enum TouchType {
   none, // 0

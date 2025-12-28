@@ -573,6 +573,17 @@ void AgusMapsFlutterPlugin::HandleCreateMapSurface(
                         return nullptr;
                     }
                     
+                    // Debug logging (once per 60 samples to avoid spam)
+                    static int sampleCount = 0;
+                    if (sampleCount % 60 == 0) {
+                        char dbg[256];
+                        snprintf(dbg, sizeof(dbg), 
+                            "[AgusMapsFlutter] GpuSurfaceTexture callback: requested=%zux%zu, surface=%dx%d, handle=%p\n",
+                            w, h, this->surface_width_, this->surface_height_, currentHandle);
+                        OutputDebugStringA(dbg);
+                    }
+                    sampleCount++;
+                    
                     // Use a member descriptor instead of static to avoid race conditions
                     this->gpu_surface_desc_.struct_size = sizeof(FlutterDesktopGpuSurfaceDescriptor);
                     this->gpu_surface_desc_.handle = currentHandle;
