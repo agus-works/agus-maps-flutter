@@ -809,4 +809,16 @@ Incompatibility between the loaded MWM map file and the style definitions (`drul
 2.  **Update Assets**: Fetch the `drules_proto.bin` and config files that match the MWM version.
 3.  **Temporary Fix**: If a specific MWM (e.g., Gibraltar) is causing issues, disable it and use `World.mwm` to verify rendering engine works.
 
+
+### Build Error: "MSB8066: Custom build for ... exited with code 1"
+
+**Symptom:**
+Build fails with `error MSB8066` in `flutter_assemble.rule` or similar.
+
+**Cause:**
+Often caused by locked files, corrupted build state, or CMake configuration changes that weren't picked up.
+
+**Solution:**
+Run `flutter clean` and `flutter pub get` to clear the build cache and restore dependencies.
+
 *Last updated: December 2025*
