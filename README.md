@@ -21,7 +21,24 @@
 
 ## What is Agus Maps?
 
-Agus Maps Flutter is a **native Flutter plugin** that embeds the powerful [CoMaps](https://github.com/comaps/comaps) (fork of Organic Maps) rendering engine directly into your Flutter app. Unlike tile-based solutions, it renders **vector maps** with zero-copy GPU acceleration, delivering smooth 60fps performance even on low-end devices.
+Agus Maps Flutter is a **native Flutter plugin** that embeds the powerful [CoMaps](https://codeberg.org/comaps/comaps) rendering engine directly into your Flutter app. Unlike tile-based solutions, it renders **vector maps** with zero-copy GPU acceleration, delivering smooth 60fps performance even on low-end devices.
+
+> **Note:** Agus Maps follows the **CoMaps** implementation specifically. While CoMaps shares historical heritage with [Organic Maps](https://organicmaps.app/) and the original MAPS.ME, we track CoMaps as our upstream reference. CoMaps is actively developed with a focus on community-driven improvements and modern tooling.
+
+### 🚧 Current Status: Proof of Concept
+
+This project is currently in the **proof of concept stage**, demonstrating zero-copy (or optimized) rendering integration between the CoMaps engine and Flutter's texture system. The [example app](example/) successfully runs on:
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| **iOS** | ✅ Working | arm64, x86_64 simulator |
+| **macOS** | ✅ Working | arm64 (Apple Silicon) |
+| **Android** | ✅ Working | arm64-v8a, armeabi-v7a, x86_64 |
+| **Windows** | ✅ Working | x86_64 only |
+| **Linux** | 🚧 Planned | Blocked on dedicated hardware |
+| **Windows ARM64** | 🚧 Planned | Blocked on dedicated hardware |
+
+Contributions for Linux and Windows ARM64 are welcome from developers with access to the required hardware!
 
 ### Why Another Map Plugin?
 
@@ -34,6 +51,8 @@ Most Flutter map solutions either:
 ---
 
 ## Demos
+
+The following videos demonstrate the **example app** ([source code](example/)) running on each platform. This example app showcases the `AgusMap` widget and serves as a reference implementation for developers integrating the plugin into their own apps.
 
 <table>
   <tr>
@@ -86,6 +105,8 @@ Most Flutter map solutions either:
 
 ## Quick Start
 
+> **Note:** Agus Maps Flutter is a **plugin/package** that you integrate into your own Flutter app—we are not building a standalone map application. The [example app](example/) demonstrates how to use the plugin and serves as a reference implementation.
+
 ### Installation
 
 ```yaml
@@ -125,7 +146,9 @@ AgusMap(
 controller.moveToLocation(40.4168, -3.7038, 12);
 ```
 
-See the [example app](example/) for a complete working demo.
+See the [example app](example/) for a complete working demo showing all plugin features.
+
+> **For Plugin Users:** The example app source code in `./example/` is your best reference for integrating Agus Maps into your own Flutter application.
 
 ---
 
@@ -160,7 +183,7 @@ See the [example app](example/) for a complete working demo.
 ### Pros ✅
 
 - **Truly offline** — No API keys, no usage limits, no internet dependency
-- **Best-in-class performance** — The same engine that powers Organic Maps (20M+ users)
+- **Best-in-class performance** — The battle-tested Drape engine, refined through MAPS.ME → Organic Maps → CoMaps
 - **Privacy-first** — No telemetry, no tracking, data stays on device
 - **Compact map files** — Entire countries in tens of MB (Germany ~800MB, Gibraltar ~1MB)
 - **Free forever** — Open source, Apache 2.0 license
@@ -258,39 +281,25 @@ We track efficiency-related issues in dedicated files. See [CONTRIBUTING.md](doc
 
 ## Roadmap
 
-### ✅ Completed (Android)
-- Native rendering to Flutter Texture
-- Touch gesture forwarding (pan, zoom)
-- Viewport resize handling with proper DPI scaling
+### ✅ Proof of Concept Complete
+- Zero-copy rendering to Flutter Texture (iOS, macOS, Android)
+- Optimized CPU-mediated rendering (Windows x86_64)
+- Touch/mouse gesture forwarding (pan, zoom, rotation)
+- Viewport resize with DPI scaling
 - Basic Dart API (`AgusMap`, `AgusMapController`)
 - Map Download Manager with mirror selection
-- Region caching for instant loads
-- Fuzzy search for region browsing
-- Disk space detection and safety checks
-- MWM registration API for dynamic map loading
+- Example app demonstrating all features
 
-### ✅ Completed (iOS / macOS)
-- Metal-based rendering with zero-copy IOSurface
-- CVPixelBuffer texture sharing
-- Full gesture support
+### 🚧 Platform Expansion (Needs Hardware)
+- Linux x86_64 / arm64 implementation
+- Windows ARM64 support
 
-### ✅ Completed (Windows x86_64)
-- WGL/OpenGL rendering to offscreen FBO
-- D3D11 shared texture integration
-- Mouse gesture support (drag, scroll wheel zoom)
-- DPI-aware rendering
-- Window resize handling
-
-### 🔄 In Progress
-- Animated camera transitions
-- UI widgets (compass, scale bar)
-
-### 📋 Planned
-- Linux implementation
-- Windows ARM64 support (needs testing hardware)
+### 📋 Future Development
 - Search API integration
 - Routing API integration
 - POI tap callbacks
+- Animated camera transitions
+- UI widgets (compass, scale bar)
 - Map deletion/management
 
 ---
@@ -304,6 +313,100 @@ Agus Maps uses MWM files from OpenStreetMap. You can download maps from:
 
 The example app bundles a small Gibraltar map for testing.
 
+### Host Your Own Map Server (Recommended for Production)
+
+For production apps, we **strongly recommend** hosting your own MWM file server rather than relying on third-party mirrors. This gives you:
+- **Reliability** — No dependency on external services
+- **Control** — Update maps on your own schedule  
+- **Customization** — Generate maps for specific regions or with custom data
+- **Compliance** — Meet data residency requirements
+
+#### Overview
+
+The map generation pipeline consists of:
+1. **Input Data**: OpenStreetMap `.osm.pbf` planet dumps (or regional extracts)
+2. **Generator Tools**: C++ binaries (`generator_tool`, `world_roads_builder_tool`) built from CoMaps
+3. **Python Driver**: `maps_generator` CLI that orchestrates the generation process
+4. **Output**: `.mwm` binary map files ready for serving
+
+#### Quick Start: Generate Maps for a Single Region
+
+```bash
+# 1. Clone CoMaps and build the generator tools
+git clone https://codeberg.org/comaps/comaps.git
+cd comaps
+./tools/unix/build_omim.sh -r generator_tool
+./tools/unix/build_omim.sh -r world_roads_builder_tool
+
+# 2. Set up the Python environment
+cd tools/python
+pip install -r maps_generator/requirements_dev.txt
+cp maps_generator/var/etc/map_generator.ini.default maps_generator/var/etc/map_generator.ini
+
+# 3. Edit map_generator.ini:
+#    - Set OMIM_PATH to your CoMaps repo root
+#    - Set PLANET_URL to your regional .osm.pbf (e.g., from Geofabrik)
+#    Example: PLANET_URL=https://download.geofabrik.de/europe/germany-latest.osm.pbf
+
+# 4. Generate maps (example: Germany without coastlines)
+python3 -m maps_generator --countries="Germany_*" --skip="Coastline"
+```
+
+Output files will be in `maps_build/YYYY_MM_DD__HH_MM_SS/YYMMDD/*.mwm`
+
+#### Full Planet Generation (CI/CD Pipeline)
+
+For automated full-planet generation, CoMaps uses a multi-stage Forgejo Actions workflow:
+
+| Stage | Purpose | Resources |
+|-------|---------|-----------|
+| **update-planet-pbf** | Download/update OSM planet dump (~70GB) | `pyosmium-up-to-date` |
+| **update-planet-o5m** | Convert PBF to O5M format for faster processing | `osmconvert`, `osmupdate` |
+| **update-wiki** | Fetch Wikipedia descriptions for POIs | [wikiparser](https://codeberg.org/comaps/wikiparser) |
+| **update-subways** | Generate metro/subway layer | [subways](https://codeberg.org/comaps/subways) |
+| **update-tiger** | US address data from Nominatim | `address_parser_tool` |
+| **update-isolines** | Altitude contour lines from SRTM | `topography_generator_tool` |
+| **generate-maps** | Run the full map generation | `maps_generator` Python CLI |
+| **upload-maps** | Upload to CDN servers via rclone | `rclone copy` |
+
+**Hardware requirements for full planet:**
+- ~4TB storage (planet files, intermediate data, output)
+- 96+ CPU cores recommended (generation is parallelized)
+- 128GB+ RAM
+- ~28 days for full generation with all features
+
+#### Hosting Your MWM Server
+
+The server structure expected by apps is:
+```
+https://your-server.com/maps/
+├── YYMMDD/                    # Version date folder (e.g., 250101)
+│   ├── World.mwm
+│   ├── WorldCoasts.mwm
+│   ├── Germany_Baden-Wurttemberg.mwm
+│   ├── Germany_Bavaria.mwm
+│   └── ... (other .mwm files)
+└── countries.txt              # Index of available maps
+```
+
+**Simple setup with nginx:**
+```bash
+apt install nginx
+mkdir -p /var/www/html/maps/YYMMDD
+cp *.mwm /var/www/html/maps/YYMMDD/
+# Configure your app to use https://your-server.com/maps/
+```
+
+#### Resources
+
+- [maps_generator README](https://codeberg.org/comaps/comaps/src/branch/main/tools/python/maps_generator/README.md) — Detailed usage and examples
+- [map-generator.yml workflow](https://codeberg.org/comaps/comaps/src/branch/main/.forgejo/workflows/map-generator.yml) — Full CI/CD pipeline reference
+- [Docker image](https://codeberg.org/comaps/maps_generator) — Pre-built container with all dependencies
+- [Geofabrik Downloads](https://download.geofabrik.de/) — Regional OSM extracts for faster testing
+- [geojson.io](https://geojson.io/) — Create custom region boundaries
+
+> **Tip:** Configure your app to use your custom server by modifying the mirror URLs in the download manager or `MirrorService`.
+
 ---
 
 ## License
@@ -316,7 +419,7 @@ Copyright 2024 Agus App
 Licensed under the Apache License, Version 2.0
 ```
 
-This project incorporates code from [CoMaps](https://github.com/comaps/comaps) (Apache 2.0) and [Organic Maps](https://github.com/organicmaps/organicmaps) (Apache 2.0).
+This project incorporates code from [CoMaps](https://codeberg.org/comaps/comaps) (Apache 2.0), which is our primary upstream reference. CoMaps itself descends from [Organic Maps](https://github.com/organicmaps/organicmaps) and the original [MAPS.ME](https://github.com/mapsme/omim), all under Apache 2.0.
 
 ---
 
