@@ -1,6 +1,26 @@
-diff --git a/3party/gflags b/3party/gflags
---- a/3party/gflags
-+++ b/3party/gflags
-@@ -1 +1 @@
--Subproject commit 52e94563eba1968783864942fedf6e87e3c611f4
-+Subproject commit 52e94563eba1968783864942fedf6e87e3c611f4-dirty
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a664bb1..d54d70a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -520,10 +520,17 @@ endif ()
+ 
+ # ----------------------------------------------------------------------------
+ # installation rules
+-set (EXPORT_NAME ${PACKAGE_NAME}-targets)
+-file (RELATIVE_PATH INSTALL_PREFIX_REL2CONFIG_DIR "${CMAKE_INSTALL_PREFIX}/${CONFIG_INSTALL_DIR}" "${CMAKE_INSTALL_PREFIX}")
+-configure_file (cmake/config.cmake.in  "${PROJECT_BINARY_DIR}/${PACKAGE_NAME}-config-install.cmake" @ONLY)
+-configure_file (cmake/version.cmake.in "${PROJECT_BINARY_DIR}/${PACKAGE_NAME}-config-version.cmake" @ONLY)
++# Skip installation configuration when CMAKE_SKIP_INSTALL_RULES is set
++# or when CMAKE_INSTALL_PREFIX contains generator expressions (Flutter Windows)
++if (NOT CMAKE_SKIP_INSTALL_RULES AND NOT "${CMAKE_INSTALL_PREFIX}" MATCHES "\\$<")
++  set (EXPORT_NAME ${PACKAGE_NAME}-targets)
++  file (RELATIVE_PATH INSTALL_PREFIX_REL2CONFIG_DIR "${CMAKE_INSTALL_PREFIX}/${CONFIG_INSTALL_DIR}" "${CMAKE_INSTALL_PREFIX}")
++  configure_file (cmake/config.cmake.in  "${PROJECT_BINARY_DIR}/${PACKAGE_NAME}-config-install.cmake" @ONLY)
++  configure_file (cmake/version.cmake.in "${PROJECT_BINARY_DIR}/${PACKAGE_NAME}-config-version.cmake" @ONLY)
++else ()
++  set (EXPORT_NAME ${PACKAGE_NAME}-targets)
++  set (INSTALL_PREFIX_REL2CONFIG_DIR ".")
++endif ()
+ 
+ if (BUILD_SHARED_LIBS AND INSTALL_SHARED_LIBS)
+   foreach (opts IN ITEMS "" _nothreads)
