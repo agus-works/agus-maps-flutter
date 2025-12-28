@@ -44,6 +44,7 @@ typedef void (APIENTRY *PFNGLDELETERENDERBUFFERSPROC)(GLsizei n, const GLuint *r
 typedef void (APIENTRY *PFNGLBINDRENDERBUFFERPROC)(GLenum target, GLuint renderbuffer);
 typedef void (APIENTRY *PFNGLRENDERBUFFERSTORAGEPROC)(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
 typedef void (APIENTRY *PFNGLFRAMEBUFFERRENDERBUFFERPROC)(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+typedef void (APIENTRY *PFNGLDRAWBUFFERSPROC)(GLsizei n, const GLenum *bufs);
 
 // Global function pointers for OpenGL FBO operations
 static PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers = nullptr;
@@ -56,6 +57,7 @@ static PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers = nullptr;
 static PFNGLBINDRENDERBUFFERPROC glBindRenderbuffer = nullptr;
 static PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage = nullptr;
 static PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer = nullptr;
+static PFNGLDRAWBUFFERSPROC glDrawBuffers = nullptr;
 
 // Helper to load OpenGL FBO extensions
 static bool LoadFBOExtensions()
@@ -70,11 +72,12 @@ static bool LoadFBOExtensions()
   glBindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)wglGetProcAddress("glBindRenderbuffer");
   glRenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)wglGetProcAddress("glRenderbufferStorage");
   glFramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)wglGetProcAddress("glFramebufferRenderbuffer");
+  glDrawBuffers = (PFNGLDRAWBUFFERSPROC)wglGetProcAddress("glDrawBuffers");
 
   return glGenFramebuffers && glDeleteFramebuffers && glBindFramebuffer &&
          glFramebufferTexture2D && glCheckFramebufferStatus &&
          glGenRenderbuffers && glDeleteRenderbuffers && glBindRenderbuffer &&
-         glRenderbufferStorage && glFramebufferRenderbuffer;
+         glRenderbufferStorage && glFramebufferRenderbuffer && glDrawBuffers;
 }
 
 namespace agus
@@ -303,6 +306,10 @@ bool AgusWglContextFactory::InitializeWGL()
   glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_renderTexture, 0);
   glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthBuffer);
+  
+  // Explicitly set draw buffer to COLOR_ATTACHMENT0 (required for custom FBOs)
+  GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0 };
+  glDrawBuffers(1, drawBuffers);
 
   GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   if (status != GL_FRAMEBUFFER_COMPLETE)
@@ -312,6 +319,13 @@ bool AgusWglContextFactory::InitializeWGL()
     wglMakeCurrent(nullptr, nullptr);
     return false;
   }
+
+  // Initialize viewport and scissor to full framebuffer size
+  // CRITICAL: Scissor test will be enabled in Init(), and if scissor rect
+  // is not set, it defaults to (0,0,0,0) which clips all rendering!
+  glViewport(0, 0, m_width, m_height);
+  glScissor(0, 0, m_width, m_height);
+  LOG(LINFO, ("Initialized viewport/scissor to:", m_width, m_height));
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   wglMakeCurrent(nullptr, nullptr);
@@ -513,6 +527,12 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
   glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
+  // CRITICAL: Update viewport and scissor to new size
+  // Without this, rendering will be clipped to the old size
+  glViewport(0, 0, width, height);
+  glScissor(0, 0, width, height);
+  LOG(LINFO, ("Updated viewport/scissor on resize to:", width, height));
+
   // Restore previous context
   if (prevContext != nullptr)
     wglMakeCurrent(prevDC, prevContext);
@@ -575,6 +595,25 @@ void AgusWglContextFactory::CopyToSharedTexture()
     fboToRead = m_framebuffer;
   glBindFramebuffer(GL_FRAMEBUFFER, fboToRead);
 
+  // Check FBO completeness and GL errors (debugging)
+  if (s_frameCount % kLogEveryNFrames == 0)
+  {
+    GLenum fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    GLenum glErr = glGetError();
+    if (fboStatus != GL_FRAMEBUFFER_COMPLETE || glErr != GL_NO_ERROR)
+    {
+      LOG(LERROR, ("FBO status:", fboStatus, "GL error:", glErr, "for FBO", fboToRead));
+    }
+    
+    // Log current scissor and viewport state
+    GLint scissorBox[4];
+    GLint viewport[4];
+    glGetIntegerv(GL_SCISSOR_BOX, scissorBox);
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    LOG(LINFO, ("CopyToSharedTexture scissor:", scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3],
+                "viewport:", viewport[0], viewport[1], viewport[2], viewport[3]));
+  }
+
   // CRITICAL: Ensure all OpenGL rendering commands are complete before reading.
   // Without this, glReadPixels may read incomplete/stale framebuffer content.
   glFinish();
@@ -582,6 +621,16 @@ void AgusWglContextFactory::CopyToSharedTexture()
   // Read pixels from OpenGL (use GL_RGBA for maximum compatibility)
   std::vector<uint8_t> pixels(m_width * m_height * 4);
   glReadPixels(0, 0, m_width, m_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+  
+  // Check for GL errors after read
+  if (s_frameCount % kLogEveryNFrames == 0)
+  {
+    GLenum glErr = glGetError();
+    if (glErr != GL_NO_ERROR)
+    {
+      LOG(LERROR, ("glReadPixels error:", glErr));
+    }
+  }
 
   // Check if we got any non-zero pixels (for debugging blank frames)
   if (s_frameCount % kLogEveryNFrames == 0)
@@ -589,15 +638,26 @@ void AgusWglContextFactory::CopyToSharedTexture()
     bool hasContent = false;
     uint32_t uniqueColors = 0;
     uint32_t lastR = 256, lastG = 256, lastB = 256;
+    uint8_t firstNonBlackR = 0, firstNonBlackG = 0, firstNonBlackB = 0, firstNonBlackA = 0;
+    size_t firstNonBlackIdx = 0;
+    
     // Sample some pixels to see if we have content and color variety
     for (size_t i = 0; i < pixels.size() && uniqueColors < 10; i += 4000)
     {
       uint8_t r = pixels[i];
       uint8_t g = pixels[i+1];
       uint8_t b = pixels[i+2];
+      uint8_t a = pixels[i+3];
       // RGBA format - check if not black and not the clear color
-      if (r != 0 || g != 0 || b != 0)
+      if ((r != 0 || g != 0 || b != 0) && !hasContent)
+      {
         hasContent = true;
+        firstNonBlackR = r;
+        firstNonBlackG = g;
+        firstNonBlackB = b;
+        firstNonBlackA = a;
+        firstNonBlackIdx = i / 4;  // Pixel index
+      }
       // Count unique colors to detect if we have varied content vs solid fill
       if (r != lastR || g != lastG || b != lastB)
       {
@@ -605,16 +665,41 @@ void AgusWglContextFactory::CopyToSharedTexture()
         lastR = r; lastG = g; lastB = b;
       }
     }
-    // Sample center pixel for debugging
+    
+    // Sample corner pixels for debugging
+    size_t topLeftIdx = 0;
+    size_t topRightIdx = (m_width - 1) * 4;
+    size_t bottomLeftIdx = (m_height - 1) * m_width * 4;
+    size_t bottomRightIdx = ((m_height - 1) * m_width + (m_width - 1)) * 4;
     size_t centerIdx = (m_height / 2 * m_width + m_width / 2) * 4;
+    
     uint8_t centerR = pixels[centerIdx];
     uint8_t centerG = pixels[centerIdx + 1];
     uint8_t centerB = pixels[centerIdx + 2];
     uint8_t centerA = pixels[centerIdx + 3];
     
-    LOG(LINFO, ("Frame", s_frameCount, "size:", m_width, "x", m_height, 
+    // Log FBO we read from
+    GLuint actualFBO = m_lastBoundFramebuffer.load();
+    
+    LOG(LINFO, ("Frame", s_frameCount, "size:", m_width, "x", m_height, "FBO:", actualFBO,
                 "hasContent:", hasContent, "uniqueColors:", uniqueColors,
                 "centerRGBA:", (int)centerR, (int)centerG, (int)centerB, (int)centerA));
+    
+    if (hasContent)
+    {
+      LOG(LINFO, ("  FirstNonBlack at pixel", firstNonBlackIdx, "RGBA:",
+                  (int)firstNonBlackR, (int)firstNonBlackG, (int)firstNonBlackB, (int)firstNonBlackA));
+    }
+    
+    // Log corners
+    LOG(LINFO, ("  Corners TL:", (int)pixels[topLeftIdx], (int)pixels[topLeftIdx+1], 
+                (int)pixels[topLeftIdx+2], (int)pixels[topLeftIdx+3],
+                "TR:", (int)pixels[topRightIdx], (int)pixels[topRightIdx+1],
+                (int)pixels[topRightIdx+2], (int)pixels[topRightIdx+3]));
+    LOG(LINFO, ("  Corners BL:", (int)pixels[bottomLeftIdx], (int)pixels[bottomLeftIdx+1], 
+                (int)pixels[bottomLeftIdx+2], (int)pixels[bottomLeftIdx+3],
+                "BR:", (int)pixels[bottomRightIdx], (int)pixels[bottomRightIdx+1],
+                (int)pixels[bottomRightIdx+2], (int)pixels[bottomRightIdx+3]));
   }
   s_frameCount++;
 
@@ -797,11 +882,18 @@ void AgusWglContext::ForgetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
 
 void AgusWglContext::ApplyFramebuffer(std::string const & framebufferLabel)
 {
-  // Apply the default framebuffer (our offscreen FBO)
-  if (m_isDraw && m_factory)
-  {
-    glBindFramebuffer(GL_FRAMEBUFFER, m_factory->m_framebuffer);
-  }
+  // IMPORTANT: ApplyFramebuffer should NOT re-bind a framebuffer.
+  // SetFramebuffer() already handles binding the correct FBO (either our offscreen
+  // FBO or the postprocess FBO). ApplyFramebuffer is called AFTER SetFramebuffer
+  // and is primarily for Metal/Vulkan to do encoding setup. For OpenGL, this
+  // should be a no-op.
+  // 
+  // The Qt implementation (qtoglcontext.cpp) also has an empty ApplyFramebuffer.
+  // 
+  // Previously, this code was re-binding m_factory->m_framebuffer which was
+  // overriding the postprocess FBO that was just bound by SetFramebuffer,
+  // causing all rendering to go to our FBO instead of the postprocess FBO,
+  // resulting in only the clear color being visible.
 }
 
 void AgusWglContext::Init(dp::ApiVersion apiVersion)
@@ -825,7 +917,23 @@ void AgusWglContext::Init(dp::ApiVersion apiVersion)
   // Scissor test - CRITICAL: CoMaps expects scissor to be enabled
   glEnable(GL_SCISSOR_TEST);
   
-  LOG(LINFO, ("AgusWglContext::Init completed, scissor test enabled"));
+  // CRITICAL: Set initial scissor and viewport to full framebuffer size
+  // Without this, the scissor rect defaults to (0,0,0,0) or (0,0,1,1)
+  // which clips all rendering!
+  if (m_factory)
+  {
+    int w = m_factory->m_width;
+    int h = m_factory->m_height;
+    glViewport(0, 0, w, h);
+    glScissor(0, 0, w, h);
+    LOG(LINFO, ("AgusWglContext::Init - set viewport/scissor to:", w, "x", h));
+  }
+  
+  // Log current scissor box to verify
+  GLint scissorBox[4];
+  glGetIntegerv(GL_SCISSOR_BOX, scissorBox);
+  LOG(LINFO, ("AgusWglContext::Init completed, scissor box:", 
+              scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]));
 }
 
 std::string AgusWglContext::GetRendererName() const
@@ -872,11 +980,28 @@ std::string AgusWglContext::GetRendererVersion() const
 
 void AgusWglContext::SetClearColor(dp::Color const & color)
 {
+  // Log clear color periodically
+  static int s_clearColorLogCount = 0;
+  if (s_clearColorLogCount++ % 60 == 0)
+  {
+    LOG(LINFO, ("SetClearColor RGBA:", (int)(color.GetRedF() * 255), 
+                (int)(color.GetGreenF() * 255), (int)(color.GetBlueF() * 255), 
+                (int)(color.GetAlphaF() * 255)));
+  }
   glClearColor(color.GetRedF(), color.GetGreenF(), color.GetBlueF(), color.GetAlphaF());
 }
 
 void AgusWglContext::Clear(uint32_t clearBits, uint32_t storeBits)
 {
+  // Log which FBO we're clearing - helps diagnose rendering issues
+  static int s_clearLogCount = 0;
+  if (s_clearLogCount++ % 60 == 0)
+  {
+    GLint boundFBO = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &boundFBO);
+    LOG(LINFO, ("Clear: FBO", boundFBO, "bits", clearBits, "store", storeBits));
+  }
+  
   GLbitfield mask = 0;
   if (clearBits & dp::ClearBits::ColorBit)
     mask |= GL_COLOR_BUFFER_BIT;
@@ -894,6 +1019,9 @@ void AgusWglContext::Flush()
 
 void AgusWglContext::SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
+  // NOTE: SetViewport is called very frequently (many times per frame).
+  // Logging disabled to reduce noise. Enable for debugging viewport issues.
+  // LOG(LINFO, ("SetViewport:", x, y, w, h));
   glViewport(x, y, w, h);
 }
 
@@ -958,6 +1086,9 @@ void AgusWglContext::PopDebugLabel()
 
 void AgusWglContext::SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
+  // NOTE: SetScissor may be called frequently.
+  // Logging disabled to reduce noise. Enable for debugging scissor issues.
+  // LOG(LINFO, ("SetScissor:", x, y, w, h));
   glScissor(static_cast<GLint>(x), static_cast<GLint>(y),
             static_cast<GLsizei>(w), static_cast<GLsizei>(h));
 }
