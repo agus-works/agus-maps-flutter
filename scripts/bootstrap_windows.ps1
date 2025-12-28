@@ -4,13 +4,28 @@
     Bootstraps the Windows development environment for agus-maps-flutter.
 
 .DESCRIPTION
-    This script:
-    1. Installs vcpkg if not present
-    2. Installs required dependencies (zlib)
-    3. Sets up environment variables
+    This script sets up everything needed to build the Windows target of
+    agus_maps_flutter. It performs:
+    
+    1. Fetches CoMaps source code
+    2. Applies patches (superset for all platforms)
+    3. Builds Boost headers
+    4. Copies CoMaps data files
+    5. Installs vcpkg if not present
+    6. Installs required vcpkg dependencies (zlib)
+    7. Sets up environment variables
+
+    Note: This bootstrap also prepares dependencies needed for Android builds
+    on Windows, ensuring you can build both Windows and Android targets.
 
 .PARAMETER VcpkgRoot
     Path where vcpkg should be installed. Defaults to C:\vcpkg
+
+.PARAMETER SkipPatches
+    Skip applying patches (useful for debugging).
+
+.PARAMETER Force
+    Force re-bootstrap even if already done.
 
 .EXAMPLE
     .\scripts\bootstrap_windows.ps1
@@ -20,7 +35,9 @@
 #>
 
 param(
-    [string]$VcpkgRoot = "C:\vcpkg"
+    [string]$VcpkgRoot = "C:\vcpkg",
+    [switch]$SkipPatches,
+    [switch]$Force
 )
 
 Set-StrictMode -Version Latest
@@ -30,22 +47,39 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 
+# Import common bootstrap module
+Import-Module (Join-Path $ScriptDir 'BootstrapCommon.psm1') -Force
+
 Write-Host "=== Agus Maps Flutter - Windows Bootstrap ===" -ForegroundColor Cyan
 Write-Host "Repository Root: $RepoRoot"
 Write-Host "vcpkg Root: $VcpkgRoot"
 Write-Host ""
 
 # ============================================================================
-# Step 1: Install vcpkg
+# Step 1: Bootstrap CoMaps (shared with all platforms)
 # ============================================================================
-Write-Host "=== Step 1: Setting up vcpkg ===" -ForegroundColor Yellow
+Write-LogHeader "Step 1: Bootstrapping CoMaps and Dependencies"
+
+if ($SkipPatches) {
+    Bootstrap-CoMaps -RepoRoot $RepoRoot
+    Bootstrap-Boost -RepoRoot $RepoRoot
+    Bootstrap-Data -RepoRoot $RepoRoot
+} else {
+    Bootstrap-Full -RepoRoot $RepoRoot -Platform 'windows'
+}
+
+# ============================================================================
+# Step 2: Install vcpkg (Windows-specific)
+# ============================================================================
+Write-Host ""
+Write-LogHeader "Step 2: Setting up vcpkg"
 
 $vcpkgExe = Join-Path $VcpkgRoot "vcpkg.exe"
 
 if (Test-Path $vcpkgExe) {
-    Write-Host "vcpkg already installed at: $VcpkgRoot" -ForegroundColor Green
+    Write-LogInfo "vcpkg already installed at: $VcpkgRoot"
 } else {
-    Write-Host "Installing vcpkg..." -ForegroundColor Yellow
+    Write-LogInfo "Installing vcpkg..."
     
     # Clone vcpkg
     if (Test-Path $VcpkgRoot) {
@@ -71,20 +105,19 @@ if (Test-Path $vcpkgExe) {
         Pop-Location
     }
     
-    Write-Host "vcpkg installed successfully" -ForegroundColor Green
+    Write-LogInfo "vcpkg installed successfully"
 }
 
 # ============================================================================
-# Step 2: Install dependencies
+# Step 3: Install vcpkg dependencies
 # ============================================================================
 Write-Host ""
-Write-Host "=== Step 2: Installing dependencies ===" -ForegroundColor Yellow
+Write-LogHeader "Step 3: Installing vcpkg dependencies"
 
 # vcpkg.json exists in the repo, so vcpkg will run in manifest mode.
-# In manifest mode, `vcpkg install` must not receive individual port arguments.
 $manifestPath = Join-Path $RepoRoot "vcpkg.json"
 if (Test-Path $manifestPath) {
-    Write-Host "Installing dependencies from manifest (x64-windows)..."
+    Write-LogInfo "Installing dependencies from manifest (x64-windows)..."
     Push-Location $RepoRoot
     try {
         & $vcpkgExe install --triplet x64-windows
@@ -96,8 +129,8 @@ if (Test-Path $manifestPath) {
         Pop-Location
     }
 } else {
-    # Fallback for classic mode.
-    Write-Host "Installing zlib:x64-windows (classic mode)..."
+    # Fallback for classic mode
+    Write-LogInfo "Installing zlib:x64-windows (classic mode)..."
     & $vcpkgExe install zlib:x64-windows
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to install zlib"
@@ -105,46 +138,29 @@ if (Test-Path $manifestPath) {
     }
 }
 
-Write-Host "Dependencies installed successfully" -ForegroundColor Green
+Write-LogInfo "Dependencies installed successfully"
 
 # ============================================================================
-# Step 3: Set environment variables
+# Step 4: Set environment variables
 # ============================================================================
 Write-Host ""
-Write-Host "=== Step 3: Setting environment variables ===" -ForegroundColor Yellow
+Write-LogHeader "Step 4: Setting environment variables"
 
 # Set VCPKG_ROOT for current session
 $env:VCPKG_ROOT = $VcpkgRoot
-Write-Host "Set VCPKG_ROOT=$VcpkgRoot (current session)" -ForegroundColor Green
+Write-LogInfo "Set VCPKG_ROOT=$VcpkgRoot (current session)"
 
-# Offer to set permanently
-$setPermanent = Read-Host "Set VCPKG_ROOT permanently for current user? (y/n)"
-if ($setPermanent -eq 'y' -or $setPermanent -eq 'Y') {
-    [System.Environment]::SetEnvironmentVariable('VCPKG_ROOT', $VcpkgRoot, [System.EnvironmentVariableTarget]::User)
-    Write-Host "VCPKG_ROOT set permanently for current user" -ForegroundColor Green
-}
+# Check if running interactively
+$isInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
 
-# ============================================================================
-# Step 4: Fetch CoMaps and apply patches
-# ============================================================================
-Write-Host ""
-Write-Host "=== Step 4: Setting up CoMaps ===" -ForegroundColor Yellow
-
-$fetchScript = Join-Path $ScriptDir "fetch_comaps.ps1"
-if (Test-Path $fetchScript) {
-    & $fetchScript
+if ($isInteractive) {
+    $setPermanent = Read-Host "Set VCPKG_ROOT permanently for current user? (y/n)"
+    if ($setPermanent -eq 'y' -or $setPermanent -eq 'Y') {
+        [System.Environment]::SetEnvironmentVariable('VCPKG_ROOT', $VcpkgRoot, [System.EnvironmentVariableTarget]::User)
+        Write-LogInfo "VCPKG_ROOT set permanently for current user"
+    }
 } else {
-    Write-Warning "fetch_comaps.ps1 not found, skipping CoMaps setup"
-}
-
-Write-Host ""
-Write-Host "=== Step 5: Copy CoMaps data into example assets ===" -ForegroundColor Yellow
-
-$copyDataPs1 = Join-Path $ScriptDir "copy_comaps_data.ps1"
-if (Test-Path $copyDataPs1) {
-    & $copyDataPs1
-} else {
-    Write-Warning "copy_comaps_data.ps1 not found. You can run scripts/copy_comaps_data.sh in bash instead."
+    Write-LogInfo "Non-interactive mode, skipping permanent environment variable setup"
 }
 
 # ============================================================================
@@ -152,6 +168,16 @@ if (Test-Path $copyDataPs1) {
 # ============================================================================
 Write-Host ""
 Write-Host "=== Bootstrap Complete ===" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "This bootstrap has prepared:" -ForegroundColor Gray
+Write-Host "  ✓ CoMaps source code and patches" -ForegroundColor Green
+Write-Host "  ✓ Boost headers" -ForegroundColor Green
+Write-Host "  ✓ CoMaps data files" -ForegroundColor Green
+Write-Host "  ✓ vcpkg and dependencies" -ForegroundColor Green
+Write-Host ""
+Write-Host "You can now build for:" -ForegroundColor Gray
+Write-Host "  - Windows:  flutter build windows" -ForegroundColor White
+Write-Host "  - Android:  flutter build apk" -ForegroundColor White
 Write-Host ""
 Write-Host "To build the plugin, run:" -ForegroundColor Gray
 Write-Host "  cd example" -ForegroundColor White
