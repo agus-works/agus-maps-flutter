@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="#features">Features</a> •
+  <a href="#demos">Demos</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#comparison">Comparison</a> •
   <a href="#documentation">Docs</a> •
@@ -29,6 +30,41 @@ Most Flutter map solutions either:
 - Use PlatformView embedding (performance overhead, gesture conflicts, "airspace" issues)
 
 **Agus Maps takes a different approach:** The C++ rendering engine draws directly to a GPU texture that Flutter composites natively—no copies, no bridges, no compromises.
+
+---
+
+## Demos
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/YVaBJ8uW5Ag">
+        <img src="https://img.youtube.com/vi/YVaBJ8uW5Ag/maxresdefault.jpg" alt="Android Demo" width="100%">
+        <br><strong>📱 Android</strong>
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/Jt0QE9Umsng">
+        <img src="https://img.youtube.com/vi/Jt0QE9Umsng/maxresdefault.jpg" alt="iOS Demo" width="100%">
+        <br><strong>📱 iOS</strong>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/Gd53HFrAGts">
+        <img src="https://img.youtube.com/vi/Gd53HFrAGts/maxresdefault.jpg" alt="macOS Demo" width="100%">
+        <br><strong>🖥️ macOS</strong>
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/SWoLl-700LM">
+        <img src="https://img.youtube.com/vi/SWoLl-700LM/maxresdefault.jpg" alt="Windows Demo" width="100%">
+        <br><strong>🪟 Windows</strong>
+      </a>
+    </td>
+  </tr>
+</table>
 
 ---
 
