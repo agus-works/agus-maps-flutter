@@ -794,4 +794,19 @@ endif()
 
 ---
 
+
+### Map Style Error: "Symbol name must be valid for feature"
+
+**Symptom:**
+Logs show error: `[CoMaps ERROR] drape_frontend/apply_feature_functors.cpp:544 df::ApplyPointFeature::ProcessPointRules(): Style error. Symbol name must be valid for feature { MwmId [Gibraltar, 0], 946 }`.
+Map may render white/blank or partially.
+
+**Cause:**
+Incompatibility between the loaded MWM map file and the style definitions (`drules_proto.bin`, `classificator.txt`, `types.txt`). This happens if the MWM was built with a different version of the style generation tools than the style files present in `assets/comaps_data`.
+
+**Solution:**
+1.  **Regenerate** the MWM file using the same `classificator.txt` and `types.txt` present in assets.
+2.  **Update Assets**: Fetch the `drules_proto.bin` and config files that match the MWM version.
+3.  **Temporary Fix**: If a specific MWM (e.g., Gibraltar) is causing issues, disable it and use `World.mwm` to verify rendering engine works.
+
 *Last updated: December 2025*
