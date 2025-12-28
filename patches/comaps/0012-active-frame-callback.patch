@@ -1,5 +1,5 @@
 diff --git a/libs/drape_frontend/CMakeLists.txt b/libs/drape_frontend/CMakeLists.txt
-index 472346a..e03ec81 100644
+index 472346ab..e03ec817 100644
 --- a/libs/drape_frontend/CMakeLists.txt
 +++ b/libs/drape_frontend/CMakeLists.txt
 @@ -72,6 +72,8 @@ set(SRC
@@ -11,3 +11,99 @@ index 472346a..e03ec81 100644
    frontend_renderer.cpp
    frontend_renderer.hpp
    gps_track_point.hpp
+diff --git a/libs/drape_frontend/active_frame_callback.cpp b/libs/drape_frontend/active_frame_callback.cpp
+new file mode 100644
+index 00000000..418817bc
+--- /dev/null
++++ b/libs/drape_frontend/active_frame_callback.cpp
+@@ -0,0 +1,31 @@
++#include "drape_frontend/active_frame_callback.hpp"
++
++#include <mutex>
++
++namespace df
++{
++namespace
++{
++std::mutex g_callbackMutex;
++ActiveFrameCallback g_activeFrameCallback;
++}  // namespace
++
++void SetActiveFrameCallback(ActiveFrameCallback callback)
++{
++  std::lock_guard<std::mutex> lock(g_callbackMutex);
++  g_activeFrameCallback = std::move(callback);
++}
++
++void NotifyActiveFrame()
++{
++  ActiveFrameCallback callback;
++  {
++    std::lock_guard<std::mutex> lock(g_callbackMutex);
++    callback = g_activeFrameCallback;
++  }
++  
++  if (callback)
++    callback();
++}
++
++}  // namespace df
+diff --git a/libs/drape_frontend/active_frame_callback.hpp b/libs/drape_frontend/active_frame_callback.hpp
+new file mode 100644
+index 00000000..dc56e472
+--- /dev/null
++++ b/libs/drape_frontend/active_frame_callback.hpp
+@@ -0,0 +1,34 @@
++#pragma once
++
++/// @file active_frame_callback.hpp
++/// @brief Global callback for notifying when an active frame is rendered.
++/// 
++/// This callback is invoked from FrontendRenderer::RenderFrame() only when
++/// isActiveFrame is true (i.e., when the map content actually changed).
++/// This allows embedders (like Flutter plugins) to efficiently notify their
++/// texture systems only when there's new content to display, rather than
++/// on every Present() call.
++///
++/// Usage:
++///   1. Set the callback before creating the DrapeEngine:
++///      df::SetActiveFrameCallback([]() { /* notify Flutter */ });
++///   2. The callback will be invoked on the render thread.
++///   3. Embedders should dispatch to main thread if needed.
++
++#include <functional>
++
++namespace df
++{
++/// Callback type for active frame notification
++using ActiveFrameCallback = std::function<void()>;
++
++/// Set the callback to be invoked when an active frame is rendered.
++/// Pass nullptr to disable the callback.
++/// Thread-safe.
++void SetActiveFrameCallback(ActiveFrameCallback callback);
++
++/// Called internally by FrontendRenderer when isActiveFrame is true.
++/// This should not be called by external code.
++void NotifyActiveFrame();
++
++}  // namespace df
+diff --git a/libs/drape_frontend/frontend_renderer.cpp b/libs/drape_frontend/frontend_renderer.cpp
+index 94fc630e..0d7c688e 100644
+--- a/libs/drape_frontend/frontend_renderer.cpp
++++ b/libs/drape_frontend/frontend_renderer.cpp
+@@ -1,4 +1,5 @@
+ #include "drape_frontend/frontend_renderer.hpp"
++#include "drape_frontend/active_frame_callback.hpp"
+ #include "drape_frontend/animation/interpolation_holder.hpp"
+ #include "drape_frontend/animation_system.hpp"
+ #include "drape_frontend/debug_rect_renderer.hpp"
+@@ -1760,6 +1761,8 @@ void FrontendRenderer::RenderFrame()
+   else
+   {
+     m_frameData.m_inactiveFramesCounter = 0;
++    // Notify embedders (e.g., Flutter) that an active frame was rendered
++    NotifyActiveFrame();
+   }
+ 
+   bool const canSuspend = m_frameData.m_inactiveFramesCounter > FrameData::kMaxInactiveFrames;

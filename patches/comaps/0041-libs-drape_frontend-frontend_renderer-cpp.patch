@@ -1,5 +1,5 @@
 diff --git a/libs/drape_frontend/frontend_renderer.cpp b/libs/drape_frontend/frontend_renderer.cpp
-index 94fc630..d3eadeb 100644
+index 94fc630..0d7c688 100644
 --- a/libs/drape_frontend/frontend_renderer.cpp
 +++ b/libs/drape_frontend/frontend_renderer.cpp
 @@ -1,4 +1,5 @@
@@ -8,25 +8,7 @@ index 94fc630..d3eadeb 100644
  #include "drape_frontend/animation/interpolation_holder.hpp"
  #include "drape_frontend/animation_system.hpp"
  #include "drape_frontend/debug_rect_renderer.hpp"
-@@ -257,10 +258,17 @@ void FrontendRenderer::AcceptMessage(ref_ptr<Message> message)
-     dp::RenderState const & state = msg->GetState();
-     TileKey const & key = msg->GetKey();
-     drape_ptr<dp::RenderBucket> bucket = msg->AcceptBuffer();
-+    LOG(LINFO, ("FrontendRenderer: FlushTile received, key=", key.m_x, ",", key.m_y, "@", key.m_zoomLevel,
-+                "currentZoom=", m_currentZoomLevel, "isValid=", IsValidCurrentZoom()));
-     if (key.m_zoomLevel == GetCurrentZoom() && CheckTileGenerations(key))
-     {
-       PrepareBucket(state, bucket);
-       AddToRenderGroup<RenderGroup>(state, std::move(bucket), key);
-+      LOG(LINFO, ("FrontendRenderer: Tile added to render groups"));
-+    }
-+    else
-+    {
-+      LOG(LINFO, ("FrontendRenderer: Tile REJECTED, zoomMatch=", (key.m_zoomLevel == m_currentZoomLevel)));
-     }
-     break;
-   }
-@@ -1760,6 +1768,8 @@ void FrontendRenderer::RenderFrame()
+@@ -1760,6 +1761,8 @@ void FrontendRenderer::RenderFrame()
    else
    {
      m_frameData.m_inactiveFramesCounter = 0;
@@ -35,27 +17,3 @@ index 94fc630..d3eadeb 100644
    }
  
    bool const canSuspend = m_frameData.m_inactiveFramesCounter > FrameData::kMaxInactiveFrames;
-@@ -2509,7 +2519,10 @@ void FrontendRenderer::PrepareScene(ScreenBase const & modelView)
- void FrontendRenderer::UpdateScene(ScreenBase const & modelView)
- {
-   TRACE_SECTION("[drape] UpdateScene");
-+  int prevZoom = m_currentZoomLevel;
-   ResolveZoomLevel(modelView);
-+  LOG(LINFO, ("UpdateScene: prevZoom=", prevZoom, "currentZoom=", m_currentZoomLevel, 
-+              "screen center=", modelView.GetOrg()));
- 
-   m_gpsTrackRenderer->Update();
- 
-@@ -2529,8 +2542,11 @@ void FrontendRenderer::UpdateScene(ScreenBase const & modelView)
-   {
-     EmitModelViewChanged(modelView);
-     m_lastReadedModelView = modelView;
-+    TTilesCollection tiles = ResolveTileKeys(modelView);
-+    LOG(LINFO, ("UpdateScene: Requesting", tiles.size(), "tiles, forceUpdateScene=", m_forceUpdateScene,
-+                "forceUpdateUserMarks=", m_forceUpdateUserMarks));
-     m_requestedTiles->Set(modelView, m_isIsometry || modelView.isPerspective(), m_forceUpdateScene,
--                          m_forceUpdateUserMarks, ResolveTileKeys(modelView));
-+                          m_forceUpdateUserMarks, std::move(tiles));
-     m_commutator->PostMessage(ThreadsCommutator::ResourceUploadThread, make_unique_dp<UpdateReadManagerMessage>(),
-                               MessagePriority::UberHighSingleton);
-     m_forceUpdateScene = false;
