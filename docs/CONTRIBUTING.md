@@ -69,18 +69,28 @@ dart run ffigen --config ffigen.yaml
 - Flutter SDK 3.x (stable channel)
 - Android SDK with NDK r25c+
 - CMake 3.18+
-- Git
+- Git (with ability to initialize submodules)
+- PowerShell 7+ (Windows only)
 
 ### Initial Setup
 
-**Linux/macOS:**
+The bootstrap scripts use a unified approach where running any platform's bootstrap
+will prepare the superset of dependencies needed. This means:
+
+- **macOS**: Running any bootstrap prepares you for macOS, iOS, and Android targets
+- **Windows**: Running any bootstrap prepares you for Windows and Android targets
+
+**Linux/macOS (any target):**
 ```bash
 # Clone the repository
 git clone https://github.com/bangonkali/agus-maps-flutter.git
 cd agus_maps_flutter
 
-# Fetch and patch CoMaps engine
-./scripts/bootstrap_android.sh
+# Bootstrap for your target platform
+# Note: All bootstrap scripts fetch CoMaps, apply ALL patches, and build shared dependencies
+./scripts/bootstrap_android.sh   # Prepares for Android
+./scripts/bootstrap_ios.sh       # Prepares for iOS (macOS only)
+./scripts/bootstrap_macos.sh     # Prepares for macOS (macOS only)
 
 # Get Flutter dependencies
 flutter pub get
@@ -90,14 +100,16 @@ cd example
 flutter run
 ```
 
-**Windows PowerShell:**
+**Windows PowerShell 7+:**
 ```powershell
 # Clone the repository
 git clone https://github.com/bangonkali/agus-maps-flutter.git
 cd agus_maps_flutter
 
-# Fetch and patch CoMaps engine
-.\scripts\bootstrap_android.ps1
+# Bootstrap for your target platform
+# Note: Both scripts prepare dependencies for Windows AND Android
+.\scripts\bootstrap_windows.ps1  # Prepares for Windows (includes vcpkg)
+.\scripts\bootstrap_android.ps1  # Prepares for Android
 
 # Get Flutter dependencies
 flutter pub get
@@ -106,6 +118,19 @@ flutter pub get
 cd example
 flutter run
 ```
+
+### Bootstrap Architecture
+
+All bootstrap scripts share common logic via:
+- **Bash**: `scripts/bootstrap_common.sh` (sourced by all .sh scripts)
+- **PowerShell**: `scripts/BootstrapCommon.psm1` (imported by all .ps1 scripts)
+
+This ensures:
+1. Same CoMaps tag is used across all platforms
+2. ALL patches are applied (superset for all platforms)
+3. ALL submodules are fully initialized (required for patches like gflags)
+4. Boost headers are built consistently
+5. Data files are copied to example assets
 
 ### Rebuilding After Changes
 

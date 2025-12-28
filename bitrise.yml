@@ -25,7 +25,7 @@ workflows:
     - restore-cache@1:
         title: Restore CoMaps Cache
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
         title: Fetch CoMaps Source
         inputs:
@@ -38,18 +38,19 @@ workflows:
             mkdir -p thirdparty
 
             if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --depth 1 --branch "$COMAPS_TAG" \
+              git clone --branch "$COMAPS_TAG" \
                 https://github.com/comaps/comaps.git thirdparty/comaps
             fi
 
             cd thirdparty/comaps
-            git submodule update --init --recursive --depth 1
+            # Initialize ALL submodules recursively - required for patches like gflags
+            git submodule update --init --recursive
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: "true"
         is_always_run: true
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
     - script@1:
         title: Apply CoMaps Patches
@@ -164,7 +165,7 @@ workflows:
     - restore-cache@1:
         title: Restore CoMaps Cache
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
         title: Fetch CoMaps Source
         inputs:
@@ -177,18 +178,25 @@ workflows:
             mkdir -p thirdparty
 
             if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --depth 1 --branch "$COMAPS_TAG" \
+              git clone --branch "$COMAPS_TAG" \
                 https://github.com/comaps/comaps.git thirdparty/comaps
+            else
+              cd thirdparty/comaps
+              git fetch --tags --prune
+              git checkout --detach "$COMAPS_TAG"
+              cd ../..
             fi
 
             cd thirdparty/comaps
-            git submodule update --init --recursive --depth 1
+            # Initialize ALL submodules recursively - required for patches like gflags
+            git submodule update --init --recursive
+            echo "=== CoMaps at $(git rev-parse --short HEAD) ==="
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: "true"
         is_always_run: true
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
     - script@1:
         title: Apply CoMaps Patches
@@ -286,7 +294,7 @@ workflows:
     - restore-cache@1:
         title: Restore CoMaps Cache
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
         title: Setup Pre-built Binaries
         inputs:
@@ -333,18 +341,19 @@ workflows:
             mkdir -p thirdparty
 
             if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --depth 1 --branch "$COMAPS_TAG" \
+              git clone --branch "$COMAPS_TAG" \
                 https://github.com/comaps/comaps.git thirdparty/comaps
             fi
 
             cd thirdparty/comaps
-            git submodule update --init --recursive --depth 1
+            # Initialize ALL submodules recursively - required for patches like gflags
+            git submodule update --init --recursive
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: "true"
         is_always_run: true
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
     - script@1:
         title: Apply CoMaps Patches
@@ -518,7 +527,7 @@ workflows:
     - restore-cache@1:
         title: Restore CoMaps Cache
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
         title: Fetch CoMaps Source
         inputs:
@@ -531,18 +540,19 @@ workflows:
             mkdir -p thirdparty
 
             if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --depth 1 --branch "$COMAPS_TAG" \
+              git clone --branch "$COMAPS_TAG" \
                 https://github.com/comaps/comaps.git thirdparty/comaps
             fi
 
             cd thirdparty/comaps
-            git submodule update --init --recursive --depth 1
+            # Initialize ALL submodules recursively - required for patches like gflags
+            git submodule update --init --recursive
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: "true"
         is_always_run: true
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
     - script@1:
         title: Apply CoMaps Patches
@@ -673,7 +683,7 @@ workflows:
     - restore-cache@1:
         title: Restore CoMaps Cache (for thirdparty headers)
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
         title: Fetch CoMaps Headers
         inputs:
@@ -685,12 +695,13 @@ workflows:
             mkdir -p thirdparty
 
             if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --depth 1 --branch "$COMAPS_TAG" \
+              git clone --branch "$COMAPS_TAG" \
                 https://github.com/comaps/comaps.git thirdparty/comaps
             fi
 
             cd thirdparty/comaps
-            git submodule update --init --recursive --depth 1
+            # Initialize ALL submodules recursively - required for patches like gflags
+            git submodule update --init --recursive
     - script@1:
         title: Build Boost Headers
         inputs:
@@ -800,7 +811,7 @@ workflows:
     - restore-cache@1:
         title: Restore CoMaps Cache
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
         title: Fetch CoMaps Source
         inputs:
@@ -813,18 +824,19 @@ workflows:
             mkdir -p thirdparty
 
             if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --depth 1 --branch "$COMAPS_TAG" \
+              git clone --branch "$COMAPS_TAG" \
                 https://github.com/comaps/comaps.git thirdparty/comaps
             fi
 
             cd thirdparty/comaps
-            git submodule update --init --recursive --depth 1
+            # Initialize ALL submodules recursively - required for patches like gflags
+            git submodule update --init --recursive
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: "true"
         is_always_run: true
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
     - script@1:
         title: Apply CoMaps Patches
@@ -955,7 +967,7 @@ workflows:
     - restore-cache@1:
         title: Restore CoMaps Cache (for thirdparty headers)
         inputs:
-        - key: comaps-source-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
         title: Fetch CoMaps Headers
         inputs:
@@ -967,12 +979,13 @@ workflows:
             mkdir -p thirdparty
 
             if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --depth 1 --branch "$COMAPS_TAG" \
+              git clone --branch "$COMAPS_TAG" \
                 https://github.com/comaps/comaps.git thirdparty/comaps
             fi
 
             cd thirdparty/comaps
-            git submodule update --init --recursive --depth 1
+            # Initialize ALL submodules recursively - required for patches like gflags
+            git submodule update --init --recursive
     - script@1:
         title: Build Boost Headers
         inputs:

@@ -88,7 +88,8 @@ if (Test-Path (Join-Path $ComapsDir '.git')) {
     
     # Clone without checkout, then configure git settings before checkout
     # This ensures autocrlf is set correctly before files are written
-    $cloneArgs = @('clone', '--no-checkout', '--branch', $Tag, '--depth', '1', $ComapsGitUrl, $ComapsDir)
+    # Note: Do NOT use --depth 1 as we need full submodule initialization for patches
+    $cloneArgs = @('clone', '--no-checkout', '--branch', $Tag, $ComapsGitUrl, $ComapsDir)
     Write-Host "Cloning (no checkout)..." -ForegroundColor Gray
     & git @cloneArgs 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
     
