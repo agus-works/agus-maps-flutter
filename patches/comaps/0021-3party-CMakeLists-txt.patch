@@ -1,0 +1,33 @@
+diff --git a/3party/CMakeLists.txt b/3party/CMakeLists.txt
+index dd851d7..9b1e66b 100644
+--- a/3party/CMakeLists.txt
++++ b/3party/CMakeLists.txt
+@@ -31,11 +31,28 @@ if (NOT WITH_SYSTEM_PROVIDED_3PARTY)
+   set(JANSSON_WITHOUT_TESTS ON)
+   add_subdirectory(jansson/jansson/)
+   target_include_directories(jansson INTERFACE "${PROJECT_BINARY_DIR}/3party/jansson/jansson/include")
++  # On Windows, prevent Windows SDK header conflicts by adding WIN32_LEAN_AND_MEAN
++  # before windows.h is included in hashtable_seed.c
++  if(PLATFORM_WIN)
++    target_compile_definitions(jansson PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
++  endif()
+ 
+   # Add gflags library.
+   set(GFLAGS_BUILD_TESTING OFF)
+   set(GFLAGS_BUILD_PACKAGING OFF)
++  # Disable installation to avoid CMAKE_INSTALL_PREFIX issues with generator expressions
++  set(GFLAGS_INSTALL_HEADERS OFF)
++  set(GFLAGS_INSTALL_SHARED_LIBS OFF)
++  set(GFLAGS_INSTALL_STATIC_LIBS OFF)
++  # Workaround: gflags uses file(RELATIVE_PATH) which doesn't support generator expressions
++  # Temporarily set CMAKE_INSTALL_PREFIX to a real path for gflags configuration
++  set(_SAVED_CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
++  if("${CMAKE_INSTALL_PREFIX}" MATCHES "\\$<")
++    set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/gflags_install_dummy" CACHE PATH "" FORCE)
++  endif()
+   add_subdirectory(gflags)
++  set(CMAKE_INSTALL_PREFIX "${_SAVED_CMAKE_INSTALL_PREFIX}" CACHE PATH "" FORCE)
++  unset(_SAVED_CMAKE_INSTALL_PREFIX)
+   target_compile_options(gflags_nothreads_static PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Wno-subobject-linkage>)
+ 
+   # Add pugixml library.

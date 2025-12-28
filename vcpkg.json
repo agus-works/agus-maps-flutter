@@ -1,0 +1,8 @@
+{
+  "name": "agus-maps-flutter",
+  "version-string": "1.0.0",
+  "description": "Agus Maps Flutter plugin - Windows dependencies",
+  "dependencies": [
+    "zlib"
+  ]
+}

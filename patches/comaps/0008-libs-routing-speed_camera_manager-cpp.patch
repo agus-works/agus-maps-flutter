@@ -1,5 +1,5 @@
 diff --git a/libs/routing/speed_camera_manager.cpp b/libs/routing/speed_camera_manager.cpp
-index feb8ff5c..68b15334 100644
+index feb8ff5..68b1533 100644
 --- a/libs/routing/speed_camera_manager.cpp
 +++ b/libs/routing/speed_camera_manager.cpp
 @@ -129,16 +129,31 @@ void SpeedCameraManager::ResetNotifications()

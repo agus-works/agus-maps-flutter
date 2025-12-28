@@ -1,5 +1,5 @@
 diff --git a/libs/platform/platform_android.cpp b/libs/platform/platform_android.cpp
-index 46a953c1..22baf774 100644
+index 46a953c..22baf77 100644
 --- a/libs/platform/platform_android.cpp
 +++ b/libs/platform/platform_android.cpp
 @@ -105,14 +105,24 @@ std::unique_ptr<ModelReader> Platform::GetReader(std::string const & file, std::

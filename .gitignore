@@ -53,3 +53,12 @@ macos/Resources/
 
 # Android native libraries (downloaded during build)
 android/src/main/jniLibs/
+
+# Windows build artifacts
+vcpkg_installed/
+
+# Patch backup directories (created by regenerate_patches scripts)
+patches_backup_*/
+
+# Temporary native assets directory (created during Windows build)
+example/build/native_assets/

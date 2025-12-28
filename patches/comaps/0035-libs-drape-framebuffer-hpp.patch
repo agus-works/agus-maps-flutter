@@ -1,0 +1,17 @@
+diff --git a/libs/drape/framebuffer.hpp b/libs/drape/framebuffer.hpp
+index e00cba9..74e43d0 100644
+--- a/libs/drape/framebuffer.hpp
++++ b/libs/drape/framebuffer.hpp
+@@ -8,6 +8,12 @@
+ #include <cstdint>
+ #include <functional>
+ 
++// Windows defines FindResource as FindResourceW/FindResourceA macro in WinBase.h
++// which conflicts with dp::Texture::FindResource method
++#ifdef FindResource
++#undef FindResource
++#endif
++
+ namespace dp
+ {
+ class FramebufferTexture : public Texture

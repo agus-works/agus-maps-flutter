@@ -1,0 +1,13 @@
+diff --git a/libs/indexer/categories_holder.cpp b/libs/indexer/categories_holder.cpp
+index e7c670f..af1b332 100644
+--- a/libs/indexer/categories_holder.cpp
++++ b/libs/indexer/categories_holder.cpp
+@@ -54,7 +54,7 @@ bool ParseEmoji(CategoriesHolder::Category::Name & name)
+ 
+ void FillPrefixLengthToSuggest(CategoriesHolder::Category::Name & name)
+ {
+-  if (std::isdigit(name.m_name.front()) && name.m_name.front() != '0')
++  if (std::isdigit(static_cast<unsigned char>(name.m_name.front())) && name.m_name.front() != '0')
+   {
+     name.m_prefixLengthToSuggest = name.m_name[0] - '0';
+     name.m_name = name.m_name.substr(1);

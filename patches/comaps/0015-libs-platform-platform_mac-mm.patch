@@ -1,5 +1,5 @@
 diff --git a/libs/platform/platform_mac.mm b/libs/platform/platform_mac.mm
-index ec5d7482..df1d0391 100644
+index ec5d748..df1d039 100644
 --- a/libs/platform/platform_mac.mm
 +++ b/libs/platform/platform_mac.mm
 @@ -1,14 +1,25 @@

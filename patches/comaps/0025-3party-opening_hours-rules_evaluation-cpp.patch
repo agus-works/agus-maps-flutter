@@ -1,0 +1,21 @@
+diff --git a/3party/opening_hours/rules_evaluation.cpp b/3party/opening_hours/rules_evaluation.cpp
+index 8f54ff7..fd9df90 100644
+--- a/3party/opening_hours/rules_evaluation.cpp
++++ b/3party/opening_hours/rules_evaluation.cpp
+@@ -9,6 +9,16 @@
+ #include <sstream>
+ #include <tuple>
+ 
++// Windows doesn't have localtime_r, use localtime_s instead
++#ifdef _WIN32
++#include <time.h>
++inline struct tm* localtime_r(const time_t* timep, struct tm* result) {
++  if (localtime_s(result, timep) == 0)
++    return result;
++  return nullptr;
++}
++#endif
++
+ namespace
+ {
+ using THourMinutes = std::tuple<int, int>;

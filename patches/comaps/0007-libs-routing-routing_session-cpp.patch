@@ -1,5 +1,5 @@
 diff --git a/libs/routing/routing_session.cpp b/libs/routing/routing_session.cpp
-index 006d3072..cac11aae 100644
+index 006d307..cac11aa 100644
 --- a/libs/routing/routing_session.cpp
 +++ b/libs/routing/routing_session.cpp
 @@ -119,15 +119,22 @@ void RoutingSession::DoReadyCallback::operator()(std::shared_ptr<Route> const &

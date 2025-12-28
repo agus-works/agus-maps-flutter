@@ -1,0 +1,16 @@
+diff --git a/libs/routing/lanes/lanes_parser.cpp b/libs/routing/lanes/lanes_parser.cpp
+index 682663e..40019d3 100644
+--- a/libs/routing/lanes/lanes_parser.cpp
++++ b/libs/routing/lanes/lanes_parser.cpp
+@@ -67,8 +67,9 @@ LanesInfo ParseLanes(std::string_view lanesString)
+       for (auto && laneWay : laneInfo | std::views::split(';'))
+       {
+         auto way = LaneWay::None;
+-        auto && laneWayProcessed = laneWay | std::views::filter([](char const c) { return !std::isspace(c); }) |
+-                                   std::views::transform([](char const c) { return std::tolower(c); });
++        // Cast to unsigned char to avoid assertion failure on Windows with non-ASCII characters
++        auto && laneWayProcessed = laneWay | std::views::filter([](char const c) { return !std::isspace(static_cast<unsigned char>(c)); }) |
++                                   std::views::transform([](char const c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); });
+         if (!ParseSingleLane(laneWayProcessed, way))
+           return {};
+         lane.laneWays.Add(way);
