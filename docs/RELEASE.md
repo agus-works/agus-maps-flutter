@@ -344,6 +344,7 @@ The example app includes minimal map data for testing. For production use, you'l
 
 If you prefer to build from source instead of using pre-built binaries:
 
+**Linux/macOS:**
 ```bash
 # Clone the repository
 git clone https://github.com/bangonkali/agus-maps-flutter.git
@@ -357,6 +358,21 @@ cd example
 flutter build apk          # Android
 flutter build ios          # iOS (requires Xcode)
 flutter build macos        # macOS
+```
+
+**Windows PowerShell:**
+```powershell
+# Clone the repository
+git clone https://github.com/bangonkali/agus-maps-flutter.git
+cd agus-maps-flutter
+
+# Fetch dependencies
+.\scripts\fetch_comaps.ps1
+
+# Build for your platform
+cd example
+flutter build apk          # Android (requires Android SDK + NDK)
+flutter build windows      # Windows
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions.
