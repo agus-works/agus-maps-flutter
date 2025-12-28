@@ -403,6 +403,30 @@ For Flutter texture integration:
 - Use `WGL_NV_DX_interop2` for GL-D3D11 sharing
 - Share via DXGI shared handle
 
+### Frame Callback Chain
+
+The frame notification system has two callback chains that must both be connected:
+
+1. **DrapeEngine Active Frame Callback:**
+   - `df::SetActiveFrameCallback(lambda)` → `notifyFlutterFrameReady()` → `g_frameReadyCallback`
+   - Called by DrapeEngine when there's animation or active frame to render
+
+2. **Context Present Callback:**
+   - `AgusWglContext::Present()` → `AgusWglContextFactory::OnFrameReady()` → `CopyToSharedTexture()` + `m_frameCallback`
+   - Called after each OpenGL frame is rendered
+
+**Critical:** The `m_frameCallback` in `AgusWglContextFactory` must be connected to `notifyFlutterFrameReady()`. This is done when creating the factory:
+
+```cpp
+// In agus_native_create_surface():
+g_wglFactory = new agus::AgusWglContextFactory(width, height);
+g_wglFactory->SetFrameCallback([]() {
+    notifyFlutterFrameReady();
+});
+```
+
+Without this connection, `CopyToSharedTexture()` will copy pixels to the D3D11 texture but Flutter will never be notified to sample the updated texture, resulting in a static (blank) display.
+
 ---
 
 ## Troubleshooting
@@ -458,6 +482,43 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   endif()
 endif()
 ```
+
+### Map displays as blank or brownish background
+
+**Symptom:** The map widget shows a solid brownish/tan color instead of map content, but no crash occurs.
+
+**Possible Causes:**
+
+1. **Frame callback not connected:** The `AgusWglContextFactory::m_frameCallback` is not set, so `CopyToSharedTexture()` runs but Flutter is never notified.
+   - Check logs for "[AgusMapsFlutter] WGL factory frame callback set"
+   - Ensure `g_wglFactory->SetFrameCallback()` is called after factory creation
+
+2. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
+   - Verify `MakeCurrent()` binds `m_framebuffer` for draw context
+   - Check for CoMaps code that calls `glBindFramebuffer(GL_FRAMEBUFFER, 0)`
+
+3. **Stale data extraction:** Old data files without symbol textures.
+   - Delete `Documents\agus_maps_flutter\.comaps_data_extracted` marker file
+   - Delete `Documents\agus_maps_flutter\` folder contents
+   - Rebuild and run to force fresh extraction
+
+**Debugging:**
+- Enable frame logging in `AgusWglContextFactory::CopyToSharedTexture()` to see `hasContent` status
+- Check if "Frame N size: WxH hasContent: true" appears in logs
+- If `hasContent` is false, the OpenGL FBO isn't receiving rendered content
+
+### Missing symbol warnings (transit_tram-s, castle-s, etc.)
+
+**Symptom:** Logs show many warnings like:
+```
+[CoMaps WARN] drape/texture_manager.cpp:445 dp::TextureManager::GetSymbolRegion(): Detected using of unknown symbol  castle-s
+```
+
+**Cause:** The `symbols.sdf` file doesn't include definitions for all POI symbols used by the map style.
+
+**Impact:** These warnings are non-fatal - the map will render but some POI icons will be missing or show as blank.
+
+**Note:** The symbol texture files (`symbols.sdf`, `symbols.png`) in `example/assets/comaps_data/symbols/` are pre-generated. Regenerating them requires Qt6 tools from CoMaps build system.
 
 ---
 

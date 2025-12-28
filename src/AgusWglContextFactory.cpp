@@ -525,12 +525,20 @@ void AgusWglContextFactory::OnFrameReady()
     m_frameCallback();
 }
 
+// Static counter for frame logging (limit spam)
+static int s_frameCount = 0;
+static const int kLogEveryNFrames = 60;  // Log once per second at 60fps
+
 void AgusWglContextFactory::CopyToSharedTexture()
 {
   std::lock_guard<std::mutex> lock(m_mutex);
 
   if (!m_stagingTexture || !m_sharedTexture)
+  {
+    if (s_frameCount % kLogEveryNFrames == 0)
+      LOG(LWARNING, ("CopyToSharedTexture: staging or shared texture missing"));
     return;
+  }
 
   // Save current context state - the render thread should have context current
   HGLRC prevContext = wglGetCurrentContext();
@@ -547,6 +555,21 @@ void AgusWglContextFactory::CopyToSharedTexture()
   // Read pixels from OpenGL
   std::vector<uint8_t> pixels(m_width * m_height * 4);
   glReadPixels(0, 0, m_width, m_height, GL_BGRA_EXT, GL_UNSIGNED_BYTE, pixels.data());
+
+  // Check if we got any non-zero pixels (for debugging blank frames)
+  if (s_frameCount % kLogEveryNFrames == 0)
+  {
+    bool hasContent = false;
+    // Sample some pixels to see if we have content
+    for (size_t i = 0; i < pixels.size() && !hasContent; i += 1000)
+    {
+      // BGRA format - check if not black and not the clear color
+      if (pixels[i] != 0 || pixels[i+1] != 0 || pixels[i+2] != 0)
+        hasContent = true;
+    }
+    LOG(LINFO, ("Frame", s_frameCount, "size:", m_width, "x", m_height, "hasContent:", hasContent));
+  }
+  s_frameCount++;
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   
@@ -576,6 +599,11 @@ void AgusWglContextFactory::CopyToSharedTexture()
 
     // Copy staging to shared texture
     m_d3dContext->CopyResource(m_sharedTexture.Get(), m_stagingTexture.Get());
+  }
+  else
+  {
+    if (s_frameCount % kLogEveryNFrames == 0)
+      LOG(LERROR, ("Failed to map staging texture:", hr));
   }
 }
 
