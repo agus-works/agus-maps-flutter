@@ -1,58 +1,18 @@
-warning: in the working copy of 'CMakeLists.txt', CRLF will be replaced by LF the next time Git touches it
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d0ecf6e..ba92c9e 100644
+index d0ecf6e3..9d3038be 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -22,7 +22,12 @@ if (POLICY CMP0156)
+@@ -22,7 +22,8 @@ if (POLICY CMP0156)
    cmake_policy(SET CMP0156 NEW)
  endif()
  
 -set(OMIM_ROOT ${CMAKE_SOURCE_DIR})
 +# Use CMAKE_CURRENT_SOURCE_DIR so this works when added as subdirectory
-+# Note: When used from agus-maps-flutter, the path is already resolved to REALPATH
-+# in src/CMakeLists.txt before add_subdirectory is called, ensuring #pragma once
-+# works correctly on Windows.
 +set(OMIM_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
-+
  set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${OMIM_ROOT}/cmake")
  
  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-@@ -83,6 +88,8 @@ endif()
- # Global compile options for all configurations.
- if (MSVC)
-   add_compile_options(/utf-8)
-+  # /bigobj needed for unity builds with many sections
-+  add_compile_options(/bigobj)
-   add_link_options(/INCREMENTAL:NO)
- else()
-   add_compile_options(-ffast-math $<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>)
-@@ -96,7 +103,14 @@ if (PLATFORM_WIN)
- endif()
- 
- # Built-in CMake configurations: Debug, Release, RelWithDebInfo, MinSizeRel
--if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
-+# Use generator expressions for multi-config generators (Visual Studio, Xcode)
-+if (CMAKE_CONFIGURATION_TYPES)
-+  # Multi-config generator (Visual Studio, Xcode)
-+  add_compile_definitions(
-+    $<$<CONFIG:Debug>:DEBUG>
-+    $<$<NOT:$<CONFIG:Debug>>:RELEASE>
-+  )
-+elseif (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
-   add_definitions(-DDEBUG)
-   if (NOT MSVC)
-     add_compile_options(-fno-omit-frame-pointer)
-@@ -107,7 +121,8 @@ elseif (${CMAKE_BUILD_TYPE} MATCHES "Rel")
-     add_compile_options(-O3 $<$<CXX_COMPILER_ID:GNU>:-flto=auto>)
-   endif()
- else()
--  message(FATAL_ERROR "Unknown build type: " ${CMAKE_BUILD_TYPE})
-+  message(WARNING "Unknown or empty build type: ${CMAKE_BUILD_TYPE}, defaulting to RELEASE")
-+  add_definitions(-DRELEASE)
- endif()
- 
- if (${CMAKE_BUILD_TYPE} STREQUAL "RelWithDebInfo")
-@@ -150,7 +165,7 @@ find_package(Threads REQUIRED)
+@@ -150,7 +151,7 @@ find_package(Threads REQUIRED)
  
  # Scripts
  
@@ -61,112 +21,20 @@ index d0ecf6e..ba92c9e 100644
    list(APPEND qt_components Core Network)
    if (NOT SKIP_QT_GUI OR NOT SKIP_TESTS OR PYBINDINGS)
      list(APPEND qt_components Widgets)
-@@ -170,7 +185,7 @@ if (NOT PLATFORM_IPHONE AND NOT PLATFORM_ANDROID)
+@@ -170,7 +171,8 @@ if (NOT PLATFORM_IPHONE AND NOT PLATFORM_ANDROID)
  endif()
  
  # To allow #include "base/file_name.hpp" in all sources.
 -include_directories("${CMAKE_HOME_DIRECTORY}" "${CMAKE_HOME_DIRECTORY}/libs" "${CMAKE_HOME_DIRECTORY}/tools")
++# Use OMIM_ROOT instead of CMAKE_HOME_DIRECTORY so this works when added as subdirectory
 +include_directories("${OMIM_ROOT}" "${OMIM_ROOT}/libs" "${OMIM_ROOT}/tools")
  
  if (USE_PCH)
    message(STATUS "Precompiled headers are ON")
-@@ -200,6 +215,89 @@ endif()
+@@ -212,26 +214,29 @@ endif()
+ # Fix for #include <boost/regex.hpp>
+ include_directories("${OMIM_ROOT}/3party/boost")
  
- find_package(ZLIB REQUIRED)
- 
-+# Boost configuration for modular header layout
-+# The boost submodule uses modular header layout (headers in libs/*/include/boost/)
-+# We need to add include paths for all used boost libraries
-+# NOTE: This MUST be set BEFORE add_subdirectory(3party) so the paths are visible
-+set(BOOST_INCLUDE_DIRS
-+  "${OMIM_ROOT}/3party/boost/libs/algorithm/include"
-+  "${OMIM_ROOT}/3party/boost/libs/align/include"
-+  "${OMIM_ROOT}/3party/boost/libs/any/include"
-+  "${OMIM_ROOT}/3party/boost/libs/array/include"
-+  "${OMIM_ROOT}/3party/boost/libs/assert/include"
-+  "${OMIM_ROOT}/3party/boost/libs/atomic/include"
-+  "${OMIM_ROOT}/3party/boost/libs/bind/include"
-+  "${OMIM_ROOT}/3party/boost/libs/chrono/include"
-+  "${OMIM_ROOT}/3party/boost/libs/circular_buffer/include"
-+  "${OMIM_ROOT}/3party/boost/libs/concept_check/include"
-+  "${OMIM_ROOT}/3party/boost/libs/config/include"
-+  "${OMIM_ROOT}/3party/boost/libs/container/include"
-+  "${OMIM_ROOT}/3party/boost/libs/container_hash/include"
-+  "${OMIM_ROOT}/3party/boost/libs/conversion/include"
-+  "${OMIM_ROOT}/3party/boost/libs/core/include"
-+  "${OMIM_ROOT}/3party/boost/libs/date_time/include"
-+  "${OMIM_ROOT}/3party/boost/libs/describe/include"
-+  "${OMIM_ROOT}/3party/boost/libs/detail/include"
-+  "${OMIM_ROOT}/3party/boost/libs/dynamic_bitset/include"
-+  "${OMIM_ROOT}/3party/boost/libs/endian/include"
-+  "${OMIM_ROOT}/3party/boost/libs/exception/include"
-+  "${OMIM_ROOT}/3party/boost/libs/foreach/include"
-+  "${OMIM_ROOT}/3party/boost/libs/format/include"
-+  "${OMIM_ROOT}/3party/boost/libs/function/include"
-+  "${OMIM_ROOT}/3party/boost/libs/function_types/include"
-+  "${OMIM_ROOT}/3party/boost/libs/functional/include"
-+  "${OMIM_ROOT}/3party/boost/libs/fusion/include"
-+  "${OMIM_ROOT}/3party/boost/libs/geometry/include"
-+  "${OMIM_ROOT}/3party/boost/libs/integer/include"
-+  "${OMIM_ROOT}/3party/boost/libs/intrusive/include"
-+  "${OMIM_ROOT}/3party/boost/libs/io/include"
-+  "${OMIM_ROOT}/3party/boost/libs/iterator/include"
-+  "${OMIM_ROOT}/3party/boost/libs/lambda/include"
-+  "${OMIM_ROOT}/3party/boost/libs/lexical_cast/include"
-+  "${OMIM_ROOT}/3party/boost/libs/math/include"
-+  "${OMIM_ROOT}/3party/boost/libs/move/include"
-+  "${OMIM_ROOT}/3party/boost/libs/mp11/include"
-+  "${OMIM_ROOT}/3party/boost/libs/mpl/include"
-+  "${OMIM_ROOT}/3party/boost/libs/multiprecision/include"
-+  "${OMIM_ROOT}/3party/boost/libs/numeric/conversion/include"
-+  "${OMIM_ROOT}/3party/boost/libs/optional/include"
-+  "${OMIM_ROOT}/3party/boost/libs/phoenix/include"
-+  "${OMIM_ROOT}/3party/boost/libs/polygon/include"
-+  "${OMIM_ROOT}/3party/boost/libs/pool/include"
-+  "${OMIM_ROOT}/3party/boost/libs/predef/include"
-+  "${OMIM_ROOT}/3party/boost/libs/preprocessor/include"
-+  "${OMIM_ROOT}/3party/boost/libs/proto/include"
-+  "${OMIM_ROOT}/3party/boost/libs/qvm/include"
-+  "${OMIM_ROOT}/3party/boost/libs/random/include"
-+  "${OMIM_ROOT}/3party/boost/libs/range/include"
-+  "${OMIM_ROOT}/3party/boost/libs/ratio/include"
-+  "${OMIM_ROOT}/3party/boost/libs/rational/include"
-+  "${OMIM_ROOT}/3party/boost/libs/regex/include"
-+  "${OMIM_ROOT}/3party/boost/libs/serialization/include"
-+  "${OMIM_ROOT}/3party/boost/libs/smart_ptr/include"
-+  "${OMIM_ROOT}/3party/boost/libs/spirit/include"
-+  "${OMIM_ROOT}/3party/boost/libs/stacktrace/include"
-+  "${OMIM_ROOT}/3party/boost/libs/static_assert/include"
-+  "${OMIM_ROOT}/3party/boost/libs/system/include"
-+  "${OMIM_ROOT}/3party/boost/libs/throw_exception/include"
-+  "${OMIM_ROOT}/3party/boost/libs/tokenizer/include"
-+  "${OMIM_ROOT}/3party/boost/libs/tti/include"
-+  "${OMIM_ROOT}/3party/boost/libs/tuple/include"
-+  "${OMIM_ROOT}/3party/boost/libs/type_index/include"
-+  "${OMIM_ROOT}/3party/boost/libs/type_traits/include"
-+  "${OMIM_ROOT}/3party/boost/libs/typeof/include"
-+  "${OMIM_ROOT}/3party/boost/libs/unordered/include"
-+  "${OMIM_ROOT}/3party/boost/libs/utility/include"
-+  "${OMIM_ROOT}/3party/boost/libs/uuid/include"
-+  "${OMIM_ROOT}/3party/boost/libs/variant/include"
-+  "${OMIM_ROOT}/3party/boost/libs/variant2/include"
-+  "${OMIM_ROOT}/3party/boost/libs/winapi/include"
-+)
-+include_directories(${BOOST_INCLUDE_DIRS})
-+
-+# Export BOOST_INCLUDE_DIRS to parent scope so agus_maps_flutter can use it
-+set(BOOST_INCLUDE_DIRS ${BOOST_INCLUDE_DIRS} PARENT_SCOPE)
-+
- # Include 3party dependencies.
- add_subdirectory(3party)
- 
-@@ -209,38 +307,48 @@ if (PLATFORM_DESKTOP AND NOT WITH_SYSTEM_PROVIDED_3PARTY)
-   include_directories("${PROJECT_BINARY_DIR}/3party/gflags/include")
- endif()
- 
--# Fix for #include <boost/regex.hpp>
--include_directories("${OMIM_ROOT}/3party/boost")
--
 -# Used in qt/ and shaders/
 +# Python3 is used in shaders/ for shader preprocessing (all platforms)
  find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -183,12 +51,7 @@ index d0ecf6e..ba92c9e 100644
 -    OUTPUT_STRIP_TRAILING_WHITESPACE
 -    ERROR_QUIET
 -)
-+      RESULT_VARIABLE PROTOBUF_CHECK
-+      OUTPUT_VARIABLE PROTOBUF_VERSION
-+      OUTPUT_STRIP_TRAILING_WHITESPACE
-+      ERROR_QUIET
-+  )
- 
+-
 -if(PROTOBUF_CHECK EQUAL 0)
 -    if(PROTOBUF_VERSION VERSION_LESS "4.0.0")
 -        message(STATUS "Python protobuf ${PROTOBUF_VERSION} found (< 4.0)")
@@ -197,6 +60,12 @@ index d0ecf6e..ba92c9e 100644
 -    endif()
 -else()
 -    message(FATAL_ERROR "Python protobuf not found. Install version <4.0")
++      RESULT_VARIABLE PROTOBUF_CHECK
++      OUTPUT_VARIABLE PROTOBUF_VERSION
++      OUTPUT_STRIP_TRAILING_WHITESPACE
++      ERROR_QUIET
++  )
++
 +  if(PROTOBUF_CHECK EQUAL 0)
 +      if(PROTOBUF_VERSION VERSION_LESS "4.0.0")
 +          message(STATUS "Python protobuf ${PROTOBUF_VERSION} found (< 4.0)")
@@ -209,31 +78,11 @@ index d0ecf6e..ba92c9e 100644
  endif()
  
  
- add_subdirectory(libs)
+@@ -252,6 +257,6 @@ endif()
  
- if (PLATFORM_DESKTOP)
--  add_subdirectory(dev_sandbox)
--  add_subdirectory(generator)
--  add_subdirectory(tools)
-+  # dev_sandbox has POSIX-only code and GLFW dependencies not needed for Flutter builds
-+  if (NOT WIN32)
-+    add_subdirectory(dev_sandbox)
-+  endif()
-+  # generator tools require their own platform implementations with GetPlatform()
-+  # Skip on Windows Flutter builds as we provide our own platform impl
-+  if (NOT WIN32)
-+    add_subdirectory(generator)
-+  endif()
-+  # tools has boost/mp11 issues on MSVC; not needed for Flutter plugin builds
-+  if (NOT WIN32)
-+    add_subdirectory(tools)
-+  endif()
-   if (NOT SKIP_QT_GUI)
-     add_subdirectory(qt)
-   endif()
-@@ -255,3 +363,5 @@ omim_add_test_subdirectory(libs/qt_tstfrm)
- if (PLATFORM_ANDROID)
+ omim_add_test_subdirectory(libs/qt_tstfrm)
+ 
+-if (PLATFORM_ANDROID)
++if (PLATFORM_ANDROID AND NOT SKIP_ANDROID_JNI)
    add_subdirectory(android/sdk/src/main/cpp)
  endif()
-+
-+
