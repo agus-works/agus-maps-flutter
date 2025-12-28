@@ -1,28 +1,23 @@
 warning: in the working copy of 'CMakeLists.txt', CRLF will be replaced by LF the next time Git touches it
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d0ecf6e..fad10e4 100644
+index d0ecf6e..621316c 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -22,7 +22,17 @@ if (POLICY CMP0156)
+@@ -22,7 +22,12 @@ if (POLICY CMP0156)
    cmake_policy(SET CMP0156 NEW)
  endif()
  
 -set(OMIM_ROOT ${CMAKE_SOURCE_DIR})
 +# Use CMAKE_CURRENT_SOURCE_DIR so this works when added as subdirectory
++# Note: When used from agus-maps-flutter, the path is already resolved to REALPATH
++# in src/CMakeLists.txt before add_subdirectory is called, ensuring #pragma once
++# works correctly on Windows.
 +set(OMIM_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
-+
-+# On Windows, resolve symlinks to avoid MAX_PATH issues (260 char limit).
-+# Flutter creates very long symlink paths like .plugin_symlinks/agus_maps_flutter/...
-+# which can exceed MAX_PATH when combined with deep boost header paths.
-+if (WIN32)
-+  get_filename_component(OMIM_ROOT "${OMIM_ROOT}" REALPATH)
-+  message(STATUS "Resolved OMIM_ROOT (for MAX_PATH): ${OMIM_ROOT}")
-+endif()
 +
  set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${OMIM_ROOT}/cmake")
  
  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-@@ -96,7 +106,14 @@ if (PLATFORM_WIN)
+@@ -96,7 +101,14 @@ if (PLATFORM_WIN)
  endif()
  
  # Built-in CMake configurations: Debug, Release, RelWithDebInfo, MinSizeRel
@@ -38,7 +33,7 @@ index d0ecf6e..fad10e4 100644
    add_definitions(-DDEBUG)
    if (NOT MSVC)
      add_compile_options(-fno-omit-frame-pointer)
-@@ -107,7 +124,8 @@ elseif (${CMAKE_BUILD_TYPE} MATCHES "Rel")
+@@ -107,7 +119,8 @@ elseif (${CMAKE_BUILD_TYPE} MATCHES "Rel")
      add_compile_options(-O3 $<$<CXX_COMPILER_ID:GNU>:-flto=auto>)
    endif()
  else()
@@ -48,7 +43,7 @@ index d0ecf6e..fad10e4 100644
  endif()
  
  if (${CMAKE_BUILD_TYPE} STREQUAL "RelWithDebInfo")
-@@ -150,7 +168,7 @@ find_package(Threads REQUIRED)
+@@ -150,7 +163,7 @@ find_package(Threads REQUIRED)
  
  # Scripts
  
@@ -57,17 +52,16 @@ index d0ecf6e..fad10e4 100644
    list(APPEND qt_components Core Network)
    if (NOT SKIP_QT_GUI OR NOT SKIP_TESTS OR PYBINDINGS)
      list(APPEND qt_components Widgets)
-@@ -170,7 +188,8 @@ if (NOT PLATFORM_IPHONE AND NOT PLATFORM_ANDROID)
+@@ -170,7 +183,7 @@ if (NOT PLATFORM_IPHONE AND NOT PLATFORM_ANDROID)
  endif()
  
  # To allow #include "base/file_name.hpp" in all sources.
 -include_directories("${CMAKE_HOME_DIRECTORY}" "${CMAKE_HOME_DIRECTORY}/libs" "${CMAKE_HOME_DIRECTORY}/tools")
-+# Use OMIM_ROOT instead of CMAKE_HOME_DIRECTORY so this works when added as subdirectory
 +include_directories("${OMIM_ROOT}" "${OMIM_ROOT}/libs" "${OMIM_ROOT}/tools")
  
  if (USE_PCH)
    message(STATUS "Precompiled headers are ON")
-@@ -200,6 +219,86 @@ endif()
+@@ -200,6 +213,89 @@ endif()
  
  find_package(ZLIB REQUIRED)
  
@@ -151,10 +145,13 @@ index d0ecf6e..fad10e4 100644
 +)
 +include_directories(${BOOST_INCLUDE_DIRS})
 +
++# Export BOOST_INCLUDE_DIRS to parent scope so agus_maps_flutter can use it
++set(BOOST_INCLUDE_DIRS ${BOOST_INCLUDE_DIRS} PARENT_SCOPE)
++
  # Include 3party dependencies.
  add_subdirectory(3party)
  
-@@ -209,38 +308,48 @@ if (PLATFORM_DESKTOP AND NOT WITH_SYSTEM_PROVIDED_3PARTY)
+@@ -209,38 +305,48 @@ if (PLATFORM_DESKTOP AND NOT WITH_SYSTEM_PROVIDED_3PARTY)
    include_directories("${PROJECT_BINARY_DIR}/3party/gflags/include")
  endif()
  
@@ -225,7 +222,7 @@ index d0ecf6e..fad10e4 100644
    if (NOT SKIP_QT_GUI)
      add_subdirectory(qt)
    endif()
-@@ -255,3 +364,5 @@ omim_add_test_subdirectory(libs/qt_tstfrm)
+@@ -255,3 +361,5 @@ omim_add_test_subdirectory(libs/qt_tstfrm)
  if (PLATFORM_ANDROID)
    add_subdirectory(android/sdk/src/main/cpp)
  endif()

@@ -4,16 +4,31 @@ cmake_minimum_required(VERSION 3.14)
 # ============================================================================
 # vcpkg Integration - MUST be before project()
 # ============================================================================
-# agus_maps_flutter requires vcpkg for zlib and other dependencies
-if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+# agus_maps_flutter requires vcpkg for zlib and other dependencies.
+# We FORCE our vcpkg path to avoid Visual Studio's bundled vcpkg which may
+# not have the required packages installed.
+
+# Check if C:\vcpkg exists and has zlib installed
+if(EXISTS "C:/vcpkg/installed/x64-windows/lib/zlib.lib")
+  set(CMAKE_TOOLCHAIN_FILE "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+      CACHE STRING "vcpkg toolchain file" FORCE)
+  message(STATUS "Using vcpkg from C:/vcpkg (zlib found)")
+elseif(DEFINED ENV{VCPKG_ROOT} AND EXISTS "$ENV{VCPKG_ROOT}/installed/x64-windows/lib/zlib.lib")
+  set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      CACHE STRING "vcpkg toolchain file" FORCE)
+  message(STATUS "Using vcpkg from VCPKG_ROOT: $ENV{VCPKG_ROOT}")
+elseif(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  # Fallback: try to use any available vcpkg
   if(DEFINED ENV{VCPKG_ROOT})
     set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
         CACHE STRING "vcpkg toolchain file")
-    message(STATUS "Using vcpkg from VCPKG_ROOT: $ENV{VCPKG_ROOT}")
+    message(STATUS "Using vcpkg from VCPKG_ROOT (not verified): $ENV{VCPKG_ROOT}")
   elseif(EXISTS "C:/vcpkg/scripts/buildsystems/vcpkg.cmake")
     set(CMAKE_TOOLCHAIN_FILE "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
         CACHE STRING "vcpkg toolchain file")
-    message(STATUS "Using vcpkg from C:/vcpkg")
+    message(STATUS "Using vcpkg from C:/vcpkg (not verified)")
+  else()
+    message(WARNING "vcpkg not found! Please install vcpkg and zlib:x64-windows")
   endif()
 endif()
 
