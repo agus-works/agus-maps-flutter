@@ -519,7 +519,12 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
   HDC prevDC = wglGetCurrentDC();
 
   // Make our draw context current for GL operations
-  wglMakeCurrent(m_hdc, m_drawGlrc);
+  if (!wglMakeCurrent(m_hdc, m_drawGlrc))
+  {
+    DWORD err = GetLastError();
+    LOG(LERROR, ("SetSurfaceSize: wglMakeCurrent failed", err));
+    return;
+  }
 
   // CRITICAL: After resizing textures attached to an FBO, we must re-attach them
   // to the framebuffer. In OpenGL, glTexImage2D with different dimensions creates
@@ -542,6 +547,10 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
   glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_renderTexture, 0);
   glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthBuffer);
+
+  // Ensure the draw buffer points at COLOR_ATTACHMENT0 after re-attachment.
+  GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0 };
+  glDrawBuffers(1, drawBuffers);
 
   // Verify FBO is complete after resize
   GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
