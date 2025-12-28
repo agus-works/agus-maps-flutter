@@ -1,5 +1,5 @@
 diff --git a/libs/indexer/transliteration_loader.cpp b/libs/indexer/transliteration_loader.cpp
-index 9ef60ab6..2ee0506c 100644
+index 9ef60ab..2ee0506 100644
 --- a/libs/indexer/transliteration_loader.cpp
 +++ b/libs/indexer/transliteration_loader.cpp
 @@ -17,19 +17,48 @@ void InitTransliterationInstanceWithDefaultDirs()

@@ -1,0 +1,34 @@
+diff --git a/libs/search/processor.cpp b/libs/search/processor.cpp
+index 77b44e5..180261b 100644
+--- a/libs/search/processor.cpp
++++ b/libs/search/processor.cpp
+@@ -83,7 +83,7 @@ bool EatFid(string & s, uint32_t & fid)
+     return false;
+ 
+   size_t i = 0;
+-  while (i < s.size() && isdigit(s[i]))
++  while (i < s.size() && isdigit(static_cast<unsigned char>(s[i])))
+     ++i;
+ 
+   auto const prefix = s.substr(0, i);
+@@ -121,7 +121,7 @@ bool EatVersion(string & s, uint32_t & version)
+ {
+   TrimLeadingSpaces(s);
+ 
+-  if (!s.empty() && s.front() == '0' && (s.size() == 1 || !isdigit(s[1])))
++  if (!s.empty() && s.front() == '0' && (s.size() == 1 || !isdigit(static_cast<unsigned char>(s[1]))))
+   {
+     version = 0;
+     s = s.substr(1);
+@@ -129,8 +129,9 @@ bool EatVersion(string & s, uint32_t & version)
+   }
+ 
+   size_t constexpr kVersionLength = 6;
+-  if (s.size() >= kVersionLength && all_of(s.begin(), s.begin() + kVersionLength, ::isdigit) &&
+-      (s.size() == kVersionLength || !isdigit(s[kVersionLength + 1])))
++  auto isDigit = [](char c) { return std::isdigit(static_cast<unsigned char>(c)); };
++  if (s.size() >= kVersionLength && all_of(s.begin(), s.begin() + kVersionLength, isDigit) &&
++      (s.size() == kVersionLength || !isDigit(s[kVersionLength + 1])))
+   {
+     VERIFY(strings::to_uint32(s.substr(0, kVersionLength), version), ());
+     s = s.substr(kVersionLength);

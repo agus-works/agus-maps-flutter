@@ -1,0 +1,15 @@
+diff --git a/3party/protobuf/CMakeLists.txt b/3party/protobuf/CMakeLists.txt
+index 8507767..954ee0e 100644
+--- a/3party/protobuf/CMakeLists.txt
++++ b/3party/protobuf/CMakeLists.txt
+@@ -35,6 +35,10 @@ target_include_directories(${PROJECT_NAME}
+ 
+ if(NOT PLATFORM_WIN)
+   target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_PTHREAD)
++else()
++  # On Windows, prevent wingdi.h from defining ERROR as 0
++  # which conflicts with protobuf's GOOGLE_LOG(ERROR) macro
++  target_compile_definitions(${PROJECT_NAME} PRIVATE NOGDI)
+ endif ()
+ 
+ target_compile_options(${PROJECT_NAME} PRIVATE

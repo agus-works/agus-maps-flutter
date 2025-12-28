@@ -1,0 +1,13 @@
+diff --git a/libs/platform/local_country_file_utils.cpp b/libs/platform/local_country_file_utils.cpp
+index 8fd5a88..49a5340 100644
+--- a/libs/platform/local_country_file_utils.cpp
++++ b/libs/platform/local_country_file_utils.cpp
+@@ -290,7 +290,7 @@ bool ParseVersion(string const & s, int64_t & version)
+   int64_t v = 0;
+   for (char const c : s)
+   {
+-    if (!isdigit(c))
++    if (!isdigit(static_cast<unsigned char>(c)))
+       return false;
+     v = v * 10 + c - '0';
+   }

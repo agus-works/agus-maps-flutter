@@ -1,0 +1,18 @@
+diff --git a/libs/shaders/gl_program_pool.cpp b/libs/shaders/gl_program_pool.cpp
+index e7ea278..a2c26a3 100644
+--- a/libs/shaders/gl_program_pool.cpp
++++ b/libs/shaders/gl_program_pool.cpp
+@@ -13,9 +13,12 @@ GLProgramPool::GLProgramPool(dp::ApiVersion apiVersion) : m_apiVersion(apiVersio
+ 
+   if (m_apiVersion == dp::ApiVersion::OpenGLES3)
+   {
+-#if defined(OMIM_OS_DESKTOP)
++#if defined(OMIM_OS_DESKTOP) && !defined(OMIM_OS_WINDOWS)
++    // On non-Windows desktops, use GL3 shader version (OpenGL 3.x/4.x)
+     m_baseDefines = std::string(GL3_SHADER_VERSION);
+ #else
++    // On mobile (Android/iOS) and Windows (ANGLE), use GLES3 shader version
++    // Note: GL_ES is already predefined by the GLES compiler, no need to define it
+     m_baseDefines = std::string(GLES3_SHADER_VERSION);
+ #endif
+   }

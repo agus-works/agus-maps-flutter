@@ -1,0 +1,28 @@
+diff --git a/libs/indexer/editable_map_object.cpp b/libs/indexer/editable_map_object.cpp
+index 1389e31..1aa2b08 100644
+--- a/libs/indexer/editable_map_object.cpp
++++ b/libs/indexer/editable_map_object.cpp
+@@ -488,8 +488,9 @@ bool EditableMapObject::ValidateFlats(string const & flats)
+     if (range.empty() || range.size() > 2)
+       return false;
+ 
++    auto isAlnum = [](char c) { return std::isalnum(static_cast<unsigned char>(c)); };
+     for (auto const & rangeBorder : range)
+-      if (!all_of(begin(rangeBorder), end(rangeBorder), ::isalnum))
++      if (!all_of(begin(rangeBorder), end(rangeBorder), isAlnum))
+         return false;
+   }
+   return true;
+@@ -533,10 +534,10 @@ bool EditableMapObject::ValidatePhoneList(string const & phone)
+     string const symbols = "+-() ";
+     for (; curr != last; ++curr)
+     {
+-      if (!isdigit(*curr) && find(symbols.begin(), symbols.end(), *curr) == symbols.end())
++      if (!isdigit(static_cast<unsigned char>(*curr)) && find(symbols.begin(), symbols.end(), *curr) == symbols.end())
+         return false;
+ 
+-      if (isdigit(*curr))
++      if (isdigit(static_cast<unsigned char>(*curr)))
+         ++digitsCount;
+     }
+ 

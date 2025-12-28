@@ -1,0 +1,17 @@
+diff --git a/libs/drape/dynamic_texture.hpp b/libs/drape/dynamic_texture.hpp
+index cd99326..234bcab 100644
+--- a/libs/drape/dynamic_texture.hpp
++++ b/libs/drape/dynamic_texture.hpp
+@@ -5,6 +5,12 @@
+ #include <atomic>
+ #include <vector>
+ 
++// Windows defines FindResource as FindResourceW/FindResourceA macro in WinBase.h
++// which conflicts with dp::Texture::FindResource method
++#ifdef FindResource
++#undef FindResource
++#endif
++
+ namespace dp
+ {
+ template <typename TIndexer, typename TResourceKey, Texture::ResourceType TResourceType>

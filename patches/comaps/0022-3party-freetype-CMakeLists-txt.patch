@@ -1,0 +1,14 @@
+diff --git a/3party/freetype/CMakeLists.txt b/3party/freetype/CMakeLists.txt
+index f1e5950..2877987 100644
+--- a/3party/freetype/CMakeLists.txt
++++ b/3party/freetype/CMakeLists.txt
+@@ -1,6 +1,9 @@
+ # TODO: Check if enabling it provides benefits.
+ set(FT_DISABLE_HARFBUZZ ON)
+ 
++# Disable FreeType install rules - we build it as a static library for bundling
++set(SKIP_INSTALL_ALL ON)
++
+ add_subdirectory(freetype)
+ 
+ # Fix warning with ONE_PIXEL macro clash.

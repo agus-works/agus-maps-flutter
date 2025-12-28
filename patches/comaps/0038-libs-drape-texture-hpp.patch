@@ -1,0 +1,17 @@
+diff --git a/libs/drape/texture.hpp b/libs/drape/texture.hpp
+index 8becf48..70effcb 100644
+--- a/libs/drape/texture.hpp
++++ b/libs/drape/texture.hpp
+@@ -11,6 +11,12 @@
+ 
+ #include <cstdint>
+ 
++// Windows defines FindResource as FindResourceW/FindResourceA macro in WinBase.h
++// which conflicts with dp::Texture::FindResource method
++#ifdef FindResource
++#undef FindResource
++#endif
++
+ namespace dp
+ {
+ class Texture

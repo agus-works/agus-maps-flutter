@@ -1,19 +1,149 @@
 diff --git a/libs/drape/gl_functions.cpp b/libs/drape/gl_functions.cpp
-index 6e06b24f..57940a55 100644
+index 6e06b24..c859320 100644
 --- a/libs/drape/gl_functions.cpp
 +++ b/libs/drape/gl_functions.cpp
-@@ -15,6 +15,10 @@
+@@ -10,10 +10,21 @@
+ #include "std/target_os.hpp"
+ 
+ #include <algorithm>
++#include <cstdlib>  // getenv
+ #include <cstring>  // strlen
+ #include <limits>
  #include <map>
  #include <mutex>
- 
++#include <vector>
++
 +#if defined(OMIM_OS_ANDROID)
 +#include <EGL/egl.h>
 +#endif
 +
++// Include EGL for Windows when using ANGLE
++#if defined(OMIM_OS_WINDOWS)
++#include <EGL/egl.h>
++#endif
+ 
  #if defined(OMIM_OS_WINDOWS)
  #define DP_APIENTRY __stdcall
+@@ -37,6 +48,39 @@ BoundMap g_boundBuffers;
+ std::mutex g_boundBuffersMutex;
+ #endif
+ 
++std::mutex g_shaderSourcesMutex;
++std::map<uint32_t, std::string> g_shaderSources;
++std::map<uint32_t, std::string> g_shaderNames;
++bool g_shaderDebugInitialized = false;
++bool g_shaderVerboseLogs = false;
++bool g_shaderDumpSources = false;
++
++std::string GlErrorToString(GLenum err)
++{
++  switch (err)
++  {
++  case GL_NO_ERROR: return "GL_NO_ERROR";
++  case GL_INVALID_ENUM: return "GL_INVALID_ENUM";
++  case GL_INVALID_VALUE: return "GL_INVALID_VALUE";
++  case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
++  case GL_OUT_OF_MEMORY: return "GL_OUT_OF_MEMORY";
++#ifdef GL_INVALID_FRAMEBUFFER_OPERATION
++  case GL_INVALID_FRAMEBUFFER_OPERATION: return "GL_INVALID_FRAMEBUFFER_OPERATION";
++#endif
++  default: return std::string("UNKNOWN_GL_ERROR_") + std::to_string(static_cast<unsigned int>(err));
++  }
++}
++
++void InitShaderDebugFlags()
++{
++  if (g_shaderDebugInitialized)
++    return;
++
++  g_shaderDebugInitialized = true;
++  g_shaderVerboseLogs = std::getenv("AGUS_VERBOSE_SHADER") != nullptr || std::getenv("AGUS_VERBOSE_LOG") != nullptr;
++  g_shaderDumpSources = std::getenv("AGUS_DUMP_SHADERS") != nullptr || std::getenv("AGUS_PROFILE") != nullptr;
++}
++
+ inline GLboolean convert(bool v)
+ {
+   return static_cast<GLboolean>(v ? GL_TRUE : GL_FALSE);
+@@ -84,6 +128,8 @@ typedef void(DP_APIENTRY * TglDeleteShaderFn)(GLuint shaderID);
+ typedef void(DP_APIENTRY * TglGetShaderivFn)(GLuint shaderID, GLenum name, GLint * p);
+ typedef void(DP_APIENTRY * TglGetShaderInfoLogFn)(GLuint shaderID, GLsizei maxLength, GLsizei * length,
+                                                   GLchar * infoLog);
++typedef void(DP_APIENTRY * TglGetShaderSourceFn)(GLuint shaderID, GLsizei bufSize, GLsizei * length,
++                                                 GLchar * source);
+ 
+ typedef GLuint(DP_APIENTRY * TglCreateProgramFn)();
+ typedef void(DP_APIENTRY * TglAttachShaderFn)(GLuint programID, GLuint shaderID);
+@@ -165,6 +211,26 @@ TglCompileShaderFn glCompileShaderFn = nullptr;
+ TglDeleteShaderFn glDeleteShaderFn = nullptr;
+ TglGetShaderivFn glGetShaderivFn = nullptr;
+ TglGetShaderInfoLogFn glGetShaderInfoLogFn = nullptr;
++TglGetShaderSourceFn glGetShaderSourceFn = nullptr;
++
++std::string ReadBackShaderSource(GLuint shaderID)
++{
++  if (glGetShaderivFn == nullptr || glGetShaderSourceFn == nullptr)
++    return {};
++
++  GLint len = 0;
++  glGetShaderivFn(shaderID, GL_SHADER_SOURCE_LENGTH, &len);
++  if (len <= 1)
++    return {};
++
++  std::vector<char> buf(static_cast<size_t>(len));
++  GLsizei written = 0;
++  glGetShaderSourceFn(shaderID, len, &written, buf.data());
++  if (written <= 0)
++    written = len;
++
++  return std::string(buf.data(), static_cast<size_t>(written));
++}
+ 
+ TglCreateProgramFn glCreateProgramFn = nullptr;
+ TglAttachShaderFn glAttachShaderFn = nullptr;
+@@ -212,19 +278,29 @@ bool s_inited = false;
+ }  // namespace
+ 
+ #ifdef OMIM_OS_WINDOWS
++// On Windows with ANGLE, GL functions are exported directly from libGLESv2.dll
++// We can just use the direct function pointers - no need for eglGetProcAddress
++// for core GLES functions. Extension functions may still need eglGetProcAddress.
+ template <typename TFunc>
+ TFunc LoadExtension(std::string const & ext)
+ {
+-  TFunc func = reinterpret_cast<TFunc>(wglGetProcAddress(ext.c_str()));
++  // First try eglGetProcAddress (needed for some extensions)
++  TFunc func = reinterpret_cast<TFunc>(eglGetProcAddress(ext.c_str()));
+   if (func == nullptr)
+   {
+-    func = reinterpret_cast<TFunc>(wglGetProcAddress((ext + "EXT").c_str()));
+-    ASSERT(func, ());
++    // Try with OES suffix for OpenGL ES extensions
++    func = reinterpret_cast<TFunc>(eglGetProcAddress((ext + "OES").c_str()));
++  }
++  if (func == nullptr)
++  {
++    // Try with EXT suffix
++    func = reinterpret_cast<TFunc>(eglGetProcAddress((ext + "EXT").c_str()));
+   }
+-
+   return func;
+ }
+-#define LOAD_GL_FUNC(type, func) LoadExtension<type>(#func);
++// For Windows with ANGLE, use direct linking for core functions
++// The libGLESv2.lib import library provides these symbols
++#define LOAD_GL_FUNC(type, func) static_cast<type>(&::func)
  #else
-@@ -241,13 +245,29 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+ #define LOAD_GL_FUNC(type, func) static_cast<type>(&::func)
+ #endif
+@@ -232,6 +308,7 @@ TFunc LoadExtension(std::string const & ext)
+ void GLFunctions::Init(dp::ApiVersion apiVersion)
+ {
+   std::lock_guard const lock(s_mutex);
++  InitShaderDebugFlags();
+   if (s_inited)
+     return;
+ 
+@@ -241,13 +318,29 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
  
  #if !defined(OMIM_OS_WINDOWS)
    // OpenGL ES3 api is the same for all systems, except WINDOWS.
@@ -50,3 +180,356 @@ index 6e06b24f..57940a55 100644
  
    glClearColorFn = LOAD_GL_FUNC(TglClearColorFn, glClearColor);
    glClearFn = LOAD_GL_FUNC(TglClearFn, glClear);
+@@ -255,6 +348,8 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+   glScissorFn = LOAD_GL_FUNC(TglScissorFn, glScissor);
+   glFlushFn = LOAD_GL_FUNC(TglFlushFn, glFlush);
+ #else  // OMIM_OS_WINDOWS
++  // On Windows with ANGLE, use direct linking via libGLESv2.lib import library
++  // The LOAD_GL_FUNC macro resolves to static_cast<type>(&::func)
+   glGenVertexArraysFn = LOAD_GL_FUNC(TglGenVertexArraysFn, glGenVertexArrays);
+   glBindVertexArrayFn = LOAD_GL_FUNC(TglBindVertexArrayFn, glBindVertexArray);
+   glDeleteVertexArrayFn = LOAD_GL_FUNC(TglDeleteVertexArrayFn, glDeleteVertexArrays);
+@@ -263,11 +358,12 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+   glFlushMappedBufferRangeFn = LOAD_GL_FUNC(TglFlushMappedBufferRangeFn, glFlushMappedBufferRange);
+   glGetStringiFn = LOAD_GL_FUNC(TglGetStringiFn, glGetStringi);
+ 
+-  glClearColorFn = ::glClearColor;
+-  glClearFn = ::glClear;
+-  glViewportFn = ::glViewport;
+-  glScissorFn = ::glScissor;
+-  glFlushFn = ::glFlush;
++  // Core GL functions
++  glClearColorFn = LOAD_GL_FUNC(TglClearColorFn, glClearColor);
++  glClearFn = LOAD_GL_FUNC(TglClearFn, glClear);
++  glViewportFn = LOAD_GL_FUNC(TglViewportFn, glViewport);
++  glScissorFn = LOAD_GL_FUNC(TglScissorFn, glScissor);
++  glFlushFn = LOAD_GL_FUNC(TglFlushFn, glFlush);
+ #endif
+ 
+   glStencilFuncSeparateFn = LOAD_GL_FUNC(TglStencilFuncSeparateFn, glStencilFuncSeparate);
+@@ -296,6 +392,7 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+   glDeleteShaderFn = LOAD_GL_FUNC(TglDeleteShaderFn, glDeleteShader);
+   glGetShaderivFn = LOAD_GL_FUNC(TglGetShaderivFn, glGetShaderiv);
+   glGetShaderInfoLogFn = LOAD_GL_FUNC(TglGetShaderInfoLogFn, glGetShaderInfoLog);
++  glGetShaderSourceFn = LOAD_GL_FUNC(TglGetShaderSourceFn, glGetShaderSource);
+ 
+   glCreateProgramFn = LOAD_GL_FUNC(TglCreateProgramFn, glCreateProgram);
+   glAttachShaderFn = LOAD_GL_FUNC(TglAttachShaderFn, glAttachShader);
+@@ -334,6 +431,15 @@ void GLFunctions::Init(dp::ApiVersion apiVersion)
+   glBindFramebufferFn = LOAD_GL_FUNC(TglBindFramebufferFn, glBindFramebuffer);
+   glFramebufferTexture2DFn = LOAD_GL_FUNC(TglFramebufferTexture2DFn, glFramebufferTexture2D);
+   glCheckFramebufferStatusFn = LOAD_GL_FUNC(TglCheckFramebufferStatusFn, glCheckFramebufferStatus);
++
++  if (g_shaderVerboseLogs)
++  {
++    auto const vendor = GLFunctions::glGetString(gl_const::GLVendor);
++    auto const renderer = GLFunctions::glGetString(gl_const::GLRenderer);
++    auto const version = GLFunctions::glGetString(gl_const::GLVersion);
++    LOG(LINFO, ("GL context info", "vendor", vendor, "renderer", renderer, "version", version,
++                "api", static_cast<int>(apiVersion)));
++  }
+ }
+ 
+ bool GLFunctions::glHasExtension(std::string const & name)
+@@ -637,16 +743,46 @@ void GLFunctions::glFlushMappedBufferRange(glConst target, uint32_t offset, uint
+ uint32_t GLFunctions::glCreateShader(glConst type)
+ {
+   ASSERT_EQUAL(CurrentApiVersion, dp::ApiVersion::OpenGLES3, ());
+-  ASSERT(glCreateShaderFn != nullptr, ());
++  
++  // Check if we have a current EGL context
++#ifdef OMIM_OS_WINDOWS
++  EGLContext currentCtx = eglGetCurrentContext();
++  if (currentCtx == EGL_NO_CONTEXT)
++  {
++    fprintf(stderr, "[GL_FUNCTIONS] WARNING: No EGL context current when creating shader!\n");
++    fflush(stderr);
++  }
++  else
++  {
++    fprintf(stderr, "[GL_FUNCTIONS] EGL context: %p\n", currentCtx);
++    fflush(stderr);
++  }
++#endif
++  
++  if (glCreateShaderFn == nullptr)
++  {
++    fprintf(stderr, "[GL_FUNCTIONS] glCreateShaderFn is NULL!\n");
++    fflush(stderr);
++    return 0;
++  }
+   GLuint result = glCreateShaderFn(type);
++  fprintf(stderr, "[GL_FUNCTIONS] glCreateShader(type=%d) -> shader_id=%u\n", type, result);
++  fflush(stderr);
+   GLCHECKCALL();
+   return result;
+ }
+ 
+-void GLFunctions::glShaderSource(uint32_t shaderID, std::string const & src, std::string const & defines)
++void GLFunctions::glShaderSource(uint32_t shaderID, std::string const & src, std::string const & defines,
++                                 std::string const & debugName)
+ {
+   ASSERT_EQUAL(CurrentApiVersion, dp::ApiVersion::OpenGLES3, ());
+-  ASSERT(glShaderSourceFn != nullptr, ());
++  InitShaderDebugFlags();
++  if (glShaderSourceFn == nullptr)
++  {
++    fprintf(stderr, "[GL_FUNCTIONS] glShaderSourceFn is NULL!\n");
++    fflush(stderr);
++    return;
++  }
+ 
+   std::string fullSrc;
+   if (src.find("#version") != std::string::npos)
+@@ -661,28 +797,211 @@ void GLFunctions::glShaderSource(uint32_t shaderID, std::string const & src, std
+     fullSrc = defines + src;
+   }
+ 
++  std::string const shaderLabel = debugName.empty() ? std::string("<unnamed>") : debugName;
++  {
++    std::lock_guard<std::mutex> const lock(g_shaderSourcesMutex);
++    g_shaderSources[shaderID] = fullSrc;
++    g_shaderNames[shaderID] = shaderLabel;
++  }
++
++#ifdef OMIM_OS_WINDOWS
++  if (g_shaderVerboseLogs)
++  {
++    EGLContext currentCtx = eglGetCurrentContext();
++    fprintf(stderr, "[GL_FUNCTIONS] glShaderSource ctx=%p shader=%u name=%s len=%zu\n", currentCtx, shaderID,
++            shaderLabel.c_str(), fullSrc.size());
++    fflush(stderr);
++  }
++#endif
++
++  if (g_shaderVerboseLogs)
++  {
++    fprintf(stderr, "[GL_FUNCTIONS] glShaderSource(id=%u, name=%s, len=%zu) preview: %.120s...\n", shaderID,
++            shaderLabel.c_str(), fullSrc.size(), fullSrc.c_str());
++    fflush(stderr);
++  }
++
++  // Clear any pending GL errors so we attribute the next error correctly.
++  while (glGetError() != GL_NO_ERROR) {}
++
+   GLchar const * source[1] = {fullSrc.c_str()};
+   GLint lengths[1] = {static_cast<GLint>(fullSrc.size())};
+-  GLCHECK(glShaderSourceFn(shaderID, 1, source, lengths));
++
++  auto logSourceLen = [&](char const * phase) {
++    if (glGetShaderivFn == nullptr)
++      return;
++    GLint srcLen = 0;
++    glGetShaderivFn(shaderID, GL_SHADER_SOURCE_LENGTH, &srcLen);
++    if (srcLen == 0)
++    {
++      LOG(LERROR, (phase, "shader source length is 0", "shader", shaderID, "name", shaderLabel, "expectedLen",
++                   fullSrc.size()));
++
++      auto stored = ReadBackShaderSource(shaderID);
++      if (!stored.empty())
++      {
++        size_t previewLen = std::min<size_t>(stored.size(), g_shaderDumpSources ? stored.size() : 512);
++        LOG(LERROR, (phase, "readback len", stored.size(), "shader", shaderID, "name", shaderLabel, "preview",
++                     stored.substr(0, previewLen)));
++        if (g_shaderDumpSources)
++          LOG(LINFO, (phase, "readback full", stored));
++      }
++    }
++    else if (g_shaderVerboseLogs)
++    {
++      LOG(LINFO, (phase, "shader source length", srcLen, "shader", shaderID, "name", shaderLabel, "uploadedLen",
++                  fullSrc.size()));
++    }
++  };
++
++  glShaderSourceFn(shaderID, 1, source, lengths);
++  GLenum err = glGetError();
++  if (err != GL_NO_ERROR)
++  {
++    LOG(LERROR, ("glShaderSource error", GlErrorToString(err), "code", err, "shader", shaderID, "name",
++                 shaderLabel, "len", fullSrc.size(), "usingLength", lengths[0]));
++  }
++
++  logSourceLen("post-upload");
++
++  // If the driver still reports zero length, force one more upload and log.
++  GLint verifyLen = 0;
++  if (glGetShaderivFn != nullptr)
++  {
++    glGetShaderivFn(shaderID, GL_SHADER_SOURCE_LENGTH, &verifyLen);
++    if (verifyLen == 0)
++    {
++      glShaderSourceFn(shaderID, 1, source, lengths);
++      GLenum retryErr = glGetError();
++      LOG(LERROR, ("glShaderSource forced retry", GlErrorToString(retryErr), "code", retryErr, "shader", shaderID,
++                   "name", shaderLabel, "len", lengths[0]));
++      logSourceLen("post-retry");
++
++      auto stored = ReadBackShaderSource(shaderID);
++      if (!stored.empty())
++      {
++        LOG(LINFO, ("post-retry readback", "shader", shaderID, "name", shaderLabel, "len", stored.size(),
++                    "preview", stored.substr(0, std::min<size_t>(stored.size(), 512))));
++        if (g_shaderDumpSources)
++          LOG(LINFO, ("post-retry readback full", stored));
++      }
++    }
++  }
+ }
+ 
+ bool GLFunctions::glCompileShader(uint32_t shaderID, std::string & errorLog)
+ {
+   ASSERT_EQUAL(CurrentApiVersion, dp::ApiVersion::OpenGLES3, ());
+-  ASSERT(glCompileShaderFn != nullptr, ());
+-  ASSERT(glGetShaderivFn != nullptr, ());
+-  ASSERT(glGetShaderInfoLogFn != nullptr, ());
+-  GLCHECK(glCompileShaderFn(shaderID));
++  InitShaderDebugFlags();
++
++  std::string shaderLabel;
++  std::string cachedSource;
++  {
++    std::lock_guard<std::mutex> const lock(g_shaderSourcesMutex);
++    auto const nameIt = g_shaderNames.find(shaderID);
++    if (nameIt != g_shaderNames.end())
++      shaderLabel = nameIt->second;
++
++    auto const srcIt = g_shaderSources.find(shaderID);
++    if (srcIt != g_shaderSources.end())
++      cachedSource = srcIt->second;
++  }
++
++  if (glCompileShaderFn == nullptr)
++  {
++    errorLog = "glCompileShader function not loaded";
++    return false;
++  }
++  if (glGetShaderivFn == nullptr)
++  {
++    errorLog = "glGetShaderiv function not loaded";
++    return false;
++  }
++  if (glGetShaderInfoLogFn == nullptr)
++  {
++    errorLog = "glGetShaderInfoLog function not loaded";
++    return false;
++  }
++  
++  // Clear any previous GL errors before compiling
++  while (glGetError() != GL_NO_ERROR) {}
++  
++  glCompileShaderFn(shaderID);
++  
++  // Check for GL error immediately after compile
++  GLenum postError = glGetError();
++  if (postError != GL_NO_ERROR)
++  {
++    LOG(LERROR, ("Post-compile GL error", GlErrorToString(postError), "code", postError, "shader", shaderID,
++                 "name", shaderLabel));
++  }
+ 
+   GLint result = GL_FALSE;
+-  GLCHECK(glGetShaderivFn(shaderID, GL_COMPILE_STATUS, &result));
++  glGetShaderivFn(shaderID, GL_COMPILE_STATUS, &result);
++  
++  // Also check the shader type
++  GLint shaderType = 0;
++  glGetShaderivFn(shaderID, GL_SHADER_TYPE, &shaderType);
++  if (g_shaderVerboseLogs)
++  {
++    LOG(LINFO, ("Shader compile", "shader", shaderID, "name", shaderLabel, "type", shaderType, "status",
++                result));
++  }
++  
+   if (result == GL_TRUE)
+     return true;
+ 
+-  GLchar buf[1024];
++  GLint storedSrcLen = 0;
++  if (glGetShaderivFn != nullptr)
++    glGetShaderivFn(shaderID, GL_SHADER_SOURCE_LENGTH, &storedSrcLen);
++
++  GLchar buf[4096];
+   GLint length = 0;
+-  GLCHECK(glGetShaderInfoLogFn(shaderID, 1024, &length, buf));
+-  errorLog = std::string(buf, static_cast<size_t>(length));
++  glGetShaderInfoLogFn(shaderID, sizeof(buf), &length, buf);
++  LOG(LERROR, ("Shader info log length", length, "shader", shaderID, "name", shaderLabel, "storedSrcLen",
++               storedSrcLen, "cachedLen", cachedSource.size()));
++  
++  if (length > 0)
++  {
++    errorLog = std::string(buf, static_cast<size_t>(length));
++    LOG(LERROR, ("Shader error", errorLog));
++  }
++  else
++  {
++    // Get the shader source to help debug
++    GLint srcLen = 0;
++    glGetShaderivFn(shaderID, GL_SHADER_SOURCE_LENGTH, &srcLen);
++    errorLog = "Shader compilation failed with no error message (compile status = FALSE, src_len=" +
++               std::to_string(srcLen) + ")";
++    LOG(LERROR, ("Shader compilation failed with empty log", "shader", shaderID, "name", shaderLabel, "src_len",
++                 srcLen, "cachedLen", cachedSource.size()));
++  }
++
++  // Emit a preview of the cached source to aid debugging.
++  if (!cachedSource.empty())
++  {
++    size_t const previewLen = std::min<size_t>(cachedSource.size(), g_shaderDumpSources ? cachedSource.size() : 1024);
++    std::string const preview = cachedSource.substr(0, previewLen);
++    LOG(LINFO, ("Shader source preview", "shader", shaderID, "name", shaderLabel, "len", cachedSource.size(),
++                "preview", preview));
++
++    if (g_shaderDumpSources)
++    {
++      LOG(LINFO, ("Shader source full dump", "shader", shaderID, "name", shaderLabel, "len", cachedSource.size(),
++                  "source", cachedSource));
++    }
++  }
++
++  auto stored = ReadBackShaderSource(shaderID);
++  if (!stored.empty())
++  {
++    size_t previewLen = std::min<size_t>(stored.size(), g_shaderDumpSources ? stored.size() : 1024);
++    LOG(LINFO, ("Shader stored source preview", "shader", shaderID, "name", shaderLabel, "len", stored.size(),
++                "preview", stored.substr(0, previewLen)));
++    if (g_shaderDumpSources)
++      LOG(LINFO, ("Shader stored source full", stored));
++  }
++
+   return false;
+ }
+ 
+@@ -690,7 +1009,12 @@ void GLFunctions::glDeleteShader(uint32_t shaderID)
+ {
+   ASSERT_EQUAL(CurrentApiVersion, dp::ApiVersion::OpenGLES3, ());
+   ASSERT(glDeleteShaderFn != nullptr, ());
+-  GLCHECK(glDeleteBuffersFn(1, &shaderID));
++  {
++    std::lock_guard<std::mutex> const lock(g_shaderSourcesMutex);
++    g_shaderSources.erase(shaderID);
++    g_shaderNames.erase(shaderID);
++  }
++  GLCHECK(glDeleteShaderFn(shaderID));
+ }
+ 
+ uint32_t GLFunctions::glCreateProgram()
+@@ -757,7 +1081,15 @@ int8_t GLFunctions::glGetAttribLocation(uint32_t programID, std::string const &
+   ASSERT(glGetAttribLocationFn != nullptr, ());
+   int result = glGetAttribLocationFn(programID, name.c_str());
+   GLCHECKCALL();
+-  ASSERT(result != -1, ());
++
++  // ANGLE on Windows may legally return -1 for unused/optimized-out attributes.
++  // Instead of asserting, log once and let the caller decide how to proceed.
++  if (result == -1)
++  {
++    LOG(LERROR, ("glGetAttribLocation returned -1", "program", programID, "attribute", name));
++    return -1;
++  }
++
+   return static_cast<int8_t>(result);
+ }
+ 
