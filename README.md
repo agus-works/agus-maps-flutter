@@ -34,7 +34,8 @@ Most Flutter map solutions either:
 
 ## Features
 
-- 🚀 **Zero-Copy Rendering** — Map data flows directly from disk to GPU via memory-mapping
+- 🚀 **Zero-Copy Rendering** — Map data flows directly from disk to GPU via memory-mapping (iOS, macOS, Android)
+- 🖥️ **Windows Support** — Full Windows x86_64 support with optimized CPU-mediated rendering
 - 📴 **Fully Offline** — No internet required; uses compact MWM map files from OpenStreetMap
 - 🎯 **Native Performance** — The battle-tested Drape engine from Organic Maps
 - 🖐️ **Gesture Support** — Pan, pinch-to-zoom, rotation (multitouch)
@@ -96,7 +97,7 @@ See the [example app](example/) for a complete working demo.
 
 | Feature | Agus Maps | flutter_map | google_maps_flutter | mapbox_gl |
 |---------|-----------|-------------|---------------------|-----------|
-| **Rendering** | Native GPU (zero-copy) | Dart/Skia | PlatformView | PlatformView |
+| **Rendering** | Native GPU (zero-copy*) | Dart/Skia | PlatformView | PlatformView |
 | **Offline Support** | ✅ Full | ✅ With tiles | ❌ Limited | ✅ With SDK |
 | **Performance** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
 | **Memory Usage** | Very Low | High (GC) | Medium | Medium |
@@ -104,6 +105,21 @@ See the [example app](example/) for a complete working demo.
 | **Pricing** | Free | Free | Usage-based | Usage-based |
 | **Data Source** | OpenStreetMap | Any tiles | Google | Mapbox |
 | **Widget Integration** | ✅ Native | ✅ Native | ⚠️ PlatformView | ⚠️ PlatformView |
+| **Platforms** | Android, iOS, macOS, Windows | All | Android, iOS | Android, iOS |
+
+*\*Zero-copy on iOS, macOS, Android. Windows uses optimized CPU-mediated transfer.*
+
+### Platform Support
+
+| Platform | Architecture | Rendering | Zero-Copy |
+|----------|--------------|-----------|-----------|
+| **iOS** | arm64, x86_64 (sim) | Metal | ✅ Yes (IOSurface) |
+| **macOS** | arm64, x86_64 | Metal | ✅ Yes (IOSurface) |
+| **Android** | arm64-v8a, armeabi-v7a, x86_64 | OpenGL ES | ✅ Yes (SurfaceTexture) |
+| **Windows** | x86_64 only | OpenGL + D3D11 | ❌ No (CPU-mediated) |
+| **Linux** | — | — | 🚧 Planned |
+
+> **Windows Note:** ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware. Contributions welcome!
 
 ### Pros ✅
 
@@ -118,7 +134,8 @@ See the [example app](example/) for a complete working demo.
 
 - **Limited styling** — Uses Organic Maps' cartographic style (not customizable yet)
 - **No real-time traffic** — Offline-first design means no live data
-- **Android-only (currently)** — iOS, desktop platforms are planned but not yet implemented
+- **Windows not zero-copy** — Windows uses CPU-mediated frame transfer (still performant, ~60fps)
+- **Windows x86_64 only** — ARM64 Windows not yet supported
 - **MWM format required** — Must use pre-generated map files (not arbitrary tile servers)
 - **Early stage** — Search and routing APIs not yet exposed
 
@@ -135,6 +152,8 @@ Agus Maps achieves excellent performance on older devices (tested on Samsung Gal
 | **CPU** | Multi-threaded — heavy work on background threads, UI never blocked | [Details](docs/ARCHITECTURE-ANDROID.md#processor-efficiency) |
 | **Startup** | One-time asset extraction, cached on subsequent launches | [Details](docs/IMPLEMENTATION-ANDROID.md) |
 
+### Zero-Copy Architecture (iOS, macOS, Android)
+
 ```
 Traditional Map App          Agus Maps
 ┌─────────────────┐         ┌─────────────────┐
@@ -148,6 +167,26 @@ Traditional Map App          Agus Maps
    Always polling              Sleep when idle
 ```
 
+### Windows Architecture (x86_64)
+
+Windows uses a different architecture due to OpenGL/D3D11 interop limitations:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ CoMaps (OpenGL via WGL)                                     │
+│   ↓ glReadPixels (GPU→CPU, ~2-5ms)                          │
+│ CPU Buffer (RGBA→BGRA + Y-flip)                             │
+│   ↓ D3D11 staging texture                                   │
+│ D3D11 Shared Texture (DXGI handle)                          │
+│   ↓ Zero-copy to Flutter                                    │
+│ Flutter Texture Widget                                       │
+└─────────────────────────────────────────────────────────────┘
+   Still achieves 60fps on modern hardware
+   ~30-40MB RAM for rendering pipeline
+```
+
+> **Note:** While Windows is not true zero-copy, the map data itself (MWM files) still uses memory-mapping. The CPU-mediated transfer only affects the frame display, not the map data loading.
+
 ---
 
 ## Documentation
@@ -156,7 +195,9 @@ Traditional Map App          Agus Maps
 |----------|-------------|
 | [GUIDE.md](GUIDE.md) | Architectural blueprint and design philosophy |
 | [docs/ARCHITECTURE-ANDROID.md](docs/ARCHITECTURE-ANDROID.md) | Deep dive: memory efficiency, battery savings, how it works |
-| [docs/IMPLEMENTATION-ANDROID.md](docs/IMPLEMENTATION-ANDROID.md) | Build instructions, debug/release modes, acceptance criteria |
+| [docs/IMPLEMENTATION-ANDROID.md](docs/IMPLEMENTATION-ANDROID.md) | Android build instructions, debug/release modes |
+| [docs/IMPLEMENTATION-WIN.md](docs/IMPLEMENTATION-WIN.md) | Windows build instructions, x86_64 only |
+| [docs/RENDER-LOOP.md](docs/RENDER-LOOP.md) | Render loop comparison across all platforms |
 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer setup, commit guidelines, known issues |
 | [example/](example/) | Working demo application with downloads manager |
 
@@ -192,13 +233,25 @@ We track efficiency-related issues in dedicated files. See [CONTRIBUTING.md](doc
 - Disk space detection and safety checks
 - MWM registration API for dynamic map loading
 
+### ✅ Completed (iOS / macOS)
+- Metal-based rendering with zero-copy IOSurface
+- CVPixelBuffer texture sharing
+- Full gesture support
+
+### ✅ Completed (Windows x86_64)
+- WGL/OpenGL rendering to offscreen FBO
+- D3D11 shared texture integration
+- Mouse gesture support (drag, scroll wheel zoom)
+- DPI-aware rendering
+- Window resize handling
+
 ### 🔄 In Progress
 - Animated camera transitions
 - UI widgets (compass, scale bar)
 
 ### 📋 Planned
-- iOS / macOS implementation
-- Linux / Windows implementation  
+- Linux implementation
+- Windows ARM64 support (needs testing hardware)
 - Search API integration
 - Routing API integration
 - POI tap callbacks
