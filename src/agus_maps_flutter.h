@@ -62,6 +62,46 @@ FFI_PLUGIN_EXPORT void comaps_debug_list_mwms();
 // Debug: Check if a lat/lon point is covered by any registered MWM
 FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon);
 
+// Deregister a map file by path
+FFI_PLUGIN_EXPORT int comaps_deregister_map(const char* fullPath);
+
+// Get the count of registered maps
+FFI_PLUGIN_EXPORT int comaps_get_registered_maps_count(void);
+
+// =============================================================================
+// Native Surface Functions (for Windows/Desktop)
+// =============================================================================
+
+// Create the native rendering surface
+// This creates the Framework, DrapeEngine, and OpenGL context
+// @param width Surface width in physical pixels
+// @param height Surface height in physical pixels
+// @param density Screen DPI scale factor
+FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height, float density);
+
+// Called when the surface size changes
+FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int32_t height);
+
+// Called when the surface is destroyed
+FFI_PLUGIN_EXPORT void agus_native_on_surface_destroyed(void);
+
+// Get the D3D11 shared texture handle for Flutter (Windows only)
+// Returns HANDLE that can be used to open the shared texture
+FFI_PLUGIN_EXPORT void* agus_get_shared_texture_handle(void);
+
+// Get the D3D11 device pointer (Windows only)
+FFI_PLUGIN_EXPORT void* agus_get_d3d11_device(void);
+
+// Get the D3D11 texture pointer (Windows only)
+FFI_PLUGIN_EXPORT void* agus_get_d3d11_texture(void);
+
+// Render a single frame (triggers frame ready callback)
+FFI_PLUGIN_EXPORT void agus_render_frame(void);
+
+// Set the frame ready callback
+typedef void (*FrameReadyCallback)(void);
+FFI_PLUGIN_EXPORT void agus_set_frame_ready_callback(FrameReadyCallback callback);
+
 #ifdef __cplusplus
 }
 #endif
