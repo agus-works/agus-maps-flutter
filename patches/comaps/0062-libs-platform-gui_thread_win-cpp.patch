@@ -1,11 +1,85 @@
 diff --git a/libs/platform/gui_thread_win.cpp b/libs/platform/gui_thread_win.cpp
-index 212ac74..057cca4 100644
---- a/libs/platform/gui_thread_win.cpp
+new file mode 100644
+index 0000000..057cca4
+--- /dev/null
 +++ b/libs/platform/gui_thread_win.cpp
-@@ -74,3 +74,18 @@ GuiThread::PushResult GuiThread::Push(Task && task)
-     return {true, base::TaskLoop::kNoId};
-   }
-   delete taskPtr;
+@@ -0,0 +1,91 @@
++#include "platform/gui_thread.hpp"
++
++#include <windows.h>
++#include <functional>
++#include <memory>
++
++namespace platform
++{
++namespace
++{
++// Custom Windows message for GUI thread task execution
++constexpr UINT WM_GUI_TASK = WM_USER + 0x1000;
++
++// Hidden message-only window for receiving task messages
++class TaskWindow
++{
++public:
++  static TaskWindow & Instance()
++  {
++    static TaskWindow instance;
++    return instance;
++  }
++
++  HWND GetHwnd() const { return m_hwnd; }
++
++private:
++  TaskWindow()
++  {
++    WNDCLASSEXW wc = {};
++    wc.cbSize = sizeof(WNDCLASSEXW);
++    wc.lpfnWndProc = WndProc;
++    wc.hInstance = GetModuleHandle(nullptr);
++    wc.lpszClassName = L"GuiThreadTaskWindow";
++
++    RegisterClassExW(&wc);
++
++    // Create a message-only window (HWND_MESSAGE parent)
++    m_hwnd = CreateWindowExW(0, L"GuiThreadTaskWindow", nullptr, 0,
++                             0, 0, 0, 0, HWND_MESSAGE, nullptr,
++                             GetModuleHandle(nullptr), nullptr);
++  }
++
++  ~TaskWindow()
++  {
++    if (m_hwnd)
++      DestroyWindow(m_hwnd);
++  }
++
++  static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
++  {
++    if (msg == WM_GUI_TASK)
++    {
++      auto * task = reinterpret_cast<base::TaskLoop::Task *>(lParam);
++      if (task)
++      {
++        (*task)();
++        delete task;
++      }
++      return 0;
++    }
++    return DefWindowProcW(hwnd, msg, wParam, lParam);
++  }
++
++  HWND m_hwnd = nullptr;
++};
++}  // namespace
++
++GuiThread::PushResult GuiThread::Push(Task && task)
++{
++  auto * taskPtr = new Task(std::move(task));
++  if (PostMessage(TaskWindow::Instance().GetHwnd(), WM_GUI_TASK, 0,
++                  reinterpret_cast<LPARAM>(taskPtr)))
++  {
++    return {true, base::TaskLoop::kNoId};
++  }
++  delete taskPtr;
 +  return {false, base::TaskLoop::kNoId};
 +}
 +

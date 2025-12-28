@@ -1,0 +1,34 @@
+diff --git a/src/google/protobuf/stubs/time.cc b/src/google/protobuf/stubs/time.cc
+index 49c0412..fed06c3 100644
+--- a/src/google/protobuf/stubs/time.cc
++++ b/src/google/protobuf/stubs/time.cc
+@@ -5,6 +5,12 @@
+ #include <google/protobuf/stubs/stringprintf.h>
+ #include <google/protobuf/stubs/strutil.h>
+ 
++// Windows winbase.h defines GetCurrentTime as a macro, which conflicts with
++// protobuf's GetCurrentTime function. Undefine it here.
++#ifdef GetCurrentTime
++#undef GetCurrentTime
++#endif
++
+ namespace google {
+ namespace protobuf {
+ namespace internal {
+diff --git a/src/google/protobuf/stubs/time.h b/src/google/protobuf/stubs/time.h
+index 45607ca..2a33611 100644
+--- a/src/google/protobuf/stubs/time.h
++++ b/src/google/protobuf/stubs/time.h
+@@ -32,6 +32,12 @@
+ 
+ #include <google/protobuf/stubs/common.h>
+ 
++// Windows winbase.h defines GetCurrentTime as a macro, which conflicts with
++// protobuf's GetCurrentTime function. Undefine it here.
++#ifdef GetCurrentTime
++#undef GetCurrentTime
++#endif
++
+ namespace google {
+ namespace protobuf {
+ namespace internal {
