@@ -685,19 +685,25 @@ FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height,
 
 /// Called when the surface size changes
 FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int32_t height) {
-    char msg[256];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] agus_native_on_size_changed: %dx%d\n", width, height);
-    OutputDebugStringA(msg);
+    LOG(LINFO, ("agus_native_on_size_changed:", width, "x", height));
     
     g_surfaceWidth = width;
     g_surfaceHeight = height;
     
+    // First update the OpenGL context factory with new dimensions
     if (g_wglFactory) {
         g_wglFactory->SetSurfaceSize(width, height);
+        LOG(LINFO, ("agus_native_on_size_changed: WGL surface updated to", width, "x", height));
     }
     
+    // CRITICAL: Notify DrapeEngine of the new viewport size
+    // This makes DrapeEngine render to the full new size, not the old one
     if (g_framework && g_drapeEngineCreated) {
         g_framework->OnSize(width, height);
+        LOG(LINFO, ("agus_native_on_size_changed: Framework::OnSize called for", width, "x", height));
+    } else {
+        LOG(LWARNING, ("agus_native_on_size_changed: Cannot call Framework::OnSize - framework:", 
+                       (g_framework != nullptr), "drapeEngineCreated:", g_drapeEngineCreated));
     }
 }
 
