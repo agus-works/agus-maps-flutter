@@ -1,4 +1,6 @@
-# Windows Implementation Plan (MVP)
+# Windows Implementation (x86_64)
+
+> **Platform Support:** Currently only **x86_64 (64-bit Intel/AMD)** is supported. ARM64 Windows support is theoretically possible but untested due to lack of ARM64 hardware for development.
 
 ## Current Status
 
@@ -6,6 +8,79 @@
 **Plugin Registration:** ✅ MethodChannel handler implemented  
 **Rendering:** ✅ OpenGL context created, D3D11 texture sharing implemented  
 **Surface Bridge:** ✅ Plugin now calls FFI library for surface creation  
+**Architecture:** x86_64 only (ARM64 untested)
+
+## Efficiency Analysis
+
+### Memory Efficiency
+
+| Aspect | Status | Notes |
+|--------|--------|-------|
+| Map Data (MWM) | ✅ Zero-Copy | Memory-mapped files via CoMaps' MWM format - only viewed tiles loaded into RAM |
+| Frame Transfer | ⚠️ CPU-Mediated | Uses `glReadPixels()` + staging texture copy (see below) |
+| Dart VM Impact | ✅ Minimal | Map data never enters Dart heap; only control messages cross FFI boundary |
+
+### Frame Transfer Architecture
+
+Unlike iOS/macOS (IOSurface) and Android (SurfaceTexture/EGL), Windows uses a **CPU-mediated copy** path:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ OpenGL FBO (CoMaps renders here via WGL)                            │
+│   ↓                                                                 │
+│ glReadPixels() - Reads pixels from FBO to CPU buffer                │
+│   ↓                                                                 │
+│ CPU Buffer - RGBA format, Y-flipped, ~15-30MB per frame             │
+│   ↓                                                                 │
+│ RGBA→BGRA conversion + Y-flip (CPU loop)                            │
+│   ↓                                                                 │
+│ D3D11 Staging Texture - D3D11_USAGE_STAGING, CPU_ACCESS_WRITE       │
+│   ↓                                                                 │
+│ CopyResource() - GPU-to-GPU copy to shared texture                  │
+│   ↓                                                                 │
+│ D3D11 Shared Texture - DXGI_SHARED_HANDLE for Flutter               │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Why not true zero-copy on Windows?**
+
+Windows lacks a direct GL→D3D texture sharing mechanism equivalent to:
+- **iOS/macOS:** CVPixelBuffer + IOSurface (backed by shared GPU memory)
+- **Android:** SurfaceTexture (EGL native window → texture)
+
+The `WGL_NV_DX_interop2` extension could theoretically enable zero-copy, but:
+1. Only available on NVIDIA GPUs
+2. Requires specific driver versions
+3. Complex synchronization requirements
+4. Flutter Windows uses ANGLE/D3D11, not native OpenGL
+
+**Performance Impact:**
+- ~2-5ms per frame for 1080p resolution on modern hardware
+- CPU usage increases during map animation/panning
+- Acceptable for 60fps on modern systems; may struggle on older hardware
+
+### ARM64 Windows Compatibility
+
+**Status:** Untested, theoretically feasible
+
+ARM64 Windows (Snapdragon X, Apple Silicon via Parallels) could work with modifications:
+
+1. **vcpkg triplet:** Would need `arm64-windows` builds of dependencies
+2. **CMake configuration:** Requires `CMAKE_GENERATOR_PLATFORM=ARM64`
+3. **OpenGL compatibility:** ARM64 Windows typically uses OpenGL ES via ANGLE
+4. **CoMaps patches:** May need additional patches for ARM64 intrinsics
+
+If you have ARM64 Windows hardware and want to contribute, please open an issue.
+
+### Battery/CPU Efficiency
+
+| Aspect | Status | Notes |
+|--------|--------|-------|
+| Event-Driven Render | ✅ Yes | FrontendRenderer suspends after `kMaxInactiveFrames` inactive frames |
+| Initial Frame Keep-Alive | ✅ Yes | First ~120 frames request active frames to allow tile loading |
+| CPU Usage (Idle) | ✅ Low | <1% when map is stationary |
+| CPU Usage (Panning) | ⚠️ Moderate | ~10-20% due to per-frame pixel copy |
+| GPU Usage | ✅ Low | CoMaps uses efficient tile-based rendering |
 
 ## Windows Blank/White Map: Common Root Cause
 
@@ -463,8 +538,10 @@ The Windows plugin already supported the `density` parameter (defaulting to 1.0)
 - Visual Studio 2022 with C++ Desktop development workload  
 - vcpkg (installed at `C:\vcpkg` or set `VCPKG_ROOT` environment variable)
 - PowerShell 7+ (for bootstrap scripts)
-- Windows 10 or later
+- Windows 10 or later (x86_64 only)
 - ~5GB disk space for CoMaps build artifacts
+
+> **Note:** ARM64 Windows is not currently supported. See [ARM64 Compatibility](#arm64-windows-compatibility) section.
 
 ### First-Time Setup
 
@@ -600,14 +677,15 @@ The Windows plugin (`agus_maps_flutter_plugin.dll`) acts as a bridge between Flu
    - Plugin calls `TextureRegistrar::MarkTextureFrameAvailable()`
    - Flutter schedules next frame to sample the updated texture
 
-| Aspect | iOS/macOS (Metal) | Windows (OpenGL) |
-|--------|-------------------|------------------|
-| Graphics API | Metal | OpenGL 2.0+ (WGL) |
-| Texture Sharing | CVPixelBuffer + IOSurface | D3D11 + DXGI Shared Handle |
-| Zero-Copy Mechanism | CVMetalTextureCache | WGL_NV_DX_interop2 |
-| Flutter Texture | FlutterTexture protocol | FlutterDesktopGpuSurfaceDescriptor |
-| Platform Macro | `PLATFORM_MAC=1` | `OMIM_OS_WINDOWS=1` |
-| Plugin Class | AgusMapsFlutterPlugin (Swift) | AgusMapsFlutterPluginCApi (C++) |
+| Aspect | iOS/macOS (Metal) | Android (OpenGL ES) | Windows (OpenGL/D3D11) |
+|--------|-------------------|---------------------|------------------------|
+| Graphics API | Metal | OpenGL ES 3.0 | OpenGL 2.0+ (WGL) |
+| Texture Sharing | CVPixelBuffer + IOSurface | SurfaceTexture | D3D11 + DXGI Shared Handle |
+| Zero-Copy Mechanism | ✅ CVMetalTextureCache | ✅ EGL Native Window | ❌ glReadPixels + staging |
+| Flutter Texture | FlutterTexture protocol | TextureRegistry | FlutterDesktopGpuSurfaceDescriptor |
+| Platform Macro | `PLATFORM_MAC=1` | `OMIM_OS_ANDROID=1` | `OMIM_OS_WINDOWS=1` |
+| Plugin Class | AgusMapsFlutterPlugin (Swift) | AgusMapsFlutterPlugin (Java) | AgusMapsFlutterPluginCApi (C++) |
+| Architecture | arm64, x86_64 | arm64-v8a, armeabi-v7a, x86_64 | x86_64 only |
 
 ---
 

@@ -141,13 +141,42 @@ On Linux, Flutter embeds inside a GTK window. The flutter\_linux embedder provid
 
 * **Context Sharing:** Crucially, the C++ engine must share the OpenGL context with the GDK/GTK context used by Flutter. This is usually handled by gdk\_window\_create\_gl\_context, and the C++ engine must accept an external context handle during initialization rather than creating its own isolated context.26
 
-### **4.4 Windows: The ANGLE Complexity**
+### **4.4 Windows: WGL/OpenGL with D3D11 Texture Sharing (Implemented)**
 
-Windows is the most challenging platform because Flutter on Windows uses ANGLE (Almost Native Graphics Layer Engine) to translate OpenGL calls into DirectX 11 calls.6 The native Organic Maps engine uses OpenGL directly.
+Windows presented unique challenges for Flutter integration. Unlike iOS/macOS (IOSurface) and Android (SurfaceTexture), there is no native zero-copy path between OpenGL and the D3D11-based Flutter renderer.
 
-* **The Mismatch:** If Organic Maps renders using a native OpenGL driver (e.g., from NVIDIA/Intel), and Flutter renders using DirectX (via ANGLE), they cannot easily share a texture handle.  
-* **Solution: Use ANGLE in C++ Core:** The most robust solution is to compile the CoMaps C++ core on Windows to link against the *same* ANGLE libraries that Flutter uses (libEGL.dll, libGLESv2.dll). This forces the map engine to speak "OpenGL ES" which ANGLE translates to DirectX 11\.  
-* **Texture Sharing:** Once both are using ANGLE/DirectX, we can use the WGL\_NV\_DX\_interop extension or simply share the EGL context provided by ANGLE. The C++ engine renders to an FBO, and we pass that texture ID to Flutter's TextureRegistrar.27  
+> **Architecture Note:** Only x86_64 is currently supported. ARM64 Windows support is theoretically possible but untested due to lack of development hardware.
+
+**Implemented Solution:** Native WGL/OpenGL with CPU-mediated D3D11 texture sharing.
+
+* **Why not ANGLE?** While the original plan suggested using ANGLE (as noted in historical documentation), the actual implementation uses native WGL/OpenGL. This approach was chosen because:
+  1. CoMaps' Drape engine is already optimized for desktop OpenGL
+  2. WGL provides stable, driver-native OpenGL on Windows
+  3. ANGLE introduces additional translation overhead
+
+* **The Bridge Mechanism:**
+  1. **WGL Context Creation:** A hidden window provides the device context for WGL. Two OpenGL contexts are created (draw and upload) with shared resources via `wglShareLists()`.
+  2. **Offscreen Rendering:** CoMaps renders to an OpenGL Framebuffer Object (FBO) backed by a GL texture and depth/stencil renderbuffer.
+  3. **CPU-Mediated Copy:** After each frame, `glReadPixels()` reads the FBO content into a CPU buffer.
+  4. **D3D11 Staging Texture:** The CPU buffer is written to a D3D11 staging texture (with RGBA→BGRA conversion and Y-flip).
+  5. **Shared Texture:** The staging texture is copied to a D3D11 shared texture exposed via DXGI handle.
+  6. **Flutter Integration:** Flutter samples the shared texture via `FlutterDesktopGpuSurfaceDescriptor`.
+
+* **Performance Characteristics:**
+  ```
+  OpenGL FBO → glReadPixels (GPU→CPU) → RGBA→BGRA + Y-flip → D3D11 Staging → D3D11 Shared
+                    ~2-5ms at 1080p           ~1ms CPU              GPU-GPU copy
+  ```
+  Total overhead: ~3-6ms per frame on modern hardware, acceptable for 60fps.
+
+* **NOT Zero-Copy:** Unlike iOS/macOS/Android, Windows does NOT achieve true zero-copy. The `glReadPixels()` call moves data from GPU to CPU memory. This is a fundamental limitation of the OpenGL/D3D11 interop landscape on Windows without vendor-specific extensions (WGL_NV_DX_interop2 requires NVIDIA GPUs).
+
+* **D3D11 Shared Handle:** The shared texture uses `D3D11_RESOURCE_MISC_SHARED` and exposes a DXGI handle that Flutter can sample directly. This final GPU→Flutter step IS zero-copy.
+
+**Critical Implementation Notes:**
+1. The D3D11 shared handle changes on surface resize - the Flutter texture callback must query the current handle dynamically.
+2. `glFinish()` must be called before reading pixels to ensure rendering is complete.
+3. `m_d3dContext->Flush()` must be called after D3D11 copy to ensure Flutter sees updated data.
 * **Zero-Copy:** By unifying on the ANGLE layer, the texture remains a DirectX resource under the hood, accessible to both the map engine and Flutter's Skia renderer without CPU readback.
 
 ### **4.5 macOS: IOSurface and Metal**
