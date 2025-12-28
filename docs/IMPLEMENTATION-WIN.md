@@ -284,6 +284,11 @@ void SetSurfaceSize(int width, int height) {
 **After (fixed):**
 ```cpp
 void SetSurfaceSize(int width, int height) {
+  if (!wglMakeCurrent(m_hdc, m_drawGlrc)) {
+    LOG(LERROR, ("SetSurfaceSize: wglMakeCurrent failed"));
+    return;
+  }
+
     // Resize texture
     glBindTexture(GL_TEXTURE_2D, m_renderTexture);
     glTexImage2D(..., width, height, ...);
@@ -298,6 +303,10 @@ void SetSurfaceSize(int width, int height) {
     glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_renderTexture, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthBuffer);
+
+    // After reattachment, reset draw buffers or the FBO can be incomplete
+    GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0 };
+    glDrawBuffers(1, drawBuffers);
     
     // Verify FBO is complete
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -308,6 +317,10 @@ void SetSurfaceSize(int width, int height) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 ```
+
+  ### Additional Notes
+  - FBO status `0` in logs (from `glCheckFramebufferStatus`) means the call failed—most often because the context was not current or `glDrawBuffers` was not set after reattaching. Both are now handled: `wglMakeCurrent` is checked and `glDrawBuffers` is re-applied after resize.
+  - If the status still reports incomplete, capture `GetLastError()` from the failed `wglMakeCurrent` and ensure another thread is not holding the GL context during resize.
 
 ### Why This Wasn't Caught Earlier
 - Initial surface creation correctly attached the texture
