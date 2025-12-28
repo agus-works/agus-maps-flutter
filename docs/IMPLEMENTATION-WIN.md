@@ -533,7 +533,16 @@ endif()
    - Call `comaps_invalidate()` after registering maps to force tile reload
    - Check logs for `comaps_set_view` calls and viewport invalidation
 
-5. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
+5. **Path separator mismatch for downloaded maps:** Downloaded maps fail to register with "File doesn't exist" errors even though the path is correct.
+   - **Symptom:** Log shows `Re-registering downloaded: Philippines_Luzon_South at C:\Users\...\Documents/Philippines_Luzon_South.mwm` (mixed slashes) but error says `File C:\Users\...\Philippines_Luzon_South.mwm doesn't exist` (missing `Documents` folder)
+   - **Cause:** Dart's `path_provider` may return paths with forward slashes, which the C++ `base::GetDirectory()` function doesn't handle correctly on Windows
+   - **Fix:** Path normalization is now handled at multiple layers:
+     - `MwmMetadata` constructor normalizes paths when storing metadata
+     - `registerSingleMap()` in Dart normalizes paths before passing to FFI
+     - `comaps_register_single_map()` in C++ normalizes paths before using `MakeTemporary()`
+   - **Verify:** After fix, paths in logs should show consistent backslashes: `C:\Users\...\Documents\Philippines_Luzon_South.mwm`
+
+6. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
    - Verify `MakeCurrent()` binds `m_framebuffer` for draw context
    - Check for CoMaps code that calls `glBindFramebuffer(GL_FRAMEBUFFER, 0)`
 

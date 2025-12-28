@@ -404,9 +404,25 @@ FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int i
     g_framework->TouchEvent(event);
 }
 
+// Helper function to normalize path separators (convert / to \ on Windows)
+static std::string NormalizePath(const char* path) {
+    std::string normalized(path);
+    for (auto& c : normalized) {
+        if (c == '/') {
+            c = '\\';
+        }
+    }
+    return normalized;
+}
+
 FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
     char msg[512];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_register_single_map: %s\n", fullPath);
+    
+    // Normalize path separators (convert / to \ for Windows)
+    std::string normalizedPath = NormalizePath(fullPath);
+    
+    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_register_single_map: %s (normalized: %s)\n", 
+             fullPath, normalizedPath.c_str());
     OutputDebugStringA(msg);
     
     if (!g_framework) {
@@ -415,7 +431,7 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
     }
     
     try {
-        platform::LocalCountryFile file = platform::LocalCountryFile::MakeTemporary(fullPath);
+        platform::LocalCountryFile file = platform::LocalCountryFile::MakeTemporary(normalizedPath);
         file.SyncWithDisk();
         
         auto result = g_framework->RegisterMap(file);
