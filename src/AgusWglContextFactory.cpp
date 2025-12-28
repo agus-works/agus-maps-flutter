@@ -127,6 +127,10 @@ AgusWglContextFactory::AgusWglContextFactory(int width, int height)
   , m_height(height)
 {
   LOG(LINFO, ("Creating WGL context factory:", width, "x", height));
+  
+  // Initialize rendered size to match initial dimensions
+  m_renderedWidth.store(width);
+  m_renderedHeight.store(height);
 
   if (!InitializeWGL())
   {
@@ -595,6 +599,27 @@ void AgusWglContextFactory::CopyToSharedTexture()
     fboToRead = m_framebuffer;
   glBindFramebuffer(GL_FRAMEBUFFER, fboToRead);
 
+  // CRITICAL: Query the current viewport to determine the actual rendered size.
+  // During resize, m_width/m_height may already be updated to the NEW size,
+  // but the frame being presented was rendered at the OLD size (as indicated
+  // by the viewport). Reading pixels at m_width/m_height when the frame was
+  // rendered at a smaller viewport causes black/garbage pixels in the
+  // expanded region.
+  GLint viewport[4];
+  glGetIntegerv(GL_VIEWPORT, viewport);
+  int readWidth = viewport[2];
+  int readHeight = viewport[3];
+  
+  // Sanity check: viewport should be positive and not exceed target dimensions
+  if (readWidth <= 0 || readHeight <= 0)
+  {
+    readWidth = m_width;
+    readHeight = m_height;
+  }
+  // Clamp to target dimensions in case of weird state
+  if (readWidth > m_width) readWidth = m_width;
+  if (readHeight > m_height) readHeight = m_height;
+
   // Check FBO completeness and GL errors (debugging)
   if (s_frameCount % kLogEveryNFrames == 0)
   {
@@ -607,20 +632,24 @@ void AgusWglContextFactory::CopyToSharedTexture()
     
     // Log current scissor and viewport state
     GLint scissorBox[4];
-    GLint viewport[4];
     glGetIntegerv(GL_SCISSOR_BOX, scissorBox);
-    glGetIntegerv(GL_VIEWPORT, viewport);
     LOG(LINFO, ("CopyToSharedTexture scissor:", scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3],
-                "viewport:", viewport[0], viewport[1], viewport[2], viewport[3]));
+                "viewport:", viewport[0], viewport[1], viewport[2], viewport[3],
+                "readSize:", readWidth, "x", readHeight, "targetSize:", m_width, "x", m_height));
   }
 
   // CRITICAL: Ensure all OpenGL rendering commands are complete before reading.
   // Without this, glReadPixels may read incomplete/stale framebuffer content.
   glFinish();
 
-  // Read pixels from OpenGL (use GL_RGBA for maximum compatibility)
-  std::vector<uint8_t> pixels(m_width * m_height * 4);
-  glReadPixels(0, 0, m_width, m_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+  // Update rendered size tracking - this represents the actual rendered dimensions
+  m_renderedWidth.store(readWidth);
+  m_renderedHeight.store(readHeight);
+
+  // Read pixels from OpenGL at the RENDERED size, not the target size
+  // (use GL_RGBA for maximum compatibility)
+  std::vector<uint8_t> pixels(readWidth * readHeight * 4);
+  glReadPixels(0, 0, readWidth, readHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
   
   // Check for GL errors after read
   if (s_frameCount % kLogEveryNFrames == 0)
@@ -666,12 +695,12 @@ void AgusWglContextFactory::CopyToSharedTexture()
       }
     }
     
-    // Sample corner pixels for debugging
+    // Sample corner pixels for debugging (use readWidth/readHeight)
     size_t topLeftIdx = 0;
-    size_t topRightIdx = (m_width - 1) * 4;
-    size_t bottomLeftIdx = (m_height - 1) * m_width * 4;
-    size_t bottomRightIdx = ((m_height - 1) * m_width + (m_width - 1)) * 4;
-    size_t centerIdx = (m_height / 2 * m_width + m_width / 2) * 4;
+    size_t topRightIdx = (readWidth - 1) * 4;
+    size_t bottomLeftIdx = (readHeight - 1) * readWidth * 4;
+    size_t bottomRightIdx = ((readHeight - 1) * readWidth + (readWidth - 1)) * 4;
+    size_t centerIdx = (readHeight / 2 * readWidth + readWidth / 2) * 4;
     
     uint8_t centerR = pixels[centerIdx];
     uint8_t centerG = pixels[centerIdx + 1];
@@ -681,7 +710,8 @@ void AgusWglContextFactory::CopyToSharedTexture()
     // Log FBO we read from
     GLuint actualFBO = m_lastBoundFramebuffer.load();
     
-    LOG(LINFO, ("Frame", s_frameCount, "size:", m_width, "x", m_height, "FBO:", actualFBO,
+    LOG(LINFO, ("Frame", s_frameCount, "readSize:", readWidth, "x", readHeight, 
+                "targetSize:", m_width, "x", m_height, "FBO:", actualFBO,
                 "hasContent:", hasContent, "uniqueColors:", uniqueColors,
                 "centerRGBA:", (int)centerR, (int)centerG, (int)centerB, (int)centerA));
     
@@ -715,27 +745,80 @@ void AgusWglContextFactory::CopyToSharedTexture()
   }
   // If it was our context, leave it current
 
+  // CRITICAL: Handle size mismatch during resize transition.
+  // If the viewport (rendered size) doesn't match the target size, we have two options:
+  // 1. Skip the copy entirely (causes visible stutter)
+  // 2. Copy what we have and let Flutter scale it (smooth but momentary distortion)
+  // 
+  // We choose option 2: copy the rendered content to the D3D11 texture.
+  // When readWidth/readHeight < m_width/m_height, we fill the rendered portion
+  // and clear the rest to the clear color to avoid garbage.
+  
   // Copy to D3D11 staging texture
   D3D11_MAPPED_SUBRESOURCE mapped;
   HRESULT hr = m_d3dContext->Map(m_stagingTexture.Get(), 0, D3D11_MAP_WRITE, 0, &mapped);
   if (SUCCEEDED(hr))
   {
-    // OpenGL has flipped Y, and we need to convert RGBA to BGRA for D3D11
     uint8_t * dst = static_cast<uint8_t *>(mapped.pData);
-    for (int y = 0; y < m_height; ++y)
+    
+    // If sizes match, use the fast path
+    if (readWidth == m_width && readHeight == m_height)
     {
-      int srcY = m_height - 1 - y;  // Flip Y
-      const uint8_t * srcRow = pixels.data() + srcY * m_width * 4;
-      uint8_t * dstRow = dst + y * mapped.RowPitch;
-      for (int x = 0; x < m_width; ++x)
+      // OpenGL has flipped Y, and we need to convert RGBA to BGRA for D3D11
+      for (int y = 0; y < m_height; ++y)
       {
-        // Convert RGBA to BGRA
-        dstRow[x * 4 + 0] = srcRow[x * 4 + 2];  // B <- R
-        dstRow[x * 4 + 1] = srcRow[x * 4 + 1];  // G <- G
-        dstRow[x * 4 + 2] = srcRow[x * 4 + 0];  // R <- B
-        dstRow[x * 4 + 3] = srcRow[x * 4 + 3];  // A <- A
+        int srcY = m_height - 1 - y;  // Flip Y
+        const uint8_t * srcRow = pixels.data() + srcY * m_width * 4;
+        uint8_t * dstRow = dst + y * mapped.RowPitch;
+        for (int x = 0; x < m_width; ++x)
+        {
+          // Convert RGBA to BGRA
+          dstRow[x * 4 + 0] = srcRow[x * 4 + 2];  // B <- R
+          dstRow[x * 4 + 1] = srcRow[x * 4 + 1];  // G <- G
+          dstRow[x * 4 + 2] = srcRow[x * 4 + 0];  // R <- B
+          dstRow[x * 4 + 3] = srcRow[x * 4 + 3];  // A <- A
+        }
       }
     }
+    else
+    {
+      // Size mismatch - copy rendered portion and clear the rest
+      // Clear entire texture first (BGRA black with alpha 255)
+      for (int y = 0; y < m_height; ++y)
+      {
+        uint8_t * dstRow = dst + y * mapped.RowPitch;
+        memset(dstRow, 0, m_width * 4);  // Clear to black
+        // Set alpha to 255 for all pixels
+        for (int x = 0; x < m_width; ++x)
+        {
+          dstRow[x * 4 + 3] = 255;
+        }
+      }
+      
+      // Now copy the rendered portion with Y flip and RGBA->BGRA conversion
+      // The rendered content goes to top-left corner of target texture
+      for (int y = 0; y < readHeight && y < m_height; ++y)
+      {
+        int srcY = readHeight - 1 - y;  // Flip Y (relative to readHeight)
+        const uint8_t * srcRow = pixels.data() + srcY * readWidth * 4;
+        uint8_t * dstRow = dst + y * mapped.RowPitch;
+        for (int x = 0; x < readWidth && x < m_width; ++x)
+        {
+          // Convert RGBA to BGRA
+          dstRow[x * 4 + 0] = srcRow[x * 4 + 2];  // B <- R
+          dstRow[x * 4 + 1] = srcRow[x * 4 + 1];  // G <- G
+          dstRow[x * 4 + 2] = srcRow[x * 4 + 0];  // R <- B
+          dstRow[x * 4 + 3] = srcRow[x * 4 + 3];  // A <- A
+        }
+      }
+      
+      if (s_frameCount % kLogEveryNFrames == 0)
+      {
+        LOG(LINFO, ("CopyToSharedTexture: size mismatch, read:", readWidth, "x", readHeight,
+                    "target:", m_width, "x", m_height, "- copied partial frame"));
+      }
+    }
+    
     m_d3dContext->Unmap(m_stagingTexture.Get(), 0);
 
     // Copy staging to shared texture
