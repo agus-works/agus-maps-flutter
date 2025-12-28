@@ -27,7 +27,13 @@ Write-Host "  Source: $comapsData"
 Write-Host "  Dest:   $destData"
 
 if (!(Test-Path $comapsData)) {
-  throw "CoMaps data directory not found: $comapsData (run scripts/fetch_comaps.ps1 first)"
+  if (Test-Path $destData) {
+    Write-Warning "CoMaps data directory not found at $comapsData"
+    Write-Warning "Using existing data at $destData"
+    exit 0
+  } else {
+    throw "CoMaps data directory not found at $comapsData and no existing data at $destData. Run scripts/fetch_comaps.ps1 first."
+  }
 }
 
 New-Item -ItemType Directory -Force -Path $destData | Out-Null

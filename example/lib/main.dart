@@ -118,11 +118,16 @@ class _MyAppState extends State<MyApp> {
           await agus_maps_flutter.extractMap('assets/maps/WorldCoasts.mwm');
       _mapPathsToRegister.add(coastsPath);
 
+      /*
       _log('Extracting Gibraltar.mwm...');
       String mapPath =
           await agus_maps_flutter.extractMap('assets/maps/Gibraltar.mwm');
       _mapPathsToRegister.add(mapPath);
       _log('Map paths: $_mapPathsToRegister');
+      */
+      
+      // Temporary: Use Philippines/World as default to debug style errors with Gibraltar
+      _log('Skipping Gibraltar extraction (debug mode)');
 
       // Record bundled maps in storage (if not already there)
       final worldFile = File(worldPath);
@@ -149,6 +154,7 @@ class _MyAppState extends State<MyApp> {
           isBundled: true,
         ));
       }
+      /*
       if (!_mwmStorage!.isDownloaded('Gibraltar')) {
         await _mwmStorage!.upsert(MwmMetadata(
           regionName: 'Gibraltar',
@@ -159,6 +165,7 @@ class _MyAppState extends State<MyApp> {
           isBundled: true,
         ));
       }
+      */
 
       // 2. Extract ICU data for transliteration
       _log('Extracting icudt75l.dat...');
