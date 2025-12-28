@@ -113,6 +113,15 @@ class AgusMapsFlutterBindings {
   late final _comaps_set_view = _comaps_set_viewPtr
       .asFunction<void Function(double, double, int)>();
 
+  /// Invalidate the current viewport to force tile reload
+  void comaps_invalidate() {
+    return _comaps_invalidate();
+  }
+
+  late final _comaps_invalidatePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('comaps_invalidate');
+  late final _comaps_invalidate = _comaps_invalidatePtr.asFunction<void Function()>();
+
   /// Touch event handling
   /// type: 1=TOUCH_DOWN, 2=TOUCH_MOVE, 3=TOUCH_UP, 4=TOUCH_CANCEL
   /// id1, x1, y1: first touch pointer
