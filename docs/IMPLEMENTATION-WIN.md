@@ -121,6 +121,49 @@ void AgusWglContext::SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 }
 ```
 
+## Resolved: Flutter Texture Not Updating After Resize
+
+### Previous Symptoms
+- Map rendered correctly at initial size
+- After window resize, the map widget appeared not to scale
+- Native logs showed resize was processed (Framework::OnSize called, tiles requested)
+- But Flutter wasn't sampling the new texture
+
+### Root Cause
+After resize, the Windows plugin:
+1. Updated internal `surface_width_` and `surface_height_`
+2. Called `g_fnOnSizeChanged()` to update native resources
+3. **BUT** didn't notify Flutter that the texture was updated
+
+Without `MarkTextureFrameAvailable()`, Flutter continued using its cached texture dimensions.
+
+Additionally, the Dart `Texture` widget wasn't explicitly constrained, which could cause layout issues.
+
+### Fix
+1. Call `MarkTextureFrameAvailable()` after resize in plugin:
+```cpp
+// In HandleResizeMapSurface():
+if (g_fnOnSizeChanged) {
+    g_fnOnSizeChanged(width, height);
+    
+    // CRITICAL: Notify Flutter that the texture has been updated
+    if (texture_id_ >= 0 && texture_registrar_) {
+        texture_registrar_->MarkTextureFrameAvailable(texture_id_);
+    }
+}
+```
+
+2. Wrap `Texture` widget in `SizedBox` with explicit dimensions:
+```dart
+return SizedBox(
+  width: size.width,
+  height: size.height,
+  child: Texture(textureId: _textureId!),
+);
+```
+
+This matches macOS implementation which calls `textureRegistry?.textureFrameAvailable(textureId)` after resize.
+
 ## Resolved: Scroll Wheel Zoom Not Working
 
 ### Previous Symptoms

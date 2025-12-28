@@ -502,7 +502,11 @@ class _AgusMapState extends State<AgusMap> {
           onPointerUp: _handlePointerUp,
           onPointerCancel: _handlePointerCancel,
           onPointerSignal: _handlePointerSignal,
-          child: Texture(textureId: _textureId!),
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: Texture(textureId: _textureId!),
+          ),
         );
       },
     );
