@@ -95,7 +95,12 @@ void loadMap(String path) {
 ///   -2: Exception during registration
 ///   >0: MwmSet::RegResult error code
 int registerSingleMap(String fullPath) {
-  final pathPtr = fullPath.toNativeUtf8().cast<Char>();
+  // Normalize path separators for Windows (convert / to \)
+  String normalizedPath = fullPath;
+  if (Platform.isWindows) {
+    normalizedPath = fullPath.replaceAll('/', '\\');
+  }
+  final pathPtr = normalizedPath.toNativeUtf8().cast<Char>();
   try {
     return _bindings.comaps_register_single_map(pathPtr);
   } finally {

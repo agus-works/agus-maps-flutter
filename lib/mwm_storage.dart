@@ -3,6 +3,17 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Normalize file path separators for the current platform.
+/// On Windows, converts forward slashes to backslashes.
+/// On other platforms, converts backslashes to forward slashes.
+String _normalizePath(String path) {
+  if (Platform.isWindows) {
+    return path.replaceAll('/', '\\');
+  } else {
+    return path.replaceAll('\\', '/');
+  }
+}
+
 /// Metadata for a downloaded or bundled MWM map file.
 class MwmMetadata {
   /// Region/country name (e.g., "Gibraltar", "World")
@@ -18,7 +29,7 @@ class MwmMetadata {
   /// When the file was downloaded/extracted
   final DateTime downloadDate;
 
-  /// Full path to the MWM file on device
+  /// Full path to the MWM file on device (normalized for platform)
   final String filePath;
 
   /// SHA256 hash of the file (optional, for integrity checking)
@@ -27,15 +38,16 @@ class MwmMetadata {
   /// Whether this is a bundled asset vs downloaded from mirror
   final bool isBundled;
 
-  const MwmMetadata({
+  /// Creates MwmMetadata with normalized file path.
+  MwmMetadata({
     required this.regionName,
     required this.snapshotVersion,
     required this.fileSize,
     required this.downloadDate,
-    required this.filePath,
+    required String filePath,
     this.sha256,
     this.isBundled = false,
-  });
+  }) : filePath = _normalizePath(filePath);
 
   Map<String, dynamic> toJson() => {
     'regionName': regionName,
@@ -52,7 +64,7 @@ class MwmMetadata {
     snapshotVersion: json['snapshotVersion'] as String,
     fileSize: json['fileSize'] as int,
     downloadDate: DateTime.parse(json['downloadDate'] as String),
-    filePath: json['filePath'] as String,
+    filePath: json['filePath'] as String,  // Will be normalized in constructor
     sha256: json['sha256'] as String?,
     isBundled: json['isBundled'] as bool? ?? false,
   );
