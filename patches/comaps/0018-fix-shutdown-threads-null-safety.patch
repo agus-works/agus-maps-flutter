@@ -1,5 +1,5 @@
 diff --git a/libs/platform/platform.cpp b/libs/platform/platform.cpp
-index 33f3be41..66978522 100644
+index 33f3be4..6697852 100644
 --- a/libs/platform/platform.cpp
 +++ b/libs/platform/platform.cpp
 @@ -332,16 +332,24 @@ unsigned Platform::CpuCores()
