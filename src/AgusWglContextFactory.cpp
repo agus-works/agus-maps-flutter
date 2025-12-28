@@ -730,7 +730,19 @@ void AgusWglContext::DoneCurrent()
 
 void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
 {
-  // Not used for default framebuffer
+  // CRITICAL: When framebuffer is nullptr, CoMaps expects the "default" framebuffer
+  // to be bound. For desktop GL with window surface, this is FBO 0.
+  // But for our offscreen rendering setup, the "default" is our custom FBO.
+  // This is similar to how Qt's qtoglcontext.cpp handles it by binding m_backFrame.
+  if (framebuffer)
+  {
+    framebuffer->Bind();
+  }
+  else if (m_isDraw && m_factory)
+  {
+    // Bind our offscreen FBO as the "default" framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, m_factory->m_framebuffer);
+  }
 }
 
 void AgusWglContext::ForgetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
@@ -740,7 +752,7 @@ void AgusWglContext::ForgetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
 
 void AgusWglContext::ApplyFramebuffer(std::string const & framebufferLabel)
 {
-  // Apply the default framebuffer
+  // Apply the default framebuffer (our offscreen FBO)
   if (m_isDraw && m_factory)
   {
     glBindFramebuffer(GL_FRAMEBUFFER, m_factory->m_framebuffer);
