@@ -579,9 +579,9 @@ void AgusWglContextFactory::CopyToSharedTexture()
   // Without this, glReadPixels may read incomplete/stale framebuffer content.
   glFinish();
 
-  // Read pixels from OpenGL
+  // Read pixels from OpenGL (use GL_RGBA for maximum compatibility)
   std::vector<uint8_t> pixels(m_width * m_height * 4);
-  glReadPixels(0, 0, m_width, m_height, GL_BGRA_EXT, GL_UNSIGNED_BYTE, pixels.data());
+  glReadPixels(0, 0, m_width, m_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
   // Check if we got any non-zero pixels (for debugging blank frames)
   if (s_frameCount % kLogEveryNFrames == 0)
@@ -592,11 +592,11 @@ void AgusWglContextFactory::CopyToSharedTexture()
     // Sample some pixels to see if we have content and color variety
     for (size_t i = 0; i < pixels.size() && uniqueColors < 10; i += 4000)
     {
-      uint8_t b = pixels[i];
+      uint8_t r = pixels[i];
       uint8_t g = pixels[i+1];
-      uint8_t r = pixels[i+2];
-      // BGRA format - check if not black and not the clear color
-      if (b != 0 || g != 0 || r != 0)
+      uint8_t b = pixels[i+2];
+      // RGBA format - check if not black and not the clear color
+      if (r != 0 || g != 0 || b != 0)
         hasContent = true;
       // Count unique colors to detect if we have varied content vs solid fill
       if (r != lastR || g != lastG || b != lastB)
@@ -607,9 +607,9 @@ void AgusWglContextFactory::CopyToSharedTexture()
     }
     // Sample center pixel for debugging
     size_t centerIdx = (m_height / 2 * m_width + m_width / 2) * 4;
-    uint8_t centerB = pixels[centerIdx];
+    uint8_t centerR = pixels[centerIdx];
     uint8_t centerG = pixels[centerIdx + 1];
-    uint8_t centerR = pixels[centerIdx + 2];
+    uint8_t centerB = pixels[centerIdx + 2];
     uint8_t centerA = pixels[centerIdx + 3];
     
     LOG(LINFO, ("Frame", s_frameCount, "size:", m_width, "x", m_height, 
@@ -635,12 +635,21 @@ void AgusWglContextFactory::CopyToSharedTexture()
   HRESULT hr = m_d3dContext->Map(m_stagingTexture.Get(), 0, D3D11_MAP_WRITE, 0, &mapped);
   if (SUCCEEDED(hr))
   {
-    // OpenGL has flipped Y, so we copy rows in reverse
+    // OpenGL has flipped Y, and we need to convert RGBA to BGRA for D3D11
     uint8_t * dst = static_cast<uint8_t *>(mapped.pData);
     for (int y = 0; y < m_height; ++y)
     {
       int srcY = m_height - 1 - y;  // Flip Y
-      memcpy(dst + y * mapped.RowPitch, pixels.data() + srcY * m_width * 4, m_width * 4);
+      const uint8_t * srcRow = pixels.data() + srcY * m_width * 4;
+      uint8_t * dstRow = dst + y * mapped.RowPitch;
+      for (int x = 0; x < m_width; ++x)
+      {
+        // Convert RGBA to BGRA
+        dstRow[x * 4 + 0] = srcRow[x * 4 + 2];  // B <- R
+        dstRow[x * 4 + 1] = srcRow[x * 4 + 1];  // G <- G
+        dstRow[x * 4 + 2] = srcRow[x * 4 + 0];  // R <- B
+        dstRow[x * 4 + 3] = srcRow[x * 4 + 3];  // A <- A
+      }
     }
     m_d3dContext->Unmap(m_stagingTexture.Get(), 0);
 
