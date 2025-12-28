@@ -1,0 +1,23 @@
+diff --git a/libs/platform/gui_thread_win.cpp b/libs/platform/gui_thread_win.cpp
+index 212ac74..057cca4 100644
+--- a/libs/platform/gui_thread_win.cpp
++++ b/libs/platform/gui_thread_win.cpp
+@@ -74,3 +74,18 @@ GuiThread::PushResult GuiThread::Push(Task && task)
+     return {true, base::TaskLoop::kNoId};
+   }
+   delete taskPtr;
++  return {false, base::TaskLoop::kNoId};
++}
++
++GuiThread::PushResult GuiThread::Push(Task const & task)
++{
++  auto * taskPtr = new Task(task);
++  if (PostMessage(TaskWindow::Instance().GetHwnd(), WM_GUI_TASK, 0,
++                  reinterpret_cast<LPARAM>(taskPtr)))
++  {
++    return {true, base::TaskLoop::kNoId};
++  }
++  delete taskPtr;
++  return {false, base::TaskLoop::kNoId};
++}
++}  // namespace platform
