@@ -251,6 +251,70 @@ This approach:
 
 Qt's `QtRenderOGLContext` uses a different approach: power-of-2 buffer allocation with triple buffering. This pre-allocates larger buffers so resize only needs to update `m_frameRect` (the active region) rather than reallocating. Our approach is simpler but may show a brief visual artifact during resize where the old-size content is displayed in the new-size widget until the next frame renders at the new size.
 
+## Resolved: Resize Causes Only Top-Left Corner Rendering
+
+### Previous Symptoms
+- Map displayed correctly at initial size
+- When resizing window to larger size, only the top-left corner showed map content
+- The rest of the window showed black/transparent (0,0,0,0)
+- Logs showed correct viewport/scissor at new size (2877x1466) but corners read as zeros:
+  ```
+  CopyToSharedTexture scissor: 0 0 2877 1466 viewport: 0 0 2877 1466 readSize: 2877 x 1466
+  Corners TL: 137 205 220 255 TR: 0 0 0 0
+  Corners BL: 0 0 0 0 BR: 0 0 0 0
+  ```
+
+### Root Cause
+OpenGL Framebuffer Object (FBO) attachments must be re-attached after texture resize.
+
+In `SetSurfaceSize()`, we were calling `glTexImage2D()` to resize the render texture to the new dimensions. However, we were NOT re-attaching the texture to the framebuffer.
+
+In OpenGL, when you call `glTexImage2D()` with different dimensions, it creates new texture storage. The FBO attachment may still reference the old texture dimensions or become invalid. The texture needs to be explicitly re-attached using `glFramebufferTexture2D()`.
+
+**Before (broken):**
+```cpp
+void SetSurfaceSize(int width, int height) {
+    glBindTexture(GL_TEXTURE_2D, m_renderTexture);
+    glTexImage2D(..., width, height, ...);  // Creates new storage
+    glBindTexture(GL_TEXTURE_2D, 0);
+    // FBO still references old texture dimensions!
+}
+```
+
+**After (fixed):**
+```cpp
+void SetSurfaceSize(int width, int height) {
+    // Resize texture
+    glBindTexture(GL_TEXTURE_2D, m_renderTexture);
+    glTexImage2D(..., width, height, ...);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    
+    // Resize depth buffer
+    glBindRenderbuffer(GL_RENDERBUFFER, m_depthBuffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    
+    // CRITICAL: Re-attach to FBO after resize
+    glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_renderTexture, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthBuffer);
+    
+    // Verify FBO is complete
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        LOG(LERROR, ("Framebuffer incomplete after resize"));
+    }
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+```
+
+### Why This Wasn't Caught Earlier
+- Initial surface creation correctly attached the texture
+- Without resize, everything worked perfectly
+- The symptom (only top-left rendered) suggested a scissor/viewport issue, which masked the real cause
+- Debug logging showed correct dimensions everywhere, making the FBO attachment issue non-obvious
+
 ## Resolved: Scroll Wheel Zoom Not Working
 
 ### Previous Symptoms

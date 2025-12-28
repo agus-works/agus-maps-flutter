@@ -518,24 +518,50 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
   HGLRC prevContext = wglGetCurrentContext();
   HDC prevDC = wglGetCurrentDC();
 
-  // Recreate OpenGL resources
+  // Make our draw context current for GL operations
   wglMakeCurrent(m_hdc, m_drawGlrc);
 
-  // Update render texture
+  // CRITICAL: After resizing textures attached to an FBO, we must re-attach them
+  // to the framebuffer. In OpenGL, glTexImage2D with different dimensions creates
+  // new texture storage, and the FBO attachment may become invalid or reference
+  // old dimensions. Re-attaching ensures the FBO uses the new texture storage.
+
+  // Update render texture size
   glBindTexture(GL_TEXTURE_2D, m_renderTexture);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
   glBindTexture(GL_TEXTURE_2D, 0);
 
-  // Update depth buffer
+  // Update depth/stencil buffer size
   glBindRenderbuffer(GL_RENDERBUFFER, m_depthBuffer);
   glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
-  // CRITICAL: Update viewport and scissor to new size
-  // Without this, rendering will be clipped to the old size
+  // CRITICAL: Re-attach resized textures to the framebuffer
+  // This is necessary because the texture storage changed when we called glTexImage2D.
+  // Without this, the FBO may still reference the old texture dimensions.
+  glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_renderTexture, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthBuffer);
+
+  // Verify FBO is complete after resize
+  GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+  if (status != GL_FRAMEBUFFER_COMPLETE)
+  {
+    LOG(LERROR, ("Framebuffer incomplete after resize:", status, "width:", width, "height:", height));
+  }
+  else
+  {
+    LOG(LINFO, ("Framebuffer verified complete after resize:", width, "x", height));
+  }
+
+  // Set viewport and scissor for the new size while FBO is bound
+  // NOTE: These state changes apply to the current context. When rendering happens,
+  // CoMaps will call SetViewport() which sets both viewport and scissor.
   glViewport(0, 0, width, height);
   glScissor(0, 0, width, height);
   LOG(LINFO, ("Updated viewport/scissor on resize to:", width, height));
+
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
   // Restore previous context
   if (prevContext != nullptr)
@@ -547,7 +573,7 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
   m_width = width;
   m_height = height;
 
-  // Recreate D3D11 shared texture
+  // Recreate D3D11 shared texture at new size
   CreateSharedTexture(width, height);
 }
 
