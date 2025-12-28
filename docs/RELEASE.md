@@ -16,6 +16,9 @@ Each release includes the following artifacts:
 | `agus-maps-android.apk` | Universal APK (direct install) | ~80 MB |
 | `agus-maps-ios-simulator.app.zip` | iOS Simulator app (debug) | ~100 MB |
 | `agus-maps-macos.app.zip` | macOS app (release) | ~100 MB |
+| `agus-maps-windows.zip` | Windows app (release, x86_64) | ~150 MB |
+
+> **Note:** Windows binaries are x86_64 only. ARM64 Windows is not currently supported.
 
 ---
 
@@ -175,6 +178,63 @@ Since the app is unsigned, macOS will show a security warning. To bypass:
 - macOS 12.0 (Monterey) or later
 - Apple Silicon (M1/M2/M3) or Intel Mac
 - ~500 MB free disk space for map data
+
+---
+
+### Windows (x86_64)
+
+The Windows app is an **unsigned release build** for **x86_64 (64-bit Intel/AMD)** systems.
+
+> ⚠️ **Architecture Note:** Only x86_64 is supported. ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware.
+
+#### Installation Steps
+
+```powershell
+# 1. Download and extract
+# Using PowerShell or download from browser
+Invoke-WebRequest -Uri "https://github.com/bangonkali/agus-maps-flutter/releases/latest/download/agus-maps-windows.zip" -OutFile "agus-maps-windows.zip"
+Expand-Archive -Path "agus-maps-windows.zip" -DestinationPath "agus-maps-windows"
+
+# 2. Run the app
+.\agus-maps-windows\agus_maps_flutter_example.exe
+```
+
+#### Alternative: File Explorer
+
+1. Download `agus-maps-windows.zip` from the [releases page](https://github.com/bangonkali/agus-maps-flutter/releases)
+2. Right-click and select **Extract All...**
+3. Navigate to the extracted folder
+4. Double-click `agus_maps_flutter_example.exe`
+
+#### Windows Defender SmartScreen
+
+Since the app is unsigned, Windows may show a SmartScreen warning:
+
+1. Click **More info**
+2. Click **Run anyway**
+
+#### Requirements
+
+- Windows 10 or later (64-bit x86_64 only)
+- ~500 MB free disk space for map data
+- OpenGL 2.0+ compatible graphics driver
+- Visual C++ Redistributable (usually pre-installed)
+
+#### Known Limitations
+
+- **Not zero-copy rendering**: Windows uses CPU-mediated frame transfer (glReadPixels). This may result in slightly higher CPU usage during map animations compared to iOS/macOS/Android.
+- **ARM64 not supported**: ARM64 Windows devices (Snapdragon X, etc.) are not supported.
+
+---
+
+### Windows Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "VCRUNTIME140.dll not found" | Install [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) |
+| App won't start | Ensure you're on x86_64 Windows, not ARM64 |
+| Blank/white map | Check map data files exist in `Documents\agus_maps_flutter\` |
+| Poor performance | Update graphics drivers; ensure hardware OpenGL is available |
 
 ---
 
