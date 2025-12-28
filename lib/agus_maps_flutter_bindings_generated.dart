@@ -122,6 +122,18 @@ class AgusMapsFlutterBindings {
       _lookup<ffi.NativeFunction<ffi.Void Function()>>('comaps_invalidate');
   late final _comaps_invalidate = _comaps_invalidatePtr.asFunction<void Function()>();
 
+  /// Force a complete redraw by updating the map style.
+  /// This clears all render groups and forces the BackendRenderer to re-request
+  /// all tiles from scratch. Use this after registering map files to ensure
+  /// tiles are loaded for newly registered regions.
+  void comaps_force_redraw() {
+    return _comaps_force_redraw();
+  }
+
+  late final _comaps_force_redrawPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('comaps_force_redraw');
+  late final _comaps_force_redraw = _comaps_force_redrawPtr.asFunction<void Function()>();
+
   /// Touch event handling
   /// type: 1=TOUCH_DOWN, 2=TOUCH_MOVE, 3=TOUCH_UP, 4=TOUCH_CANCEL
   /// id1, x1, y1: first touch pointer
