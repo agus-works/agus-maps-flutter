@@ -8,7 +8,116 @@
 **Plugin Registration:** ✅ MethodChannel handler implemented  
 **Rendering:** ✅ OpenGL context created, D3D11 texture sharing implemented  
 **Surface Bridge:** ✅ Plugin now calls FFI library for surface creation  
-**Architecture:** x86_64 only (ARM64 untested)
+**Architecture:** x86_64 only (ARM64 untested)  
+**CoMaps Tools:** ✅ Skipped via `SKIP_TOOLS` CMake option (dev_sandbox, generator, tools not needed for Flutter plugin)
+
+## Cross-Platform Rendering Comparison
+
+This section compares the rendering architecture across all supported platforms.
+
+### Rendering Pipeline Overview
+
+| Platform | Graphics API | Texture Sharing | Frame Transfer | GUI Thread |
+|----------|--------------|-----------------|----------------|------------|
+| **Windows** | OpenGL (WGL) | D3D11 DXGI Shared Handle | CPU-mediated (`glReadPixels` → D3D11) | HWND_MESSAGE + PostMessage |
+| **iOS** | Metal | CVPixelBuffer + IOSurface | Zero-copy (shared GPU memory) | GCD (dispatch_async) |
+| **macOS** | Metal | CVPixelBuffer + IOSurface | Zero-copy (shared GPU memory) | GCD (dispatch_async) |
+| **Android** | OpenGL ES 3.0 | SurfaceTexture | Zero-copy (EGL native window) | JNI → Android UI thread |
+
+### Windows vs iOS/macOS: Key Differences
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        iOS/macOS (Metal)                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│  CoMaps → MTLTexture (CVPixelBuffer) → Flutter samples via IOSurface   │
+│  ✓ Zero-copy: GPU memory shared between CoMaps and Flutter              │
+│  ✓ No CPU involvement in frame transfer                                 │
+│  ✓ CVMetalTextureCacheCreateTextureFromImage for efficient binding      │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Windows (OpenGL + D3D11)                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│  CoMaps → OpenGL FBO → glReadPixels → CPU Buffer → D3D11 Staging        │
+│            → CopyResource → D3D11 Shared Texture → Flutter              │
+│  ⚠ CPU-mediated: 2-5ms per frame for 1080p                              │
+│  ⚠ RGBA→BGRA conversion + Y-flip on CPU                                 │
+│  ✗ No WGL_NV_DX_interop2 (NVIDIA-only, not portable)                    │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Android (OpenGL ES)                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│  CoMaps → EGL Surface → SurfaceTexture → Flutter Texture                │
+│  ✓ Zero-copy: EGL window surface directly bound to texture              │
+│  ✓ Hardware compositor integration via SurfaceProducer                  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### GUI Thread Implementation Comparison
+
+Each platform requires a mechanism to dispatch tasks from C++ background threads to the platform's UI thread:
+
+| Platform | Implementation | Header Location |
+|----------|----------------|-----------------|
+| **Windows** | `gui_thread_win.cpp` - HWND_MESSAGE window + WM_USER + PostMessage | `libs/platform/` |
+| **iOS/macOS** | `gui_thread_apple.mm` - GCD dispatch_async to main queue | `libs/platform/` |
+| **Android** | `gui_thread_android.cpp` - JNI CallStaticVoidMethod | `libs/platform/` |
+| **Qt (reference)** | `gui_thread.cpp` - QTimer::singleShot | `libs/platform/` |
+
+**Windows GUI Thread Pattern:**
+```cpp
+// Creates a hidden message-only window for task dispatch
+class TaskWindow {
+    HWND m_hwnd;  // HWND_MESSAGE parent = no visible window
+    static LRESULT CALLBACK WndProc(HWND, UINT msg, WPARAM, LPARAM lParam) {
+        if (msg == WM_GUI_TASK) {
+            auto* task = reinterpret_cast<Task*>(lParam);
+            (*task)();
+            delete task;
+            return 0;
+        }
+        return DefWindowProc(...);
+    }
+};
+
+// Push task to UI thread
+GuiThread::PushResult GuiThread::Push(Task&& task) {
+    auto* taskPtr = new Task(std::move(task));
+    PostMessage(TaskWindow::Instance().GetHwnd(), WM_GUI_TASK, 0, 
+                reinterpret_cast<LPARAM>(taskPtr));
+    return {true, base::TaskLoop::kNoId};
+}
+```
+
+### Why Different Approaches?
+
+| Factor | iOS/macOS | Android | Windows |
+|--------|-----------|---------|---------|
+| **Native Graphics** | Metal (unified) | OpenGL ES | OpenGL (WGL) or D3D11 |
+| **Flutter Uses** | Metal/Impeller | OpenGL ES/Impeller | ANGLE (D3D11 backend) |
+| **Texture Sharing** | IOSurface (native) | EGLImage/SurfaceTexture | No native GL↔D3D sharing |
+| **Result** | Zero-copy possible | Zero-copy possible | CPU copy required |
+
+### Performance Characteristics
+
+| Metric | Windows | iOS/macOS | Android |
+|--------|---------|-----------|---------|
+| **Frame Copy Latency** | 2-5ms (CPU) | <0.5ms (GPU) | <0.5ms (GPU) |
+| **Idle CPU Usage** | <1% | <1% | <1% |
+| **Panning CPU Usage** | 10-20% | 5-10% | 5-10% |
+| **Memory (1080p frame)** | ~8MB staging | Shared | Shared |
+
+### Future Optimization: Vulkan on Windows
+
+Windows could potentially achieve zero-copy using Vulkan instead of OpenGL:
+
+1. **VkExternalMemoryHandleTypeFlagsKHR** - Export Vulkan memory as D3D11 texture
+2. **VK_KHR_external_memory_win32** - Windows-specific handle types
+3. **Requires:** Vulkan 1.1+, compatible GPU driver
+
+This would require significant refactoring and is not currently planned.
 
 ## Efficiency Analysis
 
@@ -1058,6 +1167,31 @@ On these platforms, the render loop is driven by the system's VSync/display link
 ---
 
 ## Troubleshooting
+
+### Build errors in dev_sandbox, generator, or tools targets
+
+**Symptom:** Build fails with errors like:
+- `dev_sandbox\main.cpp: error C2039: 'setenv': is not a member of 'global namespace'`
+- `openlr: error C2872: 'impl': ambiguous symbol`
+- Errors in `generator` or `tools` subdirectories
+
+**Cause:** These are CoMaps desktop development tools (dev_sandbox, map generator, CLI tools) that are not needed for the Flutter plugin. They may have Windows-incompatible code (POSIX functions like `setenv`) or Boost symbol conflicts.
+
+**Solution:** The Flutter plugin sets `SKIP_TOOLS ON` in `src/CMakeLists.txt`. A corresponding patch modifies CoMaps' `CMakeLists.txt` to respect this option:
+
+```cmake
+# In thirdparty/comaps/CMakeLists.txt (patched)
+if (PLATFORM_DESKTOP AND NOT SKIP_TOOLS)
+  add_subdirectory(dev_sandbox)
+  add_subdirectory(generator)
+  add_subdirectory(tools)
+endif()
+```
+
+If you see these errors, ensure you've applied all patches:
+```powershell
+.\scripts\apply_comaps_patches.ps1
+```
 
 ### "Could NOT find ZLIB (missing: ZLIB_LIBRARY ZLIB_INCLUDE_DIR)"
 
