@@ -1,6 +1,0 @@
-diff --git a/3party/gflags b/3party/gflags
---- a/3party/gflags
-+++ b/3party/gflags
-@@ -1 +1 @@
--Subproject commit 52e94563eba1968783864942fedf6e87e3c611f4
-+Subproject commit 52e94563eba1968783864942fedf6e87e3c611f4-dirty

@@ -169,11 +169,22 @@ else()
     "${COMAPS_SOURCE_DIR}/3party/harfbuzz/harfbuzz/src"
     "${COMAPS_SOURCE_DIR}/3party/minizip/minizip"
     "${COMAPS_SOURCE_DIR}/3party/protobuf/protobuf/src"
-    "${COMAPS_SOURCE_DIR}/android/sdk/src/main/cpp" 
+    "${COMAPS_SOURCE_DIR}/android/sdk/src/main/cpp"
+    # Boost root for traditional #include <boost/...> includes
+    "${COMAPS_SOURCE_DIR}/3party/boost"
   )
-  # Add boost modular include directories (set by CoMaps CMakeLists.txt)
-  if(BOOST_INCLUDE_DIRS)
-    target_include_directories(agus_maps_flutter PRIVATE ${BOOST_INCLUDE_DIRS})
+  
+  # Add Boost modular include directories for modern modular headers
+  # Boost uses a modular structure with headers in libs/<module>/include/
+  # This is required by succinct, opening_hours, and other 3party libs
+  file(GLOB BOOST_LIBS_DIRS "${COMAPS_SOURCE_DIR}/3party/boost/libs/*/include")
+  # Also handle nested modules like libs/numeric/conversion/include
+  file(GLOB BOOST_NESTED_DIRS "${COMAPS_SOURCE_DIR}/3party/boost/libs/*/*/include")
+  list(APPEND BOOST_LIBS_DIRS ${BOOST_NESTED_DIRS})
+  if(BOOST_LIBS_DIRS)
+    target_include_directories(agus_maps_flutter PRIVATE ${BOOST_LIBS_DIRS})
+    list(LENGTH BOOST_LIBS_DIRS BOOST_LIBS_COUNT)
+    message(STATUS "agus_maps_flutter: Added ${BOOST_LIBS_COUNT} Boost modular include directories")
   endif()
 endif()
 
