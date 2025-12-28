@@ -580,6 +580,12 @@ FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height,
         return;
     }
     
+    // Set frame callback on factory so it notifies Flutter after CopyToSharedTexture()
+    g_wglFactory->SetFrameCallback([]() {
+        notifyFlutterFrameReady();
+    });
+    OutputDebugStringA("[AgusMapsFlutter] WGL factory frame callback set\n");
+    
     // Wrap in ThreadSafeFactory for thread-safe context access
     g_threadSafeFactory = make_unique_dp<dp::ThreadSafeFactory>(g_wglFactory);
     
