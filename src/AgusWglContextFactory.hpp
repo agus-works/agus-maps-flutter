@@ -144,6 +144,7 @@ public:
   void SetClearColor(dp::Color const & color) override;
   void Clear(uint32_t clearBits, uint32_t storeBits) override;
   void Flush() override;
+  void Resize(uint32_t w, uint32_t h) override;
   void SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h) override;
   void SetScissor(uint32_t x, uint32_t y, uint32_t w, uint32_t h) override;
   void SetDepthTestEnabled(bool enabled) override;
