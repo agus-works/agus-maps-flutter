@@ -486,6 +486,10 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
 
   LOG(LINFO, ("Resizing surface:", width, "x", height));
 
+  // Save current context to restore after
+  HGLRC prevContext = wglGetCurrentContext();
+  HDC prevDC = wglGetCurrentDC();
+
   // Recreate OpenGL resources
   wglMakeCurrent(m_hdc, m_drawGlrc);
 
@@ -499,7 +503,15 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
   glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
-  wglMakeCurrent(nullptr, nullptr);
+  // Restore previous context
+  if (prevContext != nullptr)
+    wglMakeCurrent(prevDC, prevContext);
+  else
+    wglMakeCurrent(nullptr, nullptr);
+
+  // Update dimensions
+  m_width = width;
+  m_height = height;
 
   // Recreate D3D11 shared texture
   CreateSharedTexture(width, height);
@@ -520,8 +532,14 @@ void AgusWglContextFactory::CopyToSharedTexture()
   if (!m_stagingTexture || !m_sharedTexture)
     return;
 
-  // Make OpenGL context current
-  wglMakeCurrent(m_hdc, m_drawGlrc);
+  // Save current context state - the render thread should have context current
+  HGLRC prevContext = wglGetCurrentContext();
+  HDC prevDC = wglGetCurrentDC();
+  bool wasOurContext = (prevContext == m_drawGlrc);
+
+  // Make OpenGL context current if not already
+  if (!wasOurContext)
+    wglMakeCurrent(m_hdc, m_drawGlrc);
 
   // Bind framebuffer and read pixels
   glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
@@ -531,7 +549,16 @@ void AgusWglContextFactory::CopyToSharedTexture()
   glReadPixels(0, 0, m_width, m_height, GL_BGRA_EXT, GL_UNSIGNED_BYTE, pixels.data());
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  wglMakeCurrent(nullptr, nullptr);
+  
+  // Restore previous context state
+  if (!wasOurContext)
+  {
+    if (prevContext != nullptr)
+      wglMakeCurrent(prevDC, prevContext);
+    else
+      wglMakeCurrent(nullptr, nullptr);
+  }
+  // If it was our context, leave it current
 
   // Copy to D3D11 staging texture
   D3D11_MAPPED_SUBRESOURCE mapped;
@@ -587,7 +614,20 @@ void AgusWglContext::Present()
 
 void AgusWglContext::MakeCurrent()
 {
-  wglMakeCurrent(m_hdc, m_glrc);
+  if (!wglMakeCurrent(m_hdc, m_glrc))
+  {
+    DWORD error = GetLastError();
+    LOG(LERROR, ("wglMakeCurrent failed:", error, "hdc:", m_hdc, "glrc:", m_glrc));
+  }
+  else
+  {
+    // Verify context is actually current
+    HGLRC current = wglGetCurrentContext();
+    if (current != m_glrc)
+    {
+      LOG(LERROR, ("wglMakeCurrent succeeded but context mismatch! expected:", m_glrc, "got:", current));
+    }
+  }
 
   // For draw context, bind offscreen framebuffer
   if (m_isDraw && m_factory)
@@ -631,18 +671,44 @@ void AgusWglContext::Init(dp::ApiVersion apiVersion)
 
 std::string AgusWglContext::GetRendererName() const
 {
-  wglMakeCurrent(m_hdc, m_glrc);
+  // Don't change context state - caller should have already made context current
+  // If not current, make it current but don't release it
+  HGLRC current = wglGetCurrentContext();
+  bool needsRestore = (current != m_glrc);
+  
+  if (needsRestore)
+    wglMakeCurrent(m_hdc, m_glrc);
+  
   const char * renderer = reinterpret_cast<const char *>(glGetString(GL_RENDERER));
-  wglMakeCurrent(nullptr, nullptr);
-  return renderer ? renderer : "Unknown";
+  std::string result = renderer ? renderer : "Unknown";
+  
+  // Only restore if we changed it, and restore to previous state
+  if (needsRestore && current != nullptr)
+    wglMakeCurrent(m_hdc, current);
+  // If we changed it and there was no previous context, leave our context current
+  
+  return result;
 }
 
 std::string AgusWglContext::GetRendererVersion() const
 {
-  wglMakeCurrent(m_hdc, m_glrc);
+  // Don't change context state - caller should have already made context current
+  // If not current, make it current but don't release it
+  HGLRC current = wglGetCurrentContext();
+  bool needsRestore = (current != m_glrc);
+  
+  if (needsRestore)
+    wglMakeCurrent(m_hdc, m_glrc);
+  
   const char * version = reinterpret_cast<const char *>(glGetString(GL_VERSION));
-  wglMakeCurrent(nullptr, nullptr);
-  return version ? version : "Unknown";
+  std::string result = version ? version : "Unknown";
+  
+  // Only restore if we changed it, and restore to previous state
+  if (needsRestore && current != nullptr)
+    wglMakeCurrent(m_hdc, current);
+  // If we changed it and there was no previous context, leave our context current
+  
+  return result;
 }
 
 void AgusWglContext::SetClearColor(dp::Color const & color)

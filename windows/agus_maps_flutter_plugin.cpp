@@ -7,18 +7,107 @@
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 #include <flutter/encodable_value.h>
+#include <flutter/texture_registrar.h>
 
 #include <windows.h>
 #include <shlobj.h>
+#include <d3d11.h>
+#include <dxgi.h>
 
 #include <memory>
 #include <string>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 
 namespace fs = std::filesystem;
 
 namespace agus_maps_flutter {
+
+// =============================================================================
+// FFI Function Types (from agus_maps_flutter.dll)
+// =============================================================================
+
+typedef void (*FnAgusNativeCreateSurface)(int32_t width, int32_t height, float density);
+typedef void (*FnAgusNativeOnSizeChanged)(int32_t width, int32_t height);
+typedef void (*FnAgusNativeOnSurfaceDestroyed)(void);
+typedef void* (*FnAgusGetSharedTextureHandle)(void);
+typedef void* (*FnAgusGetD3D11Device)(void);
+typedef void* (*FnAgusGetD3D11Texture)(void);
+typedef void (*FnAgusRenderFrame)(void);
+typedef void (*FnAgusSetFrameReadyCallback)(void (*callback)(void));
+
+// Global FFI function pointers
+static HMODULE g_ffiLibrary = nullptr;
+static FnAgusNativeCreateSurface g_fnCreateSurface = nullptr;
+static FnAgusNativeOnSizeChanged g_fnOnSizeChanged = nullptr;
+static FnAgusNativeOnSurfaceDestroyed g_fnOnSurfaceDestroyed = nullptr;
+static FnAgusGetSharedTextureHandle g_fnGetSharedTextureHandle = nullptr;
+static FnAgusGetD3D11Device g_fnGetD3D11Device = nullptr;
+static FnAgusGetD3D11Texture g_fnGetD3D11Texture = nullptr;
+static FnAgusRenderFrame g_fnRenderFrame = nullptr;
+static FnAgusSetFrameReadyCallback g_fnSetFrameReadyCallback = nullptr;
+
+// Forward declaration
+class AgusMapsFlutterPlugin;
+static AgusMapsFlutterPlugin* g_pluginInstance = nullptr;
+
+// Helper: Load FFI library and get function pointers
+static bool LoadFfiLibrary() {
+    if (g_ffiLibrary) return true;
+    
+    // Get executable directory
+    wchar_t path[MAX_PATH];
+    DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        OutputDebugStringA("[AgusMapsFlutter] Failed to get module path\n");
+        return false;
+    }
+    
+    std::wstring exeDir(path, length);
+    auto pos = exeDir.find_last_of(L"\\/");
+    if (pos != std::wstring::npos) {
+        exeDir = exeDir.substr(0, pos);
+    }
+    
+    // FFI library should be in the same directory
+    std::wstring dllPath = exeDir + L"\\agus_maps_flutter.dll";
+    
+    OutputDebugStringW((L"[AgusMapsFlutter] Loading FFI library: " + dllPath + L"\n").c_str());
+    
+    g_ffiLibrary = LoadLibraryW(dllPath.c_str());
+    if (!g_ffiLibrary) {
+        DWORD error = GetLastError();
+        char msg[256];
+        snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Failed to load FFI library, error=%lu\n", error);
+        OutputDebugStringA(msg);
+        return false;
+    }
+    
+    // Get function pointers
+    g_fnCreateSurface = (FnAgusNativeCreateSurface)GetProcAddress(g_ffiLibrary, "agus_native_create_surface");
+    g_fnOnSizeChanged = (FnAgusNativeOnSizeChanged)GetProcAddress(g_ffiLibrary, "agus_native_on_size_changed");
+    g_fnOnSurfaceDestroyed = (FnAgusNativeOnSurfaceDestroyed)GetProcAddress(g_ffiLibrary, "agus_native_on_surface_destroyed");
+    g_fnGetSharedTextureHandle = (FnAgusGetSharedTextureHandle)GetProcAddress(g_ffiLibrary, "agus_get_shared_texture_handle");
+    g_fnGetD3D11Device = (FnAgusGetD3D11Device)GetProcAddress(g_ffiLibrary, "agus_get_d3d11_device");
+    g_fnGetD3D11Texture = (FnAgusGetD3D11Texture)GetProcAddress(g_ffiLibrary, "agus_get_d3d11_texture");
+    g_fnRenderFrame = (FnAgusRenderFrame)GetProcAddress(g_ffiLibrary, "agus_render_frame");
+    g_fnSetFrameReadyCallback = (FnAgusSetFrameReadyCallback)GetProcAddress(g_ffiLibrary, "agus_set_frame_ready_callback");
+    
+    char msg[512];
+    snprintf(msg, sizeof(msg), 
+             "[AgusMapsFlutter] FFI functions: create=%p, size=%p, destroy=%p, handle=%p, device=%p, tex=%p, render=%p, callback=%p\n",
+             g_fnCreateSurface, g_fnOnSizeChanged, g_fnOnSurfaceDestroyed, 
+             g_fnGetSharedTextureHandle, g_fnGetD3D11Device, g_fnGetD3D11Texture,
+             g_fnRenderFrame, g_fnSetFrameReadyCallback);
+    OutputDebugStringA(msg);
+    
+    if (!g_fnCreateSurface) {
+        OutputDebugStringA("[AgusMapsFlutter] WARN: agus_native_create_surface not found\n");
+    }
+    
+    return true;
+}
 
 // Helper: Convert std::wstring to std::string (UTF-8)
 std::string WideToUtf8(const std::wstring& wide) {
@@ -100,6 +189,9 @@ public:
     // Disallow copy/move
     AgusMapsFlutterPlugin(const AgusMapsFlutterPlugin&) = delete;
     AgusMapsFlutterPlugin& operator=(const AgusMapsFlutterPlugin&) = delete;
+    
+    // Called when native code renders a new frame
+    void OnFrameReady();
 
 private:
     void HandleMethodCall(const FlutterMethodCall& method_call,
@@ -122,17 +214,37 @@ private:
     void ExtractDirectory(const fs::path& sourcePath, const fs::path& destPath);
 
     flutter::PluginRegistrarWindows* registrar_;
+    flutter::TextureRegistrar* texture_registrar_;
+    
+    // Texture state
+    int64_t texture_id_ = -1;
+    std::unique_ptr<flutter::TextureVariant> texture_;
+    int32_t surface_width_ = 0;
+    int32_t surface_height_ = 0;
+    
+    std::mutex mutex_;
 };
+
+// Frame ready callback (called from native rendering thread)
+static void OnNativeFrameReady() {
+    if (g_pluginInstance) {
+        g_pluginInstance->OnFrameReady();
+    }
+}
 
 // Static registration
 void AgusMapsFlutterPlugin::RegisterWithRegistrar(
     flutter::PluginRegistrarWindows* registrar) {
+    
+    // Pre-load FFI library
+    LoadFfiLibrary();
     
     auto channel = std::make_unique<FlutterMethodChannel>(
         registrar->messenger(), "agus_maps_flutter",
         &flutter::StandardMethodCodec::GetInstance());
 
     auto plugin = std::make_unique<AgusMapsFlutterPlugin>(registrar);
+    g_pluginInstance = plugin.get();
 
     channel->SetMethodCallHandler(
         [plugin_pointer = plugin.get()](const auto& call, auto result) {
@@ -146,9 +258,33 @@ void AgusMapsFlutterPlugin::RegisterWithRegistrar(
 
 AgusMapsFlutterPlugin::AgusMapsFlutterPlugin(
     flutter::PluginRegistrarWindows* registrar)
-    : registrar_(registrar) {}
+    : registrar_(registrar)
+    , texture_registrar_(registrar->texture_registrar()) {
+    OutputDebugStringA("[AgusMapsFlutter] Plugin constructed\n");
+}
 
-AgusMapsFlutterPlugin::~AgusMapsFlutterPlugin() {}
+AgusMapsFlutterPlugin::~AgusMapsFlutterPlugin() {
+    // Cleanup texture if registered
+    if (texture_id_ >= 0 && texture_registrar_) {
+        texture_registrar_->UnregisterTexture(texture_id_);
+    }
+    
+    // Destroy native surface
+    if (g_fnOnSurfaceDestroyed) {
+        g_fnOnSurfaceDestroyed();
+    }
+    
+    g_pluginInstance = nullptr;
+    
+    OutputDebugStringA("[AgusMapsFlutter] Plugin destroyed\n");
+}
+
+void AgusMapsFlutterPlugin::OnFrameReady() {
+    // Mark texture as needing update (called from native render thread)
+    if (texture_id_ >= 0 && texture_registrar_) {
+        texture_registrar_->MarkTextureFrameAvailable(texture_id_);
+    }
+}
 
 void AgusMapsFlutterPlugin::HandleMethodCall(
     const FlutterMethodCall& method_call,
@@ -323,29 +459,206 @@ void AgusMapsFlutterPlugin::HandleGetApkPath(
 void AgusMapsFlutterPlugin::HandleCreateMapSurface(
     const FlutterMethodCall& call,
     std::unique_ptr<FlutterMethodResult> result) {
-    // TODO: Implement texture-based surface creation
-    // For now, return a placeholder texture ID
-    // The actual rendering will be handled by the native FFI library
     
-    OutputDebugStringA("[AgusMapsFlutter] createMapSurface called (not yet implemented)\n");
+    OutputDebugStringA("[AgusMapsFlutter] createMapSurface called\n");
     
-    // Return -1 to indicate texture creation is not yet implemented
-    // The Dart side should handle this gracefully
-    result->Success(flutter::EncodableValue(-1));
+    // Parse arguments
+    const auto* arguments = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (!arguments) {
+        result->Error("INVALID_ARGUMENT", "Expected map arguments");
+        return;
+    }
+    
+    // Get width, height, density from arguments
+    int32_t width = 800;  // defaults
+    int32_t height = 600;
+    double density = 1.0;
+    
+    auto width_it = arguments->find(flutter::EncodableValue("width"));
+    if (width_it != arguments->end()) {
+        if (auto* intVal = std::get_if<int32_t>(&width_it->second)) {
+            width = *intVal;
+        } else if (auto* dblVal = std::get_if<double>(&width_it->second)) {
+            width = static_cast<int32_t>(*dblVal);
+        }
+    }
+    
+    auto height_it = arguments->find(flutter::EncodableValue("height"));
+    if (height_it != arguments->end()) {
+        if (auto* intVal = std::get_if<int32_t>(&height_it->second)) {
+            height = *intVal;
+        } else if (auto* dblVal = std::get_if<double>(&height_it->second)) {
+            height = static_cast<int32_t>(*dblVal);
+        }
+    }
+    
+    auto density_it = arguments->find(flutter::EncodableValue("density"));
+    if (density_it != arguments->end()) {
+        if (auto* dblVal = std::get_if<double>(&density_it->second)) {
+            density = *dblVal;
+        }
+    }
+    
+    char msg[256];
+    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Creating surface: %dx%d, density=%.2f\n", 
+             width, height, density);
+    OutputDebugStringA(msg);
+    
+    // Ensure FFI library is loaded
+    if (!LoadFfiLibrary()) {
+        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to load FFI library\n");
+        result->Error("FFI_ERROR", "Failed to load native FFI library");
+        return;
+    }
+    
+    // Create native surface (this creates Framework, DrapeEngine, OpenGL context)
+    if (g_fnCreateSurface) {
+        OutputDebugStringA("[AgusMapsFlutter] Calling agus_native_create_surface...\n");
+        g_fnCreateSurface(width, height, static_cast<float>(density));
+        OutputDebugStringA("[AgusMapsFlutter] agus_native_create_surface returned\n");
+    } else {
+        OutputDebugStringA("[AgusMapsFlutter] ERROR: agus_native_create_surface not available\n");
+        result->Error("FFI_ERROR", "agus_native_create_surface function not found");
+        return;
+    }
+    
+    // Set up frame ready callback
+    if (g_fnSetFrameReadyCallback) {
+        g_fnSetFrameReadyCallback(&OnNativeFrameReady);
+        OutputDebugStringA("[AgusMapsFlutter] Frame ready callback set\n");
+    }
+    
+    // Get the D3D11 texture from native code
+    void* d3d11Device = nullptr;
+    void* d3d11Texture = nullptr;
+    void* sharedHandle = nullptr;
+    
+    if (g_fnGetD3D11Device) {
+        d3d11Device = g_fnGetD3D11Device();
+    }
+    if (g_fnGetD3D11Texture) {
+        d3d11Texture = g_fnGetD3D11Texture();
+    }
+    if (g_fnGetSharedTextureHandle) {
+        sharedHandle = g_fnGetSharedTextureHandle();
+    }
+    
+    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] D3D11: device=%p, texture=%p, handle=%p\n",
+             d3d11Device, d3d11Texture, sharedHandle);
+    OutputDebugStringA(msg);
+    
+    // Store surface dimensions
+    surface_width_ = width;
+    surface_height_ = height;
+    
+    // Create Flutter texture using GPU surface descriptor
+    if (sharedHandle && texture_registrar_) {
+        // Create texture variant with GPU surface callback
+        // Capture sharedHandle by value for the lambda
+        void* capturedHandle = sharedHandle;
+        
+        texture_ = std::make_unique<flutter::TextureVariant>(
+            flutter::GpuSurfaceTexture(
+                kFlutterDesktopGpuSurfaceTypeDxgiSharedHandle,
+                [this, capturedHandle](size_t w, size_t h) -> const FlutterDesktopGpuSurfaceDescriptor* {
+                    // Return a static descriptor - the texture handle doesn't change
+                    static FlutterDesktopGpuSurfaceDescriptor desc = {};
+                    desc.struct_size = sizeof(FlutterDesktopGpuSurfaceDescriptor);
+                    desc.handle = capturedHandle;  // Use shared handle for DXGI
+                    desc.width = static_cast<size_t>(this->surface_width_);
+                    desc.height = static_cast<size_t>(this->surface_height_);
+                    desc.visible_width = static_cast<size_t>(this->surface_width_);
+                    desc.visible_height = static_cast<size_t>(this->surface_height_);
+                    desc.format = kFlutterDesktopPixelFormatBGRA8888;
+                    desc.release_context = nullptr;
+                    desc.release_callback = nullptr;
+                    return &desc;
+                }
+            )
+        );
+        
+        // Register texture with Flutter
+        texture_id_ = texture_registrar_->RegisterTexture(texture_.get());
+        
+        snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Texture registered with ID: %lld\n", texture_id_);
+        OutputDebugStringA(msg);
+        
+        result->Success(flutter::EncodableValue(texture_id_));
+    } else {
+        // Fallback: return -1 if texture creation failed
+        OutputDebugStringA("[AgusMapsFlutter] WARN: No D3D11 texture available, returning -1\n");
+        result->Success(flutter::EncodableValue(static_cast<int64_t>(-1)));
+    }
 }
 
 void AgusMapsFlutterPlugin::HandleResizeMapSurface(
     const FlutterMethodCall& call,
     std::unique_ptr<FlutterMethodResult> result) {
-    // TODO: Implement surface resizing
-    OutputDebugStringA("[AgusMapsFlutter] resizeMapSurface called (not yet implemented)\n");
+    
+    OutputDebugStringA("[AgusMapsFlutter] resizeMapSurface called\n");
+    
+    // Parse arguments
+    const auto* arguments = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (!arguments) {
+        result->Error("INVALID_ARGUMENT", "Expected map arguments");
+        return;
+    }
+    
+    int32_t width = surface_width_;
+    int32_t height = surface_height_;
+    
+    auto width_it = arguments->find(flutter::EncodableValue("width"));
+    if (width_it != arguments->end()) {
+        if (auto* intVal = std::get_if<int32_t>(&width_it->second)) {
+            width = *intVal;
+        } else if (auto* dblVal = std::get_if<double>(&width_it->second)) {
+            width = static_cast<int32_t>(*dblVal);
+        }
+    }
+    
+    auto height_it = arguments->find(flutter::EncodableValue("height"));
+    if (height_it != arguments->end()) {
+        if (auto* intVal = std::get_if<int32_t>(&height_it->second)) {
+            height = *intVal;
+        } else if (auto* dblVal = std::get_if<double>(&height_it->second)) {
+            height = static_cast<int32_t>(*dblVal);
+        }
+    }
+    
+    char msg[256];
+    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Resizing surface: %dx%d\n", width, height);
+    OutputDebugStringA(msg);
+    
+    // Update stored dimensions
+    surface_width_ = width;
+    surface_height_ = height;
+    
+    // Call native resize
+    if (g_fnOnSizeChanged) {
+        g_fnOnSizeChanged(width, height);
+    }
+    
     result->Success(flutter::EncodableValue(true));
 }
 
 void AgusMapsFlutterPlugin::HandleDestroyMapSurface(
     std::unique_ptr<FlutterMethodResult> result) {
-    // TODO: Implement surface destruction
-    OutputDebugStringA("[AgusMapsFlutter] destroyMapSurface called (not yet implemented)\n");
+    
+    OutputDebugStringA("[AgusMapsFlutter] destroyMapSurface called\n");
+    
+    // Unregister texture
+    if (texture_id_ >= 0 && texture_registrar_) {
+        texture_registrar_->UnregisterTexture(texture_id_);
+        texture_id_ = -1;
+    }
+    
+    texture_.reset();
+    
+    // Destroy native surface
+    if (g_fnOnSurfaceDestroyed) {
+        g_fnOnSurfaceDestroyed();
+    }
+    
     result->Success(flutter::EncodableValue(true));
 }
 
