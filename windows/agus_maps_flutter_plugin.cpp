@@ -222,6 +222,9 @@ private:
     int32_t surface_width_ = 0;
     int32_t surface_height_ = 0;
     
+    // GPU surface descriptor - member to avoid static variable issues
+    FlutterDesktopGpuSurfaceDescriptor gpu_surface_desc_ = {};
+    
     std::mutex mutex_;
 };
 
@@ -554,25 +557,33 @@ void AgusMapsFlutterPlugin::HandleCreateMapSurface(
     // Create Flutter texture using GPU surface descriptor
     if (sharedHandle && texture_registrar_) {
         // Create texture variant with GPU surface callback
-        // Capture sharedHandle by value for the lambda
-        void* capturedHandle = sharedHandle;
-        
+        // IMPORTANT: We query the current handle dynamically because it changes on resize
         texture_ = std::make_unique<flutter::TextureVariant>(
             flutter::GpuSurfaceTexture(
                 kFlutterDesktopGpuSurfaceTypeDxgiSharedHandle,
-                [this, capturedHandle](size_t w, size_t h) -> const FlutterDesktopGpuSurfaceDescriptor* {
-                    // Return a static descriptor - the texture handle doesn't change
-                    static FlutterDesktopGpuSurfaceDescriptor desc = {};
-                    desc.struct_size = sizeof(FlutterDesktopGpuSurfaceDescriptor);
-                    desc.handle = capturedHandle;  // Use shared handle for DXGI
-                    desc.width = static_cast<size_t>(this->surface_width_);
-                    desc.height = static_cast<size_t>(this->surface_height_);
-                    desc.visible_width = static_cast<size_t>(this->surface_width_);
-                    desc.visible_height = static_cast<size_t>(this->surface_height_);
-                    desc.format = kFlutterDesktopPixelFormatBGRA8888;
-                    desc.release_context = nullptr;
-                    desc.release_callback = nullptr;
-                    return &desc;
+                [this](size_t w, size_t h) -> const FlutterDesktopGpuSurfaceDescriptor* {
+                    // Query the CURRENT shared handle - it may have changed due to resize
+                    void* currentHandle = nullptr;
+                    if (g_fnGetSharedTextureHandle) {
+                        currentHandle = g_fnGetSharedTextureHandle();
+                    }
+                    
+                    if (!currentHandle) {
+                        OutputDebugStringA("[AgusMapsFlutter] WARNING: No current shared handle available\n");
+                        return nullptr;
+                    }
+                    
+                    // Use a member descriptor instead of static to avoid race conditions
+                    this->gpu_surface_desc_.struct_size = sizeof(FlutterDesktopGpuSurfaceDescriptor);
+                    this->gpu_surface_desc_.handle = currentHandle;
+                    this->gpu_surface_desc_.width = static_cast<size_t>(this->surface_width_);
+                    this->gpu_surface_desc_.height = static_cast<size_t>(this->surface_height_);
+                    this->gpu_surface_desc_.visible_width = static_cast<size_t>(this->surface_width_);
+                    this->gpu_surface_desc_.visible_height = static_cast<size_t>(this->surface_height_);
+                    this->gpu_surface_desc_.format = kFlutterDesktopPixelFormatBGRA8888;
+                    this->gpu_surface_desc_.release_context = nullptr;
+                    this->gpu_surface_desc_.release_callback = nullptr;
+                    return &this->gpu_surface_desc_;
                 }
             )
         );

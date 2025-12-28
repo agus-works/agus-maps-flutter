@@ -403,6 +403,34 @@ For Flutter texture integration:
 - Use `WGL_NV_DX_interop2` for GL-D3D11 sharing
 - Share via DXGI shared handle
 
+**Critical: Dynamic Handle Lookup**
+
+The D3D11 shared texture handle changes whenever the surface is resized. The Flutter `GpuSurfaceTexture` callback must query the **current** handle each time it's invoked, not capture a handle at creation time:
+
+```cpp
+// WRONG - captured handle becomes stale on resize:
+void* capturedHandle = g_fnGetSharedTextureHandle();
+texture_ = std::make_unique<flutter::TextureVariant>(
+    flutter::GpuSurfaceTexture(
+        kFlutterDesktopGpuSurfaceTypeDxgiSharedHandle,
+        [capturedHandle](...) {
+            desc.handle = capturedHandle;  // STALE after resize!
+        }
+    )
+);
+
+// CORRECT - query current handle dynamically:
+texture_ = std::make_unique<flutter::TextureVariant>(
+    flutter::GpuSurfaceTexture(
+        kFlutterDesktopGpuSurfaceTypeDxgiSharedHandle,
+        [this](...) {
+            void* currentHandle = g_fnGetSharedTextureHandle();  // Always current
+            desc.handle = currentHandle;
+        }
+    )
+);
+```
+
 ### Frame Callback Chain
 
 The frame notification system has two callback chains that must both be connected:
@@ -493,11 +521,16 @@ endif()
    - Check logs for "[AgusMapsFlutter] WGL factory frame callback set"
    - Ensure `g_wglFactory->SetFrameCallback()` is called after factory creation
 
-2. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
+2. **Stale texture handle on resize:** The `GpuSurfaceTexture` callback captures the D3D11 shared handle at creation time, but the handle changes when the surface resizes.
+   - Symptoms: Map appears initially then goes blank on window resize; multiple `Shared texture created: ... handle: ...` log entries with different handles
+   - Fix: The callback must dynamically query `g_fnGetSharedTextureHandle()` each time, not use a captured value
+   - See "Dynamic Handle Lookup" section above for correct implementation
+
+3. **Rendering to wrong framebuffer:** OpenGL may be rendering to framebuffer 0 (screen) instead of our offscreen FBO.
    - Verify `MakeCurrent()` binds `m_framebuffer` for draw context
    - Check for CoMaps code that calls `glBindFramebuffer(GL_FRAMEBUFFER, 0)`
 
-3. **Stale data extraction:** Old data files without symbol textures.
+4. **Stale data extraction:** Old data files without symbol textures.
    - Delete `Documents\agus_maps_flutter\.comaps_data_extracted` marker file
    - Delete `Documents\agus_maps_flutter\` folder contents
    - Rebuild and run to force fresh extraction
@@ -505,6 +538,7 @@ endif()
 **Debugging:**
 - Enable frame logging in `AgusWglContextFactory::CopyToSharedTexture()` to see `hasContent` status
 - Check if "Frame N size: WxH hasContent: true" appears in logs
+- If `hasContent` is true but display is blank, check texture handle staleness (cause #2)
 - If `hasContent` is false, the OpenGL FBO isn't receiving rendered content
 
 ### Missing symbol warnings (transit_tram-s, castle-s, etc.)
