@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 import 'package:agus_maps_flutter/mwm_storage.dart';
 import 'package:path_provider/path_provider.dart';
+import 'about_tab.dart';
 import 'downloads_tab.dart';
 import 'settings_tab.dart';
 
@@ -305,6 +306,7 @@ class _MyAppState extends State<MyApp> {
               _buildFavoritesTab(),
               _buildDownloadsTab(),
               const SettingsTab(),
+              const AboutTab(),
             ],
           ),
         ),
@@ -335,6 +337,11 @@ class _MyAppState extends State<MyApp> {
               icon: Icon(Icons.settings_outlined),
               selectedIcon: Icon(Icons.settings),
               label: 'Settings',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.info_outline),
+              selectedIcon: Icon(Icons.info),
+              label: 'About',
             ),
           ],
         ),
