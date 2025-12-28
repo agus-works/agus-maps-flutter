@@ -308,15 +308,38 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 
 CoMaps uses thread checkers to verify certain classes (like `BookmarkManager`) are accessed from their original thread. In embedded Flutter builds, threading models differ from native apps, causing thread checker assertions to fail.
 
-**Solution:** The Windows build defines `OMIM_DISABLE_THREAD_CHECKER` which disables these checks:
-```cmake
-target_compile_definitions(agus_maps_flutter PRIVATE
-  OMIM_OS_WINDOWS
-  OMIM_DISABLE_THREAD_CHECKER  # Required for Flutter embedded builds
-)
+**Symptom:**
+```
+(2) ASSERT FAILED
+map/bookmark_manager.cpp:263
+CHECK(m_threadChecker.CalledOnOriginalThread())
 ```
 
-This is supported by patches 0030 and 0031 which modify `thread_checker.cpp` and `thread_checker.hpp`.
+**Solution:** The `OMIM_DISABLE_THREAD_CHECKER` compile definition must be set globally for **all CoMaps libraries**, not just agus_maps_flutter. This is done in `src/CMakeLists.txt` before `add_subdirectory` for CoMaps:
+
+```cmake
+# In src/CMakeLists.txt, BEFORE add_subdirectory for CoMaps:
+add_compile_definitions(OMIM_DISABLE_THREAD_CHECKER)
+```
+
+This is supported by patches 0030 and 0031 which modify `thread_checker.cpp` and `thread_checker.hpp` to respect the flag.
+
+**Important:** Setting this only on `agus_maps_flutter` target is NOT sufficient - it must be a global definition so all CoMaps static libraries are compiled with it.
+
+### Crash Dump Handler
+
+Windows builds include automatic crash dump generation for debugging. When the app crashes, a minidump file is written to:
+
+```
+Documents\agus_maps_flutter\agus_maps_crash_YYYYMMDD_HHMMSS.dmp
+```
+
+This file can be loaded in Visual Studio or WinDbg for post-mortem debugging.
+
+The crash handler is installed automatically when logging is initialized and captures:
+- Exception code and address
+- Thread information
+- Memory state at crash time
 
 ### WGL Context Management
 
