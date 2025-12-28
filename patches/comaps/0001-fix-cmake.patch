@@ -1,6 +1,6 @@
 warning: in the working copy of 'CMakeLists.txt', CRLF will be replaced by LF the next time Git touches it
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d0ecf6e..621316c 100644
+index d0ecf6e..ba92c9e 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -22,7 +22,12 @@ if (POLICY CMP0156)
@@ -17,7 +17,16 @@ index d0ecf6e..621316c 100644
  set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${OMIM_ROOT}/cmake")
  
  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-@@ -96,7 +101,14 @@ if (PLATFORM_WIN)
+@@ -83,6 +88,8 @@ endif()
+ # Global compile options for all configurations.
+ if (MSVC)
+   add_compile_options(/utf-8)
++  # /bigobj needed for unity builds with many sections
++  add_compile_options(/bigobj)
+   add_link_options(/INCREMENTAL:NO)
+ else()
+   add_compile_options(-ffast-math $<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>)
+@@ -96,7 +103,14 @@ if (PLATFORM_WIN)
  endif()
  
  # Built-in CMake configurations: Debug, Release, RelWithDebInfo, MinSizeRel
@@ -33,7 +42,7 @@ index d0ecf6e..621316c 100644
    add_definitions(-DDEBUG)
    if (NOT MSVC)
      add_compile_options(-fno-omit-frame-pointer)
-@@ -107,7 +119,8 @@ elseif (${CMAKE_BUILD_TYPE} MATCHES "Rel")
+@@ -107,7 +121,8 @@ elseif (${CMAKE_BUILD_TYPE} MATCHES "Rel")
      add_compile_options(-O3 $<$<CXX_COMPILER_ID:GNU>:-flto=auto>)
    endif()
  else()
@@ -43,7 +52,7 @@ index d0ecf6e..621316c 100644
  endif()
  
  if (${CMAKE_BUILD_TYPE} STREQUAL "RelWithDebInfo")
-@@ -150,7 +163,7 @@ find_package(Threads REQUIRED)
+@@ -150,7 +165,7 @@ find_package(Threads REQUIRED)
  
  # Scripts
  
@@ -52,7 +61,7 @@ index d0ecf6e..621316c 100644
    list(APPEND qt_components Core Network)
    if (NOT SKIP_QT_GUI OR NOT SKIP_TESTS OR PYBINDINGS)
      list(APPEND qt_components Widgets)
-@@ -170,7 +183,7 @@ if (NOT PLATFORM_IPHONE AND NOT PLATFORM_ANDROID)
+@@ -170,7 +185,7 @@ if (NOT PLATFORM_IPHONE AND NOT PLATFORM_ANDROID)
  endif()
  
  # To allow #include "base/file_name.hpp" in all sources.
@@ -61,7 +70,7 @@ index d0ecf6e..621316c 100644
  
  if (USE_PCH)
    message(STATUS "Precompiled headers are ON")
-@@ -200,6 +213,89 @@ endif()
+@@ -200,6 +215,89 @@ endif()
  
  find_package(ZLIB REQUIRED)
  
@@ -151,7 +160,7 @@ index d0ecf6e..621316c 100644
  # Include 3party dependencies.
  add_subdirectory(3party)
  
-@@ -209,38 +305,48 @@ if (PLATFORM_DESKTOP AND NOT WITH_SYSTEM_PROVIDED_3PARTY)
+@@ -209,38 +307,48 @@ if (PLATFORM_DESKTOP AND NOT WITH_SYSTEM_PROVIDED_3PARTY)
    include_directories("${PROJECT_BINARY_DIR}/3party/gflags/include")
  endif()
  
@@ -222,7 +231,7 @@ index d0ecf6e..621316c 100644
    if (NOT SKIP_QT_GUI)
      add_subdirectory(qt)
    endif()
-@@ -255,3 +361,5 @@ omim_add_test_subdirectory(libs/qt_tstfrm)
+@@ -255,3 +363,5 @@ omim_add_test_subdirectory(libs/qt_tstfrm)
  if (PLATFORM_ANDROID)
    add_subdirectory(android/sdk/src/main/cpp)
  endif()

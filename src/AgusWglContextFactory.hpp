@@ -61,7 +61,12 @@ public:
 
   // Frame synchronization
   void SetFrameCallback(std::function<void()> callback) { m_frameCallback = callback; }
+  void SetKeepAliveCallback(std::function<void()> callback) { m_keepAliveCallback = callback; }
   void OnFrameReady();
+  
+  /// Request an active frame to keep render loop running during tile loading.
+  /// This calls the registered keep-alive callback (typically Framework::MakeFrameActive)
+  void RequestActiveFrame();
 
   // Copy rendered content to shared texture
   void CopyToSharedTexture();
@@ -103,6 +108,7 @@ private:
   int m_height = 0;
   std::atomic<bool> m_presentAvailable{true};
   std::function<void()> m_frameCallback;
+  std::function<void()> m_keepAliveCallback;  // Called to keep render loop active
   std::mutex m_mutex;
 };
 
@@ -149,6 +155,9 @@ private:
   HGLRC m_glrc;
   AgusWglContextFactory * m_factory;
   bool m_isDraw;
+  /// Counter for initial frames - forces Flutter notification for first N frames
+  /// This ensures tiles load properly even when render loop would otherwise suspend
+  int m_initialFrameCount = 120;  // ~2 seconds at 60fps
 };
 
 }  // namespace agus

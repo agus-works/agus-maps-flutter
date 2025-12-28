@@ -349,11 +349,16 @@ FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
     LOG(LINFO, ("comaps_set_view: lat=", lat, " lon=", lon, " zoom=", zoom));
     
     if (g_framework) {
-        g_framework->SetViewportCenter(m2::PointD(mercator::FromLatLon(lat, lon)), zoom);
+        // Use isAnim=false to set the view synchronously.
+        // This ensures the screen is updated immediately so that subsequent
+        // tile requests use the correct viewport coordinates.
+        // With isAnim=true (default), the view change is animated which delays
+        // the actual screen update, causing tile requests to use stale coordinates.
+        g_framework->SetViewportCenter(m2::PointD(mercator::FromLatLon(lat, lon)), zoom, false /* isAnim */);
         
-        // Force invalidate the current viewport to ensure tiles are reloaded
-        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
-        LOG(LINFO, ("comaps_set_view: Viewport invalidated"));
+        // Wake up the render loop to process the view change event
+        g_framework->InvalidateRendering();
+        LOG(LINFO, ("comaps_set_view: Viewport set (no animation)"));
     } else {
         LOG(LWARNING, ("comaps_set_view: Framework not ready"));
     }
@@ -367,6 +372,25 @@ FFI_PLUGIN_EXPORT void comaps_invalidate(void) {
         LOG(LINFO, ("comaps_invalidate: Viewport invalidated"));
     } else {
         LOG(LWARNING, ("comaps_invalidate: Framework not ready"));
+    }
+}
+
+FFI_PLUGIN_EXPORT void comaps_force_redraw(void) {
+    LOG(LINFO, ("comaps_force_redraw called"));
+    
+    if (g_framework) {
+        // UpdateMapStyle clears all render groups and invalidates the read manager,
+        // which forces a complete tile reload when the render loop processes it.
+        // This is the cleanest way to force a full redraw.
+        g_framework->SetMapStyle(g_framework->GetMapStyle());
+        
+        // MakeFrameActive ensures the render loop stays active (isActiveFrame=true)
+        // long enough to process the style update and request new tiles.
+        g_framework->MakeFrameActive();
+        
+        LOG(LINFO, ("comaps_force_redraw: SetMapStyle + MakeFrameActive triggered"));
+    } else {
+        LOG(LWARNING, ("comaps_force_redraw: Framework not ready"));
     }
 }
 
@@ -615,6 +639,17 @@ FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height,
         notifyFlutterFrameReady();
     });
     OutputDebugStringA("[AgusMapsFlutter] WGL factory frame callback set\n");
+    
+    // Set keep-alive callback to prevent render loop from suspending during tile loading.
+    // This calls Framework::MakeFrameActive() which sends an ActiveFrameEvent to keep
+    // the FrontendRenderer's render loop running. Without this, the render loop would
+    // suspend after kMaxInactiveFrames (2) inactive frames, before tiles have arrived.
+    g_wglFactory->SetKeepAliveCallback([]() {
+        if (g_framework) {
+            g_framework->MakeFrameActive();
+        }
+    });
+    OutputDebugStringA("[AgusMapsFlutter] WGL factory keep-alive callback set\n");
     
     // Wrap in ThreadSafeFactory for thread-safe context access
     g_threadSafeFactory = make_unique_dp<dp::ThreadSafeFactory>(g_wglFactory);
