@@ -728,6 +728,10 @@ void AgusWglContext::DoneCurrent()
   wglMakeCurrent(nullptr, nullptr);
 }
 
+// Static counter for SetFramebuffer logging (limit spam)
+static int s_setFramebufferLogCount = 0;
+static const int kSetFramebufferLogEveryN = 120;  // Log twice per second at 60fps
+
 void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
 {
   // CRITICAL: When framebuffer is nullptr, CoMaps expects the "default" framebuffer
@@ -737,12 +741,25 @@ void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
   if (framebuffer)
   {
     framebuffer->Bind();
+    if (s_setFramebufferLogCount % kSetFramebufferLogEveryN == 0)
+      LOG(LINFO, ("SetFramebuffer: Binding provided FBO (postprocess pass)"));
   }
   else if (m_isDraw && m_factory)
   {
     // Bind our offscreen FBO as the "default" framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, m_factory->m_framebuffer);
+    GLuint fbo = m_factory->m_framebuffer;
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    if (s_setFramebufferLogCount % kSetFramebufferLogEveryN == 0)
+      LOG(LINFO, ("SetFramebuffer(nullptr): Bound offscreen FBO", fbo, "isDraw:", m_isDraw));
   }
+  else
+  {
+    // Not a draw context or no factory - bind FBO 0
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (s_setFramebufferLogCount % kSetFramebufferLogEveryN == 0)
+      LOG(LINFO, ("SetFramebuffer(nullptr): Upload context, binding FBO 0"));
+  }
+  s_setFramebufferLogCount++;
 }
 
 void AgusWglContext::ForgetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
@@ -761,7 +778,26 @@ void AgusWglContext::ApplyFramebuffer(std::string const & framebufferLabel)
 
 void AgusWglContext::Init(dp::ApiVersion apiVersion)
 {
-  // GL functions already initialized in factory
+  // GLFunctions already initialized in factory constructor via GLFunctions::Init()
+  // But we need to set up the initial GL state like OGLContext::Init() does
+  
+  // Pixel alignment for texture uploads
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  
+  // Depth testing setup
+  glClearDepth(1.0);
+  glDepthFunc(GL_LEQUAL);
+  glDepthMask(GL_TRUE);
+  
+  // Face culling - important for proper rendering
+  glFrontFace(GL_CW);
+  glCullFace(GL_BACK);
+  glEnable(GL_CULL_FACE);
+  
+  // Scissor test - CRITICAL: CoMaps expects scissor to be enabled
+  glEnable(GL_SCISSOR_TEST);
+  
+  LOG(LINFO, ("AgusWglContext::Init completed, scissor test enabled"));
 }
 
 std::string AgusWglContext::GetRendererName() const
