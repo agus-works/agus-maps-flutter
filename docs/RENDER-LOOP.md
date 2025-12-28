@@ -1,6 +1,6 @@
 # Render Loop Comparison: CoMaps Native vs Flutter Plugin
 
-This document provides a detailed comparison between CoMaps' native app render loop (using DrapeEngine) and our Flutter plugin implementations on iOS, Android, and macOS. This serves as a reference for achieving implementation parity and for future ports to Windows and Linux.
+This document provides a detailed comparison between CoMaps' native app render loop (using DrapeEngine) and our Flutter plugin implementations on iOS, Android, macOS, and Windows. This serves as a reference for achieving implementation parity and for future ports to Linux.
 
 ---
 
@@ -16,7 +16,7 @@ This document provides a detailed comparison between CoMaps' native app render l
 8. [Frame Notification to Flutter](#8-frame-notification-to-flutter)
 9. [Platform-Specific Issues](#9-platform-specific-issues)
 10. [Parity Checklist](#10-parity-checklist)
-11. [Future Platform Notes](#11-future-platform-notes-macos-windows-linux)
+11. [Future Platform Notes](#11-future-platform-notes-linux)
 
 ---
 
@@ -123,6 +123,40 @@ The Drape rendering engine uses a **two-thread model**:
 - Uses Flutter's `SurfaceProducer` instead of standard `SurfaceView`
 - Frame notification via JNI callback to Java + Handler.post to main thread
 - EGL context bound to Flutter's surface texture
+
+### Flutter Plugin: Windows Implementation (x86_64)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Main Thread (Windows)                            │
+│  • Flutter engine runs here                                          │
+│  • AgusMapsFlutterPlugin.cpp handles MethodChannel                  │
+│  • D3D11 texture registration via FlutterDesktopGpuSurfaceDescriptor│
+│  • OnFrameReady() called here (via callback chain)                  │
+└───────────────────────────────┬─────────────────────────────────────┘
+                                │ D3D11 DXGI Shared Handle
+                                ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                      FrontendRenderer Thread                          │
+│  • Same as native - managed by DrapeEngine                           │
+│  • Renders to OpenGL FBO via WGL context                             │
+│  • Present() → CopyToSharedTexture() → notifyFlutterFrameReady()    │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │ glReadPixels (CPU-mediated copy)
+                                ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                      BackendRenderer Thread                           │
+│  • Same as native - managed by DrapeEngine                           │
+│  • Uses AgusWglContext with shared WGL context                       │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**Key differences from native and other platforms:**
+- Uses WGL/OpenGL for rendering (not EGL or Metal)
+- **NOT zero-copy**: Frame transfer via `glReadPixels()` → CPU buffer → D3D11 staging texture
+- D3D11 shared texture exposed to Flutter via DXGI handle
+- Frame notification via direct callback (no JNI or dispatch_async needed)
+- Currently x86_64 only; ARM64 Windows untested
 
 ---
 
@@ -694,7 +728,59 @@ public void onFrameReady() {
 
 ---
 
-## 11. Future Platform Notes (macOS, Windows, Linux)
+## 11. Future Platform Notes (Linux)
+
+### Windows (Implemented)
+
+**Implementation status:** ✅ Complete (x86_64 only)
+
+**Architecture:**
+- WGL/OpenGL for CoMaps rendering to offscreen FBO
+- `glReadPixels()` to read framebuffer to CPU buffer (NOT zero-copy)
+- RGBA→BGRA conversion with Y-flip during copy
+- D3D11 staging texture for CPU→GPU transfer
+- D3D11 shared texture exposed via DXGI handle
+- Flutter samples shared texture via `FlutterDesktopGpuSurfaceDescriptor`
+
+**Thread Architecture:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Main Thread (Windows)                            │
+│  • Flutter engine runs here                                          │
+│  • AgusMapsFlutterPlugin.cpp handles MethodChannel                  │
+│  • D3D11 texture registration                                       │
+│  • Frame notification via callback chain                             │
+└───────────────────────────────┬─────────────────────────────────────┘
+                                │ DXGI Shared Handle (GPU memory)
+                                ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                      FrontendRenderer Thread                          │
+│  • Managed by DrapeEngine                                            │
+│  • Renders to OpenGL FBO via WGL context                             │
+│  • Present() → glReadPixels → D3D11 staging → shared texture         │
+│  • Frame callback → notifyFlutterFrameReady()                        │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                      BackendRenderer Thread                           │
+│  • Managed by DrapeEngine                                            │
+│  • Uses AgusWglContext with shared WGL context                       │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**Key characteristics:**
+- **NOT zero-copy**: CPU-mediated frame transfer (~2-5ms overhead per frame at 1080p)
+- Uses native WGL/OpenGL (not ANGLE/EGL)
+- x86_64 only; ARM64 Windows theoretically possible but untested
+- Requires Visual Studio 2022 + vcpkg for building
+
+**Files:**
+- Plugin: `windows/agus_maps_flutter_plugin.cpp`
+- WGL context: `src/AgusWglContextFactory.cpp`, `AgusWglContextFactory.hpp`
+- FFI bridge: `src/agus_maps_flutter_win.cpp`
+- Platform init: `src/agus_platform_win.cpp`
 
 ### macOS (Implemented)
 
@@ -745,20 +831,6 @@ public void onFrameReady() {
 - FFI bridge: `macos/Classes/agus_maps_flutter_macos.mm`
 - Platform init: `macos/Classes/AgusPlatformMacOS.mm`
 
-### Windows
-
-**Expected approach:**
-- Vulkan or DirectX 11/12
-- Flutter desktop uses `FlutterDesktopViewControllerRef`
-- Need `AgusVulkanContextFactory` or `AgusDX11ContextFactory`
-- Frame notification via Win32 message or `PostThreadMessage`
-
-**Key considerations:**
-- CoMaps already has Vulkan support (`dp::ApiVersion::Vulkan`)
-- Need to implement `GraphicsContextFactory` for Windows surface
-- DXGI swap chain or Vulkan swap chain integration
-- High DPI handling
-
 ### Linux
 
 **Expected approach:**
@@ -792,13 +864,23 @@ For all desktop platforms, consider:
 3. **Configuration via compile-time flags**:
    ```cpp
    #if defined(AGUS_PLATFORM_MACOS) || defined(PLATFORM_MAC)
-   // Metal - same as iOS
-   #elif defined(AGUS_PLATFORM_WINDOWS)
-   // Vulkan or DX11
+   // Metal - same as iOS (zero-copy via IOSurface)
+   #elif defined(AGUS_PLATFORM_WINDOWS) || defined(OMIM_OS_WINDOWS)
+   // WGL/OpenGL + D3D11 (CPU-mediated copy)
    #elif defined(AGUS_PLATFORM_LINUX)
-   // OpenGL ES or Vulkan
+   // OpenGL ES or Vulkan (TBD)
    #endif
    ```
+
+### Zero-Copy Status by Platform
+
+| Platform | Zero-Copy | Mechanism |
+|----------|-----------|-----------|
+| iOS | ✅ Yes | CVPixelBuffer + IOSurface + Metal texture cache |
+| macOS | ✅ Yes | CVPixelBuffer + IOSurface + Metal texture cache |
+| Android | ✅ Yes | SurfaceTexture + EGL native window |
+| Windows | ❌ No | glReadPixels → CPU → D3D11 staging → shared texture |
+| Linux | TBD | Likely EGL or Vulkan interop |
 
 ---
 
@@ -809,6 +891,7 @@ For all desktop platforms, consider:
 - iOS implementation: `ios/Classes/AgusMetalContextFactory.mm`, `agus_maps_flutter_ios.mm`
 - macOS implementation: `macos/Classes/AgusMetalContextFactory.mm`, `agus_maps_flutter_macos.mm`
 - Android implementation: `src/agus_ogl.cpp`, `src/agus_maps_flutter.cpp`
+- Windows implementation: `src/AgusWglContextFactory.cpp`, `src/agus_maps_flutter_win.cpp`
 - Active frame callback patch: `patches/comaps/0012-active-frame-callback.patch`
 
 ---
