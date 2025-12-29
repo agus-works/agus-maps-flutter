@@ -33,6 +33,9 @@ migrate_working_dir/
 /coverage/
 thirdparty/comaps
 
+# Thirdparty cache archive (created by bootstrap scripts for faster iteration)
+.thirdparty.7z
+
 # iOS vendored frameworks (downloaded during pod install)
 ios/Frameworks/
 

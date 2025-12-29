@@ -19,10 +19,9 @@ STATIC builds), ensuring dtoa.c and other jansson sources are compiled
 separately and macros don't leak.
 
 diff --git a/3party/jansson/jansson/CMakeLists.txt b/3party/jansson/jansson/CMakeLists.txt
-index 1111111..2222222 100644
 --- a/3party/jansson/jansson/CMakeLists.txt
 +++ b/3party/jansson/jansson/CMakeLists.txt
-@@ -343,6 +343,10 @@ if(JANSSON_BUILD_SHARED_LIBS)
+@@ -344,6 +344,10 @@ if(JANSSON_BUILD_SHARED_LIBS)
  
     set_target_properties(jansson PROPERTIES
        VERSION ${JANSSON_VERSION}
@@ -34,7 +33,7 @@ index 1111111..2222222 100644
  else()
     add_library(jansson STATIC
        ${JANSSON_SRC}
-@@ -350,6 +354,12 @@ else()
+@@ -351,6 +355,12 @@ else()
        ${JANSSON_HDR_PUBLIC})
     set_target_properties(jansson PROPERTIES
        POSITION_INDEPENDENT_CODE true)
