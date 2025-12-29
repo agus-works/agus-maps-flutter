@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: agus-maps-flutter <agus@example.com>
+Date: Sat, 1 Jan 2025 00:00:00 +0000
+Subject: [PATCH 0066] 3party/jansson: undef Long at end of dtoa.c for Unity builds
+
+In CMake Unity builds, multiple .c files are compiled together in a single
+compilation unit. dtoa.c defines '#define Long int' on line 229 which then
+leaks to subsequent files like load.c that include Windows SDK headers
+(via jansson_private.h).
+
+The Windows SDK headers like timezoneapi.h contain struct members named
+'Long' (e.g., 'DWORD Long;') which become invalid syntax when the Long
+macro transforms them to 'DWORD int;'.
+
+This patch adds '#undef Long' at the end of dtoa.c to prevent the macro
+from leaking to other compilation units in Unity builds.
+
+diff --git a/3party/jansson/jansson/src/dtoa.c b/3party/jansson/jansson/src/dtoa.c
+index 1111111..2222222 100644
+--- a/3party/jansson/jansson/src/dtoa.c
++++ b/3party/jansson/jansson/src/dtoa.c
+@@ -6258,6 +6258,12 @@ dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char **rve)
+ 	return dtoa_r(dd, mode, ndigits, decpt, sign, rve, 0, 0);
+ 	}
+ 
++/* Workaround for Unity builds: undefine the Long macro defined at line 229
++   to prevent it from leaking to subsequent .c files that may include Windows
++   SDK headers containing struct members named 'Long' (e.g., timezoneapi.h
++   has 'DWORD Long;' which becomes invalid 'DWORD int;' with the macro). */
++#undef Long
++
+ #ifdef __cplusplus
+ }
+ #endif

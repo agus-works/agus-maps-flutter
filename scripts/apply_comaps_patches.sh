@@ -72,8 +72,15 @@ for patch in "${PATCHES[@]}"; do
   # Extract the target file from the patch to check if it exists
   target_file=$(grep -m1 "^diff --git" "$patch" | sed 's|diff --git a/||; s| b/.*||' || true)
   
+  # Check if this is a new file patch (from /dev/null)
+  is_new_file_patch=false
+  if grep -q "^new file mode" "$patch" || grep -q "^--- /dev/null" "$patch"; then
+    is_new_file_patch=true
+  fi
+  
   # Check if target file exists (skip patches for uninitialized submodules)
-  if [[ -n "$target_file" ]] && [[ ! -e "$target_file" ]]; then
+  # BUT allow patches that create new files (from /dev/null)
+  if [[ -n "$target_file" ]] && [[ "$is_new_file_patch" != "true" ]] && [[ ! -e "$target_file" ]]; then
     log_warn "skipping $patch_name (target '$target_file' does not exist)"
     ((skipped++))
     continue
