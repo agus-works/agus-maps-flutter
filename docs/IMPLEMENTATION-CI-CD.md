@@ -25,12 +25,19 @@ This document outlines the implementation plan for splitting the Android build p
 |---------------------------|----------------------------|---------|
 | `bundle_headers.sh` | — | Bundle shared headers (platform-agnostic) |
 | `build_binaries_ios.sh` | — | Build iOS XCFramework |
+| `build_binaries_macos.sh` | — | Build macOS XCFramework |
 | `build_binaries_android.sh` | `build_binaries_android.ps1` | Build Android native libs |
+| — | `bootstrap_windows.ps1` | Bootstrap Windows development environment |
 | `bootstrap_android.sh` | `bootstrap_android.ps1` | Bootstrap Android dependencies |
+| `bootstrap_ios.sh` | — | Bootstrap iOS dependencies |
+| `bootstrap_macos.sh` | — | Bootstrap macOS dependencies |
+| `bootstrap_common.sh` | `BootstrapCommon.psm1` | Shared bootstrap utilities module |
 | `download_libs.sh` | — | Download headers + platform binaries |
 | `fetch_comaps.sh` | `fetch_comaps.ps1` | Clone/update CoMaps source |
 | `apply_comaps_patches.sh` | `apply_comaps_patches.ps1` | Apply patches to CoMaps |
 | `copy_comaps_data.sh` | `copy_comaps_data.ps1` | Copy CoMaps data files |
+| `regenerate_patches.sh` | `regenerate_patches.ps1` | Regenerate patches from thirdparty changes |
+| `validate_patches.sh` | `validate_patches.ps1` | Validate patches match current state |
 
 > **Note:** Windows developers can use the `.ps1` PowerShell scripts for local development and testing. The CI/CD pipeline uses bash scripts on Linux/macOS runners.
 
