@@ -1473,4 +1473,47 @@ Often caused by locked files, corrupted build state, or CMake configuration chan
 **Solution:**
 Run `flutter clean` and `flutter pub get` to clear the build cache and restore dependencies.
 
-*Last updated: December 2025*
+
+### Build Error: "error C2143: syntax error" in timezoneapi.h or winnt.h
+
+**Symptom:**
+Build fails with errors like:
+```
+timezoneapi.h(36,10): error C2143: syntax error: missing ':' before 'constant'
+timezoneapi.h(46,5): error C2034: '': type of bit field has zero size
+winnt.h(19842): error C2146: syntax error: missing ';' before identifier 'Long'
+```
+
+**Cause:**
+The jansson library's `dtoa.c` file defines a macro `#define Long int` at line 229. When CMake's Unity Build feature is enabled (`CMAKE_UNITY_BUILD=ON`), it combines multiple `.c` files into single compilation units. This causes the macro to leak into Windows SDK headers, where struct members named `Long` (like `DWORD Long;` in TIME_ZONE_INFORMATION) become invalid `DWORD int;`.
+
+**Why `#undef` alone doesn't work:**
+Unity builds concatenate source files in an order determined by CMake, not by file inclusion order. Even if `dtoa.c` has `#undef Long` at the end, Unity builds may process it differently.
+
+**Solution:**
+The fix is to disable Unity build specifically for the jansson library target. This is handled by patch `0067-3party-jansson-disable-unity-build.patch`:
+
+```cmake
+# In thirdparty/comaps/3party/jansson/jansson/CMakeLists.txt
+set_target_properties(jansson PROPERTIES
+   UNITY_BUILD OFF)
+```
+
+If you see these errors, ensure all patches are applied:
+```powershell
+.\scripts\apply_comaps_patches.ps1
+```
+
+Then clean and rebuild:
+```powershell
+cd example
+Remove-Item -Recurse -Force build\windows
+flutter build windows --release
+```
+
+**Related patches:**
+- `0065-3party-jansson-hashtable_seed-undef-long.patch` - Defense-in-depth: adds `#undef Long` before including `windows.h` in `hashtable_seed.c`
+- `0066-3party-jansson-dtoa-undef-long-end.patch` - Adds `#undef Long` at end of `dtoa.c` (redundant with Unity build disabled, but harmless)
+- `0067-3party-jansson-disable-unity-build.patch` - **Root cause fix**: disables Unity build for jansson target
+
+*Last updated: January 2025*

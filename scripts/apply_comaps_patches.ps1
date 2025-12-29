@@ -109,18 +109,25 @@ try {
         $patchPath = $patchFile.FullName
         $patchName = $patchFile.Name
         
-        # Extract the target file from the patch to check if it exists
+        # Extract the target file and check if this is a new file patch
         $targetFile = $null
-        $patchContent = Get-Content $patchPath -TotalCount 5
+        $isNewFilePatch = $false
+        $patchContent = Get-Content $patchPath -TotalCount 10
         foreach ($line in $patchContent) {
             if ($line -match 'diff --git a/(.+?) b/') {
                 $targetFile = $Matches[1]
-                break
+            }
+            if ($line -match '^new file mode') {
+                $isNewFilePatch = $true
+            }
+            if ($line -match '--- /dev/null') {
+                $isNewFilePatch = $true
             }
         }
         
         # Check if target file exists (skip patches for uninitialized submodules)
-        if ($targetFile -and -not (Test-Path $targetFile)) {
+        # BUT allow patches that create new files (from /dev/null)
+        if ($targetFile -and -not $isNewFilePatch -and -not (Test-Path $targetFile)) {
             Write-Host "Skipping: $patchName (target '$targetFile' does not exist)" -ForegroundColor Yellow
             $skipped++
             continue
