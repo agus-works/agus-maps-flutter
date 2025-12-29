@@ -254,6 +254,7 @@ Windows uses a different architecture due to OpenGL/D3D11 interop limitations:
 |----------|-------------|
 | [GUIDE.md](GUIDE.md) | Architectural blueprint and design philosophy |
 | [docs/ARCHITECTURE-ANDROID.md](docs/ARCHITECTURE-ANDROID.md) | Deep dive: memory efficiency, battery savings, how it works |
+| [docs/COMAPS-ASSETS.md](docs/COMAPS-ASSETS.md) | **CoMaps asset management:** data files, localization, MWM maps |
 | [docs/IMPLEMENTATION-ANDROID.md](docs/IMPLEMENTATION-ANDROID.md) | Android build instructions, debug/release modes |
 | [docs/IMPLEMENTATION-WIN.md](docs/IMPLEMENTATION-WIN.md) | Windows build instructions, x86_64 only |
 | [docs/RENDER-LOOP.md](docs/RENDER-LOOP.md) | Render loop comparison across all platforms |
