@@ -9,19 +9,26 @@ set -euo pipefail
 # plugin on macOS. It uses the shared bootstrap_common.sh for core logic.
 #
 # What it does:
-#   1. Fetch CoMaps source code
-#   2. Apply patches (superset for all platforms)
-#   3. Build Boost headers
-#   4. Copy CoMaps data files
-#   5. Build or download XCFramework
-#   6. Copy Metal shaders
+#   1. Fetch CoMaps source code (or restore from cache)
+#   2. Create cache archive after fresh clone (before patches)
+#   3. Apply patches (superset for all platforms)
+#   4. Build Boost headers
+#   5. Copy CoMaps data files
+#   6. Build or download XCFramework
+#   7. Copy Metal shaders
 #
 # Usage:
-#   ./scripts/bootstrap_macos.sh [--build-xcframework]
+#   ./scripts/bootstrap_macos.sh [--build-xcframework] [--no-cache]
 #
 # Options:
 #   --build-xcframework    Build XCFramework from source (slow, ~30 min)
 #                          Without this flag, downloads pre-built binaries
+#   --no-cache             Disable cache - don't use or create .thirdparty.tar.bz2
+#
+# Cache mechanism:
+#   - After fresh clone, thirdparty is compressed to .thirdparty.tar.bz2
+#   - If thirdparty is deleted and cache exists, it will be extracted
+#   - This skips network calls and speeds up subsequent bootstraps
 #
 # ============================================================================
 
@@ -34,10 +41,16 @@ source "$SCRIPT_DIR/bootstrap_common.sh"
 
 # Parse arguments
 BUILD_XCFRAMEWORK=false
+NO_CACHE=false
 for arg in "$@"; do
     case $arg in
         --build-xcframework)
             BUILD_XCFRAMEWORK=true
+            shift
+            ;;
+        --no-cache)
+            NO_CACHE=true
+            export NO_CACHE
             shift
             ;;
     esac
