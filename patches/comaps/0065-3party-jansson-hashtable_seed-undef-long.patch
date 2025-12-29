@@ -1,0 +1,18 @@
+diff --git a/3party/jansson/jansson/src/hashtable_seed.c b/3party/jansson/jansson/src/hashtable_seed.c
+index d156b40..139cd54 100644
+--- a/3party/jansson/jansson/src/hashtable_seed.c
++++ b/3party/jansson/jansson/src/hashtable_seed.c
+@@ -38,6 +38,13 @@
+ #endif
+ 
+ #if defined(_WIN32)
++/* Workaround for Unity builds: dtoa.c defines Long and ULong macros that
++   conflict with Windows SDK header winnt.h which has struct members named
++   'Long'. Undefine these macros before including windows.h to avoid
++   "DWORD followed by int is illegal" errors. */
++#undef Long
++#undef ULong
++
+ /* For GetModuleHandle(), GetProcAddress() and GetCurrentProcessId() */
+ #include <windows.h>
+ #endif

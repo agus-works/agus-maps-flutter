@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: agus-maps-flutter <agus@maps.flutter>
+Date: Thu, 01 Jan 2025 00:00:00 +0000
+Subject: [PATCH] Disable Unity build for jansson library
+
+The jansson library uses dtoa.c which defines `#define Long int` at line 229.
+In Unity builds (CMAKE_UNITY_BUILD=ON), this macro leaks to subsequent .c
+files in the same compilation unit. When those files include Windows SDK
+headers (directly or indirectly), the macro conflicts with struct members
+named 'Long' (e.g., `DWORD Long;` in timezoneapi.h becomes invalid
+`DWORD int;`).
+
+While dtoa.c has an #undef Long at end-of-file, Unity builds concatenate
+source files into unity_*.c files which may reorder or batch differently.
+The safest fix is to disable Unity build specifically for jansson.
+
+This patch sets UNITY_BUILD OFF for the jansson target (both SHARED and
+STATIC builds), ensuring dtoa.c and other jansson sources are compiled
+separately and macros don't leak.
+
+diff --git a/3party/jansson/jansson/CMakeLists.txt b/3party/jansson/jansson/CMakeLists.txt
+index 1111111..2222222 100644
+--- a/3party/jansson/jansson/CMakeLists.txt
++++ b/3party/jansson/jansson/CMakeLists.txt
+@@ -343,6 +343,10 @@ if(JANSSON_BUILD_SHARED_LIBS)
+ 
+    set_target_properties(jansson PROPERTIES
+       VERSION ${JANSSON_VERSION}
+       SOVERSION ${JANSSON_SOVERSION})
++   # Disable Unity build for jansson to prevent dtoa.c's `#define Long int`
++   # macro from leaking to subsequent files in shared builds too.
++   set_target_properties(jansson PROPERTIES
++      UNITY_BUILD OFF)
+ else()
+    add_library(jansson STATIC
+       ${JANSSON_SRC}
+@@ -350,6 +354,12 @@ else()
+       ${JANSSON_HDR_PUBLIC})
+    set_target_properties(jansson PROPERTIES
+       POSITION_INDEPENDENT_CODE true)
++   # Disable Unity build for jansson to prevent dtoa.c's `#define Long int`
++   # macro from leaking to subsequent files. In Unity builds, this macro
++   # conflicts with Windows SDK headers that have struct members named 'Long'
++   # (e.g., DWORD Long; in timezoneapi.h becomes DWORD int; causing errors).
++   set_target_properties(jansson PROPERTIES
++      UNITY_BUILD OFF)
+ endif()
+ 
+ 
