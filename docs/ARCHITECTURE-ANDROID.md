@@ -133,13 +133,13 @@ Traditional map apps load tile images into RAM. Our approach is fundamentally di
 ```mermaid
 graph LR
     subgraph "Traditional Approach ❌"
-        A1[Map File] -->|read()| B1[RAM Buffer]
+        A1[Map File] -->|"read()"| B1[RAM Buffer]
         B1 --> C1[Parse]
         C1 --> D1[Render]
     end
     
     subgraph "Our Approach ✅"
-        A2[Map File] -->|mmap()| B2[Virtual Memory]
+        A2[Map File] -->|"mmap()"| B2[Virtual Memory]
         B2 -->|Page Fault| C2[OS Loads Page]
         C2 --> D2[Render Directly]
     end
