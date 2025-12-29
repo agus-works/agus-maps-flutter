@@ -25,6 +25,41 @@ Agus Maps Flutter is a **native Flutter plugin** that embeds the powerful [CoMap
 
 > **Note:** Agus Maps follows the **CoMaps** implementation specifically. While CoMaps shares historical heritage with [Organic Maps](https://organicmaps.app/) and the original MAPS.ME, we track CoMaps as our upstream reference. CoMaps is actively developed with a focus on community-driven improvements and modern tooling.
 
+---
+
+### 🗺️ New to CoMaps? Try it First!
+
+If you're not familiar with CoMaps, we highly recommend installing it on your phone first to experience the magic firsthand — available on [iOS (App Store)](https://apps.apple.com/app/comaps/id6736558966) and [Android (Google Play)](https://play.google.com/store/apps/details?id=community.comaps.app).
+
+**Here's how CoMaps works:**
+
+1. **Start with a world overview** — When you first open CoMaps, you get a low-resolution map of the entire world. This lets you navigate and explore at a global scale without downloading gigabytes of data.
+
+2. **Zoom in to discover regions** — As you zoom into a specific area (say, your city or a travel destination), CoMaps notices you might want more detail and invites you to download that region's map.
+
+3. **Download once, use forever offline** — After downloading a region (which typically takes just seconds to a few minutes depending on size), you now have a fully detailed, high-resolution offline copy of that entire area. No internet needed!
+
+4. **Explore with incredible detail** — Street names, hiking trails, building outlines, cafes, transit stops—all available offline with smooth panning and zooming.
+
+**So what's the point of this plugin?**
+
+CoMaps is a fantastic standalone app, but what if you want to embed this same powerful offline mapping experience *inside your own Flutter app*? That's exactly what Agus Maps Flutter does! 🎉
+
+With this plugin, you can:
+- **Bundle specific region maps** with your app (pre-downloaded, ready to go on first launch)
+- **Let users download additional regions** as needed through an in-app UI
+- **Display fully interactive, offline-capable maps** as a Flutter widget
+
+**Example use case:** Imagine building a **bus route app** for a specific city. Pre-bundle that city's map file with your app, and your users get instant offline maps—no API keys, no usage fees, no internet required. The map widget integrates seamlessly with your custom UI and business logic.
+
+> **💡 Tip:** Keep maps fresh by pushing updates through App Store/Play Store releases, or [host your own map server](#host-your-own-map-server-recommended-for-production) for full control over regions and update cycles.
+
+Other ideas: hiking apps, travel guides, field data collection, emergency services, tourism kiosks—the possibilities are endless!
+
+> **📜 Licensing:** Agus Maps Flutter is released under the [Apache 2.0 License](LICENSE). Please review our [NOTICE](NOTICE) file for attribution requirements and third-party dependencies. **We recommend consulting with a legal professional** to understand how these licenses apply to your specific use case.
+
+---
+
 ### 🚧 Current Status: Proof of Concept
 
 This project is currently in the **proof of concept stage**, demonstrating zero-copy (or optimized) rendering integration between the CoMaps engine and Flutter's texture system. The [example app](example/) successfully runs on:
@@ -213,36 +248,46 @@ Agus Maps achieves excellent performance on older devices (tested on Samsung Gal
 
 ### Zero-Copy Architecture (iOS, macOS, Android)
 
+```mermaid
+flowchart TB
+    subgraph traditional["Traditional Map App"]
+        direction TB
+        T1["Download tiles"] --> T2["Decode images"]
+        T2 --> T3["Store in RAM"]
+        T3 --> T4["Copy to GPU"]
+        T4 --> T5["Render"]
+    end
+    
+    subgraph agus["Agus Maps"]
+        direction TB
+        A1["Load from disk<br/>(memory-mapped)"] --> A2["Direct to GPU"]
+        A2 --> A3["Render"]
+    end
+    
+    traditional ~~~ agus
 ```
-Traditional Map App          Agus Maps
-┌─────────────────┐         ┌─────────────────┐
-│ Download tiles  │         │ Load from disk  │
-│ Decode images   │         │ (memory-mapped) │
-│ Store in RAM    │         │ Direct to GPU   │
-│ Copy to GPU     │         │                 │
-│ Render          │         │ Render          │
-└─────────────────┘         └─────────────────┘
-   ~100MB RAM                  ~20MB RAM
-   Always polling              Sleep when idle
-```
+
+| | Traditional Map App | Agus Maps |
+|--|---------------------|------------|
+| **RAM Usage** | ~100MB | ~20MB |
+| **Behavior** | Always polling | Sleep when idle |
 
 ### Windows Architecture (x86_64)
 
 Windows uses a different architecture due to OpenGL/D3D11 interop limitations:
 
+```mermaid
+flowchart TB
+    subgraph pipeline["Windows Rendering Pipeline"]
+        direction TB
+        W1["CoMaps<br/>(OpenGL via WGL)"] 
+        W1 -->|"glReadPixels<br/>(GPU→CPU, ~2-5ms)"| W2["CPU Buffer<br/>(RGBA→BGRA + Y-flip)"]
+        W2 -->|"D3D11 staging texture"| W3["D3D11 Shared Texture<br/>(DXGI handle)"]
+        W3 -->|"Zero-copy to Flutter"| W4["Flutter Texture Widget"]
+    end
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ CoMaps (OpenGL via WGL)                                     │
-│   ↓ glReadPixels (GPU→CPU, ~2-5ms)                          │
-│ CPU Buffer (RGBA→BGRA + Y-flip)                             │
-│   ↓ D3D11 staging texture                                   │
-│ D3D11 Shared Texture (DXGI handle)                          │
-│   ↓ Zero-copy to Flutter                                    │
-│ Flutter Texture Widget                                       │
-└─────────────────────────────────────────────────────────────┘
-   Still achieves 60fps on modern hardware
-   ~30-40MB RAM for rendering pipeline
-```
+
+> **Performance:** Still achieves 60fps on modern hardware with ~30-40MB RAM for the rendering pipeline.
 
 > **Note:** While Windows is not true zero-copy, the map data itself (MWM files) still uses memory-mapping. The CPU-mediated transfer only affects the frame display, not the map data loading.
 
@@ -419,6 +464,24 @@ Copyright 2024 Agus App
 
 Licensed under the Apache License, Version 2.0
 ```
+
+### Understanding Your Rights & Obligations
+
+This plugin and its dependencies use various open-source licenses including Apache 2.0, MIT, BSD, and others. Before using this plugin in your project—especially for commercial applications—please:
+
+1. **Read the [LICENSE](LICENSE) file** — The full Apache 2.0 license text
+2. **Read the [NOTICE](NOTICE) file** — Attribution requirements and third-party dependency licenses
+3. **Consult a legal professional** — To understand how these licenses apply to your specific use case
+
+The [NOTICE](NOTICE) file includes:
+- Detailed breakdown of all third-party libraries and their licenses
+- Attribution requirements for OpenStreetMap data (ODbL)
+- Sample attribution text you may reference
+- License compatibility summary
+
+> **⚠️ Disclaimer:** The information in our NOTICE file is provided for informational purposes only and does not constitute legal advice. We encourage all developers to perform their own due diligence and seek qualified legal counsel for licensing questions.
+
+### Heritage
 
 This project incorporates code from [CoMaps](https://codeberg.org/comaps/comaps) (Apache 2.0), which is our primary upstream reference. CoMaps itself descends from [Organic Maps](https://github.com/organicmaps/organicmaps) and the original [MAPS.ME](https://github.com/mapsme/omim), all under Apache 2.0.
 

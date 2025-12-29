@@ -4,12 +4,37 @@ Copyright 2024 Agus Maps Flutter Contributors
 This product includes software developed by:
 
 ================================================================================
+LICENSING OVERVIEW
+================================================================================
+
+Agus Maps Flutter is released under the Apache License 2.0. This plugin
+incorporates code and dependencies from various open-source projects, each
+with their own licensing terms.
+
+IMPORTANT: The information in this file is provided for informational purposes
+only and does not constitute legal advice. We strongly recommend consulting
+with a qualified legal professional to understand how these licenses apply to
+your specific use case, especially for commercial applications.
+
+Below you will find:
+- Core project licenses (CoMaps, Organic Maps, MAPS.ME)
+- OpenStreetMap data licensing (ODbL)
+- Third-party library licenses
+- Sample attribution text (for reference only)
+
+Please perform your own due diligence to ensure compliance with all applicable
+licenses for your intended use.
+
+================================================================================
 CoMaps (https://comaps.app/)
 ================================================================================
 Licensed under the Apache License, Version 2.0
 Copyright (c) CoMaps Contributors
 
 CoMaps is a fork of Organic Maps, which is itself a fork of MAPS.ME.
+CoMaps is actively developed with a focus on community-driven improvements.
+
+Repository: https://codeberg.org/comaps/comaps
 
 ================================================================================
 Organic Maps (https://organicmaps.app/)
@@ -18,6 +43,8 @@ Licensed under the Apache License, Version 2.0
 Copyright (c) Organic Maps OÜ
 
 Organic Maps is a privacy-focused, offline maps application.
+
+ATTRIBUTION REQUEST (Courtesy, not legally required):
 Please include a visible, human-readable mention of the "Organic Maps Project"
 and a clickable link to https://organicmaps.app in any derived works.
 
@@ -25,7 +52,10 @@ and a clickable link to https://organicmaps.app in any derived works.
 MAPS.ME
 ================================================================================
 Licensed under the Apache License, Version 2.0
+Copyright (c) 2020 My.com B.V. (Mail.Ru Group)
 Copyright (c) MapsWithMe GmbH
+
+The original MAPS.ME project from which Organic Maps and CoMaps descend.
 
 ================================================================================
 OpenStreetMap Data
@@ -38,13 +68,28 @@ The map data used in MWM files is derived from OpenStreetMap and is available
 under the Open Database License. For more information, see:
 https://opendatacommons.org/licenses/odbl/
 
+REQUIRED ATTRIBUTION:
+You must display "© OpenStreetMap contributors" wherever map data is shown.
+This is typically done as an overlay on the map or in your app's credits.
+
+ODbL allows commercial use but requires:
+- Attribution (as above)
+- Share-Alike for the DATABASE only (not your app code)
+- Keep the data open if you redistribute modified map data
+
+Note: Using MWM files in your app does NOT require you to open-source your app.
+The Share-Alike only applies if you modify and redistribute the map data itself.
+
 ================================================================================
-Third-Party Libraries
+THIRD-PARTY LIBRARIES - DETAILED BREAKDOWN
 ================================================================================
 
-This software includes the following third-party libraries:
+All third-party libraries used by this plugin have permissive licenses that
+allow commercial use. Below is a comprehensive list:
 
-Flutter SDK and Dart packages:
+--------------------------------------------------------------------------------
+FLUTTER SDK AND DART PACKAGES
+--------------------------------------------------------------------------------
 - ffi (BSD-3-Clause) - dart.dev
 - plugin_platform_interface (BSD-3-Clause) - flutter.dev
 - shared_preferences (BSD-3-Clause) - flutter.dev
@@ -52,24 +97,286 @@ Flutter SDK and Dart packages:
 - path_provider (BSD-3-Clause) - flutter.dev
 - cupertino_icons (MIT) - flutter.dev
 
-CoMaps/Organic Maps third-party dependencies (included via CoMaps):
-- Boost C++ Libraries (Boost Software License 1.0)
-- ICU - International Components for Unicode (ICU License)
-- FreeType (FreeType License / GPL2)
-- Protocol Buffers (BSD-3-Clause) - Google
-- Jansson (MIT)
-- gflags (BSD-3-Clause) - Google
-- Various other libraries - see CoMaps repository for complete list
+--------------------------------------------------------------------------------
+COMAPS/ORGANIC MAPS CORE DEPENDENCIES
+--------------------------------------------------------------------------------
+
+Anti-Grain Geometry (AGG)
+  License: AGG License (BSD-like, permissive)
+  Copyright: 2002-2005 Maxim Shemanarev
+  URL: https://agg.sourceforge.net/antigrain.com/
+
+Boost C++ Libraries
+  License: Boost Software License 1.0 (very permissive)
+  URL: https://www.boost.org/
+  Notes: Allows commercial use, no attribution required in binaries
+
+bsdiff / Chromium Courgette
+  License: BSD-3-Clause
+  URL: https://www.daemonology.net/bsdiff/
+
+CMake Metal Shader Support
+  License: MIT
+  Copyright: 2024 Darryl Pogue and Contributors
+
+Dear ImGui
+  License: MIT
+  Copyright: 2014-2025 Omar Cornut
+  URL: https://github.com/ocornut/imgui
+
+Expat XML Parser
+  License: MIT
+  Copyright: 1998-2000 Thai Open Source Software Center Ltd and Clark Cooper
+  Copyright: 2001-2019 Expat maintainers
+  URL: https://libexpat.github.io/
+
+fast_obj
+  License: MIT
+  Copyright: 2013 thisistherk
+  URL: https://github.com/thisistherk/fast_obj
+
+fast_double_parser
+  License: Apache 2.0 / MIT dual-licensed
+  URL: https://github.com/lemire/fast_double_parser
+
+FreeType
+  License: FreeType License (FTL) - BSD-like with attribution clause
+  Copyright: The FreeType Project
+  URL: https://www.freetype.org/
+  
+  IMPORTANT: FreeType offers dual licensing (FTL or GPL2). CoMaps and this
+  plugin use the FTL (FreeType License), which is permissive and allows
+  commercial use.
+  
+  REQUIRED ATTRIBUTION:
+  Include in your documentation:
+  "Portions of this software are copyright © <year> The FreeType Project
+  (https://www.freetype.org). All rights reserved."
+
+gflags
+  License: BSD-3-Clause
+  Copyright: Google Inc.
+  URL: https://github.com/gflags/gflags
+
+Glaze (JSON library)
+  License: MIT
+  Copyright: 2019-present Stephen Berry
+  URL: https://github.com/stephenberry/glaze
+
+GLFW
+  License: zlib/libpng License (permissive)
+  Copyright: 2002-2006 Marcus Geelnard, 2006-2019 Camilla Löwy
+  URL: https://www.glfw.org/
+
+GLM (OpenGL Mathematics)
+  License: MIT
+  Copyright: 2005-2014 G-Truc Creation
+  URL: https://github.com/g-truc/glm
+
+Google Test
+  License: BSD-3-Clause
+  Copyright: Google Inc.
+  URL: https://github.com/google/googletest
+
+HarfBuzz
+  License: MIT ("Old MIT")
+  URL: https://harfbuzz.github.io/
+
+ICU - International Components for Unicode
+  License: ICU License (permissive, similar to MIT)
+  Copyright: 1995-2016 IBM Corporation and others
+  URL: https://icu.unicode.org/
+  
+  Notes: Very permissive, allows commercial use with attribution.
+
+Jansson (JSON library)
+  License: MIT
+  Copyright: 2009-2013 Petri Lehtinen
+  URL: https://www.digip.org/jansson/
+
+just_gtfs
+  License: MIT
+  URL: https://github.com/mapsme/just_gtfs
+
+libkdtree++
+  License: Artistic License 2.0 (permissive)
+  Copyright: 2004-2007 Martin F. Krafft
+  URL: https://libkdtree.alioth.debian.org/
+
+libtess2
+  License: SGI Free Software License B (permissive)
+  Copyright: Silicon Graphics, Inc.
+  Notes: Similar to BSD, allows commercial use.
+
+MiniZip
+  License: zlib License (permissive)
+  URL: https://github.com/madler/zlib
+
+Open Location Code
+  License: Apache 2.0
+  Copyright: Google Inc.
+  URL: https://github.com/google/open-location-code
+
+opening_hours
+  License: MIT
+  URL: https://github.com/opening-hours/opening_hours.js
+
+Protocol Buffers (protobuf)
+  License: BSD-3-Clause
+  Copyright: Google Inc.
+  URL: https://github.com/protocolbuffers/protobuf
+
+pugixml
+  License: MIT
+  Copyright: 2006-2020 Arseny Kapoulkine
+  URL: https://pugixml.org/
+
+robust (geometric predicates)
+  License: Public Domain
+  
+skarupke (flat_hash_map)
+  License: Boost Software License 1.0
+  URL: https://github.com/skarupke/flat_hash_map
+
+stb_image
+  License: MIT / Public Domain (dual-licensed)
+  Copyright: Sean Barrett
+  URL: https://github.com/nothings/stb
+
+succinct (data structures)
+  License: Apache 2.0
+  Copyright: 2011 Giuseppe Ottaviano
+
+utfcpp
+  License: Boost Software License 1.0
+  URL: https://github.com/nemtrif/utfcpp
+
+Vulkan Headers
+  License: Apache 2.0
+  Copyright: The Khronos Group Inc.
+  URL: https://github.com/KhronosGroup/Vulkan-Headers
+
+--------------------------------------------------------------------------------
+FONTS (bundled with CoMaps data)
+--------------------------------------------------------------------------------
+
+Most fonts use the SIL Open Font License (OFL), which is permissive and allows
+commercial use with attribution.
+
+Khmer OS Font
+  License: LGPL 2.1
+  Copyright: 2005 Danh Hong, Open Forum of Cambodia
+  
+  Notes: LGPL for fonts is generally safe because font embedding is considered
+  "mere aggregation" rather than creating a derivative work. Your app code
+  remains unaffected.
+
+Various other fonts: SIL Open Font License (OFL)
+  - Permissive, allows commercial use
+  - Requires attribution if redistributing the font files themselves
+
+--------------------------------------------------------------------------------
+DATA FILES (used in map generation, not embedded in runtime)
+--------------------------------------------------------------------------------
+
+gb-postcode-data
+  License: GPL 2.0
+  Copyright: osm-search
+  
+  Notes: This is UK postcode DATA used during map generation, NOT code embedded
+  in the runtime library. It does not affect your app's licensing.
+
+US Zip Codes Database
+  License: CC BY 4.0
+  Copyright: Pareto Software, LLC
+  URL: https://simplemaps.com/data/us-zips
+
+Code-Point Open (UK)
+  License: Open Government Licence v3
+  Copyright: UK Ordnance Survey
 
 ================================================================================
-Attribution Requirements
+LICENSE COMPATIBILITY SUMMARY
 ================================================================================
 
-When using this software, please ensure you:
+License Type          | Commercial Use | Attribution Required | Copyleft
+----------------------|----------------|---------------------|----------
+Apache 2.0            | ✓ Yes          | ✓ Yes (NOTICE file) | No
+MIT                   | ✓ Yes          | ✓ Yes (copyright)   | No
+BSD-3-Clause          | ✓ Yes          | ✓ Yes (copyright)   | No
+Boost Software 1.0    | ✓ Yes          | No (in binaries)    | No
+FreeType License      | ✓ Yes          | ✓ Yes (docs)        | No
+zlib License          | ✓ Yes          | No                  | No
+ICU License           | ✓ Yes          | ✓ Yes (copyright)   | No
+SIL OFL (fonts)       | ✓ Yes          | ✓ Yes (if bundling) | No
+ODbL (map data)       | ✓ Yes          | ✓ Yes (required)    | Data only*
 
-1. Include this NOTICE file in distributions
-2. Display OpenStreetMap attribution: "© OpenStreetMap contributors"
-3. Include Organic Maps attribution as requested by the project
-4. Comply with the Apache License 2.0 requirements for all modifications
+* ODbL Share-Alike applies to the database/data only, not your application code
+
+================================================================================
+SAMPLE ATTRIBUTION TEXT (FOR REFERENCE)
+================================================================================
+
+The following is sample attribution text that you may reference when creating
+your own attribution. This is provided as a starting point only—please verify
+with a legal professional that your attribution meets all applicable license
+requirements for your specific use case.
+
+--- BEGIN SAMPLE ATTRIBUTION ---
+
+This app uses offline maps powered by Agus Maps Flutter.
+
+Map data © OpenStreetMap contributors (openstreetmap.org)
+Licensed under the Open Database License (ODbL)
+
+Map rendering engine based on:
+• CoMaps (comaps.app) - Apache 2.0
+• Organic Maps (organicmaps.app) - Apache 2.0
+
+Portions of this software are copyright © The FreeType Project (freetype.org).
+
+For complete license information, see:
+https://github.com/AustenBaker/agus_maps_flutter/blob/main/NOTICE
+
+--- END SAMPLE ATTRIBUTION ---
+
+================================================================================
+ATTRIBUTION CONSIDERATIONS
+================================================================================
+
+The following are common attribution requirements found in the licenses used
+by this project and its dependencies. This list is provided for informational
+purposes only—please review each license directly and consult with a legal
+professional to determine your specific obligations.
+
+COMMON REQUIREMENTS (verify with original licenses):
+1. Apache 2.0 typically requires inclusion of LICENSE and NOTICE files
+2. OpenStreetMap data (ODbL) typically requires visible attribution
+3. FreeType License (FTL) includes an attribution clause
+4. Various MIT/BSD licenses typically require copyright preservation
+
+ORGANIC MAPS REQUEST (Courtesy):
+The Organic Maps project requests (but does not legally require) a visible
+mention of "Organic Maps Project" with link to https://organicmaps.app
+
+Please refer to the individual license texts for authoritative requirements.
+
+================================================================================
+DISCLAIMER
+================================================================================
+
+This NOTICE file is provided for informational purposes only to help developers
+understand the licensing landscape of this project and its dependencies.
+
+THIS IS NOT LEGAL ADVICE.
+
+The maintainers of Agus Maps Flutter:
+- Cannot guarantee the accuracy or completeness of this information
+- Cannot advise on how these licenses apply to your specific use case
+- Strongly recommend consulting with a qualified legal professional
+
+If you have questions about licensing for your application, please seek
+qualified legal counsel. Each developer is responsible for their own due
+diligence and compliance with all applicable licenses.
 
 ================================================================================
