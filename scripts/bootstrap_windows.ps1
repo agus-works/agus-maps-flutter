@@ -7,13 +7,20 @@
     This script sets up everything needed to build the Windows target of
     agus_maps_flutter. It performs:
     
-    1. Fetches CoMaps source code
-    2. Applies patches (superset for all platforms)
-    3. Builds Boost headers
-    4. Copies CoMaps data files
-    5. Installs vcpkg if not present
-    6. Installs required vcpkg dependencies (zlib)
-    7. Sets up environment variables
+    1. Fetches CoMaps source code (or extracts from cache if available)
+    2. Creates .thirdparty.7z cache after fresh clone (before patches)
+    3. Applies patches (superset for all platforms)
+    4. Builds Boost headers
+    5. Copies CoMaps data files
+    6. Installs vcpkg if not present
+    7. Installs required vcpkg dependencies (zlib)
+    8. Sets up environment variables
+
+    Cache Mechanism:
+    - After a fresh clone, the thirdparty directory is compressed to .thirdparty.7z
+    - If thirdparty is deleted and .thirdparty.7z exists, it will be extracted
+    - This skips network calls and speeds up subsequent bootstraps
+    - Use -NoCache to disable caching behavior
 
     Note: This bootstrap also prepares dependencies needed for Android builds
     on Windows, ensuring you can build both Windows and Android targets.
@@ -24,6 +31,9 @@
 .PARAMETER SkipPatches
     Skip applying patches (useful for debugging).
 
+.PARAMETER NoCache
+    Disable the 7z caching mechanism. Will not create or use cache.
+
 .PARAMETER Force
     Force re-bootstrap even if already done.
 
@@ -32,11 +42,15 @@
 
 .EXAMPLE
     .\scripts\bootstrap_windows.ps1 -VcpkgRoot D:\tools\vcpkg
+
+.EXAMPLE
+    .\scripts\bootstrap_windows.ps1 -NoCache
 #>
 
 param(
     [string]$VcpkgRoot = "C:\vcpkg",
     [switch]$SkipPatches,
+    [switch]$NoCache,
     [switch]$Force
 )
 
@@ -60,12 +74,29 @@ Write-Host ""
 # ============================================================================
 Write-LogHeader "Step 1: Bootstrapping CoMaps and Dependencies"
 
+# Show cache status
+if ($NoCache) {
+    Write-LogInfo "Cache disabled by -NoCache flag"
+} elseif (Test-7ZipAvailable) {
+    if (Test-ThirdPartyArchive -RepoRoot $RepoRoot) {
+        Write-LogInfo "Cache archive found: .thirdparty.7z"
+    } else {
+        Write-LogInfo "No cache archive found - will create after fresh clone"
+    }
+} else {
+    Write-LogWarn "7-Zip not found at C:\Program Files\7-Zip\7z.exe - caching disabled"
+}
+
 if ($SkipPatches) {
     Bootstrap-CoMaps -RepoRoot $RepoRoot
     Bootstrap-Boost -RepoRoot $RepoRoot
     Bootstrap-Data -RepoRoot $RepoRoot
 } else {
-    Bootstrap-Full -RepoRoot $RepoRoot -Platform 'windows'
+    if ($NoCache) {
+        Bootstrap-Full -RepoRoot $RepoRoot -Platform 'windows' -NoCache
+    } else {
+        Bootstrap-Full -RepoRoot $RepoRoot -Platform 'windows'
+    }
 }
 
 # ============================================================================
@@ -174,6 +205,16 @@ Write-Host "  ✓ CoMaps source code and patches" -ForegroundColor Green
 Write-Host "  ✓ Boost headers" -ForegroundColor Green
 Write-Host "  ✓ CoMaps data files" -ForegroundColor Green
 Write-Host "  ✓ vcpkg and dependencies" -ForegroundColor Green
+
+# Show cache status
+if (-not $NoCache -and (Test-7ZipAvailable)) {
+    if (Test-ThirdPartyArchive -RepoRoot $RepoRoot) {
+        $archivePath = Join-Path $RepoRoot '.thirdparty.7z'
+        $sizeMB = [math]::Round((Get-Item $archivePath).Length / 1MB, 2)
+        Write-Host "  ✓ Cache archive: .thirdparty.7z ($sizeMB MB)" -ForegroundColor Green
+    }
+}
+
 Write-Host ""
 Write-Host "You can now build for:" -ForegroundColor Gray
 Write-Host "  - Windows:  flutter build windows" -ForegroundColor White
@@ -185,4 +226,8 @@ Write-Host "  flutter build windows" -ForegroundColor White
 Write-Host ""
 Write-Host "Make sure VCPKG_ROOT is set in your shell:" -ForegroundColor Gray
 Write-Host "  `$env:VCPKG_ROOT = '$VcpkgRoot'" -ForegroundColor White
+Write-Host ""
+Write-Host "Cache tips:" -ForegroundColor Gray
+Write-Host "  - Delete 'thirdparty' folder and re-run bootstrap to use cache" -ForegroundColor White
+Write-Host "  - Use -NoCache flag to force fresh clone" -ForegroundColor White
 Write-Host ""
