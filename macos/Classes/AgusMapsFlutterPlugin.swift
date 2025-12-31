@@ -346,7 +346,14 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         
         do {
             try createPixelBuffer(width: width, height: height)
-            nativeOnSizeChanged(width: Int32(width), height: Int32(height))
+            
+            // Use resize-specific function that updates the Metal texture with new pixel buffer
+            guard let buffer = pixelBuffer else {
+                throw NSError(domain: "AgusMapsFlutter", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to get pixel buffer after creation"
+                ])
+            }
+            nativeResizeSurface(pixelBuffer: buffer, width: Int32(width), height: Int32(height))
             
             // Notify Flutter of texture update
             textureRegistry?.textureFrameAvailable(textureId)
@@ -501,6 +508,11 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     private func nativeOnSizeChanged(width: Int32, height: Int32) {
         agus_native_on_size_changed(width, height)
+    }
+    
+    /// Resize surface with new pixel buffer (properly updates Metal texture)
+    private func nativeResizeSurface(pixelBuffer: CVPixelBuffer, width: Int32, height: Int32) {
+        agus_native_resize_surface(pixelBuffer, width, height)
     }
     
     private func nativeOnSurfaceDestroyed() {

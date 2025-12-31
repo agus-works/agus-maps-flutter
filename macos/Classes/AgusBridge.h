@@ -27,8 +27,16 @@ void agus_native_set_surface(
     float density
 );
 
-/// Called when Swift resizes the surface
+/// Called when Swift resizes the surface (legacy - does not update pixel buffer)
 void agus_native_on_size_changed(int32_t width, int32_t height);
+
+/// Called when Swift resizes the surface with new pixel buffer (macOS-specific)
+/// This properly updates the Metal texture for resize operations
+void agus_native_resize_surface(
+    CVPixelBufferRef pixelBuffer,
+    int32_t width,
+    int32_t height
+);
 
 /// Called when Swift destroys the surface
 void agus_native_on_surface_destroyed(void);
