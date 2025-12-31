@@ -474,8 +474,9 @@ static void notifyFlutterFrameReady(void) {
         // Fallback: call Swift static method directly if no callback is set
         dispatch_async(dispatch_get_main_queue(), ^{
             g_frameNotificationPending.store(false);
-            // Use NSClassFromString to avoid direct Swift dependency
-            Class pluginClass = NSClassFromString(@"agus_maps_flutter.AgusMapsFlutterPlugin");
+            // Use the @objc name we assigned to the Swift class
+            // The class is declared as @objc(AgusMapsFlutterPlugin)
+            Class pluginClass = NSClassFromString(@"AgusMapsFlutterPlugin");
             if (pluginClass) {
                 SEL selector = NSSelectorFromString(@"notifyFrameReadyFromNative");
                 if ([pluginClass respondsToSelector:selector]) {
@@ -484,6 +485,12 @@ static void notifyFlutterFrameReady(void) {
                     [pluginClass performSelector:selector];
 #pragma clang diagnostic pop
                 }
+            } else {
+                // Debug: log if class lookup fails
+                static dispatch_once_t onceToken;
+                dispatch_once(&onceToken, ^{
+                    NSLog(@"[AgusMapsFlutter] WARNING: Could not find AgusMapsFlutterPlugin class for frame notification");
+                });
             }
         });
     }

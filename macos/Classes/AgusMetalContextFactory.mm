@@ -198,13 +198,82 @@ public:
         return m_renderTexture;
     }
     
+    bool Validate() override
+    {
+        static int validateCount = 0;
+        validateCount++;
+        if (validateCount <= 10 || validateCount % 60 == 0) {
+            LOG(LINFO, ("DrawMetalContext::Validate() count:", validateCount, "returning true"));
+        }
+        return true;  // Always valid
+    }
+    
+    bool BeginRendering() override
+    {
+        static int beginCount = 0;
+        beginCount++;
+        
+        // Track that we started a render cycle - Present should be called
+        m_renderCycleActive = true;
+        
+        if (beginCount <= 10 || beginCount % 60 == 0) {
+            LOG(LINFO, ("DrawMetalContext::BeginRendering() count:", beginCount, "returning true"));
+        }
+        return dp::metal::MetalBaseContext::BeginRendering();
+    }
+    
+    void EndRendering() override
+    {
+        static int endCount = 0;
+        endCount++;
+        
+        // Track EndRendering count for Present() diagnostic
+        m_lastEndRenderingCount = endCount;
+        
+        if (endCount <= 10 || endCount % 60 == 0) {
+            LOG(LINFO, ("DrawMetalContext::EndRendering() count:", endCount, "active render cycles:", m_activeRenderCycles));
+        }
+        dp::metal::MetalBaseContext::EndRendering();
+        
+        // Increment active render cycle count - this should be decremented by Present()
+        m_activeRenderCycles++;
+        
+        // WORKAROUND: For frames after the first one (RenderEmptyFrame), 
+        // the CoMaps render loop seems to get stuck and not call Present().
+        // Force a Present() call after every EndRendering() to ensure the frame is committed.
+        // The first frame (RenderEmptyFrame) will get Present() called twice but that's OK.
+        if (endCount >= 1) {
+            LOG(LINFO, ("DrawMetalContext::EndRendering() WORKAROUND: Forcing Present() after EndRendering",
+                        "endCount:", endCount));
+            Present();
+        }
+    }
+    
     /// Override Present() - also notifies Flutter for initial frames
     /// This ensures the initial map content is displayed even if isActiveFrame
     /// isn't set during the very first few render cycles.
     void Present() override
     {
+        // Debug: log present calls
+        static int presentCount = 0;
+        presentCount++;
+        m_lastPresentCount = presentCount;
+        
+        // Mark render cycle complete
+        m_renderCycleActive = false;
+        
+        // Decrement active render cycle count
+        if (m_activeRenderCycles > 0)
+            m_activeRenderCycles--;
+        
+        LOG(LINFO, ("DrawMetalContext::Present() ENTER, count:", presentCount, 
+                    "lastEndRendering:", m_lastEndRenderingCount,
+                    "activeRenderCycles:", m_activeRenderCycles));
+        
         // Call base class Present() to do the actual Metal rendering
         dp::metal::MetalBaseContext::Present();
+        
+        LOG(LINFO, ("DrawMetalContext::Present() after base Present, count:", presentCount));
         
         // For the first few frames after DrapeEngine creation, always notify Flutter
         // This handles the case where initial tiles are being loaded but isActiveFrame
@@ -213,11 +282,20 @@ public:
             m_initialFrameCount--;
             agus_notify_frame_ready();
         }
+        
+        LOG(LINFO, ("DrawMetalContext::Present() EXIT, count:", presentCount));
     }
+    
+    /// Check if a render cycle was started but not completed with Present()
+    bool IsRenderCycleIncomplete() const { return m_renderCycleActive; }
     
 private:
     id<MTLTexture> m_renderTexture;
     int m_initialFrameCount = 120;  // Notify for ~2 seconds at 60fps to ensure initial content shows
+    bool m_renderCycleActive = false;  // Track if BeginRendering was called without Present
+    int m_activeRenderCycles = 0;  // Track number of render cycles that haven't completed Present()
+    int m_lastEndRenderingCount = 0;  // Last EndRendering count for diagnostics
+    int m_lastPresentCount = 0;  // Last Present count for diagnostics
 };
 
 /// Upload context for background texture uploads

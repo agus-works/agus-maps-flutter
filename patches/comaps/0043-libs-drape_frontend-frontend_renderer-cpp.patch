@@ -1,0 +1,77 @@
+diff --git a/libs/drape_frontend/frontend_renderer.cpp b/libs/drape_frontend/frontend_renderer.cpp
+index 94fc630e..2838ae9e 100644
+--- a/libs/drape_frontend/frontend_renderer.cpp
++++ b/libs/drape_frontend/frontend_renderer.cpp
+@@ -1,4 +1,5 @@
+ #include "drape_frontend/frontend_renderer.hpp"
++#include "drape_frontend/active_frame_callback.hpp"
+ #include "drape_frontend/animation/interpolation_holder.hpp"
+ #include "drape_frontend/animation_system.hpp"
+ #include "drape_frontend/debug_rect_renderer.hpp"
+@@ -1760,12 +1761,24 @@ void FrontendRenderer::RenderFrame()
+   else
+   {
+     m_frameData.m_inactiveFramesCounter = 0;
++    // Notify embedders (e.g., Flutter) that an active frame was rendered
++    NotifyActiveFrame();
+   }
+ 
++  // DEBUG: Track execution through critical section
++  static int dbgRenderFrameSection = 0;
++  dbgRenderFrameSection++;
++  LOG(LINFO, ("[RenderFrame Debug] After NotifyActiveFrame section:", dbgRenderFrameSection,
++              "inactiveFramesCounter:", m_frameData.m_inactiveFramesCounter));
++
+   bool const canSuspend = m_frameData.m_inactiveFramesCounter > FrameData::kMaxInactiveFrames;
+   m_frameData.m_forceFullRedrawNextFrame = m_overlayTree->IsNeedUpdate();
++  
++  LOG(LINFO, ("[RenderFrame Debug] canSuspend:", canSuspend, "forceFullRedrawNextFrame:", m_frameData.m_forceFullRedrawNextFrame));
++  
+   if (canSuspend)
+   {
++    LOG(LINFO, ("[RenderFrame Debug] Entering canSuspend branch"));
+ #if defined(OMIM_OS_DESKTOP)
+     EmitGraphicsReady();
+ #endif
+@@ -1777,29 +1790,41 @@ void FrontendRenderer::RenderFrame()
+     m_frameData.m_timer.Reset();
+     m_frameData.m_inactiveFramesCounter = 0;
+     isActiveFrameForScene = false;
++    LOG(LINFO, ("[RenderFrame Debug] Exiting canSuspend branch"));
+   }
+   else
+   {
++    LOG(LINFO, ("[RenderFrame Debug] Entering else branch (message processing loop)"));
+     auto const syncInverval = (m_apiVersion == dp::ApiVersion::Metal || m_apiVersion == dp::ApiVersion::Vulkan)
+                                 ? kVSyncIntervalMetalVulkan
+                                 : kVSyncInterval;
+ 
+     double availableTime;
++    int loopCount = 0;
+     do
+     {
++      loopCount++;
+       if (!ProcessSingleMessage(false /* waitForMessage */))
++      {
++        LOG(LINFO, ("[RenderFrame Debug] ProcessSingleMessage returned false, breaking loop after", loopCount, "iterations"));
+         break;
++      }
+       m_frameData.m_forceFullRedrawNextFrame = true;
+       m_frameData.m_inactiveFramesCounter = 0;
+       availableTime = syncInverval - m_frameData.m_timer.ElapsedSeconds();
+     }
+     while (availableTime > 0.0);
++    LOG(LINFO, ("[RenderFrame Debug] Exiting message loop after", loopCount, "iterations"));
+   }
+ 
++  LOG(LINFO, ("[RenderFrame Debug] About to call Present()"));
++  
+ #ifndef DISABLE_SCREEN_PRESENTATION
+   m_context->Present();
+ #endif
+ 
++  LOG(LINFO, ("[RenderFrame Debug] After Present()"));
++
+   // Limit fps in following mode.
+   double constexpr kFrameTime = 1.0 / 30.0;
+   auto const ft = m_frameData.m_timer.ElapsedSeconds();
