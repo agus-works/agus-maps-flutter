@@ -155,6 +155,8 @@ extern "C" void agus_notify_frame_ready(void);
 
 // Static drawable holder for the draw context
 static AgusMetalDrawable* g_currentDrawable = nil;
+// Static texture pointer that the drawable getter lambda references (allows updates)
+static id<MTLTexture> g_currentRenderTexture = nil;
 
 namespace
 {
@@ -165,24 +167,31 @@ class DrawMetalContext : public dp::metal::MetalBaseContext
 {
 public:
     DrawMetalContext(id<MTLDevice> device, id<MTLTexture> renderTexture, m2::PointU const & screenSize)
-        : dp::metal::MetalBaseContext(device, screenSize, [renderTexture]() -> id<CAMetalDrawable> {
-            // Return our fake drawable wrapping the texture
-            if (!g_currentDrawable || g_currentDrawable.texture != renderTexture) {
-                g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:renderTexture];
+        : dp::metal::MetalBaseContext(device, screenSize, []() -> id<CAMetalDrawable> {
+            // Return our fake drawable wrapping the current texture
+            // g_currentRenderTexture is updated by SetRenderTexture
+            if (!g_currentDrawable || g_currentDrawable.texture != g_currentRenderTexture) {
+                g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:g_currentRenderTexture];
             }
             return g_currentDrawable;
         })
         , m_renderTexture(renderTexture)
     {
+        // Initialize the global texture pointer
+        g_currentRenderTexture = renderTexture;
+        g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:renderTexture];
         LOG(LINFO, ("DrawMetalContext created:", screenSize.x, "x", screenSize.y));
     }
     
     void SetRenderTexture(id<MTLTexture> texture, m2::PointU const & screenSize)
     {
         m_renderTexture = texture;
-        // Update the global drawable
+        // Update the global texture pointer so the drawable getter lambda uses the new texture
+        g_currentRenderTexture = texture;
+        // Force recreation of drawable with new texture
         g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:texture];
         Resize(screenSize.x, screenSize.y);
+        LOG(LINFO, ("DrawMetalContext::SetRenderTexture updated to", screenSize.x, "x", screenSize.y));
     }
     
     void Resize(uint32_t w, uint32_t h) override
@@ -372,6 +381,10 @@ AgusMetalContextFactory::AgusMetalContextFactory(CVPixelBufferRef pixelBuffer, m
 AgusMetalContextFactory::~AgusMetalContextFactory()
 {
     CleanupTexture();
+    
+    // Clear global state
+    g_currentRenderTexture = nil;
+    g_currentDrawable = nil;
     
     if (m_textureCache)
     {

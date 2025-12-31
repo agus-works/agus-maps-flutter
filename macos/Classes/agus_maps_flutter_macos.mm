@@ -38,6 +38,7 @@ extern "C" void* AgusPlatformMacOS_GetInstance(void);
 
 static std::unique_ptr<Framework> g_framework;
 static drape_ptr<dp::ThreadSafeFactory> g_threadSafeFactory;
+static agus::AgusMetalContextFactory* g_metalContextFactory = nullptr;  // Raw pointer to access SetPixelBuffer
 static std::string g_resourcePath;
 static std::string g_writablePath;
 static bool g_platformInitialized = false;
@@ -507,6 +508,9 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
         return;
     }
     
+    // Save raw pointer for resize operations (SetPixelBuffer)
+    g_metalContextFactory = metalFactory;
+    
     // Wrap in ThreadSafeFactory for thread-safe context access
     g_threadSafeFactory = make_unique_dp<dp::ThreadSafeFactory>(metalFactory);
     
@@ -520,7 +524,7 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
     }
 }
 
-/// Called when Swift resizes the surface
+/// Called when Swift resizes the surface (legacy - does not update pixel buffer)
 extern "C" FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int32_t height) {
     NSLog(@"[AgusMapsFlutter] agus_native_on_size_changed: %dx%d", width, height);
     
@@ -529,6 +533,41 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int
     
     if (g_framework && g_drapeEngineCreated) {
         g_framework->OnSize(width, height);
+    }
+}
+
+/// Called when Swift resizes the surface with new pixel buffer (macOS-specific)
+/// This properly updates the Metal texture for resize operations
+extern "C" FFI_PLUGIN_EXPORT void agus_native_resize_surface(
+    CVPixelBufferRef pixelBuffer,
+    int32_t width,
+    int32_t height
+) {
+    NSLog(@"[AgusMapsFlutter] agus_native_resize_surface: %dx%d", width, height);
+    
+    if (!pixelBuffer) {
+        NSLog(@"[AgusMapsFlutter] ERROR: agus_native_resize_surface called with null pixelBuffer");
+        return;
+    }
+    
+    g_surfaceWidth = width;
+    g_surfaceHeight = height;
+    
+    // Update the Metal context factory with the new pixel buffer
+    if (g_metalContextFactory) {
+        m2::PointU screenSize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+        g_metalContextFactory->SetPixelBuffer(pixelBuffer, screenSize);
+        NSLog(@"[AgusMapsFlutter] Metal context updated with new pixel buffer");
+    } else {
+        NSLog(@"[AgusMapsFlutter] WARNING: No metal context factory for resize");
+    }
+    
+    // Notify framework of size change
+    if (g_framework && g_drapeEngineCreated) {
+        g_framework->OnSize(width, height);
+        
+        // Request a redraw to render to the new texture
+        g_framework->InvalidateRendering();
     }
 }
 
@@ -543,6 +582,7 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_on_surface_destroyed(void) {
         g_framework->SetRenderingDisabled(true /* destroySurface */);
     }
     
+    g_metalContextFactory = nullptr;  // Will be deleted by ThreadSafeFactory
     g_threadSafeFactory.reset();
     g_drapeEngineCreated = false;
 }
