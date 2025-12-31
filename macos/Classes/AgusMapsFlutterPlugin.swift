@@ -14,6 +14,10 @@ import CoreVideo
 /// 2. Plugin creates CVPixelBuffer backed by IOSurface (Metal-compatible)
 /// 3. Native CoMaps engine renders to MTLTexture derived from CVPixelBuffer
 /// 4. Flutter samples the texture directly (zero-copy via IOSurface)
+///
+/// Note: @objc(AgusMapsFlutterPlugin) gives this class a stable Objective-C name
+/// that native code can use with NSClassFromString, avoiding Swift name mangling.
+@objc(AgusMapsFlutterPlugin)
 public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     // MARK: - Shared Instance for native callbacks
@@ -21,8 +25,16 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     /// Shared instance for native code to notify when frames are ready
     private static weak var sharedInstance: AgusMapsFlutterPlugin?
     
+    // Debug: count frame notifications
+    private static var frameNotificationCount: Int = 0
+    
     /// Called by native code when a frame is ready
     @objc public static func notifyFrameReadyFromNative() {
+        frameNotificationCount += 1
+        if frameNotificationCount <= 5 || frameNotificationCount % 60 == 0 {
+            NSLog("[AgusMapsFlutter] Swift notifyFrameReadyFromNative called (count=%d, hasInstance=%@)", 
+                  frameNotificationCount, sharedInstance != nil ? "YES" : "NO")
+        }
         DispatchQueue.main.async {
             sharedInstance?.notifyFrameReady()
         }
@@ -430,8 +442,16 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     // MARK: - Rendering
     
+    // Debug: count instance frame notifications
+    private var instanceFrameCount: Int = 0
+    
     /// Called by native code when a new frame is ready
     @objc public func notifyFrameReady() {
+        instanceFrameCount += 1
+        if instanceFrameCount <= 5 || instanceFrameCount % 60 == 0 {
+            NSLog("[AgusMapsFlutter] Swift notifyFrameReady instance method (count=%d, enabled=%@, textureId=%lld)", 
+                  instanceFrameCount, isRenderingEnabled ? "YES" : "NO", textureId)
+        }
         guard isRenderingEnabled, textureId >= 0 else { return }
         textureRegistry?.textureFrameAvailable(textureId)
     }

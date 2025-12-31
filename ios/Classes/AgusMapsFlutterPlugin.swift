@@ -14,6 +14,10 @@ import CoreVideo
 /// 2. Plugin creates CVPixelBuffer backed by IOSurface (Metal-compatible)
 /// 3. Native CoMaps engine renders to MTLTexture derived from CVPixelBuffer
 /// 4. Flutter samples the texture directly (zero-copy via IOSurface)
+///
+/// Note: @objc(AgusMapsFlutterPlugin) gives this class a stable Objective-C name
+/// that native code can use with NSClassFromString, avoiding Swift name mangling.
+@objc(AgusMapsFlutterPlugin)
 public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     // MARK: - Shared Instance for native callbacks

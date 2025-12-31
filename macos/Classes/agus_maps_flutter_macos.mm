@@ -49,6 +49,16 @@ static int32_t g_surfaceHeight = 0;
 static float g_density = 2.0f;
 static int64_t g_textureId = -1;
 
+// Render loop keep-alive timer
+// This ensures the render loop stays active until initial tiles are loaded
+static dispatch_source_t g_renderKeepAliveTimer = nil;
+static int g_renderKeepAliveCount = 0;
+static const int kRenderKeepAliveMaxCount = 60;  // ~2 seconds at 30fps
+
+// Forward declarations for timer functions
+static void stopRenderKeepAliveTimer(void);
+static void startRenderKeepAliveTimer(void);
+
 // Frame ready callback
 typedef void (*FrameReadyCallback)(void);
 static FrameReadyCallback g_frameReadyCallback = nullptr;
@@ -120,6 +130,7 @@ FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* w
                                                            queue:[NSOperationQueue mainQueue]
                                                       usingBlock:^(NSNotification * _Nonnull note) {
             NSLog(@"[AgusMapsFlutter] App terminating, cleaning up Framework...");
+            stopRenderKeepAliveTimer();
             if (g_framework) {
                 g_drapeEngineCreated = false;
                 g_framework.reset();
@@ -135,6 +146,8 @@ FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* w
 /// Call this before app termination to ensure clean shutdown
 FFI_PLUGIN_EXPORT void comaps_shutdown(void) {
     NSLog(@"[AgusMapsFlutter] comaps_shutdown called");
+    
+    stopRenderKeepAliveTimer();
     
     if (g_framework) {
         g_drapeEngineCreated = false;
@@ -338,6 +351,69 @@ FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
     NSLog(@"[AgusMapsFlutter] Point is NOT covered by any registered MWM");
 }
 
+#pragma mark - Render Keep-Alive Timer
+
+/// Stops the render keep-alive timer if running
+static void stopRenderKeepAliveTimer() {
+    if (g_renderKeepAliveTimer) {
+        dispatch_source_cancel(g_renderKeepAliveTimer);
+        g_renderKeepAliveTimer = nil;
+        NSLog(@"[AgusMapsFlutter] Render keep-alive timer stopped");
+    }
+}
+
+/// Starts a timer that periodically invalidates rendering to keep the render loop alive
+/// This ensures initial tiles are loaded and rendered before the loop suspends
+static void startRenderKeepAliveTimer() {
+    stopRenderKeepAliveTimer();
+    
+    g_renderKeepAliveCount = 0;
+    
+    // Create a dispatch timer that fires every ~33ms (30 Hz)
+    g_renderKeepAliveTimer = dispatch_source_create(
+        DISPATCH_SOURCE_TYPE_TIMER,
+        0, 0,
+        dispatch_get_main_queue()
+    );
+    
+    if (!g_renderKeepAliveTimer) {
+        NSLog(@"[AgusMapsFlutter] ERROR: Failed to create render keep-alive timer");
+        return;
+    }
+    
+    dispatch_source_set_timer(
+        g_renderKeepAliveTimer,
+        dispatch_time(DISPATCH_TIME_NOW, 0),
+        33 * NSEC_PER_MSEC,  // ~30 Hz
+        5 * NSEC_PER_MSEC   // 5ms leeway
+    );
+    
+    dispatch_source_set_event_handler(g_renderKeepAliveTimer, ^{
+        g_renderKeepAliveCount++;
+        
+        if (g_renderKeepAliveCount > kRenderKeepAliveMaxCount) {
+            NSLog(@"[AgusMapsFlutter] Render keep-alive complete after %d invalidations", g_renderKeepAliveCount - 1);
+            stopRenderKeepAliveTimer();
+            return;
+        }
+        
+        if (g_framework && g_drapeEngineCreated) {
+            // MakeFrameActive() posts an ActiveFrameEvent which forces the render loop
+            // to render an active frame (isActiveFrame=true), which in turn triggers
+            // the ActiveFrameCallback to notify Flutter of new frame content.
+            g_framework->MakeFrameActive();
+            
+            if (g_renderKeepAliveCount <= 5 || g_renderKeepAliveCount % 10 == 0) {
+                NSLog(@"[AgusMapsFlutter] Render keep-alive tick %d/%d (MakeFrameActive)", 
+                      g_renderKeepAliveCount, kRenderKeepAliveMaxCount);
+            }
+        }
+    });
+    
+    dispatch_resume(g_renderKeepAliveTimer);
+    NSLog(@"[AgusMapsFlutter] Render keep-alive timer started (max %d ticks)", kRenderKeepAliveMaxCount);
+}
+
 #pragma mark - DrapeEngine Creation
 
 static void createDrapeEngineIfNeeded(int width, int height, float density) {
@@ -370,6 +446,11 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
     g_drapeEngineCreated = true;
     
     NSLog(@"[AgusMapsFlutter] DrapeEngine created successfully");
+    
+    // Start the render keep-alive timer to ensure initial tiles are rendered
+    // The CoMaps render loop suspends after a few inactive frames, but tiles
+    // load asynchronously. This timer keeps the loop active until content is ready.
+    startRenderKeepAliveTimer();
 }
 
 #pragma mark - Native Surface Functions (called from Swift)
@@ -455,6 +536,9 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int
 extern "C" FFI_PLUGIN_EXPORT void agus_native_on_surface_destroyed(void) {
     NSLog(@"[AgusMapsFlutter] agus_native_on_surface_destroyed");
     
+    // Stop the keep-alive timer first
+    stopRenderKeepAliveTimer();
+    
     if (g_framework) {
         g_framework->SetRenderingDisabled(true /* destroySurface */);
     }
@@ -476,9 +560,18 @@ static constexpr auto kMinFrameInterval = std::chrono::milliseconds(16); // ~60f
 // Throttling flag to prevent queuing too many frame notifications
 static std::atomic<bool> g_frameNotificationPending{false};
 
+// Debug: count frame notifications
+static std::atomic<int> g_frameNotificationCount{0};
+
 /// Internal function to notify Flutter about a new frame
 /// Called from the DrapeEngine render thread via df::SetActiveFrameCallback
 static void notifyFlutterFrameReady(void) {
+    // Debug: log first few notifications
+    int count = g_frameNotificationCount.fetch_add(1);
+    if (count < 5 || count % 60 == 0) {
+        NSLog(@"[AgusMapsFlutter] notifyFlutterFrameReady called (count=%d)", count);
+    }
+    
     // Rate limiting (Option 2): Enforce 60fps max
     auto now = std::chrono::steady_clock::now();
     auto elapsed = now - g_lastFrameNotification;
@@ -504,16 +597,34 @@ static void notifyFlutterFrameReady(void) {
         // Fallback: call Swift static method directly if no callback is set
         dispatch_async(dispatch_get_main_queue(), ^{
             g_frameNotificationPending.store(false);
-            // Use NSClassFromString to avoid direct Swift dependency
-            Class pluginClass = NSClassFromString(@"agus_maps_flutter.AgusMapsFlutterPlugin");
+            // Use the @objc name we assigned to the Swift class
+            // The class is declared as @objc(AgusMapsFlutterPlugin)
+            Class pluginClass = NSClassFromString(@"AgusMapsFlutterPlugin");
             if (pluginClass) {
                 SEL selector = NSSelectorFromString(@"notifyFrameReadyFromNative");
                 if ([pluginClass respondsToSelector:selector]) {
+                    // Debug: log successful notification
+                    static dispatch_once_t successToken;
+                    dispatch_once(&successToken, ^{
+                        NSLog(@"[AgusMapsFlutter] Frame notification: class found, calling notifyFrameReadyFromNative");
+                    });
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
                     [pluginClass performSelector:selector];
 #pragma clang diagnostic pop
+                } else {
+                    // Debug: selector not found
+                    static dispatch_once_t selectorToken;
+                    dispatch_once(&selectorToken, ^{
+                        NSLog(@"[AgusMapsFlutter] WARNING: AgusMapsFlutterPlugin does not respond to notifyFrameReadyFromNative");
+                    });
                 }
+            } else {
+                // Debug: log if class lookup fails
+                static dispatch_once_t onceToken;
+                dispatch_once(&onceToken, ^{
+                    NSLog(@"[AgusMapsFlutter] WARNING: Could not find AgusMapsFlutterPlugin class for frame notification");
+                });
             }
         });
     }
