@@ -203,8 +203,26 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let markerFile = documentsDir.appendingPathComponent(".comaps_data_extracted")
         
-        // Check if already extracted
-        if FileManager.default.fileExists(atPath: markerFile.path) {
+        // Essential files that must exist for CoMaps to work
+        let essentialFiles = ["classificator.txt", "types.txt", "categories.txt", "visibility.txt"]
+        
+        // Check if already extracted AND essential files exist
+        var needsExtraction = !FileManager.default.fileExists(atPath: markerFile.path)
+        if !needsExtraction {
+            // Verify essential files exist
+            for file in essentialFiles {
+                let filePath = documentsDir.appendingPathComponent(file).path
+                if !FileManager.default.fileExists(atPath: filePath) {
+                    NSLog("[AgusMapsFlutter] Essential file missing: %@, forcing re-extraction", file)
+                    needsExtraction = true
+                    // Remove marker to force full re-extraction
+                    try? FileManager.default.removeItem(atPath: markerFile.path)
+                    break
+                }
+            }
+        }
+        
+        if !needsExtraction {
             NSLog("[AgusMapsFlutter] Data already extracted at: %@", documentsDir.path)
             return documentsDir.path
         }
@@ -214,6 +232,14 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         if let bundleDataPath = Bundle.main.resourcePath?.appending("/\(dataAssetPath)"),
            FileManager.default.fileExists(atPath: bundleDataPath) {
             try extractDirectory(from: bundleDataPath, to: documentsDir.path)
+        }
+        
+        // Verify extraction was successful
+        for file in essentialFiles {
+            let filePath = documentsDir.appendingPathComponent(file).path
+            if !FileManager.default.fileExists(atPath: filePath) {
+                NSLog("[AgusMapsFlutter] WARNING: Essential file still missing after extraction: %@", file)
+            }
         }
         
         // Create marker file
