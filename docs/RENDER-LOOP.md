@@ -450,51 +450,94 @@ CVMetalTextureCacheCreateTextureFromImage(cache, pixelBuffer, ..., &cvMetalTextu
 
 ### Flutter Plugin macOS (Window Resize Handling)
 
-macOS requires special handling for window resize because Swift creates a new CVPixelBuffer but the native Metal context needs to be updated:
+macOS requires special handling for window resize because:
+1. Swift creates a new CVPixelBuffer on each resize
+2. The native Metal context needs to be updated with the new texture
+3. Rapid resize events (~8ms apart) can cause race conditions
+
+#### Resize Debouncing (Swift)
+
+To prevent texture thrashing during rapid window dragging, resize events are debounced:
 
 ```swift
-// AgusMapsFlutterPlugin.swift - handleResizeMapSurface
-try createPixelBuffer(width: width, height: height)
+// AgusMapsFlutterPlugin.swift
+private var pendingResizeWorkItem: DispatchWorkItem?
+private static let resizeDebounceInterval: TimeInterval = 0.05  // 50ms
 
-// Call macOS-specific resize function that passes new pixel buffer
-guard let buffer = pixelBuffer else { /* error */ }
-nativeResizeSurface(pixelBuffer: buffer, width: Int32(width), height: Int32(height))
+private func handleResizeMapSurface(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    lastResizeWidth = width
+    lastResizeHeight = height
+    
+    // Cancel any pending resize
+    pendingResizeWorkItem?.cancel()
+    
+    // Debounce - wait until resize events stop
+    let workItem = DispatchWorkItem { [weak self] in
+        self?.performResize(width: self!.lastResizeWidth, height: self!.lastResizeHeight)
+    }
+    pendingResizeWorkItem = workItem
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.resizeDebounceInterval, execute: workItem)
+    
+    result(true)  // Return immediately
+}
 
-textureRegistry?.textureFrameAvailable(textureId)
+private func performResize(width: Int, height: Int) {
+    try createPixelBuffer(width: width, height: height)
+    guard let buffer = pixelBuffer else { return }
+    nativeResizeSurface(pixelBuffer: buffer, width: Int32(width), height: Int32(height))
+    textureRegistry?.textureFrameAvailable(textureId)
+}
 ```
+
+#### Thread-Safe Texture Swap (C++)
+
+A mutex protects texture access during resize to prevent the render thread from using a deallocated texture:
+
+```cpp
+// AgusMetalContextFactory.mm
+#include <mutex>
+static std::mutex g_textureMutex;
+static id<MTLTexture> g_currentRenderTexture = nil;
+
+DrawMetalContext(...) : MetalBaseContext(device, screenSize, []() -> id<CAMetalDrawable> {
+    // Acquire mutex for thread-safe access
+    std::lock_guard<std::mutex> lock(g_textureMutex);
+    if (!g_currentDrawable || g_currentDrawable.texture != g_currentRenderTexture) {
+        g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:g_currentRenderTexture];
+    }
+    return g_currentDrawable;
+}) {
+    std::lock_guard<std::mutex> lock(g_textureMutex);
+    g_currentRenderTexture = renderTexture;
+}
+
+void SetRenderTexture(id<MTLTexture> texture, m2::PointU const & screenSize) {
+    {
+        std::lock_guard<std::mutex> lock(g_textureMutex);
+        g_currentRenderTexture = texture;
+        g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:texture];
+    }
+    Resize(screenSize.x, screenSize.y);
+}
+```
+
+#### Native Resize Handler
 
 ```cpp
 // agus_maps_flutter_macos.mm
 static agus::AgusMetalContextFactory* g_metalContextFactory = nullptr;
 
 void agus_native_resize_surface(CVPixelBufferRef pixelBuffer, int32_t width, int32_t height) {
+    if (!g_framework || !g_drapeEngineCreated) return;  // Early exit if not ready
+    
     if (g_metalContextFactory) {
         m2::PointU screenSize(width, height);
-        g_metalContextFactory->SetPixelBuffer(pixelBuffer, screenSize);
+        g_metalContextFactory->SetPixelBuffer(pixelBuffer, screenSize);  // Thread-safe
     }
-    if (g_framework && g_drapeEngineCreated) {
-        g_framework->OnSize(width, height);
-        g_framework->InvalidateRendering();
-    }
-}
-```
-
-```cpp
-// AgusMetalContextFactory.mm - uses global texture pointer for lambda
-static id<MTLTexture> g_currentRenderTexture = nil;
-
-DrawMetalContext(...) : MetalBaseContext(device, screenSize, []() -> id<CAMetalDrawable> {
-    // References GLOBAL pointer, not captured value
-    if (!g_currentDrawable || g_currentDrawable.texture != g_currentRenderTexture) {
-        g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:g_currentRenderTexture];
-    }
-    return g_currentDrawable;
-}) { g_currentRenderTexture = renderTexture; }
-
-void SetRenderTexture(id<MTLTexture> texture, m2::PointU const & screenSize) {
-    g_currentRenderTexture = texture;  // Update global
-    g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:texture];
-    Resize(screenSize.x, screenSize.y);
+    
+    g_framework->OnSize(width, height);
+    g_framework->InvalidateRendering();
+    g_framework->MakeFrameActive();  // Force immediate re-render
 }
 ```
 

@@ -392,6 +392,7 @@ build-release:
 - [x] App launches and displays Gibraltar map
 - [x] Pan/zoom gestures work correctly
 - [x] Window resize works correctly (map doesn't turn white)
+- [x] Rapid window resize is stable (no brownish/incomplete blocks)
 - [ ] Map renders at 60fps with minimal CPU usage
 - [ ] Release build is under 150MB
 - [ ] Bootstrap script works on fresh checkout
@@ -402,7 +403,9 @@ build-release:
 
 ### Window Resizing ✅ RESOLVED
 
-Unlike iOS, macOS windows can be freely resized by users. This required special handling:
+Unlike iOS, macOS windows can be freely resized by users. This required special handling across two fixes:
+
+#### Fix 1: White Screen on Resize
 
 **Problem:** When the window is resized, Swift creates a new `CVPixelBuffer` but the native Metal rendering context was not being updated with the new texture. This caused the map to turn white after resize.
 
@@ -416,11 +419,25 @@ Unlike iOS, macOS windows can be freely resized by users. This required special 
 - `AgusMetalContextFactory.mm`: Uses global `g_currentRenderTexture` pointer that the drawable getter lambda references (fixes captured-by-value issue)
 - `AgusMapsFlutterPlugin.swift`: Calls `nativeResizeSurface()` during resize instead of `nativeOnSizeChanged()`
 
+#### Fix 2: Brownish/Incomplete Blocks During Rapid Resize
+
+**Problem:** During rapid window dragging, resize events arrived every ~8ms, causing:
+- Race conditions: texture swapped while render thread was actively using old texture
+- Thrashing: 30+ texture recreations per second caused memory pressure
+
+**Solution:** Two-pronged approach:
+
+1. **Resize Debouncing (Swift):** Added 50ms debounce interval in `AgusMapsFlutterPlugin.swift` that waits for resize events to stop before performing the actual resize. Uses `DispatchWorkItem` cancellation pattern.
+
+2. **Thread Synchronization (C++):** Added `std::mutex g_textureMutex` in `AgusMetalContextFactory.mm` to ensure thread-safe texture access. Both the drawable getter lambda and `SetRenderTexture()` acquire the mutex.
+
+3. **Improved Resize Handler:** Added `MakeFrameActive()` call after resize to force immediate re-render of new viewport areas.
+
 See [ISSUE-macos-resize-white-screen.md](ISSUE-macos-resize-white-screen.md) for full technical details.
 
 **Key differences from iOS:**
 - iOS: `AgusBridge.h` does NOT have `agus_native_resize_surface()` (iOS apps don't resize)
-- macOS: Has the additional function and Swift calls it during resize
+- macOS: Has the additional function, debouncing, and thread synchronization for resize
 
 ### Multiple Displays
 

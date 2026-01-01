@@ -2,7 +2,9 @@
 
 ## Status: ✅ RESOLVED
 
-**Commit:** `9f79c20` - fix(macos): window resize breaks map rendering
+**Commits:**
+- `9f79c20` - fix(macos): window resize breaks map rendering (initial fix)
+- `TBD` - fix(macos): resize instability with rapid events (debouncing + thread safety)
 
 ---
 
@@ -148,6 +150,123 @@ private func nativeResizeSurface(pixelBuffer: CVPixelBuffer, width: Int32, heigh
 | `macos/Classes/agus_maps_flutter_macos.mm` | Added `g_metalContextFactory` pointer, implemented `agus_native_resize_surface()` |
 | `macos/Classes/AgusMetalContextFactory.mm` | Added `g_currentRenderTexture` global, updated constructor and `SetRenderTexture()` |
 | `macos/Classes/AgusMapsFlutterPlugin.swift` | Added `nativeResizeSurface()` wrapper, updated `handleResizeMapSurface()` |
+
+---
+
+## Follow-up Fix: Resize Instability with Rapid Events
+
+### Problem
+
+After the initial fix, a secondary issue was discovered: when rapidly resizing the window (by dragging corners/edges), the map would sometimes render with **incomplete/brownish blocks**, especially in expanded viewport areas. This happened intermittently, not consistently like the original white screen issue.
+
+### Root Cause
+
+Analysis of the logs showed resize events arriving approximately every **8ms** during active window dragging:
+
+```
+03:57:23.516 CVPixelBuffer created: 2520x1304
+03:57:23.533 CVPixelBuffer created: 2510x1298  (17ms later)
+03:57:23.541 CVPixelBuffer created: 2502x1292  (8ms later)
+03:57:23.558 CVPixelBuffer created: 2498x1288  (17ms later)
+...
+```
+
+Two issues caused the instability:
+
+1. **Race Condition**: New CVPixelBuffer/Metal texture was being created while the render thread was actively using the old texture. The texture swap had no synchronization.
+
+2. **Thrashing**: Creating 30+ textures per second during rapid resize caused memory pressure and incomplete tile rendering.
+
+### Solution
+
+#### Fix 1: Resize Debouncing (Swift)
+
+Added 50ms debounce interval in `AgusMapsFlutterPlugin.swift`:
+
+```swift
+// Properties for debouncing
+private var pendingResizeWorkItem: DispatchWorkItem?
+private var lastResizeWidth: Int = 0
+private var lastResizeHeight: Int = 0
+private static let resizeDebounceInterval: TimeInterval = 0.05  // 50ms
+
+private func handleResizeMapSurface(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    // Store requested dimensions
+    lastResizeWidth = width
+    lastResizeHeight = height
+    
+    // Cancel any pending resize
+    pendingResizeWorkItem?.cancel()
+    
+    // Debounce - wait until resize events stop
+    let workItem = DispatchWorkItem { [weak self] in
+        self?.performResize(width: self!.lastResizeWidth, height: self!.lastResizeHeight)
+    }
+    pendingResizeWorkItem = workItem
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.resizeDebounceInterval, execute: workItem)
+    
+    result(true)  // Return immediately
+}
+```
+
+#### Fix 2: Thread Synchronization (C++)
+
+Added mutex protection in `AgusMetalContextFactory.mm`:
+
+```cpp
+#include <mutex>
+
+static std::mutex g_textureMutex;
+
+// In drawable getter lambda:
+std::lock_guard<std::mutex> lock(g_textureMutex);
+if (!g_currentDrawable || g_currentDrawable.texture != g_currentRenderTexture) {
+    g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:g_currentRenderTexture];
+}
+
+// In SetRenderTexture:
+void SetRenderTexture(id<MTLTexture> texture, m2::PointU const & screenSize) {
+    {
+        std::lock_guard<std::mutex> lock(g_textureMutex);
+        m_renderTexture = texture;
+        g_currentRenderTexture = texture;
+        g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:texture];
+    }
+    Resize(screenSize.x, screenSize.y);
+}
+```
+
+#### Fix 3: Improved Resize Handler (C++)
+
+Enhanced `agus_native_resize_surface()` in `agus_maps_flutter_macos.mm`:
+
+```cpp
+extern "C" void agus_native_resize_surface(CVPixelBufferRef pixelBuffer, int32_t width, int32_t height) {
+    // Skip if Framework/DrapeEngine not ready
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    
+    // Update Metal context (thread-safe via mutex)
+    if (g_metalContextFactory) {
+        m2::PointU screenSize(width, height);
+        g_metalContextFactory->SetPixelBuffer(pixelBuffer, screenSize);
+    }
+    
+    // Notify framework and force redraw
+    g_framework->OnSize(width, height);
+    g_framework->InvalidateRendering();
+    g_framework->MakeFrameActive();  // Force immediate re-render
+}
+```
+
+### Files Changed (Follow-up Fix)
+
+| File | Change |
+|------|--------|
+| `macos/Classes/AgusMapsFlutterPlugin.swift` | Added debounce properties, refactored resize handling |
+| `macos/Classes/AgusMetalContextFactory.mm` | Added `#include <mutex>`, `g_textureMutex`, mutex protection |
+| `macos/Classes/agus_maps_flutter_macos.mm` | Added early return check, `MakeFrameActive()` call |
 
 ---
 

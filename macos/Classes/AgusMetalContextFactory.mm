@@ -5,6 +5,7 @@
 
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
+#include <mutex>
 
 // Forward declaration for frame ready notification
 extern "C" void agus_notify_frame_ready(void);
@@ -157,6 +158,8 @@ extern "C" void agus_notify_frame_ready(void);
 static AgusMetalDrawable* g_currentDrawable = nil;
 // Static texture pointer that the drawable getter lambda references (allows updates)
 static id<MTLTexture> g_currentRenderTexture = nil;
+// Mutex for thread-safe texture swapping during resize
+static std::mutex g_textureMutex;
 
 namespace
 {
@@ -169,7 +172,8 @@ public:
     DrawMetalContext(id<MTLDevice> device, id<MTLTexture> renderTexture, m2::PointU const & screenSize)
         : dp::metal::MetalBaseContext(device, screenSize, []() -> id<CAMetalDrawable> {
             // Return our fake drawable wrapping the current texture
-            // g_currentRenderTexture is updated by SetRenderTexture
+            // Use mutex to ensure thread-safe access during resize
+            std::lock_guard<std::mutex> lock(g_textureMutex);
             if (!g_currentDrawable || g_currentDrawable.texture != g_currentRenderTexture) {
                 g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:g_currentRenderTexture];
             }
@@ -177,7 +181,8 @@ public:
         })
         , m_renderTexture(renderTexture)
     {
-        // Initialize the global texture pointer
+        // Initialize the global texture pointer with mutex protection
+        std::lock_guard<std::mutex> lock(g_textureMutex);
         g_currentRenderTexture = renderTexture;
         g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:renderTexture];
         LOG(LINFO, ("DrawMetalContext created:", screenSize.x, "x", screenSize.y));
@@ -185,11 +190,16 @@ public:
     
     void SetRenderTexture(id<MTLTexture> texture, m2::PointU const & screenSize)
     {
-        m_renderTexture = texture;
-        // Update the global texture pointer so the drawable getter lambda uses the new texture
-        g_currentRenderTexture = texture;
-        // Force recreation of drawable with new texture
-        g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:texture];
+        // Use mutex to safely swap textures during resize
+        // This prevents the render thread from using a deallocated texture
+        {
+            std::lock_guard<std::mutex> lock(g_textureMutex);
+            m_renderTexture = texture;
+            // Update the global texture pointer so the drawable getter lambda uses the new texture
+            g_currentRenderTexture = texture;
+            // Force recreation of drawable with new texture
+            g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:texture];
+        }
         Resize(screenSize.x, screenSize.y);
         LOG(LINFO, ("DrawMetalContext::SetRenderTexture updated to", screenSize.x, "x", screenSize.y));
     }
@@ -382,9 +392,12 @@ AgusMetalContextFactory::~AgusMetalContextFactory()
 {
     CleanupTexture();
     
-    // Clear global state
-    g_currentRenderTexture = nil;
-    g_currentDrawable = nil;
+    // Clear global state with mutex protection
+    {
+        std::lock_guard<std::mutex> lock(g_textureMutex);
+        g_currentRenderTexture = nil;
+        g_currentDrawable = nil;
+    }
     
     if (m_textureCache)
     {

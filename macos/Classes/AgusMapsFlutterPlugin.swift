@@ -59,6 +59,13 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     // Rendering state
     private var isRenderingEnabled: Bool = false
     
+    // Resize debouncing - prevents rapid texture recreation during window drag
+    // Without debouncing, ~8ms resize intervals cause partial rendering artifacts
+    private var pendingResizeWorkItem: DispatchWorkItem?
+    private var lastResizeWidth: Int = 0
+    private var lastResizeHeight: Int = 0
+    private static let resizeDebounceInterval: TimeInterval = 0.05  // 50ms debounce
+    
     // MARK: - FlutterPlugin Registration
     
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -341,26 +348,54 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
             return
         }
         
+        // Store requested dimensions
+        lastResizeWidth = width
+        lastResizeHeight = height
+        
+        // Cancel any pending resize
+        pendingResizeWorkItem?.cancel()
+        
+        // Debounce resize - wait until resize events stop coming for debounceInterval
+        // This prevents partial rendering artifacts when window is being dragged
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.performResize(width: self.lastResizeWidth, height: self.lastResizeHeight)
+        }
+        pendingResizeWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.resizeDebounceInterval, execute: workItem)
+        
+        // Return immediately with success - actual resize will happen after debounce
+        result(true)
+    }
+    
+    /// Actually perform the resize after debouncing
+    private func performResize(width: Int, height: Int) {
+        // Skip if size hasn't actually changed
+        guard width != surfaceWidth || height != surfaceHeight else {
+            NSLog("[AgusMapsFlutter] Resize skipped - size unchanged: %dx%d", width, height)
+            return
+        }
+        
         surfaceWidth = width
         surfaceHeight = height
+        
+        NSLog("[AgusMapsFlutter] Performing debounced resize: %dx%d", width, height)
         
         do {
             try createPixelBuffer(width: width, height: height)
             
             // Use resize-specific function that updates the Metal texture with new pixel buffer
             guard let buffer = pixelBuffer else {
-                throw NSError(domain: "AgusMapsFlutter", code: -1, userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to get pixel buffer after creation"
-                ])
+                NSLog("[AgusMapsFlutter] ERROR: Failed to get pixel buffer after creation")
+                return
             }
             nativeResizeSurface(pixelBuffer: buffer, width: Int32(width), height: Int32(height))
             
             // Notify Flutter of texture update
             textureRegistry?.textureFrameAvailable(textureId)
             
-            result(true)
         } catch {
-            result(FlutterError(code: "RESIZE_FAILED", message: error.localizedDescription, details: nil))
+            NSLog("[AgusMapsFlutter] Resize failed: %@", error.localizedDescription)
         }
     }
     
