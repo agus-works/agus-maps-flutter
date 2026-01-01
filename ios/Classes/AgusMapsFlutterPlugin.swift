@@ -204,7 +204,14 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         let markerFile = documentsDir.appendingPathComponent(".comaps_data_extracted")
         
         // Essential files that must exist for CoMaps to work
-        let essentialFiles = ["classificator.txt", "types.txt", "categories.txt", "visibility.txt"]
+        let essentialFiles = [
+            "classificator.txt",
+            "types.txt", 
+            "categories.txt",
+            "visibility.txt",
+            "symbols/xxhdpi/light/symbols.sdf",  // Symbol textures required for rendering
+            "symbols/xxhdpi/dark/symbols.sdf"
+        ]
         
         // Check if already extracted AND essential files exist
         var needsExtraction = !FileManager.default.fileExists(atPath: markerFile.path)
@@ -231,7 +238,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         let dataAssetPath = lookupKeyForAsset("assets/comaps_data")
         if let bundleDataPath = Bundle.main.resourcePath?.appending("/\(dataAssetPath)"),
            FileManager.default.fileExists(atPath: bundleDataPath) {
+            NSLog("[AgusMapsFlutter] Extracting from bundle path: %@", bundleDataPath)
             try extractDirectory(from: bundleDataPath, to: documentsDir.path)
+        } else {
+            NSLog("[AgusMapsFlutter] WARNING: Bundle data path not found!")
         }
         
         // Verify extraction was successful
@@ -239,6 +249,8 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
             let filePath = documentsDir.appendingPathComponent(file).path
             if !FileManager.default.fileExists(atPath: filePath) {
                 NSLog("[AgusMapsFlutter] WARNING: Essential file still missing after extraction: %@", file)
+            } else {
+                NSLog("[AgusMapsFlutter] Verified: %@", file)
             }
         }
         
