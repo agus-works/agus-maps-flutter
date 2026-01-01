@@ -33,6 +33,9 @@ void agus_native_on_size_changed(int32_t width, int32_t height);
 /// Called when Swift destroys the surface
 void agus_native_on_surface_destroyed(void);
 
+/// Update the render target pixel buffer after a resize
+void agus_native_update_surface(CVPixelBufferRef pixelBuffer, int32_t width, int32_t height);
+
 /// Frame ready callback type
 typedef void (*AgusFrameReadyCallback)(void);
 

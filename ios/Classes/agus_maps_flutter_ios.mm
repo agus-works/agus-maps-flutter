@@ -38,10 +38,15 @@ extern "C" void* AgusPlatformIOS_GetInstance(void);
 
 static std::unique_ptr<Framework> g_framework;
 static drape_ptr<dp::ThreadSafeFactory> g_threadSafeFactory;
+static agus::AgusMetalContextFactory* g_metalContextFactory = nullptr; // raw pointer for pixel buffer updates
 static std::string g_resourcePath;
 static std::string g_writablePath;
 static bool g_platformInitialized = false;
 static bool g_drapeEngineCreated = false;
+// Render keep-alive to push a few extra frames while tiles/fonts load
+static dispatch_source_t g_renderKeepAliveTimer = nil;
+static int g_renderKeepAliveCount = 0;
+static const int kRenderKeepAliveMaxCount = 20; // ~0.33s at 60fps, enough to seed initial tiles
 
 // Surface state
 static int32_t g_surfaceWidth = 0;
@@ -53,8 +58,17 @@ static int64_t g_textureId = -1;
 typedef void (*FrameReadyCallback)(void);
 static FrameReadyCallback g_frameReadyCallback = nullptr;
 
+// Frame notification timing for 60fps rate limiting (Option 2)
+static std::chrono::steady_clock::time_point g_lastFrameNotification;
+static constexpr auto kMinFrameInterval = std::chrono::milliseconds(16); // ~60fps
+
+// Throttling flag to prevent queuing too many frame notifications
+static std::atomic<bool> g_frameNotificationPending{false};
+
 // Forward declaration for active frame notification
 static void notifyFlutterFrameReady(void);
+static void startRenderKeepAliveTimer(void);
+static void stopRenderKeepAliveTimer(void);
 
 #pragma mark - Logging
 
@@ -112,6 +126,47 @@ FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* w
     g_platformInitialized = true;
     
     NSLog(@"[AgusMapsFlutter] Platform initialized, Framework deferred to surface creation");
+}
+
+static void stopRenderKeepAliveTimer(void) {
+    if (g_renderKeepAliveTimer) {
+        dispatch_source_cancel(g_renderKeepAliveTimer);
+        g_renderKeepAliveTimer = nil;
+    }
+    g_renderKeepAliveCount = 0;
+}
+
+static void startRenderKeepAliveTimer(void) {
+    stopRenderKeepAliveTimer();
+
+    // Drive a few frames to let tiles/fonts settle; keeps CPU bounded.
+    g_renderKeepAliveTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    if (!g_renderKeepAliveTimer) {
+        return;
+    }
+
+    dispatch_source_set_timer(
+        g_renderKeepAliveTimer,
+        dispatch_time(DISPATCH_TIME_NOW, 0),
+        (uint64_t)(NSEC_PER_SEC / 60),
+        1 * NSEC_PER_MSEC);
+
+    dispatch_source_set_event_handler(g_renderKeepAliveTimer, ^{
+        g_renderKeepAliveCount++;
+        if (g_framework && g_drapeEngineCreated) {
+            // MakeFrameActive posts an ActiveFrameEvent so ActiveFrameCallback fires
+            g_framework->MakeFrameActive();
+            if (g_renderKeepAliveCount <= 5 || g_renderKeepAliveCount % 10 == 0) {
+                NSLog(@"[AgusMapsFlutter] Render keep-alive tick %d/%d (MakeFrameActive)",
+                      g_renderKeepAliveCount, kRenderKeepAliveMaxCount);
+            }
+        }
+        if (g_renderKeepAliveCount >= kRenderKeepAliveMaxCount) {
+            stopRenderKeepAliveTimer();
+        }
+    });
+
+    dispatch_resume(g_renderKeepAliveTimer);
 }
 
 FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path) {
@@ -340,6 +395,9 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
     g_drapeEngineCreated = true;
     
     NSLog(@"[AgusMapsFlutter] DrapeEngine created successfully");
+
+    // Kick the render loop immediately so the first frame is active
+    g_framework->MakeFrameActive();
 }
 
 #pragma mark - Native Surface Functions (called from Swift)
@@ -370,6 +428,11 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
     g_surfaceHeight = height;
     g_density = density;
     
+    // Reset frame notification state to ensure we don't get stuck with a pending flag
+    // from a previous session that might have been interrupted.
+    g_frameNotificationPending.store(false);
+    g_lastFrameNotification = std::chrono::steady_clock::time_point();
+    
     // Create Framework on this thread if not already created
     if (!g_framework) {
         NSLog(@"[AgusMapsFlutter] Creating Framework...");
@@ -396,7 +459,8 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
         return;
     }
     
-    // Wrap in ThreadSafeFactory for thread-safe context access
+    // Save raw pointer for later SetPixelBuffer on resize and wrap in ThreadSafeFactory
+    g_metalContextFactory = metalFactory;
     g_threadSafeFactory = make_unique_dp<dp::ThreadSafeFactory>(metalFactory);
     
     // Create DrapeEngine
@@ -406,6 +470,7 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
     if (g_framework && g_drapeEngineCreated) {
         g_framework->SetRenderingEnabled(make_ref(g_threadSafeFactory));
         NSLog(@"[AgusMapsFlutter] Rendering enabled");
+        startRenderKeepAliveTimer();
     }
 }
 
@@ -415,9 +480,41 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int
     
     g_surfaceWidth = width;
     g_surfaceHeight = height;
-    
+
     if (g_framework && g_drapeEngineCreated) {
         g_framework->OnSize(width, height);
+    }
+}
+
+/// Called when Swift recreates the CVPixelBuffer on resize
+extern "C" FFI_PLUGIN_EXPORT void agus_native_update_surface(
+    CVPixelBufferRef pixelBuffer,
+    int32_t width,
+    int32_t height
+) {
+    NSLog(@"[AgusMapsFlutter] agus_native_update_surface: %dx%d", width, height);
+    if (!g_metalContextFactory) {
+        NSLog(@"[AgusMapsFlutter] WARNING: No Metal context factory to update");
+        return;
+    }
+    
+    // Reset frame notification state to ensure we don't get stuck
+    g_frameNotificationPending.store(false);
+    g_lastFrameNotification = std::chrono::steady_clock::time_point();
+    
+    g_surfaceWidth = width;
+    g_surfaceHeight = height;
+    m2::PointU screenSize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+    g_metalContextFactory->SetPixelBuffer(pixelBuffer, screenSize);
+    if (g_framework && g_drapeEngineCreated) {
+        g_framework->OnSize(width, height);
+        // Force a complete re-render into the new pixel buffer.
+        // InvalidateRendering() is REQUIRED to actually trigger rendering - 
+        // without it, the engine validates but skips the actual render cycle.
+        g_framework->InvalidateRendering();
+        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+        g_framework->MakeFrameActive();
+        startRenderKeepAliveTimer();
     }
 }
 
@@ -425,11 +522,17 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int
 extern "C" FFI_PLUGIN_EXPORT void agus_native_on_surface_destroyed(void) {
     NSLog(@"[AgusMapsFlutter] agus_native_on_surface_destroyed");
     
+    // Reset frame notification state
+    g_frameNotificationPending.store(false);
+    
     if (g_framework) {
         g_framework->SetRenderingDisabled(true /* destroySurface */);
     }
     
+    stopRenderKeepAliveTimer();
+
     g_threadSafeFactory.reset();
+    g_metalContextFactory = nullptr;
     g_drapeEngineCreated = false;
 }
 
@@ -438,13 +541,6 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_on_surface_destroyed(void) {
 extern "C" FFI_PLUGIN_EXPORT void agus_set_frame_ready_callback(FrameReadyCallback callback) {
     g_frameReadyCallback = callback;
 }
-
-// Frame notification timing for 60fps rate limiting (Option 2)
-static std::chrono::steady_clock::time_point g_lastFrameNotification;
-static constexpr auto kMinFrameInterval = std::chrono::milliseconds(16); // ~60fps
-
-// Throttling flag to prevent queuing too many frame notifications
-static std::atomic<bool> g_frameNotificationPending{false};
 
 /// Internal function to notify Flutter about a new frame
 /// Called from the DrapeEngine render thread via df::SetActiveFrameCallback

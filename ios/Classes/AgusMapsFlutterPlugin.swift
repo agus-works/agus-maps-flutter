@@ -25,8 +25,16 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     /// Shared instance for native code to notify when frames are ready
     private static weak var sharedInstance: AgusMapsFlutterPlugin?
     
+    // Debug: count static method calls
+    private static var staticFrameCount: Int = 0
+    
     /// Called by native code when a frame is ready
     @objc public static func notifyFrameReadyFromNative() {
+        staticFrameCount += 1
+        if staticFrameCount <= 5 || staticFrameCount % 60 == 0 {
+            NSLog("[AgusMapsFlutter] Swift notifyFrameReadyFromNative called (count=%d, hasInstance=%@)", 
+                  staticFrameCount, sharedInstance != nil ? "YES" : "NO")
+        }
         DispatchQueue.main.async {
             sharedInstance?.notifyFrameReady()
         }
@@ -341,7 +349,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         
         do {
             try createPixelBuffer(width: width, height: height)
-            nativeOnSizeChanged(width: Int32(width), height: Int32(height))
+            if let buffer = pixelBuffer {
+                // Update native surface with the new CVPixelBuffer so Metal renders to the resized target
+                nativeUpdateSurface(pixelBuffer: buffer, width: Int32(width), height: Int32(height))
+            }
             
             // Notify Flutter of texture update
             textureRegistry?.textureFrameAvailable(textureId)
@@ -437,8 +448,16 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     // MARK: - Rendering
     
+    // Debug: count instance frame notifications
+    private var instanceFrameCount: Int = 0
+    
     /// Called by native code when a new frame is ready
     @objc public func notifyFrameReady() {
+        instanceFrameCount += 1
+        if instanceFrameCount <= 5 || instanceFrameCount % 60 == 0 {
+            NSLog("[AgusMapsFlutter] Swift notifyFrameReady instance method (count=%d, enabled=%@, textureId=%lld)", 
+                  instanceFrameCount, isRenderingEnabled ? "YES" : "NO", textureId)
+        }
         guard isRenderingEnabled, textureId >= 0 else { return }
         textureRegistry?.textureFrameAvailable(textureId)
     }
@@ -492,6 +511,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     private func nativeOnSurfaceDestroyed() {
         agus_native_on_surface_destroyed()
+    }
+
+    private func nativeUpdateSurface(pixelBuffer: CVPixelBuffer, width: Int32, height: Int32) {
+        agus_native_update_surface(pixelBuffer, width, height)
     }
     
     // MARK: - Helpers
