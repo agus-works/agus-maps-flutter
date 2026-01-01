@@ -337,6 +337,69 @@ apply_patch_directly() {
 }
 
 # ============================================================================
+# bootstrap_generate_data - Generate CoMaps data files (classificator, types, etc.)
+# ============================================================================
+# Runs the generation scripts that create classificator.txt, types.txt,
+# visibility.txt, categories.txt, and drules_proto*.bin files.
+# These files are NOT stored in the CoMaps git repo - they are generated
+# from mapcss styles and categories-strings JSON files.
+bootstrap_generate_data() {
+  log_header "Generating CoMaps Data Files"
+  
+  local comaps_dir="$BOOTSTRAP_ROOT_DIR/thirdparty/comaps"
+  local data_dir="$comaps_dir/data"
+  
+  if [[ ! -d "$comaps_dir" ]]; then
+    log_error "CoMaps directory not found at $comaps_dir"
+    return 1
+  fi
+  
+  # Check if files already exist (cached state)
+  if [[ -f "$data_dir/classificator.txt" ]] && [[ -f "$data_dir/types.txt" ]] && \
+     [[ -f "$data_dir/visibility.txt" ]] && [[ -f "$data_dir/categories.txt" ]]; then
+    log_info "Data files already generated - skipping"
+    return 0
+  fi
+  
+  pushd "$comaps_dir" >/dev/null
+  
+  # Generate drawing rules (classificator.txt, types.txt, visibility.txt, drules_proto*.bin)
+  if [[ -x "tools/unix/generate_drules.sh" ]]; then
+    log_info "Generating drawing rules and classificator..."
+    OMIM_PATH="$comaps_dir" DATA_PATH="$data_dir" bash tools/unix/generate_drules.sh
+  else
+    log_warn "generate_drules.sh not found or not executable"
+  fi
+  
+  # Generate categories.txt from JSON
+  if [[ -x "tools/unix/generate_categories.sh" ]]; then
+    log_info "Generating categories.txt..."
+    bash tools/unix/generate_categories.sh
+  else
+    log_warn "generate_categories.sh not found or not executable"
+  fi
+  
+  popd >/dev/null
+  
+  # Verify files were created
+  local generated=0
+  local missing_files=()
+  for file in classificator.txt types.txt visibility.txt categories.txt; do
+    if [[ -f "$data_dir/$file" ]]; then
+      ((generated++))
+    else
+      missing_files+=("$file")
+    fi
+  done
+  
+  if [[ ${#missing_files[@]} -gt 0 ]]; then
+    log_warn "Some files were not generated: ${missing_files[*]}"
+  fi
+  
+  log_info "Generated $generated data files"
+}
+
+# ============================================================================
 # bootstrap_boost - Build Boost headers
 # ============================================================================
 bootstrap_boost() {
@@ -525,7 +588,10 @@ bootstrap_full() {
   # Step 3: Build boost headers
   bootstrap_boost
   
-  # Step 4: Copy data files (needed for all platforms)
+  # Step 4: Generate CoMaps data files (classificator, types, visibility, categories)
+  bootstrap_generate_data
+  
+  # Step 5: Copy data files (needed for all platforms)
   bootstrap_data
   
   # Platform-specific steps
@@ -553,5 +619,6 @@ bootstrap_full() {
 # Export functions for use in other scripts
 export -f log_info log_warn log_error log_header
 export -f test_thirdparty_archive compress_thirdparty expand_thirdparty
-export -f bootstrap_comaps_fetch bootstrap_comaps bootstrap_apply_patches bootstrap_boost
+export -f bootstrap_comaps_fetch bootstrap_comaps bootstrap_apply_patches
+export -f bootstrap_generate_data bootstrap_boost
 export -f bootstrap_data bootstrap_android_assets bootstrap_full
