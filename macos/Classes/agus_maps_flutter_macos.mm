@@ -550,6 +550,12 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_resize_surface(
         return;
     }
     
+    // Skip resize if Framework/DrapeEngine not ready
+    if (!g_framework || !g_drapeEngineCreated) {
+        NSLog(@"[AgusMapsFlutter] WARNING: resize called but Framework not ready");
+        return;
+    }
+    
     g_surfaceWidth = width;
     g_surfaceHeight = height;
     
@@ -557,17 +563,18 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_resize_surface(
     if (g_metalContextFactory) {
         m2::PointU screenSize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
         g_metalContextFactory->SetPixelBuffer(pixelBuffer, screenSize);
-        NSLog(@"[AgusMapsFlutter] Metal context updated with new pixel buffer");
     } else {
         NSLog(@"[AgusMapsFlutter] WARNING: No metal context factory for resize");
     }
     
-    // Notify framework of size change
+    // Notify framework of size change and request redraw
     if (g_framework && g_drapeEngineCreated) {
         g_framework->OnSize(width, height);
         
-        // Request a redraw to render to the new texture
+        // Force complete tile reload to fill the new viewport area
+        // This ensures expanded areas render properly, not with brown/incomplete tiles
         g_framework->InvalidateRendering();
+        g_framework->MakeFrameActive();
     }
 }
 
