@@ -165,15 +165,17 @@ class DrawMetalContext : public dp::metal::MetalBaseContext
 {
 public:
     DrawMetalContext(id<MTLDevice> device, id<MTLTexture> renderTexture, m2::PointU const & screenSize)
-        : dp::metal::MetalBaseContext(device, screenSize, [renderTexture]() -> id<CAMetalDrawable> {
-            // Return our fake drawable wrapping the texture
-            if (!g_currentDrawable || g_currentDrawable.texture != renderTexture) {
-                g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:renderTexture];
-            }
+        : dp::metal::MetalBaseContext(device, screenSize, []() -> id<CAMetalDrawable> {
+            // IMPORTANT: Always return the current global drawable.
+            // Do NOT capture renderTexture by value here - SetRenderTexture updates
+            // g_currentDrawable when the pixel buffer is resized, and we must use
+            // the updated drawable, not recreate one from a stale captured texture.
             return g_currentDrawable;
         })
         , m_renderTexture(renderTexture)
     {
+        // Initialize the global drawable with the initial texture
+        g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:renderTexture];
         LOG(LINFO, ("DrawMetalContext created:", screenSize.x, "x", screenSize.y));
     }
     
@@ -183,6 +185,13 @@ public:
         // Update the global drawable
         g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:texture];
         Resize(screenSize.x, screenSize.y);
+        
+        // Reset initial frame count to ensure we notify Flutter for the first few frames
+        // after a resize/texture update. This is crucial for preventing white screens
+        // when the surface is recreated (e.g. keyboard toggle).
+        m_initialFrameCount = 120;
+        
+        LOG(LINFO, ("DrawMetalContext::SetRenderTexture updated to", screenSize.x, "x", screenSize.y));
     }
     
     void Resize(uint32_t w, uint32_t h) override
@@ -198,26 +207,163 @@ public:
         return m_renderTexture;
     }
     
+    bool Validate() override
+    {
+        static int validateCount = 0;
+        validateCount++;
+        if (validateCount <= 5 || validateCount % 300 == 0) {
+            LOG(LINFO, ("DrawMetalContext::Validate() count:", validateCount, "returning true"));
+        }
+        return true;  // Always valid
+    }
+    
+    bool BeginRendering() override
+    {
+        static int beginCount = 0;
+        beginCount++;
+        
+        // Track that we started a render cycle - Present should be called
+        m_renderCycleActive = true;
+        
+        if (beginCount <= 5 || beginCount % 300 == 0) {
+            LOG(LINFO, ("DrawMetalContext::BeginRendering() count:", beginCount, "returning true"));
+        }
+        return dp::metal::MetalBaseContext::BeginRendering();
+    }
+    
+    void EndRendering() override
+    {
+        static int endCount = 0;
+        endCount++;
+        
+        // Track EndRendering count for Present() diagnostic
+        m_lastEndRenderingCount = endCount;
+        
+        if (endCount <= 5 || endCount % 300 == 0) {
+            LOG(LINFO, ("DrawMetalContext::EndRendering() count:", endCount, "active render cycles:", m_activeRenderCycles));
+        }
+        dp::metal::MetalBaseContext::EndRendering();
+        
+        // Increment active render cycle count - this should be decremented by Present()
+        m_activeRenderCycles++;
+        
+        // NOTE: Do NOT call Present() here on iOS!
+        // DrapeEngine uses multiple render passes per frame:
+        //   Pass 1: Background/land color
+        //   Pass 2: Roads, boundaries
+        //   Pass 3: Labels, icons
+        //   ... etc
+        // Each pass calls BeginRendering → EndRendering.
+        // Present() should only be called ONCE after ALL passes are done.
+        // 
+        // DrapeEngine DOES call Present() after the frame is complete.
+        // Our Present() override handles the iOS-specific workarounds.
+    }
+    
     /// Override Present() - also notifies Flutter for initial frames
     /// This ensures the initial map content is displayed even if isActiveFrame
     /// isn't set during the very first few render cycles.
     void Present() override
     {
-        // Call base class Present() to do the actual Metal rendering
-        dp::metal::MetalBaseContext::Present();
+        // Debug: log present calls
+        static int presentCount = 0;
+        presentCount++;
+        m_lastPresentCount = presentCount;
         
-        // For the first few frames after DrapeEngine creation, always notify Flutter
-        // This handles the case where initial tiles are being loaded but isActiveFrame
-        // might not be true yet. After initial frames, we rely on df::SetActiveFrameCallback.
-        if (m_initialFrameCount > 0) {
+        // Mark render cycle complete
+        m_renderCycleActive = false;
+        
+        // Decrement active render cycle count
+        if (m_activeRenderCycles > 0)
+            m_activeRenderCycles--;
+        
+        if (presentCount <= 5 || presentCount % 300 == 0) {
+            LOG(LINFO, ("DrawMetalContext::Present() ENTER, count:", presentCount, 
+                        "lastEndRendering:", m_lastEndRenderingCount,
+                        "activeRenderCycles:", m_activeRenderCycles));
+        }
+        
+        // WORKAROUND for iOS: We're rendering to an offscreen CVPixelBuffer-backed texture,
+        // NOT to a CAMetalLayer/screen. The base MetalBaseContext::Present() does:
+        // 1. presentDrawable - schedules drawable for screen presentation (BLOCKS for us!)
+        // 2. commit - commits the command buffer
+        // 3. waitUntilCompleted - waits for GPU (also blocks)
+        //
+        // For offscreen rendering, we:
+        // 1. SKIP presentDrawable (it blocks on iOS)
+        // 2. Add a completion handler to notify Flutter when GPU is DONE
+        // 3. Commit the command buffer (non-blocking)
+        
+        // Request the frame drawable to ensure the base class state is consistent
+        RequestFrameDrawable();
+        
+        // Check if we have a command buffer
+        if (!m_frameCommandBuffer) {
+            if (presentCount <= 5) {
+                NSLog(@"[AgusMapsFlutter] Present() WARNING: No command buffer at count=%d", presentCount);
+            }
+            m_frameDrawable = nil;
+            
+            // Still notify Flutter for initial frames
+            if (m_initialFrameCount > 0) {
+                m_initialFrameCount--;
+                agus_notify_frame_ready();
+            }
+            return;
+        }
+        
+        // DO NOT call presentDrawable - it blocks on iOS because our fake drawable
+        // doesn't properly integrate with the display system.
+        // [m_frameCommandBuffer presentDrawable:m_frameDrawable]; // SKIP THIS!
+        
+        // Capture count for completion handler
+        int currentCount = presentCount;
+        bool notifyFlutter = (m_initialFrameCount > 0);
+        if (notifyFlutter) {
             m_initialFrameCount--;
-            agus_notify_frame_ready();
+        }
+        
+        // Notify Flutter only after the GPU finishes the full command buffer.
+        // Previously we signaled after waitUntilScheduled(), which fired while
+        // later render passes were still executing. That showed only the land
+        // fill color (first pass) without roads/labels on iOS. Using a
+        // completion handler guarantees Flutter samples a fully rendered frame
+        // without blocking the render thread.
+        bool shouldNotify = (notifyFlutter || currentCount <= 120);
+        if (shouldNotify) {
+            id<MTLCommandBuffer> completionBuffer = m_frameCommandBuffer;
+            [completionBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    agus_notify_frame_ready();
+                });
+            }];
+        }
+        
+        // Commit the command buffer - this starts GPU execution
+        [m_frameCommandBuffer commit];
+        
+        // Wait until scheduled so the IOSurface is queued before we clear it.
+        [m_frameCommandBuffer waitUntilScheduled];
+        
+        // Clear for next frame (after waiting, so we don't nil before GPU uses it)
+        m_frameDrawable = nil;
+        m_frameCommandBuffer = nil;
+        
+        if (presentCount <= 5 || presentCount % 300 == 0) {
+            LOG(LINFO, ("DrawMetalContext::Present() EXIT, count:", presentCount));
         }
     }
+    
+    /// Check if a render cycle was started but not completed with Present()
+    bool IsRenderCycleIncomplete() const { return m_renderCycleActive; }
     
 private:
     id<MTLTexture> m_renderTexture;
     int m_initialFrameCount = 120;  // Notify for ~2 seconds at 60fps to ensure initial content shows
+    bool m_renderCycleActive = false;  // Track if BeginRendering was called without Present
+    int m_activeRenderCycles = 0;  // Track number of render cycles that haven't completed Present()
+    int m_lastEndRenderingCount = 0;  // Last EndRendering count for diagnostics
+    int m_lastPresentCount = 0;  // Last Present count for diagnostics
 };
 
 /// Upload context for background texture uploads
