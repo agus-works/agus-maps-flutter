@@ -363,6 +363,10 @@ bootstrap_generate_data() {
   
   pushd "$comaps_dir" >/dev/null
   
+  # Set protobuf compatibility mode for newer protobuf packages (>= 4.x)
+  # The CoMaps _pb2.py files were generated with older protoc and need this workaround
+  export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+  
   # Generate drawing rules (classificator.txt, types.txt, visibility.txt, drules_proto*.bin)
   if [[ -x "tools/unix/generate_drules.sh" ]]; then
     log_info "Generating drawing rules and classificator..."
