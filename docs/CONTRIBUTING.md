@@ -211,15 +211,16 @@ See [GUIDE.md](../GUIDE.md) for the full architectural blueprint.
 
 Efficiency and reliability issues are tracked in dedicated files:
 
-| Issue | Severity | Status |
-|-------|----------|--------|
-| [ISSUE-debug-logging-release.md](./ISSUE-debug-logging-release.md) | Medium | Should Fix |
-| [ISSUE-egl-context-recreation.md](./ISSUE-egl-context-recreation.md) | Medium | Should Fix |
-| [ISSUE-indexed-stack-memory.md](./ISSUE-indexed-stack-memory.md) | Medium | By Design |
-| [ISSUE-touch-event-throttling.md](./ISSUE-touch-event-throttling.md) | Low | Deferred |
-| [ISSUE-dpi-mismatch-surface.md](./ISSUE-dpi-mismatch-surface.md) | Low | Monitor |
-| [ISSUE-ffi-string-allocation.md](./ISSUE-ffi-string-allocation.md) | Low | Won't Fix |
-| [ISSUE-data-extraction-cold-start.md](./ISSUE-data-extraction-cold-start.md) | Low | Won't Fix |
+| Issue | Platform | Severity | Status |
+|-------|----------|----------|--------|
+| [ISSUE-debug-logging-release.md](./ISSUE-debug-logging-release.md) | All | Medium | Should Fix |
+| [ISSUE-egl-context-recreation.md](./ISSUE-egl-context-recreation.md) | Android | Medium | Should Fix |
+| [ISSUE-indexed-stack-memory.md](./ISSUE-indexed-stack-memory.md) | All | Medium | By Design |
+| [ISSUE-macos-resize-white-screen.md](./ISSUE-macos-resize-white-screen.md) | macOS | High | ✅ Resolved |
+| [ISSUE-touch-event-throttling.md](./ISSUE-touch-event-throttling.md) | All | Low | Deferred |
+| [ISSUE-dpi-mismatch-surface.md](./ISSUE-dpi-mismatch-surface.md) | Android | Low | Monitor |
+| [ISSUE-ffi-string-allocation.md](./ISSUE-ffi-string-allocation.md) | All | Low | Won't Fix |
+| [ISSUE-data-extraction-cold-start.md](./ISSUE-data-extraction-cold-start.md) | All | Low | Won't Fix |
 
 ## Getting Help
 

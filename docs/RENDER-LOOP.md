@@ -448,6 +448,58 @@ CVMetalTextureCacheCreateTextureFromImage(cache, pixelBuffer, ..., &cvMetalTextu
 
 **Key difference:** Flutter plugin uses CVPixelBuffer + IOSurface for zero-copy texture sharing. CoMaps native uses CAMetalLayer directly.
 
+### Flutter Plugin macOS (Window Resize Handling)
+
+macOS requires special handling for window resize because Swift creates a new CVPixelBuffer but the native Metal context needs to be updated:
+
+```swift
+// AgusMapsFlutterPlugin.swift - handleResizeMapSurface
+try createPixelBuffer(width: width, height: height)
+
+// Call macOS-specific resize function that passes new pixel buffer
+guard let buffer = pixelBuffer else { /* error */ }
+nativeResizeSurface(pixelBuffer: buffer, width: Int32(width), height: Int32(height))
+
+textureRegistry?.textureFrameAvailable(textureId)
+```
+
+```cpp
+// agus_maps_flutter_macos.mm
+static agus::AgusMetalContextFactory* g_metalContextFactory = nullptr;
+
+void agus_native_resize_surface(CVPixelBufferRef pixelBuffer, int32_t width, int32_t height) {
+    if (g_metalContextFactory) {
+        m2::PointU screenSize(width, height);
+        g_metalContextFactory->SetPixelBuffer(pixelBuffer, screenSize);
+    }
+    if (g_framework && g_drapeEngineCreated) {
+        g_framework->OnSize(width, height);
+        g_framework->InvalidateRendering();
+    }
+}
+```
+
+```cpp
+// AgusMetalContextFactory.mm - uses global texture pointer for lambda
+static id<MTLTexture> g_currentRenderTexture = nil;
+
+DrawMetalContext(...) : MetalBaseContext(device, screenSize, []() -> id<CAMetalDrawable> {
+    // References GLOBAL pointer, not captured value
+    if (!g_currentDrawable || g_currentDrawable.texture != g_currentRenderTexture) {
+        g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:g_currentRenderTexture];
+    }
+    return g_currentDrawable;
+}) { g_currentRenderTexture = renderTexture; }
+
+void SetRenderTexture(id<MTLTexture> texture, m2::PointU const & screenSize) {
+    g_currentRenderTexture = texture;  // Update global
+    g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:texture];
+    Resize(screenSize.x, screenSize.y);
+}
+```
+
+**Key difference from iOS:** macOS has window resize, requiring `agus_native_resize_surface()` to pass the new pixel buffer. iOS doesn't need this since apps don't resize windows.
+
 ### CoMaps Native Android
 
 ```java

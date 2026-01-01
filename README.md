@@ -67,7 +67,7 @@ This project is currently in the **proof of concept stage**, demonstrating zero-
 | Platform | Status | Notes |
 |----------|--------|-------|
 | **iOS** | ✅ Working | arm64, x86_64 simulator |
-| **macOS** | ✅ Working | arm64 (Apple Silicon) |
+| **macOS** | ✅ Working | arm64/x86_64, window resize supported |
 | **Android** | ✅ Working | arm64-v8a, armeabi-v7a, x86_64 |
 | **Windows** | ✅ Working | x86_64 only |
 | **Linux** | 🚧 Planned | Blocked on dedicated hardware |
@@ -301,6 +301,8 @@ flowchart TB
 | [docs/ARCHITECTURE-ANDROID.md](docs/ARCHITECTURE-ANDROID.md) | Deep dive: memory efficiency, battery savings, how it works |
 | [docs/COMAPS-ASSETS.md](docs/COMAPS-ASSETS.md) | **CoMaps asset management:** data files, localization, MWM maps |
 | [docs/IMPLEMENTATION-ANDROID.md](docs/IMPLEMENTATION-ANDROID.md) | Android build instructions, debug/release modes |
+| [docs/IMPLEMENTATION-IOS.md](docs/IMPLEMENTATION-IOS.md) | iOS build instructions and Metal integration |
+| [docs/IMPLEMENTATION-MACOS.md](docs/IMPLEMENTATION-MACOS.md) | macOS build instructions, window resize handling |
 | [docs/IMPLEMENTATION-WIN.md](docs/IMPLEMENTATION-WIN.md) | Windows build instructions, x86_64 only |
 | [docs/RENDER-LOOP.md](docs/RENDER-LOOP.md) | Render loop comparison across all platforms |
 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer setup, commit guidelines, known issues |

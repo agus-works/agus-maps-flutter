@@ -135,22 +135,25 @@ The macOS implementation uses Flutter's `FlutterTexture` protocol with `CVPixelB
 | Asset Lookup | `FlutterDartProject.lookupKey(forAsset:)` | `FlutterDartProject.lookupKey(forAsset:)` |
 | Platform Macro | `PLATFORM_IPHONE=1` | `PLATFORM_MAC=1` |
 | Bundle API | `Bundle.main.resourcePath` | `Bundle.main.resourcePath` |
+| Window Resize | N/A (fixed size) | `agus_native_resize_surface()` |
+| AgusBridge.h | No resize function | Has `agus_native_resize_surface()` |
 
 ### Shared Code (reused from iOS)
 
-The following files are **identical** between iOS and macOS:
+The following files are **mostly identical** between iOS and macOS:
 
 1. **AgusMetalContextFactory.h/.mm** — Metal context factory for CVPixelBuffer rendering
-2. **AgusBridge.h** — C interface declarations for Swift/native bridge
-3. **Active Frame Callback** — Same mechanism via `df::SetActiveFrameCallback`
+   - macOS version adds `g_currentRenderTexture` global for resize handling
+2. **Active Frame Callback** — Same mechanism via `df::SetActiveFrameCallback`
 
 ### Platform-Specific Code
 
-| File | iOS | macOS |
-|------|-----|-------|
-| `AgusMapsFlutterPlugin.swift` | Uses `UIScreen`, `UIKit` | Uses `NSScreen`, `AppKit` |
-| `AgusPlatformXXX.h/.mm` | `AgusPlatformIOS` | `AgusPlatformMacOS` |
-| `agus_maps_flutter_xxx.mm` | `agus_maps_flutter_ios.mm` | `agus_maps_flutter_macos.mm` |
+| File | iOS | macOS | Notes |
+|------|-----|-------|-------|
+| `AgusMapsFlutterPlugin.swift` | Uses `UIScreen`, `UIKit` | Uses `NSScreen`, `AppKit` | macOS has `nativeResizeSurface()` |
+| `AgusBridge.h` | Base functions only | + `agus_native_resize_surface()` | macOS needs resize with pixel buffer |
+| `AgusPlatformXXX.h/.mm` | `AgusPlatformIOS` | `AgusPlatformMacOS` | Path handling differs |
+| `agus_maps_flutter_xxx.mm` | `agus_maps_flutter_ios.mm` | `agus_maps_flutter_macos.mm` | macOS has `g_metalContextFactory` |
 
 ---
 
@@ -198,17 +201,25 @@ macos/
 ├── agus_maps_flutter.podspec        # CocoaPods configuration
 ├── Classes/
 │   ├── AgusMapsFlutterPlugin.swift  # Flutter plugin (macOS specific)
-│   ├── AgusMetalContextFactory.h    # Metal context header (shared with iOS)
-│   ├── AgusMetalContextFactory.mm   # Metal context impl (shared with iOS)
-│   ├── AgusBridge.h                 # C interface for Swift (shared with iOS)
+│   │   - Uses FlutterMacOS, AppKit
+│   │   - Has nativeResizeSurface() for window resize
+│   ├── AgusMetalContextFactory.h    # Metal context header
+│   ├── AgusMetalContextFactory.mm   # Metal context impl
+│   │   - Has g_currentRenderTexture for resize
+│   ├── AgusBridge.h                 # C interface for Swift (macOS specific)
+│   │   - Has agus_native_resize_surface()
 │   ├── AgusPlatformMacOS.h          # macOS platform header
 │   ├── AgusPlatformMacOS.mm         # macOS platform impl
 │   └── agus_maps_flutter_macos.mm   # FFI implementation
+│       - Has g_metalContextFactory pointer
+│       - Implements agus_native_resize_surface()
 ├── Resources/
 │   └── shaders_metal.metallib       # Pre-compiled Metal shaders
 └── Frameworks/
     └── CoMaps.xcframework/          # Pre-built native libraries
 ```
+
+**Note:** Unlike iOS, the macOS `AgusBridge.h` includes `agus_native_resize_surface()` for handling window resize. The iOS version does not have this function since iOS apps don't support window resizing.
 
 ---
 
@@ -223,12 +234,12 @@ Adapt `ios/Classes/AgusMapsFlutterPlugin.swift` for macOS:
 3. Change `UIScreen.main.scale` → `NSScreen.main?.backingScaleFactor ?? 2.0`
 4. Update asset lookup to work with macOS bundle structure
 
-### Step 2: Copy Shared Files from iOS
+### Step 2: Adapt Metal Context Factory for macOS
 
-Copy these files unchanged:
-- `AgusMetalContextFactory.h`
-- `AgusMetalContextFactory.mm`
-- `AgusBridge.h`
+Adapt these files from iOS with macOS-specific changes:
+- `AgusMetalContextFactory.h` — Copy unchanged
+- `AgusMetalContextFactory.mm` — Add `g_currentRenderTexture` global pointer for resize handling
+- `AgusBridge.h` — Add `agus_native_resize_surface()` declaration for window resize support
 
 ### Step 3: Create macOS Platform Bridge
 
@@ -377,9 +388,10 @@ build-release:
 
 ## Acceptance Criteria
 
-- [ ] macOS example app builds without errors
-- [ ] App launches and displays Gibraltar map
-- [ ] Pan/zoom gestures work correctly
+- [x] macOS example app builds without errors
+- [x] App launches and displays Gibraltar map
+- [x] Pan/zoom gestures work correctly
+- [x] Window resize works correctly (map doesn't turn white)
 - [ ] Map renders at 60fps with minimal CPU usage
 - [ ] Release build is under 150MB
 - [ ] Bootstrap script works on fresh checkout
@@ -388,12 +400,27 @@ build-release:
 
 ## Known Issues & Considerations
 
-### Window Resizing
+### Window Resizing ✅ RESOLVED
 
-Unlike iOS, macOS windows can be freely resized by users. The plugin must handle:
-- `NSViewBoundsDidChangeNotification` for resize events
-- CVPixelBuffer recreation on size change
-- Proper aspect ratio handling
+Unlike iOS, macOS windows can be freely resized by users. This required special handling:
+
+**Problem:** When the window is resized, Swift creates a new `CVPixelBuffer` but the native Metal rendering context was not being updated with the new texture. This caused the map to turn white after resize.
+
+**Solution:** Added macOS-specific `agus_native_resize_surface()` function that:
+- Accepts the new pixel buffer from Swift
+- Updates `AgusMetalContextFactory` with the new texture via `SetPixelBuffer()`
+- Calls `Framework::OnSize()` and `InvalidateRendering()` to trigger redraw
+
+**Implementation Details:**
+- `AgusBridge.h` (macOS): Added `agus_native_resize_surface(CVPixelBufferRef, int32_t, int32_t)` declaration
+- `AgusMetalContextFactory.mm`: Uses global `g_currentRenderTexture` pointer that the drawable getter lambda references (fixes captured-by-value issue)
+- `AgusMapsFlutterPlugin.swift`: Calls `nativeResizeSurface()` during resize instead of `nativeOnSizeChanged()`
+
+See [ISSUE-macos-resize-white-screen.md](ISSUE-macos-resize-white-screen.md) for full technical details.
+
+**Key differences from iOS:**
+- iOS: `AgusBridge.h` does NOT have `agus_native_resize_surface()` (iOS apps don't resize)
+- macOS: Has the additional function and Swift calls it during resize
 
 ### Multiple Displays
 
@@ -427,4 +454,4 @@ We target **12.0** to match iOS 15.6 parity and ensure modern Metal features.
 
 ---
 
-*Last updated: December 2025*
+*Last updated: January 2026*
