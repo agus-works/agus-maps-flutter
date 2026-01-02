@@ -229,6 +229,30 @@ class AgusMapsFlutterBindings {
   late final _comaps_register_single_map = _comaps_register_single_mapPtr
       .asFunction<int Function(ffi.Pointer<ffi.Char>)>();
 
+  /// Register a single MWM map file directly by full path with explicit version.
+  ///
+  /// Returns: 0 on success, -1 if framework not ready, -2 on exception,
+  ///          or MwmSet::RegResult value on registration failure
+  int comaps_register_single_map_with_version(
+    ffi.Pointer<ffi.Char> fullPath,
+    int version,
+  ) {
+    return _comaps_register_single_map_with_version(fullPath, version);
+  }
+
+  late final _comaps_register_single_map_with_versionPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(
+            ffi.Pointer<ffi.Char>,
+            ffi.Int64,
+          )
+        >
+      >('comaps_register_single_map_with_version');
+  late final _comaps_register_single_map_with_version =
+      _comaps_register_single_map_with_versionPtr
+          .asFunction<int Function(ffi.Pointer<ffi.Char>, int)>();
+
   /// Debug: List all registered MWMs and their bounds to logcat
   void comaps_debug_list_mwms() {
     return _comaps_debug_list_mwms();

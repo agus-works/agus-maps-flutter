@@ -27,7 +27,9 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 #include <android/native_window_jni.h>
 #include <chrono>
 #include <atomic>
+#include <thread>
 
+#include "base/file_name_utils.hpp"
 #include "base/logging.hpp"
 #include "map/framework.hpp"
 #include "platform/local_country_file.hpp"
@@ -216,6 +218,30 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
     g_framework->CreateDrapeEngine(make_ref(g_factory), std::move(p));
     g_drapeEngineCreated = true;
     __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "createDrapeEngine: Drape engine created successfully");
+    
+    // CRITICAL: Enable rendering after DrapeEngine creation!
+    // Without this, the DrapeEngine is in a disabled state and won't render.
+    g_framework->SetRenderingEnabled(make_ref(g_factory));
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "createDrapeEngine: Rendering enabled");
+    
+    // Force initial render cycle like iOS does
+    g_framework->InvalidateRendering();
+    g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+    g_framework->MakeFrameActive();
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "createDrapeEngine: Initial render invalidation posted");
+    
+    // Kick-start the render loop by posting initial MakeFrameActive calls.
+    // Without this, the DrapeEngine may not start rendering until user interaction.
+    // We post a few delayed calls to ensure initial tiles are requested and rendered.
+    for (int i = 0; i < 5; ++i) {
+        std::thread([delay = i * 100]() {
+            usleep(delay * 1000);  // delay in milliseconds
+            if (g_framework && g_drapeEngineCreated) {
+                g_framework->MakeFrameActive();
+            }
+        }).detach();
+    }
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "createDrapeEngine: Posted initial MakeFrameActive calls");
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -416,33 +442,50 @@ FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY) {
 // This bypasses the version folder scanning and registers the map file
 // directly with the rendering engine using LocalCountryFile::MakeTemporary.
 FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
-    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", 
-        "comaps_register_single_map: %s", fullPath);
-    
+    return comaps_register_single_map_with_version(fullPath, 0 /* version */);
+}
+
+FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPath, int64_t version) {
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative",
+        "comaps_register_single_map_with_version: %s (version=%lld)",
+        fullPath, static_cast<long long>(version));
+
     if (!g_framework) {
-        __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative", 
-            "comaps_register_single_map: Framework not initialized");
+        __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative",
+            "comaps_register_single_map_with_version: Framework not initialized");
         return -1;  // Error: Framework not ready
     }
-    
+
     try {
-        platform::LocalCountryFile file = platform::LocalCountryFile::MakeTemporary(fullPath);
+        std::string path(fullPath ? fullPath : "");
+        if (path.empty()) {
+            __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative",
+                "comaps_register_single_map_with_version: Empty path");
+            return -2;
+        }
+
+        // Derive country name from filename (without extension), matching MakeTemporary().
+        auto name = path;
+        base::GetNameFromFullPath(name);
+        base::GetNameWithoutExt(name);
+
+        platform::LocalCountryFile file(base::GetDirectory(path), platform::CountryFile(std::move(name)), version);
         file.SyncWithDisk();
-        
+
         auto result = g_framework->RegisterMap(file);
         if (result.second == MwmSet::RegResult::Success) {
-            __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
-                "comaps_register_single_map: Successfully registered %s", fullPath);
+            __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative",
+                "comaps_register_single_map_with_version: Successfully registered %s", fullPath);
             return 0;  // Success
         } else {
-            __android_log_print(ANDROID_LOG_WARN, "AgusMapsFlutterNative", 
-                "comaps_register_single_map: Failed to register %s, result=%d", 
+            __android_log_print(ANDROID_LOG_WARN, "AgusMapsFlutterNative",
+                "comaps_register_single_map_with_version: Failed to register %s, result=%d",
                 fullPath, static_cast<int>(result.second));
             return static_cast<int>(result.second);
         }
     } catch (std::exception const & e) {
-        __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative", 
-            "comaps_register_single_map: Exception: %s", e.what());
+        __android_log_print(ANDROID_LOG_ERROR, "AgusMapsFlutterNative",
+            "comaps_register_single_map_with_version: Exception: %s", e.what());
         return -2;  // Error: Exception
     }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -10,6 +11,9 @@ import 'downloads_tab.dart';
 import 'settings_tab.dart';
 
 void main() {
+  // Ensure Flutter bindings are initialized before using platform channels
+  // (required for SharedPreferences, path_provider, etc.)
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -65,6 +69,8 @@ class _MyAppState extends State<MyApp> {
   bool _dataReady = false;
   int _currentTabIndex = 0; // Start on Map tab
 
+  int? _bundledMwmVersion;
+
   final agus_maps_flutter.AgusMapController _mapController =
       agus_maps_flutter.AgusMapController();
 
@@ -77,7 +83,13 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    _initData();
+    // Defer initialization to after the first frame is rendered.
+    // This ensures Flutter platform channels (SharedPreferences, path_provider)
+    // are fully registered before we try to use them. On Android with Impeller,
+    // platform channels may not be ready during initState().
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _initData();
+    });
   }
 
   Future<void> _initData() async {
@@ -170,6 +182,9 @@ class _MyAppState extends State<MyApp> {
       String dataPath = await agus_maps_flutter.extractDataFiles();
       _log('Data path: $dataPath');
 
+      _bundledMwmVersion = await _readBundledMwmVersion(dataPath);
+      _log('Bundled MWM version: ${_bundledMwmVersion ?? 'unknown'}');
+
       // 4. Initialize with extracted data files
       _log('Calling initWithPaths()...');
       agus_maps_flutter.initWithPaths(dataPath, dataPath);
@@ -194,12 +209,50 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _onMapReady() {
+    // Kick off async work without blocking the widget callback.
+    unawaited(_onMapReadyAsync());
+  }
+
+  Future<void> _onMapReadyAsync() async {
     _log('Map surface ready! Registering maps...');
 
-    // Register bundled maps (extracted during init)
+    final bundledVersion = _bundledMwmVersion;
+    if (bundledVersion == null) {
+      _log('WARNING: bundled MWM version unknown; registrations may fail.');
+    }
+
+    // Register bundled maps (extracted during init).
+    // If a bundled MWM is too old for the current engine (RegResult=2),
+    // delete it and re-extract from assets (updated in repo), then retry.
     for (final path in _mapPathsToRegister) {
-      final result = agus_maps_flutter.registerSingleMap(path);
+      final result = bundledVersion != null
+          ? agus_maps_flutter.registerSingleMapWithVersion(path, bundledVersion)
+          : agus_maps_flutter.registerSingleMap(path);
       _log('Registered bundled $path: result=$result');
+
+      // 2 == MwmSet::RegResult::VersionTooOld
+      if (result == 2) {
+        final fileName = File(path).uri.pathSegments.last;
+        final assetPath = 'assets/maps/$fileName';
+        _log('Bundled $fileName is too old; re-extracting from $assetPath...');
+        try {
+          // Force re-extraction by removing the previously extracted file.
+          final f = File(path);
+          if (await f.exists()) {
+            await f.delete();
+          }
+          final newPath = await agus_maps_flutter.extractMap(assetPath);
+          final retry = bundledVersion != null
+              ? agus_maps_flutter.registerSingleMapWithVersion(
+                  newPath,
+                  bundledVersion,
+                )
+              : agus_maps_flutter.registerSingleMap(newPath);
+          _log('Re-registered bundled $newPath: result=$retry');
+        } catch (e, st) {
+          _log('Failed to re-extract/re-register $fileName: $e\n$st');
+        }
+      }
     }
 
     // Re-register all previously downloaded maps from MwmStorage
@@ -214,7 +267,13 @@ class _MyAppState extends State<MyApp> {
 
         _log(
             'Re-registering downloaded: ${metadata.regionName} at ${metadata.filePath}');
-        final result = agus_maps_flutter.registerSingleMap(metadata.filePath);
+        final parsed = int.tryParse(metadata.snapshotVersion);
+        final result = parsed != null
+            ? agus_maps_flutter.registerSingleMapWithVersion(
+                metadata.filePath,
+                parsed,
+              )
+            : agus_maps_flutter.registerSingleMap(metadata.filePath);
         _log('  Result: $result');
       }
     }
@@ -238,9 +297,11 @@ class _MyAppState extends State<MyApp> {
     _log('Debug: Checking Manila coverage...');
     agus_maps_flutter.debugCheckPoint(14.5995, 120.9842);
 
-    setState(() {
-      _status = 'Map ready!';
-    });
+    if (mounted) {
+      setState(() {
+        _status = 'Map ready!';
+      });
+    }
   }
 
   void _log(String msg) {
@@ -249,6 +310,25 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         _debug += '$msg\n';
       });
+    }
+  }
+
+  Future<int?> _readBundledMwmVersion(String dataPath) async {
+    try {
+      final file = File('$dataPath/countries.txt');
+      if (!await file.exists()) {
+        return null;
+      }
+      final contents = await file.readAsString();
+      // countries.txt is JSON: { "v": 251209, "id": "Countries", ... }
+      // Parse the "v" field which contains the MWM snapshot version.
+      final match = RegExp(r'"v"\s*:\s*(\d+)').firstMatch(contents);
+      if (match != null) {
+        return int.tryParse(match.group(1)!);
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 

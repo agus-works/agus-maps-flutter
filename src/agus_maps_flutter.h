@@ -71,6 +71,14 @@ FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY);
 //          or MwmSet::RegResult value on registration failure
 FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath);
 
+// Register a single MWM map file directly by full path, with an explicit
+// snapshot version (e.g. 251209).
+//
+// IMPORTANT: LocalCountryFile::MakeTemporary() sets version=0, which can lead
+// to MwmSet::RegResult::VersionTooOld when the engine expects a non-zero
+// snapshot version for a given country/world file.
+FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPath, int64_t version);
+
 // Explicitly shutdown the CoMaps framework.
 // Call this before app termination to ensure clean shutdown and avoid crashes.
 FFI_PLUGIN_EXPORT void comaps_shutdown(void);

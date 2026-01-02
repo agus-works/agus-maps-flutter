@@ -32,6 +32,7 @@
 #include <sstream>
 
 // CoMaps Framework includes
+#include "base/file_name_utils.hpp"
 #include "base/logging.hpp"
 #include "map/framework.hpp"
 #include "platform/local_country_file.hpp"
@@ -473,25 +474,52 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
         return -1;
     }
     
-    try {
-        platform::LocalCountryFile file = platform::LocalCountryFile::MakeTemporary(normalizedPath);
-        file.SyncWithDisk();
-        
-        auto result = g_framework->RegisterMap(file);
-        if (result.second == MwmSet::RegResult::Success) {
-            snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Successfully registered %s\n", fullPath);
-            OutputDebugStringA(msg);
-            return 0;
-        } else {
-            snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Failed to register %s, result=%d\n",
-                     fullPath, static_cast<int>(result.second));
-            OutputDebugStringA(msg);
-            return static_cast<int>(result.second);
-        }
-    } catch (std::exception const & e) {
-        snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Exception registering map: %s\n", e.what());
-        OutputDebugStringA(msg);
+    return comaps_register_single_map_with_version(fullPath, 0 /* version */);
+}
+
+FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPath, int64_t version) {
+    char msg[512];
+    
+    // Normalize path on Windows
+    char normalizedPath[MAX_PATH];
+    snprintf(normalizedPath, sizeof(normalizedPath), "%s", fullPath);
+    for (char* p = normalizedPath; *p; ++p) {
+        if (*p == '/') *p = '\\';
+    }
+
+    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_register_single_map_with_version: %s (normalized: %s, version=%lld)\n",
+        fullPath, normalizedPath, static_cast<long long>(version));
+    OutputDebugStringA(msg);
+
+    if (!g_framework) {
+        OutputDebugStringA("[AgusMapsFlutter] comaps_register_single_map_with_version: Framework not initialized\n");
+        return -1;
+    }
+
+    std::string path(normalizedPath);
+    if (path.empty()) {
+        OutputDebugStringA("[AgusMapsFlutter] comaps_register_single_map_with_version: Empty path\n");
         return -2;
+    }
+
+    // Derive country name from filename (without extension), matching MakeTemporary().
+    auto name = path;
+    base::GetNameFromFullPath(name);
+    base::GetNameWithoutExt(name);
+
+    platform::LocalCountryFile file(base::GetDirectory(path), platform::CountryFile(std::move(name)), version);
+    file.SyncWithDisk();
+
+    auto result = g_framework->RegisterMap(file);
+    if (result.second == MwmSet::RegResult::Success) {
+        snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_register_single_map_with_version: Successfully registered %s\n", fullPath);
+        OutputDebugStringA(msg);
+        return 0;
+    } else {
+        snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_register_single_map_with_version: Failed to register %s, result=%d\n",
+            fullPath, static_cast<int>(result.second));
+        OutputDebugStringA(msg);
+        return static_cast<int>(result.second);
     }
 }
 
