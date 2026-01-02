@@ -255,7 +255,12 @@ FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY) {
 }
 
 FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
-    NSLog(@"[AgusMapsFlutter] comaps_register_single_map: %s", fullPath);
+    // Delegate to versioned registration with version=0 for backwards compatibility
+    return comaps_register_single_map_with_version(fullPath, 0);
+}
+
+FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPath, int64_t version) {
+    NSLog(@"[AgusMapsFlutter] comaps_register_single_map_with_version: %s (version=%lld)", fullPath, (long long)version);
     
     if (!g_framework) {
         NSLog(@"[AgusMapsFlutter] Framework not initialized");
@@ -263,7 +268,31 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
     }
     
     try {
-        platform::LocalCountryFile file = platform::LocalCountryFile::MakeTemporary(fullPath);
+        std::string path(fullPath ? fullPath : "");
+        if (path.empty()) {
+            NSLog(@"[AgusMapsFlutter] Empty path");
+            return -2;
+        }
+        
+        // Derive country name from filename (without extension)
+        auto name = path;
+        auto lastSlash = name.rfind('/');
+        if (lastSlash != std::string::npos) {
+            name = name.substr(lastSlash + 1);
+        }
+        auto dotPos = name.rfind('.');
+        if (dotPos != std::string::npos) {
+            name = name.substr(0, dotPos);
+        }
+        
+        // Get directory from full path
+        std::string directory;
+        lastSlash = path.rfind('/');
+        if (lastSlash != std::string::npos) {
+            directory = path.substr(0, lastSlash);
+        }
+        
+        platform::LocalCountryFile file(directory, platform::CountryFile(std::move(name)), version);
         file.SyncWithDisk();
         
         auto result = g_framework->RegisterMap(file);

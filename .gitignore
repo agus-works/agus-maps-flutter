@@ -70,6 +70,10 @@ example/build/native_assets/
 # CoMaps generated data files (copied from thirdparty/comaps/data)
 example/assets/comaps_data/
 
+# MWM map files - downloaded during build, not committed to git
+# These are large binary files that should be fetched from mirror servers
+example/assets/maps/*.mwm
+
 # Generated/Downloaded map files
 # Keep World.mwm if it's the base map, but usually users download regions.
 # For now, let's ignore extra mwm files if they are not tracked.

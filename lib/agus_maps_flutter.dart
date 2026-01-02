@@ -110,6 +110,30 @@ int registerSingleMap(String fullPath) {
   }
 }
 
+/// Register a single MWM map file directly by full path, with an explicit
+/// snapshot version (e.g. 251209).
+///
+/// This avoids the native side defaulting the LocalCountryFile version to 0,
+/// which can cause `VersionTooOld (2)` for World/WorldCoasts and any region
+/// where the engine expects a specific snapshot version.
+int registerSingleMapWithVersion(String fullPath, int version) {
+  String normalizedPath = fullPath;
+  if (Platform.isWindows) {
+    normalizedPath = fullPath.replaceAll('/', '\\');
+  }
+  final pathPtr = normalizedPath.toNativeUtf8().cast<Char>();
+  try {
+    try {
+      return _bindings.comaps_register_single_map_with_version(pathPtr, version);
+    } on ArgumentError {
+      // Symbol may not exist on some platforms/binaries. Fall back to legacy API.
+      return _bindings.comaps_register_single_map(pathPtr);
+    }
+  } finally {
+    malloc.free(pathPtr);
+  }
+}
+
 /// Debug: List all registered MWMs and their bounds.
 /// Output goes to Android logcat (tag: AgusMapsFlutterNative).
 void debugListMwms() {

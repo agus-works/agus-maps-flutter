@@ -558,7 +558,10 @@ class _DownloadsTabState extends State<DownloadsTab> {
       );
 
       // Register with map engine
-      final result = agus.registerSingleMap(filePath);
+      final version = int.tryParse(_selectedSnapshot!.version);
+      final result = version != null
+          ? agus.registerSingleMapWithVersion(filePath, version)
+          : agus.registerSingleMap(filePath);
       debugPrint('Registered ${region.name}: result=$result');
 
       // Update disk space

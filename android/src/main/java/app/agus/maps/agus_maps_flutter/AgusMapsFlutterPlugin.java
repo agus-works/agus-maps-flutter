@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.res.AssetManager;
 import android.util.DisplayMetrics;
 import android.view.WindowManager;
+import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.MethodCall;
@@ -34,12 +35,30 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   private float density = 2.0f;
   private android.os.Handler mainHandler;
   
-  static {
-      System.loadLibrary("agus_maps_flutter");
+  // Flag to ensure native library is loaded only once
+  private static volatile boolean nativeLibraryLoaded = false;
+  private static final Object loadLock = new Object();
+  
+  /**
+   * Loads the native library if not already loaded.
+   * Called lazily to avoid interfering with Flutter plugin registration.
+   */
+  private static void ensureNativeLibraryLoaded() {
+    if (!nativeLibraryLoaded) {
+      synchronized (loadLock) {
+        if (!nativeLibraryLoaded) {
+          System.loadLibrary("agus_maps_flutter");
+          nativeLibraryLoaded = true;
+        }
+      }
+    }
   }
 
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
+    // Load native library lazily - after Flutter plugin system is initialized
+    ensureNativeLibraryLoaded();
+    
     channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), "agus_maps_flutter");
     channel.setMethodCallHandler(this);
     context = flutterPluginBinding.getApplicationContext();
@@ -175,10 +194,19 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
    * if needed, but no explicit notification to Flutter is required.
    */
   @SuppressWarnings("unused") // Called from native code
+    @Keep
   public void onFrameReady() {
-    // SurfaceProducer automatically notifies Flutter when frames are rendered
-    // to the Surface. No explicit registration is needed.
-    // This callback is kept for potential debugging purposes.
+        // SurfaceProducer requires an explicit scheduleFrame() to notify Flutter
+        // that a new frame is available for composition.
+        final TextureRegistry.SurfaceProducer producer = surfaceProducer;
+        if (producer == null) return;
+
+        // Ensure we call into Flutter engine APIs on the main thread.
+        if (mainHandler != null) {
+            mainHandler.post(producer::scheduleFrame);
+        } else {
+            producer.scheduleFrame();
+        }
   }
 
   private String extractMap(String assetPath) throws IOException {
