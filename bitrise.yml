@@ -11,16 +11,6 @@ workflows:
     description: |
       Bundles required C++ headers from CoMaps for compilation on all platforms.
       This is shared across iOS, Android, and other platform builds.
-    steps:
-    - git-clone@8:
-        inputs:
-        - fetch_tags: 'yes'
-    - script@1:
-        title: Set Environment Variables
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
             envman add --key COMAPS_TAG --value "v2025.12.11-2"
     - restore-cache@1:
         title: Restore CoMaps Cache

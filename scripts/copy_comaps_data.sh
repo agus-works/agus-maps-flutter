@@ -47,6 +47,15 @@ for file in "${ESSENTIAL_FILES[@]}"; do
     fi
 done
 
+# Copy fonts (required by Drape text rendering)
+if [ -d "$COMAPS_DATA/fonts" ]; then
+    mkdir -p "$DEST_DATA/fonts"
+    cp -r "$COMAPS_DATA/fonts/"* "$DEST_DATA/fonts/"
+    echo "  ✓ fonts/"
+else
+    echo "  ✗ fonts/ (not found)"
+fi
+
 # Copy categories-strings (needed for search)
 if [ -d "$COMAPS_DATA/categories-strings" ]; then
     mkdir -p "$DEST_DATA/categories-strings"

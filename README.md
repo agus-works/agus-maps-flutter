@@ -129,6 +129,7 @@ The following videos demonstrate the **example app** ([source code](example/)) r
 - 📴 **Fully Offline** — No internet required; uses compact MWM map files from OpenStreetMap
 - 🎯 **Native Performance** — The battle-tested Drape engine from Organic Maps
 - 🖐️ **Gesture Support** — Pan, pinch-to-zoom, rotation (multitouch)
+- 🖱️ **macOS Trackpad Zoom** — Pinch or two-finger parallel swipe (Google Maps-style) with cursor-centered zoom
 - 📐 **Responsive** — Automatically handles resize and device pixel ratio
 - 🔌 **Simple API** — Drop-in `AgusMap` widget with `AgusMapController`
 - 📥 **Map Download Manager** — Browse and download maps from mirror servers with progress tracking
