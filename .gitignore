@@ -58,6 +58,12 @@ macos/Resources/
 # Android native libraries (downloaded during build)
 android/src/main/jniLibs/
 
+# Android prebuilt native libraries (built or downloaded during bootstrap)
+android/prebuilt/
+
+# Native shared libraries
+*.so
+
 # Windows build artifacts
 vcpkg_installed/
 
