@@ -27,24 +27,17 @@ workflows:
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
-        title: Fetch CoMaps Source
+        title: Bootstrap CoMaps (fetch, patch, boost)
         inputs:
         - content: |
             #!/bin/bash
             set -e
 
-            echo "=== Fetching CoMaps $COMAPS_TAG ==="
-
-            mkdir -p thirdparty
-
-            if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --branch "$COMAPS_TAG" \
-                https://github.com/comaps/comaps.git thirdparty/comaps
-            fi
-
-            cd thirdparty/comaps
-            # Initialize ALL submodules recursively - required for patches like gflags
-            git submodule update --init --recursive
+            echo "=== Running unified bootstrap ==="
+            chmod +x scripts/bootstrap.sh
+            # --no-cache: CI has its own caching mechanism
+            # SKIP_BASE_MWMS: Not needed for headers-only build
+            SKIP_BASE_MWMS=true ./scripts/bootstrap.sh --no-cache
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: 'true'
@@ -52,26 +45,6 @@ workflows:
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
-    - script@1:
-        title: Apply CoMaps Patches
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            chmod +x scripts/apply_comaps_patches.sh
-            ./scripts/apply_comaps_patches.sh
-    - script@1:
-        title: Build Boost Headers
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            cd thirdparty/comaps/3party/boost
-            if [ ! -d "boost" ]; then
-              echo "=== Building Boost headers ==="
-              ./bootstrap.sh
-              ./b2 headers
-            fi
     - script@1:
         title: Bundle Headers
         inputs:
@@ -166,30 +139,17 @@ workflows:
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
-        title: Fetch CoMaps Source
+        title: Bootstrap CoMaps (fetch, patch, boost)
         inputs:
         - content: |
             #!/bin/bash
             set -e
 
-            echo "=== Fetching CoMaps $COMAPS_TAG ==="
-
-            mkdir -p thirdparty
-
-            if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --branch "$COMAPS_TAG" \
-                https://github.com/comaps/comaps.git thirdparty/comaps
-            else
-              cd thirdparty/comaps
-              git fetch --tags --prune
-              git checkout --detach "$COMAPS_TAG"
-              cd ../..
-            fi
-
-            cd thirdparty/comaps
-            # Initialize ALL submodules recursively - required for patches like gflags
-            git submodule update --init --recursive
-            echo "=== CoMaps at $(git rev-parse --short HEAD) ==="
+            echo "=== Running unified bootstrap ==="
+            chmod +x scripts/bootstrap.sh
+            # --no-cache: CI has its own caching mechanism
+            # SKIP_BASE_MWMS: Not needed for native library build
+            SKIP_BASE_MWMS=true ./scripts/bootstrap.sh --no-cache
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: 'true'
@@ -197,14 +157,6 @@ workflows:
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
-    - script@1:
-        title: Apply CoMaps Patches
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            chmod +x scripts/apply_comaps_patches.sh
-            ./scripts/apply_comaps_patches.sh
     - script@1:
         title: Build Android Native Libraries
         inputs:
@@ -357,24 +309,16 @@ workflows:
             ls -la android/headers/ 2>/dev/null || echo \"No headers directory
             yet\"\n"
     - script@1:
-        title: Fetch CoMaps Source (for thirdparty headers)
+        title: Bootstrap CoMaps (fetch, patch, boost, data)
         inputs:
         - content: |
             #!/bin/bash
             set -e
 
-            # We need CoMaps source for in-repo builds
-            # External consumers use downloaded headers
-            mkdir -p thirdparty
-
-            if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --branch "$COMAPS_TAG" \
-                https://github.com/comaps/comaps.git thirdparty/comaps
-            fi
-
-            cd thirdparty/comaps
-            # Initialize ALL submodules recursively - required for patches like gflags
-            git submodule update --init --recursive
+            echo "=== Running unified bootstrap ==="
+            chmod +x scripts/bootstrap.sh
+            # --no-cache: CI has its own caching mechanism
+            ./scripts/bootstrap.sh --no-cache
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: 'true'
@@ -382,40 +326,6 @@ workflows:
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
-    - script@1:
-        title: Apply CoMaps Patches
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            chmod +x scripts/apply_comaps_patches.sh
-            ./scripts/apply_comaps_patches.sh
-    - script@1:
-        title: Build Boost Headers
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            cd thirdparty/comaps/3party/boost
-            if [ ! -d "boost" ]; then
-              echo "=== Building Boost headers ==="
-              ./bootstrap.sh
-              ./b2 headers
-            fi
-    - script@1:
-        title: Copy CoMaps Assets
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-
-            # Copy fonts to Android assets
-            mkdir -p example/android/app/src/main/assets
-            cp -r thirdparty/comaps/data/fonts example/android/app/src/main/assets/
-
-            # Copy CoMaps data files
-            chmod +x scripts/copy_comaps_data.sh
-            ./scripts/copy_comaps_data.sh
     - restore-dart-cache@2: {}
     - script@1:
         title: Get Flutter Dependencies
@@ -556,24 +466,17 @@ workflows:
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
-        title: Fetch CoMaps Source
+        title: Bootstrap CoMaps (fetch, patch, boost)
         inputs:
         - content: |
             #!/bin/bash
             set -e
 
-            echo "=== Fetching CoMaps $COMAPS_TAG ==="
-
-            mkdir -p thirdparty
-
-            if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --branch "$COMAPS_TAG" \
-                https://github.com/comaps/comaps.git thirdparty/comaps
-            fi
-
-            cd thirdparty/comaps
-            # Initialize ALL submodules recursively - required for patches like gflags
-            git submodule update --init --recursive
+            echo "=== Running unified bootstrap ==="
+            chmod +x scripts/bootstrap.sh
+            # --no-cache: CI has its own caching mechanism
+            # SKIP_BASE_MWMS: Not needed for native library build
+            SKIP_BASE_MWMS=true ./scripts/bootstrap.sh --no-cache
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: 'true'
@@ -581,26 +484,6 @@ workflows:
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
-    - script@1:
-        title: Apply CoMaps Patches
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            chmod +x scripts/apply_comaps_patches.sh
-            ./scripts/apply_comaps_patches.sh
-    - script@1:
-        title: Build Boost Headers
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            cd thirdparty/comaps/3party/boost
-            if [ ! -d "boost" ]; then
-              echo "=== Building Boost headers ==="
-              ./bootstrap.sh
-              ./b2 headers
-            fi
     - script@1:
         title: Install Ninja
         inputs:
@@ -710,47 +593,27 @@ workflows:
             ls -la ios/Frameworks/
             ls -la ios/Headers/ 2>/dev/null || echo "No headers directory"
     - restore-cache@1:
-        title: Restore CoMaps Cache (for thirdparty headers)
+        title: Restore CoMaps Cache
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
-        title: Fetch CoMaps Headers
+        title: Bootstrap CoMaps (fetch, patch, boost, data)
         inputs:
         - content: |
             #!/bin/bash
             set -e
 
-            # We need CoMaps headers for compilation even though we use pre-built XCFramework
-            mkdir -p thirdparty
-
-            if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --branch "$COMAPS_TAG" \
-                https://github.com/comaps/comaps.git thirdparty/comaps
-            fi
-
-            cd thirdparty/comaps
-            # Initialize ALL submodules recursively - required for patches like gflags
-            git submodule update --init --recursive
-    - script@1:
-        title: Build Boost Headers
+            echo "=== Running unified bootstrap ==="
+            chmod +x scripts/bootstrap.sh
+            # --no-cache: CI has its own caching mechanism
+            ./scripts/bootstrap.sh --no-cache
+    - save-cache@1:
+        title: Save CoMaps Cache
+        run_if: 'true'
+        is_always_run: true
         inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            cd thirdparty/comaps/3party/boost
-            if [ ! -d "boost" ]; then
-              ./bootstrap.sh
-              ./b2 headers
-            fi
-    - script@1:
-        title: Copy CoMaps Assets
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-
-            chmod +x scripts/copy_comaps_data.sh
-            ./scripts/copy_comaps_data.sh
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - paths: thirdparty/comaps
     - restore-dart-cache@2: {}
     - script@1:
         title: Get Flutter Dependencies
@@ -842,24 +705,16 @@ workflows:
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
-        title: Fetch CoMaps Source
+        title: Bootstrap CoMaps (fetch, patch, boost)
         inputs:
         - content: |
             #!/bin/bash
             set -e
 
-            echo "=== Fetching CoMaps $COMAPS_TAG ==="
-
-            mkdir -p thirdparty
-
-            if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --branch "$COMAPS_TAG" \
-                https://github.com/comaps/comaps.git thirdparty/comaps
-            fi
-
-            cd thirdparty/comaps
-            # Initialize ALL submodules recursively - required for patches like gflags
-            git submodule update --init --recursive
+            echo "=== Running unified bootstrap ==="
+            chmod +x scripts/bootstrap.sh
+            # --no-cache: CI has its own caching mechanism
+            ./scripts/bootstrap.sh --no-cache
     - save-cache@1:
         title: Save CoMaps Cache
         run_if: 'true'
@@ -867,26 +722,6 @@ workflows:
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
         - paths: thirdparty/comaps
-    - script@1:
-        title: Apply CoMaps Patches
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            chmod +x scripts/apply_comaps_patches.sh
-            ./scripts/apply_comaps_patches.sh
-    - script@1:
-        title: Build Boost Headers
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            cd thirdparty/comaps/3party/boost
-            if [ ! -d "boost" ]; then
-              echo "=== Building Boost headers ==="
-              ./bootstrap.sh
-              ./b2 headers
-            fi
     - script@1:
         title: Install Ninja
         inputs:
@@ -996,75 +831,27 @@ workflows:
             ls -la macos/Frameworks/
             ls -la macos/Headers/ 2>/dev/null || echo "No headers directory"
     - restore-cache@1:
-        title: Restore CoMaps Cache (for thirdparty headers)
+        title: Restore CoMaps Cache
         inputs:
         - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
     - script@1:
-        title: Fetch CoMaps Headers
+        title: Bootstrap CoMaps (fetch, patch, boost, data)
         inputs:
         - content: |
             #!/bin/bash
             set -e
 
-            # We need CoMaps headers for compilation even though we use pre-built XCFramework
-            mkdir -p thirdparty
-
-            if [ ! -d "thirdparty/comaps/.git" ]; then
-              git clone --branch "$COMAPS_TAG" \
-                https://github.com/comaps/comaps.git thirdparty/comaps
-            fi
-
-            cd thirdparty/comaps
-            # Initialize ALL submodules recursively - required for patches like gflags
-            git submodule update --init --recursive
-    - script@1:
-        title: Build Boost Headers
+            echo "=== Running unified bootstrap ==="
+            chmod +x scripts/bootstrap.sh
+            # --no-cache: CI has its own caching mechanism
+            ./scripts/bootstrap.sh --no-cache
+    - save-cache@1:
+        title: Save CoMaps Cache
+        run_if: 'true'
+        is_always_run: true
         inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            cd thirdparty/comaps/3party/boost
-            if [ ! -d "boost" ]; then
-              ./bootstrap.sh
-              ./b2 headers
-            fi
-    - script@1:
-        title: Apply CoMaps Patches
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-            chmod +x scripts/apply_comaps_patches.sh
-            ./scripts/apply_comaps_patches.sh
-    - script@1:
-        title: Copy Metal Shaders
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-
-            # Copy Metal shaders from iOS build if available
-            if [ -f "build/metal_shaders/shaders_metal.metallib" ]; then
-              mkdir -p macos/Resources
-              cp build/metal_shaders/shaders_metal.metallib macos/Resources/
-            elif [ -f "ios/Frameworks/CoMaps.xcframework/ios-arm64/libcomaps.a" ]; then
-              # Try to get from iOS framework resources
-              echo "Looking for metallib in iOS framework..."
-            fi
-
-            # Ensure metallib exists in macos/Resources
-            if [ ! -f "macos/Resources/shaders_metal.metallib" ]; then
-              echo "Warning: shaders_metal.metallib not found, may need to build iOS first"
-            fi
-    - script@1:
-        title: Copy CoMaps Assets
-        inputs:
-        - content: |
-            #!/bin/bash
-            set -e
-
-            chmod +x scripts/copy_comaps_data.sh
-            ./scripts/copy_comaps_data.sh
+        - key: comaps-source-full-{{ .OS }}-{{ getenv "COMAPS_TAG" }}
+        - paths: thirdparty/comaps
     - restore-dart-cache@2: {}
     - script@1:
         title: Get Flutter Dependencies

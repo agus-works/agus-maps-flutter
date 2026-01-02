@@ -13,15 +13,13 @@
 
 Debug mode enables hot reload, step-through debugging, and verbose logging for both Flutter and native layers.
 
-**Linux/macOS:**
+**macOS:**
 ```bash
-# 1. Bootstrap CoMaps dependencies (first time only)
-./scripts/bootstrap_android.sh
+# 1. Bootstrap all dependencies (first time only)
+#    This prepares Android, iOS, and macOS targets
+./scripts/bootstrap.sh
 
-# 2. Copy CoMaps data files (first time only)
-./scripts/copy_comaps_data.sh
-
-# 3. Run in debug mode
+# 2. Run in debug mode
 cd example
 flutter run --debug
 
@@ -31,13 +29,11 @@ adb logcat -s AgusMapsFlutterNative:D CoMaps:D AgusGuiThread:D
 
 **Windows PowerShell:**
 ```powershell
-# 1. Bootstrap CoMaps dependencies (first time only)
-.\scripts\bootstrap_android.ps1
+# 1. Bootstrap all dependencies (first time only)
+#    This prepares Android and Windows targets
+.\scripts\bootstrap.ps1
 
-# 2. Copy CoMaps data files (first time only)
-.\scripts\copy_comaps_data.ps1
-
-# 3. Run in debug mode
+# 2. Run in debug mode
 cd example
 flutter run --debug
 
@@ -55,15 +51,12 @@ adb logcat -s AgusMapsFlutterNative:D CoMaps:D AgusGuiThread:D
 
 Release mode produces an optimized build suitable for production use and accurate performance profiling.
 
-**Linux/macOS:**
+**macOS:**
 ```bash
-# 1. Bootstrap CoMaps dependencies (first time only)
-./scripts/bootstrap_android.sh
+# 1. Bootstrap all dependencies (first time only)
+./scripts/bootstrap.sh
 
-# 2. Copy CoMaps data files (first time only) 
-./scripts/copy_comaps_data.sh
-
-# 3. Build and run in release mode
+# 2. Build and run in release mode
 cd example
 flutter run --release
 
@@ -74,13 +67,10 @@ adb install build/app/outputs/flutter-apk/app-release.apk
 
 **Windows PowerShell:**
 ```powershell
-# 1. Bootstrap CoMaps dependencies (first time only)
-.\scripts\bootstrap_android.ps1
+# 1. Bootstrap all dependencies (first time only)
+.\scripts\bootstrap.ps1
 
-# 2. Copy CoMaps data files (first time only) 
-.\scripts\copy_comaps_data.ps1
-
-# 3. Build and run in release mode
+# 2. Build and run in release mode
 cd example
 flutter run --release
 

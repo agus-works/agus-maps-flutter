@@ -5,32 +5,13 @@
 1. A `./thirdparty` folder must exist in the root of the repository. Create if not exists.
 1. The `./scripts` folder in the root of the directory will be responsible for downloading dependencies. Dependencies that may come from other git repositories will be downloaded on to the thirdparty directory.
 1. We will first focus on making the entire build workflow and example on android. Relevant directories are `./example/android` and `./android`. The solution must work as specified in `./GUIDE.md` on the `android` platform initially.
+1. Do not poll terminal/cli MCP but instead run any arbitrary command as follows: `mycommand 2>&1 | tee ./output.log`. Then analyze the output.log making sure you're well aware of the file length before reading and strategically read the file by searching keywords relevant to analysis.
+1. Do not commit automatically unless instructed specifically. And when commiting please use appropriate commit message.
+1. When working on a specific target platform, make sure not to break other platforms! Be precise and surgical in updating `./patches`. You may create new patches as needed - but analyze if editing existing patch is more appropriate instead. Please update `./patches/comaps/README.md` when editing or adding patches! Analyze all patch changes and update the `./patches/comaps/README.md` as appropriate in detail with the same formatting as the other existing items.
 
 ### Thirdparty Patching Mechanism
 
-**IMPORTANT:** The `./thirdparty/comaps` directory contains a git checkout of the CoMaps project with local modifications. These modifications are tracked via patch files in `./patches/comaps/`.
-
-**DO NOT** directly modify files in `./thirdparty/comaps` without following this workflow:
-
-1. **Before modifying thirdparty code:** Understand that changes to `./thirdparty/comaps` MUST be captured as patches so they can be reapplied when updating the upstream CoMaps version.
-
-2. **After modifying thirdparty code:** Run the patch regeneration script:
-   ```bash
-   ./scripts/regenerate_patches.sh
-   ```
-   This creates/updates patch files in `./patches/comaps/` for each modified file.
-
-3. **To validate patches are in sync:** Run the validation script:
-   ```bash
-   ./scripts/validate_patches.sh
-   ```
-   This verifies all modifications in `./thirdparty/comaps` are accurately captured by existing patches.
-
-4. **Workflow summary:**
-   - `./scripts/fetch_comaps.sh` - Clones CoMaps and applies existing patches
-   - `./scripts/apply_comaps_patches.sh` - Applies patches to existing checkout
-   - `./scripts/regenerate_patches.sh` - Generates patches from current modifications
-   - `./scripts/validate_patches.sh` - Validates patches match current state
+**IMPORTANT:** The `./thirdparty/comaps` directory contains a git checkout of the CoMaps project with local modifications. These modifications are tracked via patch files in `./patches/comaps/`. Do not run patch update scripts at `./scripts` command automatically! Please update or create new patches. Always be precise, surgical, and anal about editing patches! Do not run scripts that will edit/modify all patches!
 
 ### Conventional Commits
 
