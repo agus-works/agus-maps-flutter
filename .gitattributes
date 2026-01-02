@@ -1,7 +1,3 @@
-*.mwm filter=lfs diff=lfs merge=lfs -text
-*.bin filter=lfs diff=lfs merge=lfs -text
-*.dat filter=lfs diff=lfs merge=lfs -text
-
 # Force LF line endings for patch files and scripts
 # This ensures patches apply correctly on all platforms (macOS Bitrise, Windows local)
 # PowerShell scripts also use LF for consistency across developer environments and CI/CD
