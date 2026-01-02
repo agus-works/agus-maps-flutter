@@ -90,8 +90,14 @@ example/assets/maps/icudt75l.dat
 ios/Resources/
 
 # Metal shaders (compiled during build)
-example/ios/Runner/shaders_metal.metallib
+*.metallib
 
 # Android fonts (copied from CoMaps during bootstrap)
 example/android/app/src/main/assets/fonts/
+
+# Build log files
+example/map_logs.txt
+example/build_log*.txt
+example/build_output.txt
+output.log
 
