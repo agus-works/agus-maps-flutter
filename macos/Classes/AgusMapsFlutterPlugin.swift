@@ -55,6 +55,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     private var surfaceWidth: Int = 0
     private var surfaceHeight: Int = 0
     private var density: CGFloat = 2.0
+    private weak var hostView: NSView?
+    private var magnificationRecognizer: NSMagnificationGestureRecognizer?
+    private var scrollEventMonitor: Any?
     
     // Rendering state
     private var isRenderingEnabled: Bool = false
@@ -88,6 +91,13 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         instance.metalDevice = MTLCreateSystemDefaultDevice()
         if instance.metalDevice == nil {
             NSLog("[AgusMapsFlutter] Warning: Metal device not available")
+        }
+        if let hostView = registrar.view {
+            instance.hostView = hostView
+            instance.setupMagnificationGesture(on: hostView)
+            instance.setupTrackpadZoomMonitor(on: hostView)
+        } else {
+            NSLog("[AgusMapsFlutter] Warning: registrar.view is nil; trackpad pinch disabled")
         }
         
         registrar.addMethodCallDelegate(instance, channel: channel)
@@ -403,6 +413,73 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         cleanupTexture()
         result(true)
     }
+
+    // MARK: - Trackpad Magnification (macOS)
+    private func setupMagnificationGesture(on view: NSView) {
+        guard magnificationRecognizer == nil else { return }
+        let recognizer = NSMagnificationGestureRecognizer(target: self, action: #selector(handleMagnification(_:)))
+        recognizer.delegate = self
+        recognizer.isEnabled = true
+        view.addGestureRecognizer(recognizer)
+        magnificationRecognizer = recognizer
+        NSLog("[AgusMapsFlutter] Trackpad pinch gesture attached")
+    }
+    
+    @objc private func handleMagnification(_ recognizer: NSMagnificationGestureRecognizer) {
+        guard isRenderingEnabled, textureId >= 0 else { return }
+        guard let hostView = hostView else { return }
+        
+        switch recognizer.state {
+        case .began:
+            recognizer.magnification = 0
+            return
+        case .changed:
+            break
+        default:
+            recognizer.magnification = 0
+            return
+        }
+        
+        // Treat magnification as incremental; reset to avoid compounding
+        let delta = recognizer.magnification
+        if abs(delta) < 1e-4 { return }
+        recognizer.magnification = 0
+        
+        let location = recognizer.location(in: hostView)
+        let correctedY = hostView.isFlipped ? location.y : (hostView.bounds.height - location.y)
+        let scale = hostView.window?.backingScaleFactor ?? density
+        let pixelX = Double(location.x * scale)
+        let pixelY = Double(correctedY * scale)
+        
+        let scaleFactor = exp(Double(delta))
+        comaps_scale(scaleFactor, pixelX, pixelY, 0)
+    }
+
+    // MARK: - Trackpad Parallel Swipe Zoom (two-finger vertical slide)
+    private func setupTrackpadZoomMonitor(on view: NSView) {
+        guard scrollEventMonitor == nil else { return }
+        scrollEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self, weak view] event in
+            guard let self = self, let view = view else { return event }
+            guard event.hasPreciseScrollingDeltas else { return event } // only handle trackpad, not mouse wheel
+            let point = view.convert(event.locationInWindow, from: nil)
+            guard view.bounds.contains(point) else { return event }
+            guard self.isRenderingEnabled, self.textureId >= 0 else { return event }
+            self.handleTrackpadZoom(deltaY: event.scrollingDeltaY, pointInView: point, view: view)
+            return nil // consume so Flutter listener does not double-handle when map is active
+        }
+    }
+    
+    private func handleTrackpadZoom(deltaY: CGFloat, pointInView: NSPoint, view: NSView) {
+        guard isRenderingEnabled, textureId >= 0 else { return }
+        let correctedY = view.isFlipped ? pointInView.y : (view.bounds.height - pointInView.y)
+        let scale = view.window?.backingScaleFactor ?? density
+        let pixelX = Double(pointInView.x * scale)
+        let pixelY = Double(correctedY * scale)
+        
+        // Match Google Maps-style touchpad zoom: upward swipe = zoom in, downward = zoom out
+        let factor = exp(-Double(deltaY) / 600.0)
+        comaps_scale(factor, pixelX, pixelY, 0)
+    }
     
     // MARK: - CVPixelBuffer Creation (Zero-Copy)
     
@@ -559,5 +636,17 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     private func lookupKeyForAsset(_ asset: String) -> String {
         // Use Flutter's built-in asset key lookup
         return FlutterDartProject.lookupKey(forAsset: asset)
+    }
+    
+    deinit {
+        if let monitor = scrollEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+}
+
+extension AgusMapsFlutterPlugin: NSGestureRecognizerDelegate {
+    public func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: NSGestureRecognizer) -> Bool {
+        return true
     }
 }

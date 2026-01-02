@@ -50,6 +50,9 @@ void agus_set_frame_ready_callback(AgusFrameReadyCallback callback);
 /// Called to render a single frame - this is triggered by Flutter's texture system
 void agus_render_frame(void);
 
+/// Scale the map around a focal point (desktop zoom)
+void comaps_scale(double factor, double pixelX, double pixelY, int animated);
+
 #ifdef __cplusplus
 }
 #endif

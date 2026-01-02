@@ -391,6 +391,7 @@ build-release:
 - [x] macOS example app builds without errors
 - [x] App launches and displays Gibraltar map
 - [x] Pan/zoom gestures work correctly
+- [x] Trackpad zoom: pinch + two-finger parallel swipe with cursor-centered focal point
 - [x] Window resize works correctly (map doesn't turn white)
 - [x] Rapid window resize is stable (no brownish/incomplete blocks)
 - [ ] Map renders at 60fps with minimal CPU usage

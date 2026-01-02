@@ -14,6 +14,7 @@ set -euo pipefail
 #   bootstrap_comaps           # Fetch and patch CoMaps
 #   bootstrap_boost            # Build boost headers
 #   bootstrap_data             # Copy CoMaps data files
+#   bootstrap_base_mwms        # Download base MWM samples into example assets
 #
 # Caching:
 #   The bootstrap_full function implements a caching mechanism:
@@ -521,6 +522,28 @@ bootstrap_data() {
 }
 
 # ============================================================================
+# bootstrap_base_mwms - Download base MWM samples into example assets
+# ============================================================================
+bootstrap_base_mwms() {
+  if [[ "${SKIP_BASE_MWMS:-}" == "true" ]]; then
+    log_warn "Skipping base MWM download (SKIP_BASE_MWMS=true)"
+    return 0
+  fi
+
+  local downloader="$BOOTSTRAP_ROOT_DIR/scripts/download_base_mwms.sh"
+
+  if [[ ! -x "$downloader" ]]; then
+    log_warn "download_base_mwms.sh not found or not executable"
+    return 0
+  fi
+
+  log_header "Downloading base MWM samples"
+  if ! "$downloader"; then
+    log_warn "Base MWM download failed; continue without sample maps"
+  fi
+}
+
+# ============================================================================
 # bootstrap_android_assets - Copy fonts to Android assets
 # ============================================================================
 bootstrap_android_assets() {
@@ -614,6 +637,9 @@ bootstrap_full() {
   
   # Step 5: Copy data files (needed for all platforms)
   bootstrap_data
+
+  # Step 6: Download base MWMs (World/WorldCoasts/Gibraltar) for example assets
+  bootstrap_base_mwms
   
   # Platform-specific steps
   case "$platform" in
@@ -642,4 +668,4 @@ export -f log_info log_warn log_error log_header
 export -f test_thirdparty_archive compress_thirdparty expand_thirdparty
 export -f bootstrap_comaps_fetch bootstrap_comaps bootstrap_apply_patches
 export -f bootstrap_generate_data bootstrap_boost
-export -f bootstrap_data bootstrap_android_assets bootstrap_full
+export -f bootstrap_data bootstrap_base_mwms bootstrap_android_assets bootstrap_full
