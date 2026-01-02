@@ -80,6 +80,9 @@ example/assets/comaps_data/
 # These are large binary files that should be fetched from mirror servers
 example/assets/maps/*.mwm
 
+# ICU data file - copied from CoMaps during bootstrap
+example/assets/maps/icudt75l.dat
+
 # Generated/Downloaded map files
 # Keep World.mwm if it's the base map, but usually users download regions.
 # For now, let's ignore extra mwm files if they are not tracked.

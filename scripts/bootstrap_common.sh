@@ -519,6 +519,20 @@ bootstrap_data() {
   done
   
   log_info "Data files copied to: $dest_data"
+  
+  # Copy ICU data file to maps directory (required for text rendering)
+  local maps_dir="$BOOTSTRAP_ROOT_DIR/example/assets/maps"
+  local icu_source="$comaps_data/icudt75l.dat"
+  local icu_dest="$maps_dir/icudt75l.dat"
+  
+  mkdir -p "$maps_dir"
+  
+  if [[ -f "$icu_source" ]]; then
+    cp "$icu_source" "$icu_dest"
+    log_info "ICU data file copied to: $icu_dest"
+  else
+    log_warn "ICU data file not found at $icu_source"
+  fi
 }
 
 # ============================================================================
