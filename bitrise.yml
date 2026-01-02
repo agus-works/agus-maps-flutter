@@ -12,6 +12,9 @@ workflows:
       Bundles required C++ headers from CoMaps for compilation on all platforms.
       This is shared across iOS, Android, and other platform builds.
     steps:
+    - git-clone@8:
+        inputs:
+        - fetch_tags: 'yes'
     - script@1:
         title: Set Environment Variables
         inputs:
