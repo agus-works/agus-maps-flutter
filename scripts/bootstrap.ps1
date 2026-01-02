@@ -1,29 +1,31 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Bootstraps the Windows development environment for agus-maps-flutter.
+    Unified Bootstrap for Windows Development
 
 .DESCRIPTION
-    This script sets up everything needed to build the Windows target of
-    agus_maps_flutter. It performs:
-    
-    1. Fetches CoMaps source code (or extracts from cache if available)
-    2. Creates .thirdparty.7z cache after fresh clone (before patches)
-    3. Applies patches (superset for all platforms)
-    4. Builds Boost headers
-    5. Copies CoMaps data files
-    6. Installs vcpkg if not present
-    7. Installs required vcpkg dependencies (zlib)
-    8. Sets up environment variables
+    This script sets up the complete development environment for agus_maps_flutter
+    on Windows. It prepares ALL target platforms that can be built from Windows:
+      - Android (arm64-v8a, armeabi-v7a, x86_64)
+      - Windows (x64)
 
-    Cache Mechanism:
-    - After a fresh clone, the thirdparty directory is compressed to .thirdparty.7z
-    - If thirdparty is deleted and .thirdparty.7z exists, it will be extracted
-    - This skips network calls and speeds up subsequent bootstraps
-    - Use -NoCache to disable caching behavior
+    What it does:
+      1. Fetch CoMaps source code (or restore from local cache)
+      2. Create cache archive after fresh clone (before patches)
+      3. Apply patches (superset for all platforms)
+      4. Build Boost headers
+      5. Copy CoMaps data files to example assets
+      6. Copy Android-specific assets (fonts)
+      7. Install vcpkg if not present
+      8. Install vcpkg dependencies (zlib)
+      9. Set environment variables
 
-    Note: This bootstrap also prepares dependencies needed for Android builds
-    on Windows, ensuring you can build both Windows and Android targets.
+    Local Cache Mechanism (development only):
+      - After fresh clone, thirdparty is compressed to .thirdparty.7z using 7-Zip
+      - Cache is created BEFORE patches are applied (pristine state)
+      - If thirdparty is deleted and cache exists, it will be extracted
+      - This allows iterating on patches without re-cloning from git
+      - Use -NoCache to disable caching behavior
 
 .PARAMETER VcpkgRoot
     Path where vcpkg should be installed. Defaults to C:\vcpkg
@@ -38,13 +40,17 @@
     Force re-bootstrap even if already done.
 
 .EXAMPLE
-    .\scripts\bootstrap_windows.ps1
+    .\scripts\bootstrap.ps1
 
 .EXAMPLE
-    .\scripts\bootstrap_windows.ps1 -VcpkgRoot D:\tools\vcpkg
+    .\scripts\bootstrap.ps1 -VcpkgRoot D:\tools\vcpkg
 
 .EXAMPLE
-    .\scripts\bootstrap_windows.ps1 -NoCache
+    .\scripts\bootstrap.ps1 -NoCache
+
+.NOTES
+    For macOS/Linux development, use bootstrap.sh instead.
+    Linux is not yet supported - see docs/CONTRIBUTING.md for details.
 #>
 
 param(
@@ -64,9 +70,15 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 # Import common bootstrap module
 Import-Module (Join-Path $ScriptDir 'BootstrapCommon.psm1') -Force
 
-Write-Host "=== Agus Maps Flutter - Windows Bootstrap ===" -ForegroundColor Cyan
-Write-Host "Repository Root: $RepoRoot"
-Write-Host "vcpkg Root: $VcpkgRoot"
+Write-Host ""
+Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host "Agus Maps Flutter - Unified Bootstrap" -ForegroundColor Cyan
+Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Build Machine: Windows $([System.Environment]::OSVersion.Version)" -ForegroundColor Gray
+Write-Host "Target Platforms: Android, Windows" -ForegroundColor Gray
+Write-Host "Repository Root: $RepoRoot" -ForegroundColor Gray
+Write-Host "vcpkg Root: $VcpkgRoot" -ForegroundColor Gray
 Write-Host ""
 
 # ============================================================================
@@ -79,7 +91,9 @@ if ($NoCache) {
     Write-LogInfo "Cache disabled by -NoCache flag"
 } elseif (Test-7ZipAvailable) {
     if (Test-ThirdPartyArchive -RepoRoot $RepoRoot) {
-        Write-LogInfo "Cache archive found: .thirdparty.7z"
+        $archivePath = Join-Path $RepoRoot '.thirdparty.7z'
+        $sizeMB = [math]::Round((Get-Item $archivePath).Length / 1MB, 2)
+        Write-LogInfo "Cache archive found: .thirdparty.7z ($sizeMB MB)"
     } else {
         Write-LogInfo "No cache archive found - will create after fresh clone"
     }
@@ -87,16 +101,15 @@ if ($NoCache) {
     Write-LogWarn "7-Zip not found at C:\Program Files\7-Zip\7z.exe - caching disabled"
 }
 
+# Run full bootstrap for all platforms
 if ($SkipPatches) {
-    Bootstrap-CoMaps -RepoRoot $RepoRoot
-    Bootstrap-Boost -RepoRoot $RepoRoot
-    Bootstrap-Data -RepoRoot $RepoRoot
+    $env:SKIP_PATCHES = "true"
+}
+
+if ($NoCache) {
+    Bootstrap-Full -RepoRoot $RepoRoot -Platform 'all' -NoCache
 } else {
-    if ($NoCache) {
-        Bootstrap-Full -RepoRoot $RepoRoot -Platform 'windows' -NoCache
-    } else {
-        Bootstrap-Full -RepoRoot $RepoRoot -Platform 'windows'
-    }
+    Bootstrap-Full -RepoRoot $RepoRoot -Platform 'all'
 }
 
 # ============================================================================
@@ -198,12 +211,15 @@ if ($isInteractive) {
 # Done
 # ============================================================================
 Write-Host ""
-Write-Host "=== Bootstrap Complete ===" -ForegroundColor Cyan
+Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host "Bootstrap Complete!" -ForegroundColor Cyan
+Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "This bootstrap has prepared:" -ForegroundColor Gray
 Write-Host "  ✓ CoMaps source code and patches" -ForegroundColor Green
 Write-Host "  ✓ Boost headers" -ForegroundColor Green
 Write-Host "  ✓ CoMaps data files" -ForegroundColor Green
+Write-Host "  ✓ Android assets (fonts)" -ForegroundColor Green
 Write-Host "  ✓ vcpkg and dependencies" -ForegroundColor Green
 
 # Show cache status
@@ -211,23 +227,28 @@ if (-not $NoCache -and (Test-7ZipAvailable)) {
     if (Test-ThirdPartyArchive -RepoRoot $RepoRoot) {
         $archivePath = Join-Path $RepoRoot '.thirdparty.7z'
         $sizeMB = [math]::Round((Get-Item $archivePath).Length / 1MB, 2)
-        Write-Host "  ✓ Cache archive: .thirdparty.7z ($sizeMB MB)" -ForegroundColor Green
+        Write-Host "  ✓ Local cache: .thirdparty.7z ($sizeMB MB)" -ForegroundColor Green
     }
 }
 
 Write-Host ""
-Write-Host "You can now build for:" -ForegroundColor Gray
-Write-Host "  - Windows:  flutter build windows" -ForegroundColor White
-Write-Host "  - Android:  flutter build apk" -ForegroundColor White
+Write-Host "Next steps:" -ForegroundColor Gray
 Write-Host ""
-Write-Host "To build the plugin, run:" -ForegroundColor Gray
-Write-Host "  cd example" -ForegroundColor White
-Write-Host "  flutter build windows" -ForegroundColor White
+Write-Host "  Android:" -ForegroundColor White
+Write-Host "    cd example" -ForegroundColor DarkGray
+Write-Host "    flutter run -d <android-device>" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  Windows:" -ForegroundColor White
+Write-Host "    cd example" -ForegroundColor DarkGray
+Write-Host "    flutter run -d windows" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "To build native libraries from source:" -ForegroundColor Gray
+Write-Host "    .\scripts\build_binaries_android.ps1" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "Make sure VCPKG_ROOT is set in your shell:" -ForegroundColor Gray
-Write-Host "  `$env:VCPKG_ROOT = '$VcpkgRoot'" -ForegroundColor White
+Write-Host "    `$env:VCPKG_ROOT = '$VcpkgRoot'" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "Cache tips:" -ForegroundColor Gray
-Write-Host "  - Delete 'thirdparty' folder and re-run bootstrap to use cache" -ForegroundColor White
-Write-Host "  - Use -NoCache flag to force fresh clone" -ForegroundColor White
+Write-Host "  - Delete 'thirdparty' folder and re-run bootstrap to use cache" -ForegroundColor DarkGray
+Write-Host "  - Use -NoCache flag to force fresh clone" -ForegroundColor DarkGray
 Write-Host ""

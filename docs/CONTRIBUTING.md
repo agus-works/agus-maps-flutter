@@ -70,60 +70,85 @@ dart run ffigen --config ffigen.yaml
 - Android SDK with NDK r25c+
 - CMake 3.18+
 - Git (with ability to initialize submodules)
-- PowerShell 7+ (Windows only)
+- **macOS** for iOS, macOS, and Android builds
+- **Windows** with PowerShell 7+ for Windows and Android builds
+
+> **⚠️ Linux Not Supported:** Linux builds are not yet supported. We are still evaluating which distributions to support and the best development workflow. Contributions from developers with Linux hardware are welcome!
 
 ### Initial Setup
 
-The bootstrap scripts use a unified approach where running any platform's bootstrap
-will prepare the superset of dependencies needed. This means:
+We provide **unified bootstrap scripts** that prepare ALL target platforms supported from your build machine in a single command:
 
-- **macOS**: Running any bootstrap prepares you for macOS, iOS, and Android targets
-- **Windows**: Running any bootstrap prepares you for Windows and Android targets
+| Build Machine | Targets Prepared | Command |
+|---------------|------------------|--------|
+| **macOS** | Android, iOS, macOS | `./scripts/bootstrap.sh` |
+| **Windows** | Android, Windows | `.\scripts\bootstrap.ps1` |
 
-**Linux/macOS (any target):**
+The bootstrap scripts handle:
+1. Fetching CoMaps source code at the correct version
+2. Applying ALL patches (superset for all platforms)
+3. Initializing ALL submodules (required for patches)
+4. Building Boost headers
+5. Generating and copying CoMaps data files
+6. Downloading base MWM samples (World, Gibraltar)
+7. Platform-specific setup (XCFrameworks for iOS/macOS, vcpkg for Windows)
+
+**macOS (targets: Android, iOS, macOS):**
 ```bash
 # Clone the repository
 git clone https://github.com/bangonkali/agus-maps-flutter.git
-cd agus_maps_flutter
+cd agus-maps-flutter
 
-# Bootstrap for your target platform
-# Note: All bootstrap scripts fetch CoMaps, apply ALL patches, and build shared dependencies
-./scripts/bootstrap_android.sh   # Prepares for Android
-./scripts/bootstrap_ios.sh       # Prepares for iOS (macOS only)
-./scripts/bootstrap_macos.sh     # Prepares for macOS (macOS only)
+# Run unified bootstrap (prepares ALL targets)
+./scripts/bootstrap.sh
 
 # Get Flutter dependencies
 flutter pub get
 
 # Build and run example
 cd example
-flutter run
+flutter run -d <device>  # iOS Simulator, Android device, or macOS
 ```
 
-**Windows PowerShell 7+:**
+**Windows PowerShell 7+ (targets: Android, Windows):**
 ```powershell
 # Clone the repository
 git clone https://github.com/bangonkali/agus-maps-flutter.git
-cd agus_maps_flutter
+cd agus-maps-flutter
 
-# Bootstrap for your target platform
-# Note: Both scripts prepare dependencies for Windows AND Android
-.\scripts\bootstrap_windows.ps1  # Prepares for Windows (includes vcpkg)
-.\scripts\bootstrap_android.ps1  # Prepares for Android
+# Run unified bootstrap (prepares ALL targets)
+.\scripts\bootstrap.ps1
 
 # Get Flutter dependencies
 flutter pub get
 
 # Build and run example
 cd example
-flutter run
+flutter run -d <device>  # Windows or Android device
+```
+
+### Bootstrap Options
+
+**macOS (`bootstrap.sh`):**
+```bash
+./scripts/bootstrap.sh                    # Default: download pre-built XCFrameworks
+./scripts/bootstrap.sh --build-xcframework  # Build XCFrameworks from source (~30 min each)
+./scripts/bootstrap.sh --no-cache          # Disable local caching
+```
+
+**Windows (`bootstrap.ps1`):**
+```powershell
+.\scripts\bootstrap.ps1                   # Default
+.\scripts\bootstrap.ps1 -NoCache           # Disable local caching
+.\scripts\bootstrap.ps1 -SkipPatches       # Skip patch application (debugging)
+.\scripts\bootstrap.ps1 -VcpkgRoot D:\vcpkg # Custom vcpkg location
 ```
 
 ### Bootstrap Architecture
 
-All bootstrap scripts share common logic via:
-- **Bash**: `scripts/bootstrap_common.sh` (sourced by all .sh scripts)
-- **PowerShell**: `scripts/BootstrapCommon.psm1` (imported by all .ps1 scripts)
+The unified bootstrap scripts share common logic via:
+- **Bash**: `scripts/bootstrap_common.sh` (sourced by `bootstrap.sh`)
+- **PowerShell**: `scripts/BootstrapCommon.psm1` (imported by `bootstrap.ps1`)
 
 This ensures:
 1. Same CoMaps tag is used across all platforms
@@ -131,6 +156,22 @@ This ensures:
 3. ALL submodules are fully initialized (required for patches like gflags)
 4. Boost headers are built consistently
 5. Data files are copied to example assets
+6. XCFrameworks downloaded/built for iOS and macOS (macOS only)
+7. vcpkg dependencies installed for Windows (Windows only)
+
+### Local Cache Mechanism (Development Only)
+
+To speed up patch iteration during development, the bootstrap scripts implement local caching:
+
+- **macOS**: After fresh clone, `thirdparty/` is compressed to `.thirdparty.tar.bz2`
+- **Windows**: After fresh clone, `thirdparty/` is compressed to `.thirdparty.7z` (requires 7-Zip)
+
+The cache is created **before patches are applied**, allowing you to:
+1. Delete the `thirdparty/` folder
+2. Re-run bootstrap
+3. Quickly restore from cache and re-apply patches
+
+> **Note:** Caching is automatically disabled in CI environments (`$CI=true`) to avoid interfering with CI-specific caching mechanisms.
 
 ### Rebuilding After Changes
 

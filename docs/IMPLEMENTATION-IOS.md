@@ -15,17 +15,15 @@
 Debug mode enables hot reload, step-through debugging, and verbose logging for both Flutter and native layers.
 
 ```bash
-# 1. Bootstrap CoMaps dependencies and build XCFramework (first time only)
-./scripts/bootstrap_ios.sh
+# 1. Bootstrap all dependencies (first time only)
+#    This prepares iOS, macOS, and Android targets
+./scripts/bootstrap.sh
 
-# 2. Copy CoMaps data files (first time only)
-./scripts/copy_comaps_data.sh
-
-# 3. Install CocoaPods dependencies
+# 2. Install CocoaPods dependencies
 cd example/ios
 pod install
 
-# 4. Run in debug mode (simulator)
+# 3. Run in debug mode (simulator)
 cd ..
 flutter run --debug -d "iPhone 15 Pro"
 
@@ -44,13 +42,10 @@ flutter run --debug -d "iPhone 15 Pro"
 Release mode produces an optimized build suitable for production use and accurate performance profiling.
 
 ```bash
-# 1. Bootstrap CoMaps dependencies (first time only)
-./scripts/bootstrap_ios.sh
+# 1. Bootstrap all dependencies (first time only)
+./scripts/bootstrap.sh
 
-# 2. Copy CoMaps data files (first time only)
-./scripts/copy_comaps_data.sh
-
-# 3. Build and run in release mode
+# 2. Build and run in release mode
 cd example
 flutter run --release -d "iPhone 15 Pro"
 

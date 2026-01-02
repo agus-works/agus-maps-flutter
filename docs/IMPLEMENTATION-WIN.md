@@ -645,8 +645,8 @@ The Windows plugin already supported the `density` parameter (defaulting to 1.0)
 
 - Flutter SDK 3.24+ installed
 - Visual Studio 2022 with C++ Desktop development workload  
-- vcpkg (installed at `C:\vcpkg` or set `VCPKG_ROOT` environment variable)
-- PowerShell 7+ (for bootstrap scripts)
+- vcpkg (will be installed automatically by bootstrap script)
+- PowerShell 7+ (for bootstrap script)
 - Windows 10 or later (x86_64 only)
 - ~5GB disk space for CoMaps build artifacts
 
@@ -655,17 +655,13 @@ The Windows plugin already supported the `density` parameter (defaulting to 1.0)
 ### First-Time Setup
 
 ```powershell
-# 1. Bootstrap the Windows environment (PowerShell 7+)
-#    - installs vcpkg dependencies (manifest mode)
-#    - fetches CoMaps and applies patches
-#    - copies CoMaps data into example assets
-.\scripts\bootstrap_windows.ps1
-
-# 2. (Optional) Re-copy CoMaps data into example assets
-# .\scripts\copy_comaps_data.ps1
-
-# If you prefer bash:
-#   ./scripts/copy_comaps_data.sh
+# Bootstrap the Windows environment (PowerShell 7+)
+# This prepares BOTH Windows and Android targets:
+#   - Fetches CoMaps source and applies patches
+#   - Builds Boost headers
+#   - Copies CoMaps data into example assets
+#   - Installs vcpkg and dependencies
+.\scripts\bootstrap.ps1
 ```
 
 ### Debug Mode
