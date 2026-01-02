@@ -131,8 +131,10 @@ flutter run -d <device>  # Windows or Android device
 
 **macOS (`bootstrap.sh`):**
 ```bash
-./scripts/bootstrap.sh                    # Default: download pre-built XCFrameworks
-./scripts/bootstrap.sh --build-xcframework  # Build XCFrameworks from source (~30 min each)
+./scripts/bootstrap.sh                    # Default: download pre-built binaries
+./scripts/bootstrap.sh --build-binaries    # Build all binaries from source (~1 hour total)
+./scripts/bootstrap.sh --build-example-app # Build example apps (requires binaries)
+./scripts/bootstrap.sh --build-binaries --build-example-app  # Full build
 ./scripts/bootstrap.sh --no-cache          # Disable local caching
 ```
 
