@@ -38,6 +38,24 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ============================================================================
+# Prebuilt Binary Detection (CI builds)
+# ============================================================================
+# Check for pre-built DLLs in windows/prebuilt/x64/
+# This is used in CI where binaries are built separately and downloaded
+set(PREBUILT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64")
+set(PREBUILT_DLL "${PREBUILT_DIR}/agus_maps_flutter.dll")
+set(PREBUILT_ZLIB "${PREBUILT_DIR}/zlib1.dll")
+
+if(EXISTS "${PREBUILT_DLL}")
+  set(USE_PREBUILT_WINDOWS ON)
+  message(STATUS "=== Using pre-built Windows binaries ===")
+  message(STATUS "Pre-built DLL: ${PREBUILT_DLL}")
+else()
+  set(USE_PREBUILT_WINDOWS OFF)
+  message(STATUS "=== Building Windows binaries from source ===")
+endif()
+
+# ============================================================================
 # Flutter Plugin (MethodChannel handler)
 # ============================================================================
 # The plugin DLL handles MethodChannel communication with Dart
@@ -71,15 +89,29 @@ target_include_directories(${PLUGIN_NAME} PUBLIC
 # ============================================================================
 # Native CoMaps Library (FFI bindings)
 # ============================================================================
-# Invoke the build for native code shared with the other target platforms.
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../src" "${CMAKE_CURRENT_BINARY_DIR}/shared")
+if(USE_PREBUILT_WINDOWS)
+  # Use pre-built DLL - no need to build from source
+  message(STATUS "Skipping CoMaps source build - using pre-built DLL")
+else()
+  # Invoke the build for native code shared with the other target platforms.
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../src" "${CMAKE_CURRENT_BINARY_DIR}/shared")
+endif()
 
 # ============================================================================
 # Find Runtime Dependencies
 # ============================================================================
-# CoMaps uses zlib via find_package(ZLIB), which on Windows with vcpkg
-# results in a dynamic library dependency on zlib1.dll
-find_package(ZLIB REQUIRED)
+if(USE_PREBUILT_WINDOWS)
+  # Use pre-built zlib DLL
+  if(EXISTS "${PREBUILT_ZLIB}")
+    set(ZLIB_DLL "${PREBUILT_ZLIB}")
+    message(STATUS "Using pre-built zlib: ${ZLIB_DLL}")
+  else()
+    message(WARNING "Pre-built zlib1.dll not found at ${PREBUILT_ZLIB}")
+  endif()
+else()
+  # CoMaps uses zlib via find_package(ZLIB), which on Windows with vcpkg
+  # results in a dynamic library dependency on zlib1.dll
+  find_package(ZLIB REQUIRED)
 
 # Get the zlib DLL path for bundling
 # vcpkg installs zlib1.dll in the bin directory
@@ -103,17 +135,32 @@ if(ZLIB_FOUND)
     endif()
   endif()
 endif()
+endif()
 
 # ============================================================================
 # Bundled Libraries
 # ============================================================================
 # List of absolute paths to libraries that should be bundled with the plugin.
-set(agus_maps_flutter_bundled_libraries
-  # The plugin DLL (MethodChannel handler)
-  $<TARGET_FILE:${PLUGIN_NAME}>
-  # The native CoMaps FFI library
-  $<TARGET_FILE:agus_maps_flutter>
-  # Runtime dependencies
-  "${ZLIB_DLL}"
-  PARENT_SCOPE
-)
+if(USE_PREBUILT_WINDOWS)
+  # Use pre-built DLLs
+  set(agus_maps_flutter_bundled_libraries
+    # The plugin DLL (MethodChannel handler)
+    $<TARGET_FILE:${PLUGIN_NAME}>
+    # Pre-built native CoMaps FFI library
+    "${PREBUILT_DLL}"
+    # Runtime dependencies
+    "${ZLIB_DLL}"
+    PARENT_SCOPE
+  )
+else()
+  # Use freshly built DLLs
+  set(agus_maps_flutter_bundled_libraries
+    # The plugin DLL (MethodChannel handler)
+    $<TARGET_FILE:${PLUGIN_NAME}>
+    # The native CoMaps FFI library
+    $<TARGET_FILE:agus_maps_flutter>
+    # Runtime dependencies
+    "${ZLIB_DLL}"
+    PARENT_SCOPE
+  )
+endif()
