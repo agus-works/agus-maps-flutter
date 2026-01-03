@@ -283,6 +283,8 @@ jobs:
             git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
             C:\vcpkg\bootstrap-vcpkg.bat
           }
+          # Install zlib for Windows build
+          C:\vcpkg\vcpkg.exe install zlib:x64-windows
           echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
         shell: pwsh
 
