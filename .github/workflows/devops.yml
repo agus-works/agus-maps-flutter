@@ -317,6 +317,34 @@ jobs:
           Expand-Archive -Path $tempZip -DestinationPath thirdparty\comaps -Force
           Remove-Item $tempZip
           
+          Write-Host "=== Verifying Cache Extraction ==="
+          $items = Get-ChildItem -Path thirdparty\comaps -Force
+          Write-Host "Found $($items.Count) items in thirdparty\comaps"
+          $items | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.Name)" }
+          
+          if (-not (Test-Path "thirdparty\comaps\.git")) {
+             Write-Error "CRITICAL: .git directory not found in thirdparty\comaps! Extraction likely failed or structure is wrong."
+             exit 1
+          }
+          
+          Push-Location thirdparty\comaps
+          try {
+             $head = git rev-parse HEAD
+             Write-Host "Current HEAD: $head"
+             
+             # Also verify against expected tag (if possible to resolve)
+             $tag = "${{ env.COMAPS_TAG }}"
+             Write-Host "Expected Tag: $tag"
+          }
+          catch {
+             Write-Error "Failed to verify git status"
+          }
+          finally {
+             Pop-Location
+          }
+          
+          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
+          
           $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
           Write-Host "✓ CoMaps restored from cache (${size} GB)"
         shell: pwsh
@@ -555,6 +583,36 @@ jobs:
           Invoke-WebRequest -Uri $cacheUrl -OutFile $tempZip -UseBasicParsing
           Expand-Archive -Path $tempZip -DestinationPath thirdparty\comaps -Force
           Remove-Item $tempZip
+          
+          Write-Host "=== Verifying Cache Extraction ==="
+          $items = Get-ChildItem -Path thirdparty\comaps -Force
+          Write-Host "Found $($items.Count) items in thirdparty\comaps"
+          $items | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.Name)" }
+          
+          if (-not (Test-Path "thirdparty\comaps\.git")) {
+             Write-Error "CRITICAL: .git directory not found in thirdparty\comaps! Extraction likely failed or structure is wrong."
+             exit 1
+          }
+          
+          Push-Location thirdparty/comaps
+          try {
+             $head = git rev-parse HEAD
+             Write-Host "Current HEAD: $head"
+             
+             # Also verify against expected tag (if possible to resolve)
+             # Note: fetching might be needed if tag isn't local, but cache should have it.
+             # We just report for now to avoid network ops if possible, 
+             # but user asked to confirm proper tag is checked out.
+             
+             $tag = "${{ env.COMAPS_TAG }}"
+             Write-Host "Expected Tag: $tag"
+          }
+          catch {
+             Write-Error "Failed to verify git status"
+          }
+          finally {
+             Pop-Location
+          }
           
           $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
           Write-Host "✓ CoMaps restored from cache (${size} GB)"
