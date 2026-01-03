@@ -182,18 +182,31 @@ bootstrap_comaps_fetch() {
     git clone "$comaps_repo" "$comaps_dir"
     COMAPS_FRESH_CLONE=true
   else
-    log_info "Updating existing CoMaps checkout"
+    log_info "Checking existing CoMaps checkout..."
+    
+    # Check if we are already at the target tag/commit
+    # We try to resolve the tag to a commit hash locally first
+    local target_hash
+    local current_hash
+    
+    target_hash=$(git -C "$comaps_dir" rev-parse "$COMAPS_TAG" 2>/dev/null || true)
+    current_hash=$(git -C "$comaps_dir" rev-parse HEAD 2>/dev/null || true)
+    
+    if [[ -n "$target_hash" ]] && [[ "$target_hash" == "$current_hash" ]]; then
+      log_info "Already at $COMAPS_TAG ($current_hash). Skipping fetch and update."
+      return 0
+    else
+      log_info "Updating to $COMAPS_TAG..."
+      pushd "$comaps_dir" >/dev/null
+      log_info "Fetching tags..."
+      git fetch --tags --prune
+      log_info "Checking out $COMAPS_TAG"
+      git checkout --detach "$COMAPS_TAG"
+      popd >/dev/null
+    fi
   fi
   
   pushd "$comaps_dir" >/dev/null
-  
-  # Fetch tags
-  log_info "Fetching tags..."
-  git fetch --tags --prune
-  
-  # Checkout specific tag
-  log_info "Checking out $COMAPS_TAG"
-  git checkout --detach "$COMAPS_TAG"
   
   # Initialize ALL submodules recursively - this is critical for patches
   log_info "Initializing submodules (this may take a while)..."

@@ -225,17 +225,29 @@ function Bootstrap-CoMaps {
     
     # Clone or update repository
     if (Test-Path (Join-Path $comapsDir '.git')) {
-        Write-LogInfo "CoMaps repository already exists, fetching tags..."
+        Write-LogInfo "CoMaps repository already exists, checking status..."
         
         Push-Location $comapsDir
         try {
-            & git fetch --tags --prune 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+            $currentHead = & git rev-parse HEAD 2>&1
+            $targetHead = & git rev-parse $Tag 2>&1
             
-            Write-LogInfo "Checking out tag: $Tag"
-            & git checkout --detach $Tag 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
-            
-            if ($LASTEXITCODE -ne 0) {
-                throw "Failed to checkout tag: $Tag"
+            if ($LASTEXITCODE -eq 0 -and $currentHead -eq $targetHead) {
+                Write-LogInfo "Already at $Tag ($currentHead). Skipping fetch and update."
+            } else {
+                Write-LogInfo "Updating tags..."
+                & git fetch --tags --prune 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+                
+                Write-LogInfo "Checking out tag: $Tag"
+                & git checkout --detach $Tag 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+                
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Failed to checkout tag: $Tag"
+                }
+
+                # Only update submodules if we actually changed something or if requested
+                Write-LogInfo "Updating submodules..."
+                & git submodule update --init --recursive 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
             }
         } finally {
             Pop-Location
