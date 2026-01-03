@@ -607,6 +607,17 @@ jobs:
             Write-Host "  -> $output ($('{0:N2}' -f ((Get-Item $output).Length / 1MB)) MB)"
           }
           
+          # Copy ICU data file from CoMaps (required for internationalization)
+          $icuSource = "thirdparty\comaps\data\icudt75l.dat"
+          $icuDest = Join-Path $assetsDir "icudt75l.dat"
+          if (Test-Path $icuSource) {
+            Copy-Item -Path $icuSource -Destination $icuDest
+            Write-Host "Copied ICU data: $icuDest ($('{0:N2}' -f ((Get-Item $icuDest).Length / 1MB)) MB)"
+          } else {
+            Write-Error "ICU data file not found: $icuSource"
+            exit 1
+          }
+          
           Get-ChildItem -Path $assetsDir
         shell: pwsh
 
