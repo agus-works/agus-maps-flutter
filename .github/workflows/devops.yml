@@ -281,6 +281,8 @@ jobs:
   # ==========================================================================
   build-and-release-windows-platform:
     name: Build Windows
+    # Toggle: set to 'true' to run Windows, 'false' to skip (saves cost)
+    if: false
     runs-on: windows-latest
     permissions:
       contents: write
@@ -815,7 +817,7 @@ jobs:
   # ==========================================================================
   release:
     name: Release
-    needs: [build-and-release-mac-platforms, build-and-release-windows-platform, build-and-release-android-platform]
+    needs: [build-and-release-android-platform]
     # Run even if some dependencies partially failed or were skipped
     if: always()
     runs-on: ubuntu-latest
