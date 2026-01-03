@@ -519,6 +519,8 @@ jobs:
   build-and-release-windows-platform:
     name: Build and Release Windows
     needs: test-azure-storage
+    # Toggle: set to 'true' to run Windows, 'false' to skip (saves cost)
+    if: false
     runs-on: windows-latest
     permissions:
       contents: write
