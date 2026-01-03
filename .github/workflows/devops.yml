@@ -14,70 +14,25 @@ env:
 
 jobs:
   # ==========================================================================
-  # Build Headers (shared across all platforms)
+  # macOS Job: Builds Headers, Android, iOS, macOS (all in one job)
   # ==========================================================================
-  build-headers:
-    name: Build Headers
-    runs-on: [self-hosted, mac-m1]
+  build-mac-platforms:
+    name: Build Android, iOS, macOS
+    runs-on: macos-14-xlarge
+    permissions:
+      contents: write
     steps:
-      - name: Clean workspace (self-hosted)
-        run: |
-          # Clean build artifacts from previous runs
-          rm -rf build/ artifacts/ || true
-
+      # ======================================================================
+      # Setup
+      # ======================================================================
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
-          clean: true
 
       - name: Cache CoMaps Source
-        uses: actions/cache@v4
-        with:
-          path: thirdparty/comaps
-          key: comaps-source-${{ runner.os }}-${{ env.COMAPS_TAG }}
-          restore-keys: |
-            comaps-source-${{ runner.os }}-
-
-      - name: Bootstrap CoMaps
-        run: |
-          chmod +x scripts/bootstrap.sh
-          SKIP_BASE_MWMS=true ./scripts/bootstrap.sh --no-cache
-
-      - name: Bundle Headers
-        run: |
-          chmod +x scripts/bundle_headers.sh
-          ./scripts/bundle_headers.sh
-          ls -lh build/agus-headers.tar.gz
-
-      - name: Upload Headers Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-headers
-          path: build/agus-headers.tar.gz
-          retention-days: 7
-
-  # ==========================================================================
-  # Build Android Native Libraries
-  # ==========================================================================
-  build-android-native:
-    name: Build Android Native
-    runs-on: [self-hosted, mac-m1]
-    needs: build-headers
-    steps:
-      - name: Clean workspace (self-hosted)
-        run: |
-          rm -rf build/ artifacts/ || true
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          clean: true
-
-      - name: Cache CoMaps Source
+        id: cache-comaps
         uses: actions/cache@v4
         with:
           path: thirdparty/comaps
@@ -101,72 +56,50 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
           echo "NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
-      - name: Install Ninja
-        run: brew install ninja || true
+      - name: Install Build Dependencies
+        run: |
+          brew install ninja || true
+          pip3 install 'protobuf<4.0' || true
 
-      - name: Install Python protobuf
-        run: pip3 install 'protobuf<4.0' || true
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
 
+      # ======================================================================
+      # Bootstrap CoMaps (shared for all platforms)
+      # ======================================================================
       - name: Bootstrap CoMaps
         run: |
           chmod +x scripts/bootstrap.sh
-          SKIP_BASE_MWMS=true ./scripts/bootstrap.sh --no-cache
+          ./scripts/bootstrap.sh --no-cache
 
+      # ======================================================================
+      # Bundle Headers (for caching/release)
+      # ======================================================================
+      - name: Bundle Headers
+        run: |
+          chmod +x scripts/bundle_headers.sh
+          ./scripts/bundle_headers.sh
+          ls -lh build/agus-headers.tar.gz
+
+      # ======================================================================
+      # Build Android Native Libraries
+      # ======================================================================
       - name: Build Android Native Libraries
         run: |
           chmod +x scripts/build_binaries_android.sh
-          ./scripts/build_binaries_android.sh 2>&1 | tee ./output.log
+          ./scripts/build_binaries_android.sh
           ls -la build/agus-binaries-android/
 
-      - name: Upload Android Binaries Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-binaries-android
-          path: build/agus-binaries-android.zip
-          retention-days: 7
-
-  # ==========================================================================
-  # Build iOS Native Libraries (XCFramework)
-  # ==========================================================================
-  build-ios-native:
-    name: Build iOS Native
-    runs-on: [self-hosted, mac-m1]
-    needs: build-headers
-    steps:
-      - name: Clean workspace (self-hosted)
-        run: |
-          rm -rf build/ artifacts/ || true
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          clean: true
-
-      - name: Cache CoMaps Source
-        uses: actions/cache@v4
-        with:
-          path: thirdparty/comaps
-          key: comaps-source-${{ runner.os }}-${{ env.COMAPS_TAG }}
-          restore-keys: |
-            comaps-source-${{ runner.os }}-
-
-      - name: Install Ninja
-        run: brew install ninja || true
-
-      - name: Install Python protobuf
-        run: pip3 install 'protobuf<4.0' || true
-
-      - name: Bootstrap CoMaps
-        run: |
-          chmod +x scripts/bootstrap.sh
-          SKIP_BASE_MWMS=true ./scripts/bootstrap.sh --no-cache
-
+      # ======================================================================
+      # Build iOS XCFramework
+      # ======================================================================
       - name: Build iOS XCFramework
         run: |
           chmod +x scripts/build_binaries_ios.sh
-          ./scripts/build_binaries_ios.sh 2>&1 | tee ./output.log
+          ./scripts/build_binaries_ios.sh
           ls -la build/agus-binaries-ios/
 
       - name: Create iOS Binaries Archive
@@ -175,55 +108,13 @@ jobs:
           zip -r ../agus-binaries-ios.zip CoMaps.xcframework
           ls -lh ../agus-binaries-ios.zip
 
-      - name: Upload iOS Binaries Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-binaries-ios
-          path: build/agus-binaries-ios.zip
-          retention-days: 7
-
-  # ==========================================================================
-  # Build macOS Native Libraries (XCFramework)
-  # ==========================================================================
-  build-macos-native:
-    name: Build macOS Native
-    runs-on: [self-hosted, mac-m1]
-    needs: build-headers
-    steps:
-      - name: Clean workspace (self-hosted)
-        run: |
-          rm -rf build/ artifacts/ || true
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          clean: true
-
-      - name: Cache CoMaps Source
-        uses: actions/cache@v4
-        with:
-          path: thirdparty/comaps
-          key: comaps-source-${{ runner.os }}-${{ env.COMAPS_TAG }}
-          restore-keys: |
-            comaps-source-${{ runner.os }}-
-
-      - name: Install Ninja
-        run: brew install ninja || true
-
-      - name: Install Python protobuf
-        run: pip3 install 'protobuf<4.0' || true
-
-      - name: Bootstrap CoMaps
-        run: |
-          chmod +x scripts/bootstrap.sh
-          ./scripts/bootstrap.sh --no-cache
-
+      # ======================================================================
+      # Build macOS XCFramework
+      # ======================================================================
       - name: Build macOS XCFramework
         run: |
           chmod +x scripts/build_binaries_macos.sh
-          ./scripts/build_binaries_macos.sh 2>&1 | tee ./output.log
+          ./scripts/build_binaries_macos.sh
           ls -la build/agus-binaries-macos/
 
       - name: Create macOS Binaries Archive
@@ -232,153 +123,19 @@ jobs:
           zip -r ../agus-binaries-macos.zip CoMaps.xcframework
           ls -lh ../agus-binaries-macos.zip
 
-      - name: Upload macOS Binaries Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-binaries-macos
-          path: build/agus-binaries-macos.zip
-          retention-days: 7
-
-  # ==========================================================================
-  # Build Windows Native Libraries
-  # ==========================================================================
-  build-windows-native:
-    name: Build Windows Native
-    runs-on: windows-latest
-    needs: build-headers
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Cache CoMaps Source
-        uses: actions/cache@v4
-        with:
-          path: thirdparty/comaps
-          key: comaps-source-${{ runner.os }}-${{ env.COMAPS_TAG }}
-          restore-keys: |
-            comaps-source-${{ runner.os }}-
-
-      - name: Cache vcpkg
-        uses: actions/cache@v4
-        with:
-          path: C:\vcpkg
-          key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}
-          restore-keys: |
-            vcpkg-windows-
-
-      - name: Setup vcpkg
-        run: |
-          if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
-            git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-            C:\vcpkg\bootstrap-vcpkg.bat
-          }
-          # Manifest mode: vcpkg.json in repo defines dependencies
-          # Just set VCPKG_ROOT, dependencies installed during CMake configure
-          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      - name: Bootstrap CoMaps
-        run: |
-          .\scripts\bootstrap.ps1 -NoCache
-        shell: pwsh
-
-      - name: Build Windows Native Libraries
-        run: |
-          .\scripts\build_binaries_windows.ps1 2>&1 | Tee-Object -FilePath .\output.log
-          Get-ChildItem -Path build\agus-binaries-windows\ -Recurse
-        shell: pwsh
-
-      - name: Upload Windows Binaries Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-binaries-windows
-          path: build/agus-binaries-windows.zip
-          retention-days: 7
-
-  # ==========================================================================
-  # Build Android Example App
-  # ==========================================================================
-  build-android:
-    name: Build Android App
-    runs-on: [self-hosted, mac-m1]
-    needs: build-android-native
-    steps:
-      - name: Clean workspace (self-hosted)
-        run: |
-          rm -rf build/ artifacts/ android/prebuilt/ example/build/ || true
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          clean: true
-
-      - name: Cache CoMaps Source
-        uses: actions/cache@v4
-        with:
-          path: thirdparty/comaps
-          key: comaps-source-${{ runner.os }}-${{ env.COMAPS_TAG }}
-          restore-keys: |
-            comaps-source-${{ runner.os }}-
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android NDK and CMake
-        run: |
-          echo "y" | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "ndk;${{ env.NDK_VERSION }}" "cmake;${{ env.CMAKE_VERSION }}"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
-
-      - name: Download Android Binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: agus-binaries-android
-          path: build/
-
-      - name: Setup Pre-built Binaries
+      # ======================================================================
+      # Build Android Example App
+      # ======================================================================
+      - name: Setup Android Pre-built Binaries
         run: |
           mkdir -p android/prebuilt
-          unzip -o build/agus-binaries-android.zip -d android/prebuilt/
-          if [ -d "android/prebuilt/agus-binaries-android" ]; then
-            mv android/prebuilt/agus-binaries-android/* android/prebuilt/
-            rmdir android/prebuilt/agus-binaries-android
-          fi
+          cp -r build/agus-binaries-android/* android/prebuilt/
           ls -la android/prebuilt/
-
-      - name: Bootstrap CoMaps (data files only)
-        run: |
-          # Skip full bootstrap if thirdparty/comaps exists (from cache)
-          if [ -d "thirdparty/comaps" ] && [ -d "example/assets/mwm" ]; then
-            echo "CoMaps source and data already present, skipping bootstrap"
-          else
-            chmod +x scripts/bootstrap.sh
-            ./scripts/bootstrap.sh --no-cache
-          fi
 
       - name: Get Flutter Dependencies
         run: |
           flutter pub get
           cd example && flutter pub get
-
-      - name: Analyze
-        run: flutter analyze || true
 
       - name: Build Android App Bundle (AAB)
         run: |
@@ -387,114 +144,36 @@ jobs:
             --build-name=1.0.0 \
             --build-number=${{ github.run_number }}
 
-      - name: Build Universal APK
+      - name: Build Android APK
         run: |
           cd example
           flutter build apk --release \
             --build-name=1.0.0 \
             --build-number=${{ github.run_number }}
 
-      - name: Build Split APKs
+      - name: Prepare Android Artifacts
         run: |
-          cd example
-          flutter build apk --release --split-per-abi \
-            --build-name=1.0.0 \
-            --build-number=${{ github.run_number }}
-
-      - name: Prepare Artifacts
-        run: |
-          mkdir -p artifacts/split-apks
+          mkdir -p artifacts
           cp example/build/app/outputs/bundle/release/app-release.aab artifacts/agus-maps-android.aab
           cp example/build/app/outputs/flutter-apk/app-release.apk artifacts/agus-maps-android.apk
-          cp example/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk artifacts/split-apks/ 2>/dev/null || true
-          cp example/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk artifacts/split-apks/ 2>/dev/null || true
-          cp example/build/app/outputs/flutter-apk/app-x86_64-release.apk artifacts/split-apks/ 2>/dev/null || true
           ls -lh artifacts/
 
-      - name: Upload AAB Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-maps-android-aab
-          path: artifacts/agus-maps-android.aab
-          retention-days: 7
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-maps-android-apk
-          path: artifacts/agus-maps-android.apk
-          retention-days: 7
-
-  # ==========================================================================
-  # Build iOS Example App (Simulator)
-  # ==========================================================================
-  build-ios:
-    name: Build iOS App
-    runs-on: [self-hosted, mac-m1]
-    needs: build-ios-native
-    steps:
-      - name: Clean workspace (self-hosted)
-        run: |
-          rm -rf build/ artifacts/ ios/Frameworks/ example/build/ || true
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          clean: true
-
-      - name: Cache CoMaps Source
-        uses: actions/cache@v4
-        with:
-          path: thirdparty/comaps
-          key: comaps-source-${{ runner.os }}-${{ env.COMAPS_TAG }}
-          restore-keys: |
-            comaps-source-${{ runner.os }}-
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
-
-      - name: Download iOS Binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: agus-binaries-ios
-          path: build/
-
-      - name: Setup Pre-built XCFramework
+      # ======================================================================
+      # Build iOS Example App (Simulator)
+      # ======================================================================
+      - name: Setup iOS Pre-built XCFramework
         run: |
           mkdir -p ios/Frameworks
-          unzip -o build/agus-binaries-ios.zip -d ios/Frameworks/
+          cp -r build/agus-binaries-ios/CoMaps.xcframework ios/Frameworks/
           ls -la ios/Frameworks/
-
-      - name: Bootstrap CoMaps (data files only)
-        run: |
-          # Skip full bootstrap if thirdparty/comaps exists (from cache)
-          if [ -d "thirdparty/comaps" ] && [ -d "example/assets/mwm" ]; then
-            echo "CoMaps source and data already present, skipping bootstrap"
-          else
-            chmod +x scripts/bootstrap.sh
-            ./scripts/bootstrap.sh --no-cache
-          fi
-
-      - name: Get Flutter Dependencies
-        run: |
-          flutter pub get
-          cd example && flutter pub get
 
       - name: Precache iOS
         run: flutter precache --ios
 
-      - name: Install CocoaPods Dependencies
+      - name: Install iOS CocoaPods Dependencies
         run: |
           cd example/ios
           pod install
-
-      - name: Analyze
-        run: flutter analyze || true
 
       - name: Build iOS Simulator App
         run: |
@@ -505,88 +184,26 @@ jobs:
 
       - name: Prepare iOS Artifact
         run: |
-          mkdir -p artifacts
           cd example/build/ios/iphonesimulator
           zip -r ../../../../artifacts/agus-maps-ios-simulator.app.zip Runner.app
           ls -lh ../../../../artifacts/
 
-      - name: Upload iOS Simulator App Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-maps-ios-simulator
-          path: artifacts/agus-maps-ios-simulator.app.zip
-          retention-days: 7
-
-  # ==========================================================================
-  # Build macOS Example App
-  # ==========================================================================
-  build-macos:
-    name: Build macOS App
-    runs-on: [self-hosted, mac-m1]
-    needs: build-macos-native
-    steps:
-      - name: Clean workspace (self-hosted)
-        run: |
-          rm -rf build/ artifacts/ macos/Frameworks/ example/build/ || true
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          clean: true
-
-      - name: Cache CoMaps Source
-        uses: actions/cache@v4
-        with:
-          path: thirdparty/comaps
-          key: comaps-source-${{ runner.os }}-${{ env.COMAPS_TAG }}
-          restore-keys: |
-            comaps-source-${{ runner.os }}-
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
-
-      - name: Download macOS Binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: agus-binaries-macos
-          path: build/
-
-      - name: Setup Pre-built XCFramework
+      # ======================================================================
+      # Build macOS Example App
+      # ======================================================================
+      - name: Setup macOS Pre-built XCFramework
         run: |
           mkdir -p macos/Frameworks
-          unzip -o build/agus-binaries-macos.zip -d macos/Frameworks/
+          cp -r build/agus-binaries-macos/CoMaps.xcframework macos/Frameworks/
           ls -la macos/Frameworks/
-
-      - name: Bootstrap CoMaps (data files only)
-        run: |
-          # Skip full bootstrap if thirdparty/comaps exists (from cache)
-          if [ -d "thirdparty/comaps" ] && [ -d "example/assets/mwm" ]; then
-            echo "CoMaps source and data already present, skipping bootstrap"
-          else
-            chmod +x scripts/bootstrap.sh
-            ./scripts/bootstrap.sh --no-cache
-          fi
-
-      - name: Get Flutter Dependencies
-        run: |
-          flutter pub get
-          cd example && flutter pub get
 
       - name: Precache macOS
         run: flutter precache --macos
 
-      - name: Install CocoaPods Dependencies
+      - name: Install macOS CocoaPods Dependencies
         run: |
           cd example/macos
           pod install
-
-      - name: Analyze
-        run: flutter analyze || true
 
       - name: Build macOS Release App
         run: |
@@ -597,26 +214,40 @@ jobs:
 
       - name: Prepare macOS Artifact
         run: |
-          mkdir -p artifacts
           cd example/build/macos/Build/Products/Release
           zip -r ../../../../../../artifacts/agus-maps-macos.app.zip agus_maps_flutter_example.app
           ls -lh ../../../../../../artifacts/
 
-      - name: Upload macOS App Artifact
+      # ======================================================================
+      # Upload Mac Platforms Artifacts (for release job)
+      # ======================================================================
+      - name: Upload All Mac Platform Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: agus-maps-macos
-          path: artifacts/agus-maps-macos.app.zip
+          name: mac-platforms-artifacts
+          path: |
+            build/agus-headers.tar.gz
+            build/agus-binaries-android.zip
+            build/agus-binaries-ios.zip
+            build/agus-binaries-macos.zip
+            artifacts/agus-maps-android.aab
+            artifacts/agus-maps-android.apk
+            artifacts/agus-maps-ios-simulator.app.zip
+            artifacts/agus-maps-macos.app.zip
           retention-days: 7
 
   # ==========================================================================
-  # Build Windows Example App
+  # Windows Job: Builds Windows (all in one job)
   # ==========================================================================
-  build-windows:
-    name: Build Windows App
+  build-windows-platform:
+    name: Build Windows
     runs-on: windows-latest
-    needs: build-windows-native
+    permissions:
+      contents: write
     steps:
+      # ======================================================================
+      # Setup
+      # ======================================================================
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -624,6 +255,7 @@ jobs:
           fetch-tags: true
 
       - name: Cache CoMaps Source
+        id: cache-comaps
         uses: actions/cache@v4
         with:
           path: thirdparty/comaps
@@ -645,8 +277,6 @@ jobs:
             git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
             C:\vcpkg\bootstrap-vcpkg.bat
           }
-          # Manifest mode: vcpkg.json in repo defines dependencies
-          # Just set VCPKG_ROOT, dependencies installed during CMake configure
           echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
         shell: pwsh
 
@@ -656,36 +286,31 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
-      - name: Download Windows Binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: agus-binaries-windows
-          path: build/
-
-      - name: Setup Pre-built DLLs
+      # ======================================================================
+      # Bootstrap CoMaps
+      # ======================================================================
+      - name: Bootstrap CoMaps
         run: |
-          New-Item -ItemType Directory -Force -Path windows\prebuilt\x64
-          Expand-Archive -Path build\agus-binaries-windows.zip -DestinationPath windows\prebuilt\ -Force
-          if (Test-Path "windows\prebuilt\agus-binaries-windows") {
-            Move-Item -Path windows\prebuilt\agus-binaries-windows\* -Destination windows\prebuilt\x64\ -Force
-            Remove-Item -Path windows\prebuilt\agus-binaries-windows -Recurse -Force
-          } elseif (Test-Path "windows\prebuilt\x64\agus_maps_flutter.dll") {
-            # Already in correct location
-          } else {
-            # Files might be directly in prebuilt
-            Move-Item -Path windows\prebuilt\x64\* -Destination windows\prebuilt\x64\ -Force -ErrorAction SilentlyContinue
-          }
-          Get-ChildItem -Path windows\prebuilt\ -Recurse
+          .\scripts\bootstrap.ps1 -NoCache
         shell: pwsh
 
-      - name: Bootstrap CoMaps (data files only)
+      # ======================================================================
+      # Build Windows Native Libraries
+      # ======================================================================
+      - name: Build Windows Native Libraries
         run: |
-          # Skip full bootstrap if thirdparty/comaps exists (from cache)
-          if ((Test-Path "thirdparty\comaps") -and (Test-Path "example\assets\mwm")) {
-            Write-Host "CoMaps source and data already present, skipping bootstrap"
-          } else {
-            .\scripts\bootstrap.ps1 -NoCache
-          }
+          .\scripts\build_binaries_windows.ps1
+          Get-ChildItem -Path build\agus-binaries-windows\ -Recurse
+        shell: pwsh
+
+      # ======================================================================
+      # Build Windows Example App
+      # ======================================================================
+      - name: Setup Windows Pre-built DLLs
+        run: |
+          New-Item -ItemType Directory -Force -Path windows\prebuilt\x64
+          Copy-Item -Path build\agus-binaries-windows\x64\* -Destination windows\prebuilt\x64\ -Force
+          Get-ChildItem -Path windows\prebuilt\ -Recurse
         shell: pwsh
 
       - name: Get Flutter Dependencies
@@ -693,10 +318,6 @@ jobs:
           flutter pub get
           cd example
           flutter pub get
-
-      - name: Analyze
-        run: flutter analyze
-        continue-on-error: true
 
       - name: Build Windows Release App
         run: |
@@ -706,7 +327,7 @@ jobs:
             --build-number=${{ github.run_number }}
         shell: pwsh
 
-      - name: Prepare Windows Artifact
+      - name: Prepare Windows Artifacts
         run: |
           New-Item -ItemType Directory -Force -Path artifacts
           $releasePath = "example\build\windows\x64\runner\Release"
@@ -714,58 +335,59 @@ jobs:
           Get-ChildItem -Path artifacts\
         shell: pwsh
 
-      - name: Upload Windows App Artifact
+      # ======================================================================
+      # Upload Windows Artifacts (for release job)
+      # ======================================================================
+      - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: agus-maps-windows
-          path: artifacts/agus-maps-windows.zip
+          name: windows-platform-artifacts
+          path: |
+            build/agus-binaries-windows.zip
+            artifacts/agus-maps-windows.zip
           retention-days: 7
 
   # ==========================================================================
-  # Create GitHub Release
+  # Release Job: Publishes all artifacts to GitHub Releases
   # ==========================================================================
   release:
     name: Create Release
     runs-on: ubuntu-latest
     needs:
-      - build-headers
-      - build-android
-      - build-ios
-      - build-macos
-      - build-windows
+      - build-mac-platforms
+      - build-windows-platform
     permissions:
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download All Artifacts
+      - name: Download Mac Platforms Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          name: mac-platforms-artifacts
+          path: release-assets/
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-platform-artifacts
+          path: release-assets/
 
       - name: Prepare Release Assets
         run: |
-          mkdir -p release-assets
+          echo "=== Release assets structure ==="
+          find release-assets -type f
           
-          # Headers
-          cp artifacts/agus-headers/agus-headers.tar.gz release-assets/
-          
-          # Native binaries
-          cp artifacts/agus-binaries-android/agus-binaries-android.zip release-assets/
-          cp artifacts/agus-binaries-ios/agus-binaries-ios.zip release-assets/
-          cp artifacts/agus-binaries-macos/agus-binaries-macos.zip release-assets/
-          cp artifacts/agus-binaries-windows/agus-binaries-windows.zip release-assets/
-          
-          # Example apps
-          cp artifacts/agus-maps-android-aab/agus-maps-android.aab release-assets/
-          cp artifacts/agus-maps-android-apk/agus-maps-android.apk release-assets/
-          cp artifacts/agus-maps-ios-simulator/agus-maps-ios-simulator.app.zip release-assets/
-          cp artifacts/agus-maps-macos/agus-maps-macos.app.zip release-assets/
-          cp artifacts/agus-maps-windows/agus-maps-windows.zip release-assets/
+          # Flatten structure if needed
+          mkdir -p final-assets
+          find release-assets -name "*.tar.gz" -exec cp {} final-assets/ \;
+          find release-assets -name "*.zip" -exec cp {} final-assets/ \;
+          find release-assets -name "*.aab" -exec cp {} final-assets/ \;
+          find release-assets -name "*.apk" -exec cp {} final-assets/ \;
           
           # Generate build info
-          cat > release-assets/BUILD_INFO.txt << EOF
+          cat > final-assets/BUILD_INFO.txt << EOF
           Agus Maps Flutter - ${{ github.ref_name }}
           ==================================
           
@@ -784,7 +406,8 @@ jobs:
           - Windows (x64)
           EOF
           
-          ls -lh release-assets/
+          echo "=== Final assets ==="
+          ls -lh final-assets/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -877,16 +500,6 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            release-assets/agus-headers.tar.gz
-            release-assets/agus-binaries-android.zip
-            release-assets/agus-binaries-ios.zip
-            release-assets/agus-binaries-macos.zip
-            release-assets/agus-binaries-windows.zip
-            release-assets/agus-maps-android.aab
-            release-assets/agus-maps-android.apk
-            release-assets/agus-maps-ios-simulator.app.zip
-            release-assets/agus-maps-macos.app.zip
-            release-assets/agus-maps-windows.zip
-            release-assets/BUILD_INFO.txt
+            final-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
