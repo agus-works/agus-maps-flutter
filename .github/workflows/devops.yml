@@ -11,8 +11,6 @@ env:
   NDK_VERSION: '27.2.12479018'
   CMAKE_VERSION: '3.22.1'
   BUILD_TYPE: Release
-  # Set to 'true' to skip macOS build (saves cost during Windows testing)
-  SKIP_MACOS: 'true'
 
 jobs:
   # ==========================================================================
@@ -20,7 +18,8 @@ jobs:
   # ==========================================================================
   build-mac-platforms:
     name: Build Android, iOS, macOS
-    if: ${{ env.SKIP_MACOS != 'true' }}
+    # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
+    if: false
     runs-on: macos-14-xlarge
     permissions:
       contents: write
