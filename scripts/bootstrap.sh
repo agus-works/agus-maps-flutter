@@ -180,18 +180,13 @@ bootstrap_full "all"
 log_header "Setting up Android Native Libraries"
 
 ANDROID_PREBUILT_PATH="$ROOT_DIR/android/prebuilt"
-ANDROID_LIBS_EXIST=false
+ANDROID_BUILD_OUTPUT="$ROOT_DIR/build/agus-binaries-android"
 
-# Check if all Android ABIs exist (library is named libagus_maps_flutter.so)
-if [[ -f "$ANDROID_PREBUILT_PATH/arm64-v8a/libagus_maps_flutter.so" ]] && \
-   [[ -f "$ANDROID_PREBUILT_PATH/armeabi-v7a/libagus_maps_flutter.so" ]] && \
-   [[ -f "$ANDROID_PREBUILT_PATH/x86_64/libagus_maps_flutter.so" ]]; then
-    ANDROID_LIBS_EXIST=true
-fi
-
-if [[ "$ANDROID_LIBS_EXIST" == "true" ]]; then
-    log_info "Android native libraries already exist"
-elif [[ "$BUILD_BINARIES" == "true" ]]; then
+if [[ "$BUILD_BINARIES" == "true" ]]; then
+    # Clean existing binaries to force rebuild
+    log_info "Cleaning existing Android binaries for rebuild..."
+    rm -rf "$ANDROID_PREBUILT_PATH" 2>/dev/null || true
+    rm -rf "$ANDROID_BUILD_OUTPUT" 2>/dev/null || true
     log_info "Building Android native libraries from source (this may take ~15 minutes)..."
     if [[ -f "$SCRIPT_DIR/build_binaries_android.sh" ]]; then
         chmod +x "$SCRIPT_DIR/build_binaries_android.sh"
@@ -199,8 +194,8 @@ elif [[ "$BUILD_BINARIES" == "true" ]]; then
         
         # Copy to android/prebuilt
         mkdir -p "$ANDROID_PREBUILT_PATH"
-        if [[ -d "$ROOT_DIR/build/agus-binaries-android" ]]; then
-            cp -R "$ROOT_DIR/build/agus-binaries-android"/* "$ANDROID_PREBUILT_PATH/"
+        if [[ -d "$ANDROID_BUILD_OUTPUT" ]]; then
+            cp -R "$ANDROID_BUILD_OUTPUT"/* "$ANDROID_PREBUILT_PATH/"
             log_info "Android native libraries installed"
         fi
     else
@@ -208,13 +203,20 @@ elif [[ "$BUILD_BINARIES" == "true" ]]; then
         exit 1
     fi
 else
-    log_info "Downloading pre-built Android native libraries..."
-    if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
-        FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" android || {
-            log_warn "Download failed. Use --build-binaries to build from source."
-        }
+    # Check if libraries already exist
+    if [[ -f "$ANDROID_PREBUILT_PATH/arm64-v8a/libagus_maps_flutter.so" ]] && \
+       [[ -f "$ANDROID_PREBUILT_PATH/armeabi-v7a/libagus_maps_flutter.so" ]] && \
+       [[ -f "$ANDROID_PREBUILT_PATH/x86_64/libagus_maps_flutter.so" ]]; then
+        log_info "Android native libraries already exist"
     else
-        log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+        log_info "Downloading pre-built Android native libraries..."
+        if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
+            FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" android || {
+                log_warn "Download failed. Use --build-binaries to build from source."
+            }
+        else
+            log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+        fi
     fi
 fi
 
@@ -225,10 +227,14 @@ fi
 log_header "Setting up iOS XCFramework"
 
 IOS_XCFRAMEWORK_PATH="$ROOT_DIR/ios/Frameworks/CoMaps.xcframework"
+IOS_BUILD_OUTPUT="$ROOT_DIR/build/agus-binaries-ios"
 
-if [[ -d "$IOS_XCFRAMEWORK_PATH" ]]; then
-    log_info "iOS XCFramework already exists"
-elif [[ "$BUILD_BINARIES" == "true" ]]; then
+if [[ "$BUILD_BINARIES" == "true" ]]; then
+    # Clean existing binaries to force rebuild
+    log_info "Cleaning existing iOS binaries for rebuild..."
+    rm -rf "$IOS_XCFRAMEWORK_PATH" 2>/dev/null || true
+    rm -rf "$IOS_BUILD_OUTPUT" 2>/dev/null || true
+    
     log_info "Building iOS XCFramework from source (this may take ~30 minutes)..."
     if [[ -f "$SCRIPT_DIR/build_binaries_ios.sh" ]]; then
         chmod +x "$SCRIPT_DIR/build_binaries_ios.sh"
@@ -236,8 +242,8 @@ elif [[ "$BUILD_BINARIES" == "true" ]]; then
         
         # Copy to ios/Frameworks
         mkdir -p "$ROOT_DIR/ios/Frameworks"
-        if [[ -d "$ROOT_DIR/build/agus-binaries-ios/CoMaps.xcframework" ]]; then
-            cp -R "$ROOT_DIR/build/agus-binaries-ios/CoMaps.xcframework" "$ROOT_DIR/ios/Frameworks/"
+        if [[ -d "$IOS_BUILD_OUTPUT/CoMaps.xcframework" ]]; then
+            cp -R "$IOS_BUILD_OUTPUT/CoMaps.xcframework" "$ROOT_DIR/ios/Frameworks/"
             log_info "iOS XCFramework installed"
         fi
     else
@@ -245,13 +251,17 @@ elif [[ "$BUILD_BINARIES" == "true" ]]; then
         exit 1
     fi
 else
-    log_info "Downloading pre-built iOS XCFramework..."
-    if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
-        FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" ios || {
-            log_warn "Download failed. Use --build-binaries to build from source."
-        }
+    if [[ -d "$IOS_XCFRAMEWORK_PATH" ]]; then
+        log_info "iOS XCFramework already exists"
     else
-        log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+        log_info "Downloading pre-built iOS XCFramework..."
+        if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
+            FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" ios || {
+                log_warn "Download failed. Use --build-binaries to build from source."
+            }
+        else
+            log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+        fi
     fi
 fi
 
@@ -262,10 +272,14 @@ fi
 log_header "Setting up macOS XCFramework"
 
 MACOS_XCFRAMEWORK_PATH="$ROOT_DIR/macos/Frameworks/CoMaps.xcframework"
+MACOS_BUILD_OUTPUT="$ROOT_DIR/build/agus-binaries-macos"
 
-if [[ -d "$MACOS_XCFRAMEWORK_PATH" ]]; then
-    log_info "macOS XCFramework already exists"
-elif [[ "$BUILD_BINARIES" == "true" ]]; then
+if [[ "$BUILD_BINARIES" == "true" ]]; then
+    # Clean existing binaries to force rebuild
+    log_info "Cleaning existing macOS binaries for rebuild..."
+    rm -rf "$MACOS_XCFRAMEWORK_PATH" 2>/dev/null || true
+    rm -rf "$MACOS_BUILD_OUTPUT" 2>/dev/null || true
+    
     log_info "Building macOS XCFramework from source (this may take ~30 minutes)..."
     if [[ -f "$SCRIPT_DIR/build_binaries_macos.sh" ]]; then
         chmod +x "$SCRIPT_DIR/build_binaries_macos.sh"
@@ -273,8 +287,8 @@ elif [[ "$BUILD_BINARIES" == "true" ]]; then
         
         # Copy to macos/Frameworks
         mkdir -p "$ROOT_DIR/macos/Frameworks"
-        if [[ -d "$ROOT_DIR/build/agus-binaries-macos/CoMaps.xcframework" ]]; then
-            cp -R "$ROOT_DIR/build/agus-binaries-macos/CoMaps.xcframework" "$ROOT_DIR/macos/Frameworks/"
+        if [[ -d "$MACOS_BUILD_OUTPUT/CoMaps.xcframework" ]]; then
+            cp -R "$MACOS_BUILD_OUTPUT/CoMaps.xcframework" "$ROOT_DIR/macos/Frameworks/"
             log_info "macOS XCFramework installed"
         fi
     else
@@ -282,13 +296,17 @@ elif [[ "$BUILD_BINARIES" == "true" ]]; then
         exit 1
     fi
 else
-    log_info "Downloading pre-built macOS XCFramework..."
-    if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
-        FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" macos || {
-            log_warn "Download failed. Use --build-binaries to build from source."
-        }
+    if [[ -d "$MACOS_XCFRAMEWORK_PATH" ]]; then
+        log_info "macOS XCFramework already exists"
     else
-        log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+        log_info "Downloading pre-built macOS XCFramework..."
+        if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
+            FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" macos || {
+                log_warn "Download failed. Use --build-binaries to build from source."
+            }
+        else
+            log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+        fi
     fi
 fi
 
