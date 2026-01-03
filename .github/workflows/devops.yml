@@ -71,8 +71,13 @@ jobs:
         run: |
           echo "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
           mkdir -p thirdparty
-          git clone --depth 1 --branch ${{ env.COMAPS_TAG }} --recurse-submodules --shallow-submodules \
-            https://github.com/organicmaps/organicmaps.git thirdparty/comaps
+          # Clone from comaps/comaps repository (not organicmaps)
+          git clone https://github.com/comaps/comaps.git thirdparty/comaps
+          cd thirdparty/comaps
+          git fetch --tags --prune
+          git checkout --detach ${{ env.COMAPS_TAG }}
+          git submodule update --init --recursive
+          cd ../..
           echo "✓ Clone complete ($(du -sh thirdparty/comaps | cut -f1))"
           echo "cloned=true" >> $GITHUB_OUTPUT
 
@@ -366,8 +371,13 @@ jobs:
         run: |
           Write-Host "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
           New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
-          git clone --depth 1 --branch ${{ env.COMAPS_TAG }} --recurse-submodules --shallow-submodules `
-            https://github.com/organicmaps/organicmaps.git thirdparty/comaps
+          # Clone from comaps/comaps repository (not organicmaps)
+          git clone https://github.com/comaps/comaps.git thirdparty/comaps
+          Push-Location thirdparty/comaps
+          git fetch --tags --prune
+          git checkout --detach ${{ env.COMAPS_TAG }}
+          git submodule update --init --recursive
+          Pop-Location
           
           $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
           Write-Host "✓ Clone complete (${size} GB)"
