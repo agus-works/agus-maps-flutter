@@ -331,6 +331,35 @@ jobs:
           cd example
           flutter pub get
 
+      - name: Download Base MWM Files
+        run: |
+          # Download base MWM files required for the example app
+          $assetsDir = "example\assets\maps"
+          New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
+          
+          # Mirror and snapshot
+          $mirror = "https://omaps.wfr.software/maps/"
+          
+          # Fetch latest snapshot version from mirror listing
+          $html = Invoke-WebRequest -Uri $mirror -UseBasicParsing
+          $snapshots = [regex]::Matches($html.Content, 'href="\.?/?([0-9]{6})/"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Descending
+          $snapshot = $snapshots[0]
+          Write-Host "Using snapshot: $snapshot"
+          
+          # Base MWM files to download
+          $files = @("World.mwm", "WorldCoasts.mwm", "Gibraltar.mwm")
+          
+          foreach ($file in $files) {
+            $url = "${mirror}${snapshot}/${file}"
+            $output = Join-Path $assetsDir $file
+            Write-Host "Downloading: $url"
+            Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing
+            Write-Host "  -> $output ($('{0:N2}' -f ((Get-Item $output).Length / 1MB)) MB)"
+          }
+          
+          Get-ChildItem -Path $assetsDir
+        shell: pwsh
+
       - name: Build Windows Release App
         run: |
           cd example
