@@ -181,6 +181,14 @@ jobs:
         if: steps.clone-comaps.outputs.cloned == 'true'
         run: |
           echo "Uploading pristine CoMaps to Azure Blob Storage cache..."
+          
+          # Install azcopy for large file uploads (handles chunked transfer)
+          echo "Installing azcopy..."
+          curl -fsSL https://aka.ms/downloadazcopy-v10-mac -o /tmp/azcopy.zip
+          unzip -q /tmp/azcopy.zip -d /tmp/azcopy
+          AZCOPY=$(find /tmp/azcopy -name 'azcopy' -type f | head -1)
+          chmod +x "$AZCOPY"
+          
           # Use pigz for faster compression if available, fallback to gzip
           if command -v pigz &> /dev/null; then
             tar -c -C thirdparty comaps | pigz -1 > /tmp/comaps-cache.tar.gz
@@ -190,11 +198,10 @@ jobs:
           CACHE_SIZE=$(du -h /tmp/comaps-cache.tar.gz | cut -f1)
           echo "Cache archive size: $CACHE_SIZE"
           
-          curl -X PUT \
-            -H "x-ms-blob-type: BlockBlob" \
-            -H "Content-Type: application/gzip" \
-            --data-binary @/tmp/comaps-cache.tar.gz \
-            "${{ steps.comaps-cache.outputs.cache-url }}"
+          # Upload using azcopy (handles large files with chunked transfer)
+          "$AZCOPY" copy /tmp/comaps-cache.tar.gz "${{ steps.comaps-cache.outputs.cache-url }}" \
+            --blob-type BlockBlob \
+            --overwrite=true
           
           rm /tmp/comaps-cache.tar.gz
           echo "✓ Cache uploaded successfully ($CACHE_SIZE)"
@@ -485,23 +492,20 @@ jobs:
         if: steps.clone-comaps.outputs.cloned == 'true'
         run: |
           Write-Host "Uploading pristine CoMaps to Azure Blob Storage cache..."
-          $tempZip = "$env:TEMP\comaps-cache.zip"
           
-          # Use fast compression (CompressionLevel Fastest)
-          Compress-Archive -Path thirdparty\comaps -DestinationPath $tempZip -CompressionLevel Fastest
+          # Use 7zip for faster compression (pre-installed on Windows runners)
+          $tempZip = "$env:TEMP\comaps-cache.zip"
+          Write-Host "Compressing with 7zip (fast mode)..."
+          & 7z a -tzip -mx=1 -mmt=on $tempZip .\thirdparty\comaps\* | Out-Null
           
           $cacheSize = "{0:N2}" -f ((Get-Item $tempZip).Length / 1MB)
           Write-Host "Cache archive size: ${cacheSize} MB"
           
+          # Use azcopy for large file uploads (pre-installed on Windows runners)
+          # Handles chunked transfer for multi-GB files
           $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
-          $headers = @{
-            "x-ms-blob-type" = "BlockBlob"
-            "Content-Type" = "application/zip"
-          }
-          
-          # Upload using .NET for large files (Invoke-WebRequest can be slow)
-          $fileBytes = [System.IO.File]::ReadAllBytes($tempZip)
-          Invoke-RestMethod -Uri $cacheUrl -Method Put -Headers $headers -Body $fileBytes
+          Write-Host "Uploading with azcopy (chunked transfer)..."
+          azcopy copy $tempZip $cacheUrl --blob-type BlockBlob --overwrite=true
           
           Remove-Item $tempZip
           Write-Host "✓ Cache uploaded successfully (${cacheSize} MB)"
