@@ -109,10 +109,10 @@ jobs:
           echo "✅ All operations successful - ready to proceed with builds"
 
   # ==========================================================================
-  # macOS Job: Builds and Releases Headers, Android, iOS, macOS (all in one job)
+  # macOS Job: Builds iOS and macOS
   # ==========================================================================
   build-and-release-mac-platforms:
-    name: Build and Release Android, iOS, macOS
+    name: Build iOS and macOS
     needs: test-azure-storage
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
     if: false
@@ -131,7 +131,6 @@ jobs:
 
       # ======================================================================
       # CoMaps Source Cache (Azure Blob Storage)
-      # Caches pristine recursive clone BEFORE patches are applied
       # ======================================================================
       - name: Check CoMaps Cache
         id: comaps-cache
@@ -167,7 +166,6 @@ jobs:
         run: |
           echo "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
           mkdir -p thirdparty
-          # Clone from comaps/comaps repository (not organicmaps)
           git clone https://github.com/comaps/comaps.git thirdparty/comaps
           cd thirdparty/comaps
           git fetch --tags --prune
@@ -182,14 +180,14 @@ jobs:
         run: |
           echo "Uploading pristine CoMaps to Azure Blob Storage cache..."
           
-          # Install azcopy for large file uploads (handles chunked transfer)
+          # Install azcopy
           echo "Installing azcopy..."
           curl -fsSL https://aka.ms/downloadazcopy-v10-mac -o /tmp/azcopy.zip
           unzip -q /tmp/azcopy.zip -d /tmp/azcopy
           AZCOPY=$(find /tmp/azcopy -name 'azcopy' -type f | head -1)
           chmod +x "$AZCOPY"
           
-          # Use pigz for faster compression if available, fallback to gzip
+          # Compress
           if command -v pigz &> /dev/null; then
             tar -c -C thirdparty comaps | pigz -1 > /tmp/comaps-cache.tar.gz
           else
@@ -198,29 +196,13 @@ jobs:
           CACHE_SIZE=$(du -h /tmp/comaps-cache.tar.gz | cut -f1)
           echo "Cache archive size: $CACHE_SIZE"
           
-          # Upload using azcopy (handles large files with chunked transfer)
+          # Upload
           "$AZCOPY" copy /tmp/comaps-cache.tar.gz "${{ steps.comaps-cache.outputs.cache-url }}" \
             --blob-type BlockBlob \
             --overwrite=true
           
           rm /tmp/comaps-cache.tar.gz
           echo "✓ Cache uploaded successfully ($CACHE_SIZE)"
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android NDK and CMake
-        run: |
-          echo "y" | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "ndk;${{ env.NDK_VERSION }}" "cmake;${{ env.CMAKE_VERSION }}"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-          echo "NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
       - name: Install Build Dependencies
         run: |
@@ -256,14 +238,11 @@ jobs:
           ./scripts/bundle_headers.sh
           ls -lh build/agus-headers.tar.gz
 
-      # ======================================================================
-      # Build Android Native Libraries
-      # ======================================================================
-      - name: Build Android Native Libraries
-        run: |
-          chmod +x scripts/build_binaries_android.sh
-          ./scripts/build_binaries_android.sh
-          ls -la build/agus-binaries-android/
+      - name: Upload Headers Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-headers
+          path: build/agus-headers.tar.gz
 
       # ======================================================================
       # Build iOS XCFramework
@@ -280,6 +259,12 @@ jobs:
           zip -r ../agus-binaries-ios.zip CoMaps.xcframework
           ls -lh ../agus-binaries-ios.zip
 
+      - name: Upload iOS Binaries Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-binaries-ios
+          path: build/agus-binaries-ios.zip
+
       # ======================================================================
       # Build macOS XCFramework
       # ======================================================================
@@ -295,40 +280,11 @@ jobs:
           zip -r ../agus-binaries-macos.zip CoMaps.xcframework
           ls -lh ../agus-binaries-macos.zip
 
-      # ======================================================================
-      # Build Android Example App
-      # ======================================================================
-      - name: Setup Android Pre-built Binaries
-        run: |
-          mkdir -p android/prebuilt
-          cp -r build/agus-binaries-android/* android/prebuilt/
-          ls -la android/prebuilt/
-
-      - name: Get Flutter Dependencies
-        run: |
-          flutter pub get
-          cd example && flutter pub get
-
-      - name: Build Android App Bundle (AAB)
-        run: |
-          cd example
-          flutter build appbundle --release \
-            --build-name=1.0.0 \
-            --build-number=${{ github.run_number }}
-
-      - name: Build Android APK
-        run: |
-          cd example
-          flutter build apk --release \
-            --build-name=1.0.0 \
-            --build-number=${{ github.run_number }}
-
-      - name: Prepare Android Artifacts
-        run: |
-          mkdir -p artifacts
-          cp example/build/app/outputs/bundle/release/app-release.aab artifacts/agus-maps-android.aab
-          cp example/build/app/outputs/flutter-apk/app-release.apk artifacts/agus-maps-android.apk
-          ls -lh artifacts/
+      - name: Upload macOS Binaries Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-binaries-macos
+          path: build/agus-binaries-macos.zip
 
       # ======================================================================
       # Build iOS Example App (Simulator)
@@ -360,6 +316,12 @@ jobs:
           zip -r ../../../../artifacts/agus-maps-ios-simulator.app.zip Runner.app
           ls -lh ../../../../artifacts/
 
+      - name: Upload iOS App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-maps-ios-simulator
+          path: artifacts/agus-maps-ios-simulator.app.zip
+
       # ======================================================================
       # Build macOS Example App
       # ======================================================================
@@ -390,134 +352,17 @@ jobs:
           zip -r ../../../../../../artifacts/agus-maps-macos.app.zip agus_maps_flutter_example.app
           ls -lh ../../../../../../artifacts/
 
-      # ======================================================================
-      # Prepare and Create GitHub Release
-      # ======================================================================
-      - name: Prepare Release Assets
-        run: |
-          mkdir -p final-assets
-          cp build/agus-headers.tar.gz final-assets/
-          cp build/agus-binaries-android.zip final-assets/
-          cp build/agus-binaries-ios.zip final-assets/
-          cp build/agus-binaries-macos.zip final-assets/
-          cp artifacts/agus-maps-android.aab final-assets/
-          cp artifacts/agus-maps-android.apk final-assets/
-          cp artifacts/agus-maps-ios-simulator.app.zip final-assets/
-          cp artifacts/agus-maps-macos.app.zip final-assets/
-          
-          # Generate build info
-          cat > final-assets/BUILD_INFO.txt << EOF
-          Agus Maps Flutter - ${{ github.ref_name }}
-          ==================================
-          
-          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          Build Number: ${{ github.run_number }}
-          Git SHA: ${{ github.sha }}
-          Git Tag: ${{ github.ref_name }}
-          
-          Flutter Version: ${{ env.FLUTTER_VERSION }}
-          CoMaps Version: ${{ env.COMAPS_TAG }}
-          
-          Supported Platforms (Mac Build):
-          - Android (armeabi-v7a, arm64-v8a, x86_64)
-          - iOS (arm64 device + arm64/x86_64 simulator)
-          - macOS (arm64 + x86_64 universal)
-          EOF
-          
-          echo "=== Final assets ==="
-          ls -lh final-assets/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload macOS App Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: Agus Maps ${{ github.ref_name }}
-          body: |
-            ## Agus Maps Flutter - ${{ github.ref_name }}
-
-            Offline vector maps for Flutter powered by the CoMaps engine.
-
-            📖 **[Full Installation Guide](https://github.com/agus-works/agus-maps-flutter/blob/main/docs/RELEASE.md)**
-
-            ---
-
-            ### Quick Start
-
-            #### Android (APK)
-            ```bash
-            # Via ADB
-            adb install agus-maps-android.apk
-
-            # Or download APK directly on device and tap to install
-            ```
-
-            #### iOS Simulator
-            ```bash
-            unzip agus-maps-ios-simulator.app.zip
-            xcrun simctl install booted Runner.app
-            xcrun simctl launch booted app.agus.maps.agus_maps_flutter_example
-            ```
-
-            #### macOS
-            ```bash
-            unzip agus-maps-macos.app.zip
-            xattr -cr agus_maps_flutter_example.app  # Remove quarantine
-            open agus_maps_flutter_example.app
-            ```
-
-            ---
-
-            ### Downloads (Mac Platforms)
-
-            #### 📱 Example Apps (Ready to Install)
-            | Platform | File | Description |
-            |----------|------|-------------|
-            | Android | `agus-maps-android.apk` | Universal APK - install via ADB or directly |
-            | Android | `agus-maps-android.aab` | App Bundle - for Play Store upload only |
-            | iOS | `agus-maps-ios-simulator.app.zip` | Simulator only (debug, unsigned) |
-            | macOS | `agus-maps-macos.app.zip` | Universal binary (release, unsigned) |
-
-            #### 📦 Native Libraries (For Plugin Integration)
-            | Platform | File | Description |
-            |----------|------|-------------|
-            | All | `agus-headers.tar.gz` | C++ headers for compilation |
-            | iOS | `agus-binaries-ios.zip` | XCFramework (device + simulator) |
-            | Android | `agus-binaries-android.zip` | Native .so libraries (arm64, armv7, x86_64) |
-            | macOS | `agus-binaries-macos.zip` | XCFramework (arm64 + x86_64) |
-
-            ---
-
-            ### Features
-            - 🗺️ Offline vector maps powered by CoMaps/Organic Maps engine
-            - 🌍 OpenStreetMap data with beautiful cartography
-            - 🔋 Battery-efficient event-driven rendering
-            - ⚡ Zero-copy GPU texture sharing (Metal on Apple, OpenGL ES on Android)
-            - 📍 Search, routing, and POI information
-
-            ---
-
-            ### Requirements
-            - **Android**: API 24+ (Android 7.0+)
-            - **iOS**: iOS 15.6+ (Simulator only for this build)
-            - **macOS**: macOS 12.0+ (Monterey)
-
-            ---
-
-            ### Build Info
-            - Build Number: ${{ github.run_number }}
-            - Flutter: ${{ env.FLUTTER_VERSION }}
-            - CoMaps: ${{ env.COMAPS_TAG }}
-          draft: false
-          prerelease: false
-          files: |
-            final-assets/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: agus-maps-macos
+          path: artifacts/agus-maps-macos.app.zip
 
   # ==========================================================================
-  # Windows Job: Builds and Releases Windows (all in one job)
+  # Windows Job: Builds Windows
   # ==========================================================================
   build-and-release-windows-platform:
-    name: Build and Release Windows
+    name: Build Windows
     needs: test-azure-storage
     runs-on: windows-latest
     permissions:
@@ -534,7 +379,6 @@ jobs:
 
       # ======================================================================
       # CoMaps Source Cache (Azure Blob Storage)
-      # Caches pristine recursive clone BEFORE patches are applied
       # ======================================================================
       - name: Check CoMaps Cache
         id: comaps-cache
@@ -670,6 +514,12 @@ jobs:
           Get-ChildItem -Path build\agus-binaries-windows\ -Recurse
         shell: pwsh
 
+      - name: Upload Windows Binaries Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-binaries-windows
+          path: build/agus-binaries-windows.zip
+
       # ======================================================================
       # Build Windows Example App
       # ======================================================================
@@ -742,21 +592,291 @@ jobs:
           Get-ChildItem -Path artifacts\
         shell: pwsh
 
+      - name: Upload Windows App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-maps-windows
+          path: artifacts/agus-maps-windows.zip
+
+  # ==========================================================================
+  # Android Job: Builds Android (runs on Windows Host)
+  # ==========================================================================
+  build-and-release-android-platform:
+    name: Build Android (Windows Host)
+    needs: test-azure-storage
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
       # ======================================================================
-      # Prepare and Create GitHub Release
+      # Setup
       # ======================================================================
-      - name: Prepare Release Assets
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # ======================================================================
+      # CoMaps Source Cache (Shared with Windows Job)
+      # ======================================================================
+      - name: Check CoMaps Cache
+        id: comaps-cache
         run: |
-          New-Item -ItemType Directory -Force -Path final-assets | Out-Null
-          Copy-Item -Path build\agus-binaries-windows.zip -Destination final-assets\ -Force
-          Copy-Item -Path artifacts\agus-maps-windows.zip -Destination final-assets\ -Force
+          # Parse Azure SAS URL into base URL and token
+          $azUrl = "${{ secrets.AZ_URL }}"
+          $baseUrl = $azUrl -replace '\?.*$', ''
+          $sasToken = $azUrl -replace '^[^?]*\?', ''
+          $cacheFile = "agus/agus-comaps-win-${{ env.COMAPS_TAG }}.zip"
+          $cacheUrl = "${baseUrl}/${cacheFile}?${sasToken}"
           
+          Write-Host "Checking for cache: ${baseUrl}/${cacheFile}"
+          try {
+            $response = Invoke-WebRequest -Uri $cacheUrl -Method Head -UseBasicParsing -ErrorAction Stop
+            Write-Host "✓ Cache found!"
+            "cache-hit=true" >> $env:GITHUB_OUTPUT
+          } catch {
+            Write-Host "✗ Cache not found, will clone from git"
+            "cache-hit=false" >> $env:GITHUB_OUTPUT
+          }
+          "cache-url=$cacheUrl" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Download CoMaps from Cache
+        if: steps.comaps-cache.outputs.cache-hit == 'true'
+        run: |
+          Write-Host "Downloading CoMaps from Azure Blob Storage cache..."
+          New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
+          $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
+          $tempZip = "$env:TEMP\comaps-cache.zip"
+          
+          Invoke-WebRequest -Uri $cacheUrl -OutFile $tempZip -UseBasicParsing
+          Expand-Archive -Path $tempZip -DestinationPath thirdparty -Force
+          Remove-Item $tempZip
+          
+          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
+          Write-Host "✓ CoMaps restored from cache (${size} GB)"
+        shell: pwsh
+
+      - name: Clone CoMaps (Cache Miss)
+        id: clone-comaps
+        if: steps.comaps-cache.outputs.cache-hit != 'true'
+        run: |
+          Write-Host "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
+          New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
+          # Clone from comaps/comaps repository (not organicmaps)
+          git clone https://github.com/comaps/comaps.git thirdparty/comaps
+          Push-Location thirdparty/comaps
+          git fetch --tags --prune
+          git checkout --detach ${{ env.COMAPS_TAG }}
+          git submodule update --init --recursive
+          Pop-Location
+          
+          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
+          Write-Host "✓ Clone complete (${size} GB)"
+          "cloned=true" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Upload CoMaps to Cache
+        if: steps.clone-comaps.outputs.cloned == 'true'
+        run: |
+          Write-Host "Uploading pristine CoMaps to Azure Blob Storage cache..."
+          
+          if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
+            Write-Error "7z not found! Expected to be pre-installed on Windows runners."
+            exit 1
+          }
+          if (-not (Get-Command azcopy -ErrorAction SilentlyContinue)) {
+            Write-Error "azcopy not found! Expected to be pre-installed on Windows runners."
+            exit 1
+          }
+          
+          $tempZip = "$env:TEMP\comaps-cache.zip"
+          Write-Host "Compressing with 7zip (fast mode)..."
+          & 7z a -tzip -mx=1 -mmt=on $tempZip .\thirdparty\comaps\* | Out-Null
+          
+          $cacheSize = "{0:N2}" -f ((Get-Item $tempZip).Length / 1MB)
+          Write-Host "Cache archive size: ${cacheSize} MB"
+          
+          $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
+          Write-Host "Uploading with azcopy (chunked transfer)..."
+          azcopy copy $tempZip $cacheUrl --blob-type BlockBlob --overwrite=true
+          
+          Remove-Item $tempZip
+          Write-Host "✓ Cache uploaded successfully (${cacheSize} MB)"
+        shell: pwsh
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK and CMake
+        run: |
+          echo "y" | sdkmanager --licenses > $null
+          sdkmanager "ndk;${{ env.NDK_VERSION }}" "cmake;${{ env.CMAKE_VERSION }}"
+          echo "ANDROID_NDK_HOME=$env:ANDROID_HOME\ndk\${{ env.NDK_VERSION }}" >> $env:GITHUB_ENV
+          echo "NDK_HOME=$env:ANDROID_HOME\ndk\${{ env.NDK_VERSION }}" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      # ======================================================================
+      # Bootstrap CoMaps
+      # ======================================================================
+      - name: Bootstrap CoMaps
+        run: |
+          .\scripts\bootstrap.ps1 -NoCache
+        shell: pwsh
+
+      # ======================================================================
+      # Build Android Native Libraries
+      # ======================================================================
+      - name: Build Android Native Libraries
+        run: |
+          .\scripts\build_binaries_android.ps1
+          Get-ChildItem -Path build\agus-binaries-android\ -Recurse
+        shell: pwsh
+
+      - name: Upload Android Binaries Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-binaries-android
+          path: build/agus-binaries-android.zip
+
+      # ======================================================================
+      # Build Android Example App
+      # ======================================================================
+      - name: Setup Android Pre-built Binaries
+        run: |
+          New-Item -ItemType Directory -Force -Path android\prebuilt | Out-Null
+          Get-ChildItem -Path build\agus-binaries-android\* | Copy-Item -Destination android\prebuilt\ -Force -Recurse
+          Get-ChildItem -Path android\prebuilt\ -Recurse
+        shell: pwsh
+
+      - name: Get Flutter Dependencies
+        run: |
+          flutter pub get
+          cd example
+          flutter pub get
+
+      - name: Download Base MWM Files (Required for Assets)
+        run: |
+          # Download base MWM files required for the example app assets
+          $assetsDir = "example\assets\maps"
+          New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
+          
+          # Mirror and snapshot
+          $mirror = "https://omaps.wfr.software/maps/"
+          
+          # Fetch latest snapshot version from mirror listing
+          $html = Invoke-WebRequest -Uri $mirror -UseBasicParsing
+          $snapshots = [regex]::Matches($html.Content, 'href="\.?/?([0-9]{6})/"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Descending
+          $snapshot = $snapshots[0]
+          Write-Host "Using snapshot: $snapshot"
+          
+          # Base MWM files to download
+          $files = @("World.mwm", "WorldCoasts.mwm", "Gibraltar.mwm")
+          
+          foreach ($file in $files) {
+            $url = "${mirror}${snapshot}/${file}"
+            $output = Join-Path $assetsDir $file
+            Write-Host "Downloading: $url"
+            Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing
+            Write-Host "  -> $output ($('{0:N2}' -f ((Get-Item $output).Length / 1MB)) MB)"
+          }
+          
+          # Copy ICU data file from CoMaps (required for internationalization)
+          $icuSource = "thirdparty\comaps\data\icudt75l.dat"
+          $icuDest = Join-Path $assetsDir "icudt75l.dat"
+          if (Test-Path $icuSource) {
+            Copy-Item -Path $icuSource -Destination $icuDest
+            Write-Host "Copied ICU data: $icuDest ($('{0:N2}' -f ((Get-Item $icuDest).Length / 1MB)) MB)"
+          } else {
+            Write-Error "ICU data file not found: $icuSource"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Build Android App Bundle (AAB)
+        run: |
+          cd example
+          flutter build appbundle --release `
+            --build-name=1.0.0 `
+            --build-number=${{ github.run_number }}
+        shell: pwsh
+
+      - name: Build Android APK
+        run: |
+          cd example
+          flutter build apk --release `
+            --build-name=1.0.0 `
+            --build-number=${{ github.run_number }}
+        shell: pwsh
+
+      - name: Prepare Android Artifacts
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item -Path example\build\app\outputs\bundle\release\app-release.aab -Destination artifacts\agus-maps-android.aab
+          Copy-Item -Path example\build\app\outputs\flutter-apk\app-release.apk -Destination artifacts\agus-maps-android.apk
+          Get-ChildItem -Path artifacts\
+        shell: pwsh
+
+      - name: Upload Android App Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-maps-android
+          path: artifacts/*
+
+  # ==========================================================================
+  # Release Job: Aggregates artifacts from all jobs
+  # ==========================================================================
+  release:
+    name: Create Release
+    needs: [build-and-release-mac-platforms, build-and-release-windows-platform, build-and-release-android-platform]
+    # Run even if some dependencies partially failed or were skipped
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: Prepare Final Assets
+        run: |
+          mkdir -p final-assets
+          
+          # Move artifacts if they exist
+          [ -f all-artifacts/agus-headers.tar.gz ] && cp all-artifacts/agus-headers.tar.gz final-assets/ || true
+          [ -f all-artifacts/agus-binaries-android.zip ] && cp all-artifacts/agus-binaries-android.zip final-assets/ || true
+          [ -f all-artifacts/agus-binaries-ios.zip ] && cp all-artifacts/agus-binaries-ios.zip final-assets/ || true
+          [ -f all-artifacts/agus-binaries-macos.zip ] && cp all-artifacts/agus-binaries-macos.zip final-assets/ || true
+          [ -f all-artifacts/agus-binaries-windows.zip ] && cp all-artifacts/agus-binaries-windows.zip final-assets/ || true
+          
+          [ -f all-artifacts/agus-maps-android.aab ] && cp all-artifacts/agus-maps-android.aab final-assets/ || true
+          [ -f all-artifacts/agus-maps-android.apk ] && cp all-artifacts/agus-maps-android.apk final-assets/ || true
+          [ -f all-artifacts/agus-maps-ios-simulator.app.zip ] && cp all-artifacts/agus-maps-ios-simulator.app.zip final-assets/ || true
+          [ -f all-artifacts/agus-maps-macos.app.zip ] && cp all-artifacts/agus-maps-macos.app.zip final-assets/ || true
+          [ -f all-artifacts/agus-maps-windows.zip ] && cp all-artifacts/agus-maps-windows.zip final-assets/ || true
+
           # Generate build info
-          $buildInfo = @"
+          cat > final-assets/BUILD_INFO.txt << EOF
           Agus Maps Flutter - ${{ github.ref_name }}
           ==================================
           
-          Build Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss") UTC
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
           Build Number: ${{ github.run_number }}
           Git SHA: ${{ github.sha }}
           Git Tag: ${{ github.ref_name }}
@@ -764,66 +884,74 @@ jobs:
           Flutter Version: ${{ env.FLUTTER_VERSION }}
           CoMaps Version: ${{ env.COMAPS_TAG }}
           
-          Supported Platform (Windows Build):
+          Supported Platforms:
+          - Android (armeabi-v7a, arm64-v8a, x86_64)
+          - iOS (Simulator)
+          - macOS (arm64 + x86_64 universal)
           - Windows (x64)
-          "@
-          $buildInfo | Out-File -FilePath final-assets\BUILD_INFO.txt -Encoding utf8
+          EOF
           
-          Write-Host "=== Final assets ==="
-          Get-ChildItem -Path final-assets\
-        shell: pwsh
+          echo "=== Final assets collected ==="
+          ls -lh final-assets/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: Agus Maps ${{ github.ref_name }}
           body: |
-            ## Agus Maps Flutter - ${{ github.ref_name }} (Windows)
-
+            ## Agus Maps Flutter - ${{ github.ref_name }}
+            
             Offline vector maps for Flutter powered by the CoMaps engine.
-
+            
             📖 **[Full Installation Guide](https://github.com/agus-works/agus-maps-flutter/blob/main/docs/RELEASE.md)**
-
+            
             ---
-
+            
             ### Quick Start
-
+            
+            #### Android
+            ```bash
+            # Install APK
+            adb install agus-maps-android.apk
+            ```
+            
             #### Windows
             ```powershell
             Expand-Archive agus-maps-windows.zip -DestinationPath .
             .\agus_maps_flutter_example.exe
             ```
-
+            
+            #### macOS
+            ```bash
+            unzip agus-maps-macos.app.zip
+            xattr -cr agus_maps_flutter_example.app
+            open agus_maps_flutter_example.app
+            ```
+            
             ---
-
-            ### Downloads (Windows Platform)
-
-            #### 📱 Example Apps (Ready to Install)
+            
+            ### Downloads
+            
+            #### 📱 Example Apps
             | Platform | File | Description |
             |----------|------|-------------|
-            | Windows | `agus-maps-windows.zip` | x64 release build |
-
-            #### 📦 Native Libraries (For Plugin Integration)
+            | Android | `agus-maps-android.apk` | Universal APK |
+            | Android | `agus-maps-android.aab` | App Bundle |
+            | Windows | `agus-maps-windows.zip` | x64 Release |
+            | macOS | `agus-maps-macos.app.zip` | Universal Release |
+            | iOS | `agus-maps-ios-simulator.app.zip` | Simulator Debug |
+            
+            #### 📦 Native Libraries
             | Platform | File | Description |
             |----------|------|-------------|
-            | Windows | `agus-binaries-windows.zip` | DLLs (x64) |
-
+            | Headers | `agus-headers.tar.gz` | C++ Headers |
+            | Android | `agus-binaries-android.zip` | .so libs |
+            | iOS | `agus-binaries-ios.zip` | XCFramework |
+            | macOS | `agus-binaries-macos.zip` | XCFramework |
+            | Windows | `agus-binaries-windows.zip` | DLLs |
+            
             ---
-
-            ### Features
-            - 🗺️ Offline vector maps powered by CoMaps/Organic Maps engine
-            - 🌍 OpenStreetMap data with beautiful cartography
-            - 🔋 Battery-efficient event-driven rendering
-            - ⚡ Zero-copy GPU texture sharing (WGL on Windows)
-            - 📍 Search, routing, and POI information
-
-            ---
-
-            ### Requirements
-            - **Windows**: Windows 10+ (x64)
-
-            ---
-
+            
             ### Build Info
             - Build Number: ${{ github.run_number }}
             - Flutter: ${{ env.FLUTTER_VERSION }}
