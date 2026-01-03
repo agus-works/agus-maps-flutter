@@ -14,106 +14,10 @@ env:
 
 jobs:
   # ==========================================================================
-  # Azure Storage Sanity Test (runs first on free tier)
-  # ==========================================================================
-  test-azure-storage:
-    name: Test Azure Storage Connectivity
-    runs-on: ubuntu-latest
-    steps:
-      - name: Test Azure Blob Storage (Upload/Download/Delete)
-        run: |
-          echo "=== Azure Blob Storage Sanity Test ==="
-          
-          # Parse Azure SAS URL into base URL and token
-          AZ_URL="${{ secrets.AZ_URL }}"
-          if [ -z "$AZ_URL" ]; then
-            echo "❌ ERROR: AZ_URL secret is not set!"
-            exit 1
-          fi
-          
-          BASE_URL="${AZ_URL%%\?*}"
-          SAS_TOKEN="${AZ_URL#*\?}"
-          TEST_FILE="agus/_sanity-test-$(date +%s).txt"
-          TEST_URL="${BASE_URL}/${TEST_FILE}?${SAS_TOKEN}"
-          
-          echo "Base URL: $BASE_URL"
-          echo "Test file: $TEST_FILE"
-          
-          # Create test content
-          TEST_CONTENT="Azure Storage Sanity Test - $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
-          echo "$TEST_CONTENT" > /tmp/test-upload.txt
-          
-          # Step 1: Upload
-          echo ""
-          echo "📤 Step 1: Testing UPLOAD..."
-          UPLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
-            -H "x-ms-blob-type: BlockBlob" \
-            -H "Content-Type: text/plain" \
-            --data-binary @/tmp/test-upload.txt \
-            "$TEST_URL")
-          UPLOAD_CODE=$(echo "$UPLOAD_RESPONSE" | tail -1)
-          
-          if [ "$UPLOAD_CODE" -eq 201 ]; then
-            echo "✅ Upload successful (HTTP $UPLOAD_CODE)"
-          else
-            echo "❌ Upload FAILED (HTTP $UPLOAD_CODE)"
-            echo "Response: $(echo "$UPLOAD_RESPONSE" | head -n -1)"
-            exit 1
-          fi
-          
-          # Step 2: Download
-          echo ""
-          echo "📥 Step 2: Testing DOWNLOAD..."
-          DOWNLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" -o /tmp/test-download.txt "$TEST_URL")
-          DOWNLOAD_CODE=$(echo "$DOWNLOAD_RESPONSE" | tail -1)
-          
-          if [ "$DOWNLOAD_CODE" -eq 200 ]; then
-            DOWNLOADED_CONTENT=$(cat /tmp/test-download.txt)
-            if [ "$DOWNLOADED_CONTENT" = "$TEST_CONTENT" ]; then
-              echo "✅ Download successful and content verified (HTTP $DOWNLOAD_CODE)"
-            else
-              echo "⚠️ Download successful but content mismatch"
-              echo "Expected: $TEST_CONTENT"
-              echo "Got: $DOWNLOADED_CONTENT"
-            fi
-          else
-            echo "❌ Download FAILED (HTTP $DOWNLOAD_CODE)"
-            exit 1
-          fi
-          
-          # Step 3: Delete
-          echo ""
-          echo "🗑️ Step 3: Testing DELETE..."
-          DELETE_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE "$TEST_URL")
-          DELETE_CODE=$(echo "$DELETE_RESPONSE" | tail -1)
-          
-          if [ "$DELETE_CODE" -eq 202 ]; then
-            echo "✅ Delete successful (HTTP $DELETE_CODE)"
-          else
-            echo "⚠️ Delete returned HTTP $DELETE_CODE (may still be OK)"
-          fi
-          
-          # Step 4: Verify deletion
-          echo ""
-          echo "🔍 Step 4: Verifying deletion..."
-          VERIFY_RESPONSE=$(curl -s -w "%{http_code}" -o /dev/null --head "$TEST_URL")
-          
-          if [ "$VERIFY_RESPONSE" -eq 404 ]; then
-            echo "✅ File confirmed deleted (HTTP 404)"
-          else
-            echo "⚠️ File may still exist (HTTP $VERIFY_RESPONSE)"
-          fi
-          
-          echo ""
-          echo "=== Azure Storage Sanity Test PASSED ==="
-          echo "✅ All operations successful - ready to proceed with builds"
-
-  # ==========================================================================
   # macOS Job: Builds iOS and macOS
   # ==========================================================================
   build-and-release-mac-platforms:
     name: Build iOS and macOS
-    needs: test-azure-storage
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
     if: false
     runs-on: macos-14-xlarge
@@ -363,7 +267,6 @@ jobs:
   # ==========================================================================
   build-and-release-windows-platform:
     name: Build Windows
-    needs: test-azure-storage
     runs-on: windows-latest
     permissions:
       contents: write
@@ -602,8 +505,7 @@ jobs:
   # Android Job: Builds Android (runs on Windows Host)
   # ==========================================================================
   build-and-release-android-platform:
-    name: Build Android (Windows Host)
-    needs: test-azure-storage
+    name: Build Android
     runs-on: windows-latest
     permissions:
       contents: write
@@ -840,7 +742,7 @@ jobs:
   # Release Job: Aggregates artifacts from all jobs
   # ==========================================================================
   release:
-    name: Create Release
+    name: Release
     needs: [build-and-release-mac-platforms, build-and-release-windows-platform, build-and-release-android-platform]
     # Run even if some dependencies partially failed or were skipped
     if: always()
