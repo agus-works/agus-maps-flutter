@@ -20,11 +20,17 @@ jobs:
     name: Build Headers
     runs-on: [self-hosted, mac-m1]
     steps:
+      - name: Clean workspace (self-hosted)
+        run: |
+          # Clean build artifacts from previous runs
+          rm -rf build/ artifacts/ || true
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
+          clean: true
 
       - name: Cache CoMaps Source
         uses: actions/cache@v4
@@ -60,11 +66,16 @@ jobs:
     runs-on: [self-hosted, mac-m1]
     needs: build-headers
     steps:
+      - name: Clean workspace (self-hosted)
+        run: |
+          rm -rf build/ artifacts/ || true
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
+          clean: true
 
       - name: Cache CoMaps Source
         uses: actions/cache@v4
@@ -122,11 +133,16 @@ jobs:
     runs-on: [self-hosted, mac-m1]
     needs: build-headers
     steps:
+      - name: Clean workspace (self-hosted)
+        run: |
+          rm -rf build/ artifacts/ || true
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
+          clean: true
 
       - name: Cache CoMaps Source
         uses: actions/cache@v4
@@ -174,11 +190,16 @@ jobs:
     runs-on: [self-hosted, mac-m1]
     needs: build-headers
     steps:
+      - name: Clean workspace (self-hosted)
+        run: |
+          rm -rf build/ artifacts/ || true
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
+          clean: true
 
       - name: Cache CoMaps Source
         uses: actions/cache@v4
@@ -254,7 +275,8 @@ jobs:
             git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
             C:\vcpkg\bootstrap-vcpkg.bat
           }
-          C:\vcpkg\vcpkg install zlib:x64-windows
+          # Manifest mode: vcpkg.json in repo defines dependencies
+          # Just set VCPKG_ROOT, dependencies installed during CMake configure
           echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
         shell: pwsh
 
@@ -284,11 +306,16 @@ jobs:
     runs-on: [self-hosted, mac-m1]
     needs: build-android-native
     steps:
+      - name: Clean workspace (self-hosted)
+        run: |
+          rm -rf build/ artifacts/ android/prebuilt/ example/build/ || true
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
+          clean: true
 
       - name: Cache CoMaps Source
         uses: actions/cache@v4
@@ -337,8 +364,13 @@ jobs:
 
       - name: Bootstrap CoMaps (data files only)
         run: |
-          chmod +x scripts/bootstrap.sh
-          ./scripts/bootstrap.sh --no-cache
+          # Skip full bootstrap if thirdparty/comaps exists (from cache)
+          if [ -d "thirdparty/comaps" ] && [ -d "example/assets/mwm" ]; then
+            echo "CoMaps source and data already present, skipping bootstrap"
+          else
+            chmod +x scripts/bootstrap.sh
+            ./scripts/bootstrap.sh --no-cache
+          fi
 
       - name: Get Flutter Dependencies
         run: |
@@ -401,11 +433,16 @@ jobs:
     runs-on: [self-hosted, mac-m1]
     needs: build-ios-native
     steps:
+      - name: Clean workspace (self-hosted)
+        run: |
+          rm -rf build/ artifacts/ ios/Frameworks/ example/build/ || true
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
+          clean: true
 
       - name: Cache CoMaps Source
         uses: actions/cache@v4
@@ -435,8 +472,13 @@ jobs:
 
       - name: Bootstrap CoMaps (data files only)
         run: |
-          chmod +x scripts/bootstrap.sh
-          ./scripts/bootstrap.sh --no-cache
+          # Skip full bootstrap if thirdparty/comaps exists (from cache)
+          if [ -d "thirdparty/comaps" ] && [ -d "example/assets/mwm" ]; then
+            echo "CoMaps source and data already present, skipping bootstrap"
+          else
+            chmod +x scripts/bootstrap.sh
+            ./scripts/bootstrap.sh --no-cache
+          fi
 
       - name: Get Flutter Dependencies
         run: |
@@ -483,11 +525,16 @@ jobs:
     runs-on: [self-hosted, mac-m1]
     needs: build-macos-native
     steps:
+      - name: Clean workspace (self-hosted)
+        run: |
+          rm -rf build/ artifacts/ macos/Frameworks/ example/build/ || true
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
+          clean: true
 
       - name: Cache CoMaps Source
         uses: actions/cache@v4
@@ -517,8 +564,13 @@ jobs:
 
       - name: Bootstrap CoMaps (data files only)
         run: |
-          chmod +x scripts/bootstrap.sh
-          ./scripts/bootstrap.sh --no-cache
+          # Skip full bootstrap if thirdparty/comaps exists (from cache)
+          if [ -d "thirdparty/comaps" ] && [ -d "example/assets/mwm" ]; then
+            echo "CoMaps source and data already present, skipping bootstrap"
+          else
+            chmod +x scripts/bootstrap.sh
+            ./scripts/bootstrap.sh --no-cache
+          fi
 
       - name: Get Flutter Dependencies
         run: |
@@ -593,7 +645,8 @@ jobs:
             git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
             C:\vcpkg\bootstrap-vcpkg.bat
           }
-          C:\vcpkg\vcpkg install zlib:x64-windows
+          # Manifest mode: vcpkg.json in repo defines dependencies
+          # Just set VCPKG_ROOT, dependencies installed during CMake configure
           echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
         shell: pwsh
 
@@ -627,7 +680,12 @@ jobs:
 
       - name: Bootstrap CoMaps (data files only)
         run: |
-          .\scripts\bootstrap.ps1 -NoCache
+          # Skip full bootstrap if thirdparty/comaps exists (from cache)
+          if ((Test-Path "thirdparty\comaps") -and (Test-Path "example\assets\mwm")) {
+            Write-Host "CoMaps source and data already present, skipping bootstrap"
+          } else {
+            .\scripts\bootstrap.ps1 -NoCache
+          }
         shell: pwsh
 
       - name: Get Flutter Dependencies
