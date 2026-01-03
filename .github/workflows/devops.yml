@@ -19,7 +19,7 @@ jobs:
   build-mac-platforms:
     name: Build Android, iOS, macOS
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
-    if: false
+    if: true
     runs-on: macos-14-xlarge
     permissions:
       contents: write

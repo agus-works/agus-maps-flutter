@@ -1247,14 +1247,28 @@ The following patches are primarily for debugging and could potentially be remov
 The following patches have overlapping functionality and could be consolidated:
 - **0065, 0066, 0067** - All address jansson Unity build issues. Patch 0067 alone might be sufficient.
 
-## Usage
+---
 
-**Linux/macOS:**
-```bash
-./scripts/apply_comaps_patches.sh
-```
+### 0068-libs-drape-metal-mtlviewport-init.patch
 
-**Windows PowerShell:**
-```powershell
+**File Modified:** `libs/drape/metal/metal_base_context.mm`
+
+**Category:** iOS/macOS Metal / Build Fix
+
+**Purpose:** Fixes MTLViewport initialization syntax for modern Xcode/SDK versions.
+
+**What it does:**
+- Changes `MTLViewport(x, y, w, h, 0.0, 1.0)` to brace initialization `{(double)x, (double)y, (double)w, (double)h, 0.0, 1.0}`
+- Adds explicit casts to `double` for the integer parameters
+
+**Why it's needed:**
+`MTLViewport` is a C struct defined in Metal.framework, not a C++ class. The original code used C++ constructor-style initialization syntax which is not valid for C structs. Modern Xcode (15.4+) with iOS SDK 17.5+ correctly rejects this invalid syntax.
+
+**Without this patch:**
+- iOS and macOS builds fail with: `error: no matching constructor for initialization of 'MTLViewport'`
+- The drape (rendering) library cannot be compiled for Apple platforms
+
+---
+
 .\scripts\apply_comaps_patches.ps1
 ```

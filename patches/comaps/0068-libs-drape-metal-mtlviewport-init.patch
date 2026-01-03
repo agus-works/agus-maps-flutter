@@ -1,0 +1,14 @@
+diff --git a/libs/drape/metal/metal_base_context.mm b/libs/drape/metal/metal_base_context.mm
+index 1234567..abcdefg 100644
+--- a/libs/drape/metal/metal_base_context.mm
++++ b/libs/drape/metal/metal_base_context.mm
+@@ -259,7 +259,8 @@ void MetalBaseContext::SetDefaultFramebuffer()
+ void MetalBaseContext::SetViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+ {
+   id<MTLRenderCommandEncoder> encoder = GetCommandEncoder();
+-  [encoder setViewport:MTLViewport(x, y, w, h, 0.0, 1.0)];
++  // Use brace initialization - MTLViewport is a C struct, not a C++ class
++  [encoder setViewport:{(double)x, (double)y, (double)w, (double)h, 0.0, 1.0}];
+   [encoder setScissorRect:{x, y, w, h}];
+ }
+ 
