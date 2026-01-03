@@ -299,7 +299,10 @@ function Build-Windows {
         '-S', $SrcDir,
         "-DCMAKE_TOOLCHAIN_FILE=$toolchainFile",
         "-DVCPKG_TARGET_TRIPLET=x64-windows",
-        "-DCMAKE_BUILD_TYPE=$BuildType"
+        "-DCMAKE_BUILD_TYPE=$BuildType",
+        # Disable ccache to prevent issues with Strawberry Perl's ccache on GitHub Actions
+        '-DCMAKE_C_COMPILER_LAUNCHER=',
+        '-DCMAKE_CXX_COMPILER_LAUNCHER='
     )
     
     # Add Ninja generator if available

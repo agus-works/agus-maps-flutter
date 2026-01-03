@@ -309,6 +309,8 @@ jobs:
       # ======================================================================
       - name: Build Windows Native Libraries
         run: |
+          # Remove Strawberry Perl from PATH to prevent ccache conflicts
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
           .\scripts\build_binaries_windows.ps1 -VcpkgRoot "C:\vcpkg"
           Get-ChildItem -Path build\agus-binaries-windows\ -Recurse
         shell: pwsh
