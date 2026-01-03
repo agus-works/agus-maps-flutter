@@ -493,6 +493,16 @@ jobs:
         run: |
           Write-Host "Uploading pristine CoMaps to Azure Blob Storage cache..."
           
+          # Verify required tools are available
+          if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
+            Write-Error "7z not found! Expected to be pre-installed on Windows runners."
+            exit 1
+          }
+          if (-not (Get-Command azcopy -ErrorAction SilentlyContinue)) {
+            Write-Error "azcopy not found! Expected to be pre-installed on Windows runners."
+            exit 1
+          }
+          
           # Use 7zip for faster compression (pre-installed on Windows runners)
           $tempZip = "$env:TEMP\comaps-cache.zip"
           Write-Host "Compressing with 7zip (fast mode)..."
