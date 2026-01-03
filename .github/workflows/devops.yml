@@ -11,6 +11,8 @@ env:
   NDK_VERSION: '27.2.12479018'
   CMAKE_VERSION: '3.22.1'
   BUILD_TYPE: Release
+  # Set to 'true' to skip macOS build (saves cost during Windows testing)
+  SKIP_MACOS: 'true'
 
 jobs:
   # ==========================================================================
@@ -18,6 +20,7 @@ jobs:
   # ==========================================================================
   build-mac-platforms:
     name: Build Android, iOS, macOS
+    if: ${{ env.SKIP_MACOS != 'true' }}
     runs-on: macos-14-xlarge
     permissions:
       contents: write
@@ -364,6 +367,7 @@ jobs:
     needs:
       - build-mac-platforms
       - build-windows-platform
+    if: ${{ always() && (needs.build-mac-platforms.result == 'success' || needs.build-mac-platforms.result == 'skipped') && needs.build-windows-platform.result == 'success' }}
     permissions:
       contents: write
     steps:
