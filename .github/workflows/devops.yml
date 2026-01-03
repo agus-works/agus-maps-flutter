@@ -109,10 +109,10 @@ jobs:
           echo "✅ All operations successful - ready to proceed with builds"
 
   # ==========================================================================
-  # macOS Job: Builds Headers, Android, iOS, macOS (all in one job)
+  # macOS Job: Builds and Releases Headers, Android, iOS, macOS (all in one job)
   # ==========================================================================
-  build-mac-platforms:
-    name: Build Android, iOS, macOS
+  build-and-release-mac-platforms:
+    name: Build and Release Android, iOS, macOS
     needs: test-azure-storage
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
     if: false
@@ -391,28 +391,133 @@ jobs:
           ls -lh ../../../../../../artifacts/
 
       # ======================================================================
-      # Upload Mac Platforms Artifacts (for release job)
+      # Prepare and Create GitHub Release
       # ======================================================================
-      - name: Upload All Mac Platform Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p final-assets
+          cp build/agus-headers.tar.gz final-assets/
+          cp build/agus-binaries-android.zip final-assets/
+          cp build/agus-binaries-ios.zip final-assets/
+          cp build/agus-binaries-macos.zip final-assets/
+          cp artifacts/agus-maps-android.aab final-assets/
+          cp artifacts/agus-maps-android.apk final-assets/
+          cp artifacts/agus-maps-ios-simulator.app.zip final-assets/
+          cp artifacts/agus-maps-macos.app.zip final-assets/
+          
+          # Generate build info
+          cat > final-assets/BUILD_INFO.txt << EOF
+          Agus Maps Flutter - ${{ github.ref_name }}
+          ==================================
+          
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Build Number: ${{ github.run_number }}
+          Git SHA: ${{ github.sha }}
+          Git Tag: ${{ github.ref_name }}
+          
+          Flutter Version: ${{ env.FLUTTER_VERSION }}
+          CoMaps Version: ${{ env.COMAPS_TAG }}
+          
+          Supported Platforms (Mac Build):
+          - Android (armeabi-v7a, arm64-v8a, x86_64)
+          - iOS (arm64 device + arm64/x86_64 simulator)
+          - macOS (arm64 + x86_64 universal)
+          EOF
+          
+          echo "=== Final assets ==="
+          ls -lh final-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: mac-platforms-artifacts
-          path: |
-            build/agus-headers.tar.gz
-            build/agus-binaries-android.zip
-            build/agus-binaries-ios.zip
-            build/agus-binaries-macos.zip
-            artifacts/agus-maps-android.aab
-            artifacts/agus-maps-android.apk
-            artifacts/agus-maps-ios-simulator.app.zip
-            artifacts/agus-maps-macos.app.zip
-          retention-days: 7
+          name: Agus Maps ${{ github.ref_name }}
+          body: |
+            ## Agus Maps Flutter - ${{ github.ref_name }}
+
+            Offline vector maps for Flutter powered by the CoMaps engine.
+
+            📖 **[Full Installation Guide](https://github.com/agus-works/agus-maps-flutter/blob/main/docs/RELEASE.md)**
+
+            ---
+
+            ### Quick Start
+
+            #### Android (APK)
+            ```bash
+            # Via ADB
+            adb install agus-maps-android.apk
+
+            # Or download APK directly on device and tap to install
+            ```
+
+            #### iOS Simulator
+            ```bash
+            unzip agus-maps-ios-simulator.app.zip
+            xcrun simctl install booted Runner.app
+            xcrun simctl launch booted app.agus.maps.agus_maps_flutter_example
+            ```
+
+            #### macOS
+            ```bash
+            unzip agus-maps-macos.app.zip
+            xattr -cr agus_maps_flutter_example.app  # Remove quarantine
+            open agus_maps_flutter_example.app
+            ```
+
+            ---
+
+            ### Downloads (Mac Platforms)
+
+            #### 📱 Example Apps (Ready to Install)
+            | Platform | File | Description |
+            |----------|------|-------------|
+            | Android | `agus-maps-android.apk` | Universal APK - install via ADB or directly |
+            | Android | `agus-maps-android.aab` | App Bundle - for Play Store upload only |
+            | iOS | `agus-maps-ios-simulator.app.zip` | Simulator only (debug, unsigned) |
+            | macOS | `agus-maps-macos.app.zip` | Universal binary (release, unsigned) |
+
+            #### 📦 Native Libraries (For Plugin Integration)
+            | Platform | File | Description |
+            |----------|------|-------------|
+            | All | `agus-headers.tar.gz` | C++ headers for compilation |
+            | iOS | `agus-binaries-ios.zip` | XCFramework (device + simulator) |
+            | Android | `agus-binaries-android.zip` | Native .so libraries (arm64, armv7, x86_64) |
+            | macOS | `agus-binaries-macos.zip` | XCFramework (arm64 + x86_64) |
+
+            ---
+
+            ### Features
+            - 🗺️ Offline vector maps powered by CoMaps/Organic Maps engine
+            - 🌍 OpenStreetMap data with beautiful cartography
+            - 🔋 Battery-efficient event-driven rendering
+            - ⚡ Zero-copy GPU texture sharing (Metal on Apple, OpenGL ES on Android)
+            - 📍 Search, routing, and POI information
+
+            ---
+
+            ### Requirements
+            - **Android**: API 24+ (Android 7.0+)
+            - **iOS**: iOS 15.6+ (Simulator only for this build)
+            - **macOS**: macOS 12.0+ (Monterey)
+
+            ---
+
+            ### Build Info
+            - Build Number: ${{ github.run_number }}
+            - Flutter: ${{ env.FLUTTER_VERSION }}
+            - CoMaps: ${{ env.COMAPS_TAG }}
+          draft: false
+          prerelease: false
+          files: |
+            final-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ==========================================================================
-  # Windows Job: Builds Windows (all in one job)
+  # Windows Job: Builds and Releases Windows (all in one job)
   # ==========================================================================
-  build-windows-platform:
-    name: Build Windows
+  build-and-release-windows-platform:
+    name: Build and Release Windows
     needs: test-azure-storage
     runs-on: windows-latest
     permissions:
@@ -638,63 +743,20 @@ jobs:
         shell: pwsh
 
       # ======================================================================
-      # Upload Windows Artifacts (for release job)
+      # Prepare and Create GitHub Release
       # ======================================================================
-      - name: Upload Windows Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-platform-artifacts
-          path: |
-            build/agus-binaries-windows.zip
-            artifacts/agus-maps-windows.zip
-          retention-days: 7
-
-  # ==========================================================================
-  # Release Job: Publishes all artifacts to GitHub Releases
-  # ==========================================================================
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    needs:
-      - build-mac-platforms
-      - build-windows-platform
-    if: ${{ always() && (needs.build-mac-platforms.result == 'success' || needs.build-mac-platforms.result == 'skipped') && needs.build-windows-platform.result == 'success' }}
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download Mac Platforms Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: mac-platforms-artifacts
-          path: release-assets/
-
-      - name: Download Windows Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-platform-artifacts
-          path: release-assets/
-
       - name: Prepare Release Assets
         run: |
-          echo "=== Release assets structure ==="
-          find release-assets -type f
-          
-          # Flatten structure if needed
-          mkdir -p final-assets
-          find release-assets -name "*.tar.gz" -exec cp {} final-assets/ \;
-          find release-assets -name "*.zip" -exec cp {} final-assets/ \;
-          find release-assets -name "*.aab" -exec cp {} final-assets/ \;
-          find release-assets -name "*.apk" -exec cp {} final-assets/ \;
+          New-Item -ItemType Directory -Force -Path final-assets | Out-Null
+          Copy-Item -Path build\agus-binaries-windows.zip -Destination final-assets\ -Force
+          Copy-Item -Path artifacts\agus-maps-windows.zip -Destination final-assets\ -Force
           
           # Generate build info
-          cat > final-assets/BUILD_INFO.txt << EOF
+          $buildInfo = @"
           Agus Maps Flutter - ${{ github.ref_name }}
           ==================================
           
-          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Build Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss") UTC
           Build Number: ${{ github.run_number }}
           Git SHA: ${{ github.sha }}
           Git Tag: ${{ github.ref_name }}
@@ -702,22 +764,21 @@ jobs:
           Flutter Version: ${{ env.FLUTTER_VERSION }}
           CoMaps Version: ${{ env.COMAPS_TAG }}
           
-          Supported Platforms:
-          - Android (armeabi-v7a, arm64-v8a, x86_64)
-          - iOS (arm64 device + arm64/x86_64 simulator)
-          - macOS (arm64 + x86_64 universal)
+          Supported Platform (Windows Build):
           - Windows (x64)
-          EOF
+          "@
+          $buildInfo | Out-File -FilePath final-assets\BUILD_INFO.txt -Encoding utf8
           
-          echo "=== Final assets ==="
-          ls -lh final-assets/
+          Write-Host "=== Final assets ==="
+          Get-ChildItem -Path final-assets\
+        shell: pwsh
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: Agus Maps ${{ github.ref_name }}
           body: |
-            ## Agus Maps Flutter - ${{ github.ref_name }}
+            ## Agus Maps Flutter - ${{ github.ref_name }} (Windows)
 
             Offline vector maps for Flutter powered by the CoMaps engine.
 
@@ -727,28 +788,6 @@ jobs:
 
             ### Quick Start
 
-            #### Android (APK)
-            ```bash
-            # Via ADB
-            adb install agus-maps-android.apk
-
-            # Or download APK directly on device and tap to install
-            ```
-
-            #### iOS Simulator
-            ```bash
-            unzip agus-maps-ios-simulator.app.zip
-            xcrun simctl install booted Runner.app
-            xcrun simctl launch booted app.agus.maps.agus_maps_flutter_example
-            ```
-
-            #### macOS
-            ```bash
-            unzip agus-maps-macos.app.zip
-            xattr -cr agus_maps_flutter_example.app  # Remove quarantine
-            open agus_maps_flutter_example.app
-            ```
-
             #### Windows
             ```powershell
             Expand-Archive agus-maps-windows.zip -DestinationPath .
@@ -757,24 +796,16 @@ jobs:
 
             ---
 
-            ### Downloads
+            ### Downloads (Windows Platform)
 
             #### 📱 Example Apps (Ready to Install)
             | Platform | File | Description |
             |----------|------|-------------|
-            | Android | `agus-maps-android.apk` | Universal APK - install via ADB or directly |
-            | Android | `agus-maps-android.aab` | App Bundle - for Play Store upload only |
-            | iOS | `agus-maps-ios-simulator.app.zip` | Simulator only (debug, unsigned) |
-            | macOS | `agus-maps-macos.app.zip` | Universal binary (release, unsigned) |
             | Windows | `agus-maps-windows.zip` | x64 release build |
 
             #### 📦 Native Libraries (For Plugin Integration)
             | Platform | File | Description |
             |----------|------|-------------|
-            | All | `agus-headers.tar.gz` | C++ headers for compilation |
-            | iOS | `agus-binaries-ios.zip` | XCFramework (device + simulator) |
-            | Android | `agus-binaries-android.zip` | Native .so libraries (arm64, armv7, x86_64) |
-            | macOS | `agus-binaries-macos.zip` | XCFramework (arm64 + x86_64) |
             | Windows | `agus-binaries-windows.zip` | DLLs (x64) |
 
             ---
@@ -783,15 +814,12 @@ jobs:
             - 🗺️ Offline vector maps powered by CoMaps/Organic Maps engine
             - 🌍 OpenStreetMap data with beautiful cartography
             - 🔋 Battery-efficient event-driven rendering
-            - ⚡ Zero-copy GPU texture sharing (Metal on Apple, OpenGL ES on Android, WGL on Windows)
+            - ⚡ Zero-copy GPU texture sharing (WGL on Windows)
             - 📍 Search, routing, and POI information
 
             ---
 
             ### Requirements
-            - **Android**: API 24+ (Android 7.0+)
-            - **iOS**: iOS 15.6+ (Simulator only for this build)
-            - **macOS**: macOS 12.0+ (Monterey)
             - **Windows**: Windows 10+ (x64)
 
             ---
