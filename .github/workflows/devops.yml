@@ -309,12 +309,12 @@ jobs:
         if: steps.comaps-cache.outputs.cache-hit == 'true'
         run: |
           Write-Host "Downloading CoMaps from Azure Blob Storage cache..."
-          New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
+          New-Item -ItemType Directory -Force -Path thirdparty\comaps | Out-Null
           $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
           $tempZip = "$env:TEMP\comaps-cache.zip"
           
           Invoke-WebRequest -Uri $cacheUrl -OutFile $tempZip -UseBasicParsing
-          Expand-Archive -Path $tempZip -DestinationPath thirdparty -Force
+          Expand-Archive -Path $tempZip -DestinationPath thirdparty\comaps -Force
           Remove-Item $tempZip
           
           $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
@@ -548,12 +548,12 @@ jobs:
         if: steps.comaps-cache.outputs.cache-hit == 'true'
         run: |
           Write-Host "Downloading CoMaps from Azure Blob Storage cache..."
-          New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
+          New-Item -ItemType Directory -Force -Path thirdparty\comaps | Out-Null
           $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
           $tempZip = "$env:TEMP\comaps-cache.zip"
           
           Invoke-WebRequest -Uri $cacheUrl -OutFile $tempZip -UseBasicParsing
-          Expand-Archive -Path $tempZip -DestinationPath thirdparty -Force
+          Expand-Archive -Path $tempZip -DestinationPath thirdparty\comaps -Force
           Remove-Item $tempZip
           
           $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
