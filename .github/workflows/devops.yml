@@ -19,7 +19,7 @@ jobs:
   build-mac-platforms:
     name: Build Android, iOS, macOS
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
-    if: false
+    if: true
     runs-on: macos-14-xlarge
     permissions:
       contents: write
@@ -33,14 +33,70 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Cache CoMaps Source
-        id: cache-comaps
-        uses: actions/cache@v4
-        with:
-          path: thirdparty/comaps
-          key: comaps-source-${{ runner.os }}-${{ env.COMAPS_TAG }}
-          restore-keys: |
-            comaps-source-${{ runner.os }}-
+      # ======================================================================
+      # CoMaps Source Cache (Azure Blob Storage)
+      # Caches pristine recursive clone BEFORE patches are applied
+      # ======================================================================
+      - name: Check CoMaps Cache
+        id: comaps-cache
+        run: |
+          # Parse Azure SAS URL into base URL and token
+          AZ_URL="${{ secrets.AZ_URL }}"
+          BASE_URL="${AZ_URL%%\?*}"
+          SAS_TOKEN="${AZ_URL#*\?}"
+          CACHE_FILE="agus/agus-comaps-mac-${{ env.COMAPS_TAG }}.tar.gz"
+          CACHE_URL="${BASE_URL}/${CACHE_FILE}?${SAS_TOKEN}"
+          
+          echo "Checking for cache: ${BASE_URL}/${CACHE_FILE}"
+          if curl -sf --head "$CACHE_URL" > /dev/null 2>&1; then
+            echo "✓ Cache found!"
+            echo "cache-hit=true" >> $GITHUB_OUTPUT
+          else
+            echo "✗ Cache not found, will clone from git"
+            echo "cache-hit=false" >> $GITHUB_OUTPUT
+          fi
+          echo "cache-url=$CACHE_URL" >> $GITHUB_OUTPUT
+
+      - name: Download CoMaps from Cache
+        if: steps.comaps-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "Downloading CoMaps from Azure Blob Storage cache..."
+          mkdir -p thirdparty
+          curl -fL "${{ steps.comaps-cache.outputs.cache-url }}" | tar -xz -C thirdparty
+          echo "✓ CoMaps restored from cache ($(du -sh thirdparty/comaps | cut -f1))"
+
+      - name: Clone CoMaps (Cache Miss)
+        id: clone-comaps
+        if: steps.comaps-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
+          mkdir -p thirdparty
+          git clone --depth 1 --branch ${{ env.COMAPS_TAG }} --recurse-submodules --shallow-submodules \
+            https://github.com/organicmaps/organicmaps.git thirdparty/comaps
+          echo "✓ Clone complete ($(du -sh thirdparty/comaps | cut -f1))"
+          echo "cloned=true" >> $GITHUB_OUTPUT
+
+      - name: Upload CoMaps to Cache
+        if: steps.clone-comaps.outputs.cloned == 'true'
+        run: |
+          echo "Uploading pristine CoMaps to Azure Blob Storage cache..."
+          # Use pigz for faster compression if available, fallback to gzip
+          if command -v pigz &> /dev/null; then
+            tar -c -C thirdparty comaps | pigz -1 > /tmp/comaps-cache.tar.gz
+          else
+            tar -cz -C thirdparty comaps > /tmp/comaps-cache.tar.gz
+          fi
+          CACHE_SIZE=$(du -h /tmp/comaps-cache.tar.gz | cut -f1)
+          echo "Cache archive size: $CACHE_SIZE"
+          
+          curl -X PUT \
+            -H "x-ms-blob-type: BlockBlob" \
+            -H "Content-Type: application/gzip" \
+            --data-binary @/tmp/comaps-cache.tar.gz \
+            "${{ steps.comaps-cache.outputs.cache-url }}"
+          
+          rm /tmp/comaps-cache.tar.gz
+          echo "✓ Cache uploaded successfully ($CACHE_SIZE)"
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -262,14 +318,87 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Cache CoMaps Source
-        id: cache-comaps
-        uses: actions/cache@v4
-        with:
-          path: thirdparty/comaps
-          key: comaps-source-${{ runner.os }}-${{ env.COMAPS_TAG }}
-          restore-keys: |
-            comaps-source-${{ runner.os }}-
+      # ======================================================================
+      # CoMaps Source Cache (Azure Blob Storage)
+      # Caches pristine recursive clone BEFORE patches are applied
+      # ======================================================================
+      - name: Check CoMaps Cache
+        id: comaps-cache
+        run: |
+          # Parse Azure SAS URL into base URL and token
+          $azUrl = "${{ secrets.AZ_URL }}"
+          $baseUrl = $azUrl -replace '\?.*$', ''
+          $sasToken = $azUrl -replace '^[^?]*\?', ''
+          $cacheFile = "agus/agus-comaps-win-${{ env.COMAPS_TAG }}.zip"
+          $cacheUrl = "${baseUrl}/${cacheFile}?${sasToken}"
+          
+          Write-Host "Checking for cache: ${baseUrl}/${cacheFile}"
+          try {
+            $response = Invoke-WebRequest -Uri $cacheUrl -Method Head -UseBasicParsing -ErrorAction Stop
+            Write-Host "✓ Cache found!"
+            "cache-hit=true" >> $env:GITHUB_OUTPUT
+          } catch {
+            Write-Host "✗ Cache not found, will clone from git"
+            "cache-hit=false" >> $env:GITHUB_OUTPUT
+          }
+          "cache-url=$cacheUrl" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Download CoMaps from Cache
+        if: steps.comaps-cache.outputs.cache-hit == 'true'
+        run: |
+          Write-Host "Downloading CoMaps from Azure Blob Storage cache..."
+          New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
+          $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
+          $tempZip = "$env:TEMP\comaps-cache.zip"
+          
+          Invoke-WebRequest -Uri $cacheUrl -OutFile $tempZip -UseBasicParsing
+          Expand-Archive -Path $tempZip -DestinationPath thirdparty -Force
+          Remove-Item $tempZip
+          
+          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
+          Write-Host "✓ CoMaps restored from cache (${size} GB)"
+        shell: pwsh
+
+      - name: Clone CoMaps (Cache Miss)
+        id: clone-comaps
+        if: steps.comaps-cache.outputs.cache-hit != 'true'
+        run: |
+          Write-Host "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
+          New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
+          git clone --depth 1 --branch ${{ env.COMAPS_TAG }} --recurse-submodules --shallow-submodules `
+            https://github.com/organicmaps/organicmaps.git thirdparty/comaps
+          
+          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
+          Write-Host "✓ Clone complete (${size} GB)"
+          "cloned=true" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Upload CoMaps to Cache
+        if: steps.clone-comaps.outputs.cloned == 'true'
+        run: |
+          Write-Host "Uploading pristine CoMaps to Azure Blob Storage cache..."
+          $tempZip = "$env:TEMP\comaps-cache.zip"
+          
+          # Use fast compression (CompressionLevel Fastest)
+          Compress-Archive -Path thirdparty\comaps -DestinationPath $tempZip -CompressionLevel Fastest
+          
+          $cacheSize = "{0:N2}" -f ((Get-Item $tempZip).Length / 1MB)
+          Write-Host "Cache archive size: ${cacheSize} MB"
+          
+          $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
+          $headers = @{
+            "x-ms-blob-type" = "BlockBlob"
+            "Content-Type" = "application/zip"
+          }
+          
+          # Upload using .NET for large files (Invoke-WebRequest can be slow)
+          $fileBytes = [System.IO.File]::ReadAllBytes($tempZip)
+          Invoke-RestMethod -Uri $cacheUrl -Method Put -Headers $headers -Body $fileBytes
+          
+          Remove-Item $tempZip
+          Write-Host "✓ Cache uploaded successfully (${cacheSize} MB)"
+        shell: pwsh
 
       - name: Cache vcpkg
         uses: actions/cache@v4
