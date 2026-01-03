@@ -62,6 +62,20 @@ jobs:
           echo "Downloading CoMaps from Azure Blob Storage cache..."
           mkdir -p thirdparty
           curl -fL "${{ steps.comaps-cache.outputs.cache-url }}" | tar -xz -C thirdparty
+          
+          echo "=== Verifying Cache Extraction ==="
+          ls -F thirdparty/comaps | head -10
+          
+          if [ ! -d "thirdparty/comaps/.git" ]; then
+            echo "CRITICAL: .git directory not found in thirdparty/comaps!"
+            exit 1
+          fi
+          
+          cd thirdparty/comaps
+          echo "Current HEAD: $(git rev-parse HEAD)"
+          echo "Expected Tag: ${{ env.COMAPS_TAG }}"
+          cd ../..
+          
           echo "✓ CoMaps restored from cache ($(du -sh thirdparty/comaps | cut -f1))"
 
       - name: Clone CoMaps (Cache Miss)
