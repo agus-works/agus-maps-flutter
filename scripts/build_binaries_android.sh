@@ -16,8 +16,8 @@ set -euo pipefail
 #   ./build_binaries_android.sh
 #
 # Environment variables:
-#   NDK_VERSION: Android NDK version (default: 27.2.12479018)
-#   CMAKE_VERSION: CMake version to use (default: 3.22.1)
+#   NDK_VERSION: Android NDK version (default: 27.3.13750724)
+#   CMAKE_VERSION: CMake version to use (default: 3.31.10)
 #   ANDROID_HOME: Path to Android SDK (auto-detected if not set)
 #   BUILD_TYPE: Release or Debug (default: Release)
 #   ABIS: Space-separated list of ABIs to build (default: "arm64-v8a armeabi-v7a x86_64")
@@ -31,8 +31,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="$ROOT_DIR/build/agus-binaries-android"
 
 # Default configuration
-NDK_VERSION="${NDK_VERSION:-27.2.12479018}"
-CMAKE_VERSION="${CMAKE_VERSION:-3.22.1}"
+NDK_VERSION="${NDK_VERSION:-27.3.13750724}"
+CMAKE_VERSION="${CMAKE_VERSION:-3.31.10}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 ABIS="${ABIS:-arm64-v8a armeabi-v7a x86_64}"
 MIN_SDK="${MIN_SDK:-24}"

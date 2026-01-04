@@ -22,7 +22,7 @@
 
 .PARAMETER NdkVersion
     Android NDK version to use.
-    Default: 27.2.12479018
+    Default: 27.3.13750724
 
 .PARAMETER AndroidHome
     Path to Android SDK. Auto-detected if not specified.
@@ -58,7 +58,7 @@ param(
     [ValidateSet('Release', 'Debug')]
     [string]$BuildType = 'Release',
     [int]$MinSdk = 24,
-    [string]$NdkVersion = '27.2.12479018',
+    [string]$NdkVersion = '27.3.13750724',
     [string]$AndroidHome = '',
     [switch]$Clean,
     [switch]$SkipArchive
@@ -118,7 +118,7 @@ function Find-CMake {
     param([string]$SdkPath)
     
     # Try Android SDK CMake first
-    $sdkCmakePath = Join-Path $SdkPath "cmake\3.22.1\bin\cmake.exe"
+    $sdkCmakePath = Join-Path $SdkPath "cmake\3.31.10\bin\cmake.exe"
     if (Test-Path $sdkCmakePath) {
         return $sdkCmakePath
     }

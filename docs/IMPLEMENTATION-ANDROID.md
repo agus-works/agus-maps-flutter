@@ -5,7 +5,7 @@
 ### Prerequisites
 
 - Flutter SDK 3.24+ installed
-- Android SDK with NDK 27.2.12479018 (or set in `android/build.gradle`)
+- Android SDK with NDK 27.3.13750724 (or set in `android/build.gradle`)
 - A connected Android device or emulator (API 24+)
 - ~5GB disk space for CoMaps build artifacts
 
