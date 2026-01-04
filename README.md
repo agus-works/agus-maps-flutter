@@ -29,7 +29,7 @@ Agus Maps Flutter is a **native Flutter plugin** that embeds the powerful [CoMap
 
 ### 🗺️ New to CoMaps? Try it First!
 
-If you're not familiar with CoMaps, we highly recommend installing it on your phone first to experience the magic firsthand — available on [iOS (App Store)](https://apps.apple.com/app/comaps/id6736558966) and [Android (Google Play)](https://play.google.com/store/apps/details?id=community.comaps.app).
+If you're not familiar with CoMaps, we highly recommend installing it on your phone first to experience the magic firsthand — available on [iOS (App Store)](https://apps.apple.com/us/app/comaps/id6747180809) and [Android (Google Play)](https://play.google.com/store/apps/details?id=app.comaps.google&pcampaignid=web_share).
 
 **Here's how CoMaps works:**
 
