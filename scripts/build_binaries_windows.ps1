@@ -95,6 +95,18 @@ function Find-Vcpkg {
         }
     }
     
+    # Try Visual Studio embedded vcpkg as last resort
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswhere) {
+        $vsPath = & $vswhere -latest -products * -property installationPath 2>$null
+        if ($vsPath) {
+            $vsVcpkg = Join-Path $vsPath "VC\vcpkg"
+            if (Test-Path $vsVcpkg) {
+                return $vsVcpkg
+            }
+        }
+    }
+    
     return $null
 }
 
@@ -208,14 +220,82 @@ function Test-Prerequisites {
     }
     Write-Info "vcpkg: $script:VcpkgPath"
     
-    # Check vcpkg zlib
-    $zlibPath = Join-Path $script:VcpkgPath "installed\x64-windows\lib\zlib.lib"
-    if (-not (Test-Path $zlibPath)) {
-        Write-Err "zlib not installed in vcpkg"
-        Write-Err "Run: vcpkg install zlib:x64-windows"
-        return $false
+    # Check vcpkg zlib - first check classic mode location, then manifest mode location
+    $classicZlibPath = Join-Path $script:VcpkgPath "installed\x64-windows\lib\zlib.lib"
+    $manifestZlibPath = Join-Path $RepoRoot "vcpkg_installed\x64-windows\lib\zlib.lib"
+    
+    if (Test-Path $manifestZlibPath) {
+        # zlib found in manifest mode location
+        $script:VcpkgInstalledPath = Join-Path $RepoRoot "vcpkg_installed"
+        Write-Info "zlib found in vcpkg (manifest mode)"
+    } elseif (Test-Path $classicZlibPath) {
+        # zlib found in classic mode location
+        $script:VcpkgInstalledPath = Join-Path $script:VcpkgPath "installed"
+        Write-Info "zlib found in vcpkg (classic mode)"
+    } else {
+        # zlib not found - need to install
+        Write-Warn "zlib not installed in vcpkg - installing automatically..."
+        $vcpkgExe = Join-Path $script:VcpkgPath "vcpkg.exe"
+        if (-not (Test-Path $vcpkgExe)) {
+            Write-Err "vcpkg.exe not found at: $vcpkgExe"
+            Write-Err "Please ensure vcpkg is properly installed"
+            return $false
+        }
+        
+        # Check if this is a manifest-only vcpkg (VS embedded)
+        # Try classic mode first, then fall back to manifest mode
+        Write-Info "Running: vcpkg install zlib:x64-windows"
+        
+        # First try classic mode
+        $classicResult = & $vcpkgExe install zlib:x64-windows --classic 2>&1
+        $classicExitCode = $LASTEXITCODE
+        
+        if ($classicExitCode -ne 0) {
+            # Classic mode failed, try manifest mode from repo root
+            Write-Info "Classic mode not available, using manifest mode..."
+            Push-Location $RepoRoot
+            try {
+                # In manifest mode, vcpkg install reads from vcpkg.json
+                # We need to specify the triplet
+                & $vcpkgExe install --triplet x64-windows 2>&1 | ForEach-Object {
+                    if ($_ -match 'error|Error|ERROR') {
+                        Write-Host $_ -ForegroundColor Red
+                    } else {
+                        Write-Host $_ -ForegroundColor DarkGray
+                    }
+                }
+                
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Err "Failed to install dependencies via vcpkg manifest mode"
+                    return $false
+                }
+                
+                # In manifest mode, packages are installed to vcpkg_installed in repo root
+                if (Test-Path $manifestZlibPath) {
+                    # Update the VcpkgPath to use manifest install location
+                    $script:VcpkgInstalledPath = Join-Path $RepoRoot "vcpkg_installed"
+                    Write-Info "zlib installed via manifest mode"
+                } else {
+                    Write-Err "zlib installation via manifest mode failed"
+                    return $false
+                }
+            } finally {
+                Pop-Location
+            }
+        } else {
+            # Classic mode succeeded
+            $classicResult | ForEach-Object {
+                Write-Host $_ -ForegroundColor DarkGray
+            }
+            # Verify installation
+            if (-not (Test-Path $classicZlibPath)) {
+                Write-Err "zlib installation succeeded but library not found at: $classicZlibPath"
+                return $false
+            }
+            $script:VcpkgInstalledPath = Join-Path $script:VcpkgPath "installed"
+            Write-Info "zlib installed successfully (classic mode)"
+        }
     }
-    Write-Info "zlib found in vcpkg"
     
     # Find CMake
     $script:CMakePath = Find-CMake
@@ -299,6 +379,7 @@ function Build-Windows {
         '-S', $SrcDir,
         "-DCMAKE_TOOLCHAIN_FILE=$toolchainFile",
         "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DVCPKG_INSTALLED_DIR=$script:VcpkgInstalledPath",
         "-DCMAKE_BUILD_TYPE=$BuildType",
         # Disable ccache to prevent issues with Strawberry Perl's ccache on GitHub Actions
         '-DCMAKE_C_COMPILER_LAUNCHER=',
@@ -377,7 +458,7 @@ function Build-Windows {
     }
     
     # Copy zlib1.dll runtime dependency
-    $zlibDll = Join-Path $script:VcpkgPath "installed\x64-windows\bin\zlib1.dll"
+    $zlibDll = Join-Path $script:VcpkgInstalledPath "x64-windows\bin\zlib1.dll"
     if (Test-Path $zlibDll) {
         Copy-Item -Path $zlibDll -Destination $abiOutputDir -Force
         Write-Info "Copied: zlib1.dll"

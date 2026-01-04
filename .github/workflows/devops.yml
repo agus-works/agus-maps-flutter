@@ -282,7 +282,7 @@ jobs:
   build-and-release-windows-platform:
     name: Build Windows
     # Toggle: set to 'true' to run Windows, 'false' to skip (saves cost)
-    if: false
+    if: true
     runs-on: windows-latest
     permissions:
       contents: write
