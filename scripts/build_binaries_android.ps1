@@ -312,6 +312,13 @@ function Build-Abi {
         '-DANDROID=ON'
     )
     
+    # Disable ccache on Windows to prevent command-line length issues
+    # (similar to build_binaries_windows.ps1 approach)
+    if ($IsWindows -or $env:OS -eq 'Windows_NT') {
+        $cmakeArgs += '-DCMAKE_C_COMPILER_LAUNCHER='
+        $cmakeArgs += '-DCMAKE_CXX_COMPILER_LAUNCHER='
+    }
+    
     # Add Ninja generator if available
     if ($script:NinjaPath) {
         $cmakeArgs += @('-G', 'Ninja')

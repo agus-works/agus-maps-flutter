@@ -863,6 +863,8 @@ jobs:
       # ======================================================================
       - name: Build Android Native Libraries
         run: |
+          # Remove Strawberry Perl from PATH to prevent ccache conflicts
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
           .\scripts\build_binaries_android.ps1
           Get-ChildItem -Path build\agus-binaries-android\ -Recurse
         shell: pwsh
