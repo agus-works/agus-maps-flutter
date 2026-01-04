@@ -216,6 +216,12 @@ jobs:
       - name: Precache iOS
         run: flutter precache --ios
 
+      - name: Get Flutter Dependencies
+        run: |
+          flutter pub get
+          cd example
+          flutter pub get
+
       - name: Install iOS CocoaPods Dependencies
         run: |
           cd example/ios
