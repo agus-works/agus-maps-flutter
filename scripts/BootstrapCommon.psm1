@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 # Configuration
 # ============================================================================
 
-$script:COMAPS_TAG_DEFAULT = 'v2025.12.11-2'
+$script:COMAPS_TAG_DEFAULT = 'v2025.12.28-2'
 $script:COMAPS_TAG = if ($env:COMAPS_TAG) { $env:COMAPS_TAG } else { $script:COMAPS_TAG_DEFAULT }
 $script:COMAPS_GIT_URL = 'https://github.com/comaps/comaps.git'
 $script:SEVENZ_PATH = 'C:\Program Files\7-Zip\7z.exe'

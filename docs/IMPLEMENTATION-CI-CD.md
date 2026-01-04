@@ -283,7 +283,7 @@ build-release:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COMAPS_TAG` | `v2025.12.11-2` | CoMaps version tag |
+| `COMAPS_TAG` | `v2025.12.28-2` | CoMaps version tag |
 | `FLUTTER_VERSION` | `3.38.5` | Flutter SDK version |
 | `NDK_VERSION` | `27.3.13750724` | Android NDK version |
 | `CMAKE_VERSION` | `3.31.10` | CMake version |
