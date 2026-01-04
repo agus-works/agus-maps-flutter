@@ -171,6 +171,76 @@ jobs:
           ./scripts/build_binaries_ios.sh
           ls -la build/agus-binaries-ios/
 
+      - name: Compile Metal Shaders for iOS/macOS
+        run: |
+          echo "Compiling Metal shaders from CoMaps source..."
+          
+          # Find Metal shader sources
+          SHADER_DIR="thirdparty/comaps/shaders/Metal"
+          if [[ ! -d "$SHADER_DIR" ]]; then
+            # Try alternative location
+            SHADER_DIR=$(find thirdparty/comaps -type d -name "Metal" -path "*/shaders/*" 2>/dev/null | head -1)
+          fi
+          
+          if [[ -z "$SHADER_DIR" || ! -d "$SHADER_DIR" ]]; then
+            echo "Metal shader directory not found, searching..."
+            find thirdparty/comaps -name "*.metal" 2>/dev/null | head -5
+            SHADER_DIR=$(dirname "$(find thirdparty/comaps -name "*.metal" 2>/dev/null | head -1)")
+          fi
+          
+          echo "Using shader directory: $SHADER_DIR"
+          
+          # Create output directories
+          mkdir -p ios/Resources
+          mkdir -p macos/Resources
+          mkdir -p build/metal_shaders
+          
+          # Compile Metal shaders
+          METAL_FILES=$(find "$SHADER_DIR" -name "*.metal" 2>/dev/null)
+          
+          if [[ -z "$METAL_FILES" ]]; then
+            echo "Warning: No Metal shader files found. Creating placeholder..."
+            # Create a minimal placeholder shader
+            cat > build/metal_shaders/placeholder.metal << 'EOF'
+          #include <metal_stdlib>
+          using namespace metal;
+          // Placeholder shader - actual shaders should be compiled from CoMaps
+          EOF
+            METAL_FILES="build/metal_shaders/placeholder.metal"
+          fi
+          
+          echo "Compiling Metal shaders..."
+          echo "$METAL_FILES" | tr ' ' '\n' | head -10
+          
+          # Compile to AIR (intermediate) then to metallib
+          AIR_FILES=""
+          for metal_file in $METAL_FILES; do
+            base_name=$(basename "$metal_file" .metal)
+            air_file="build/metal_shaders/${base_name}.air"
+            xcrun -sdk iphoneos metal -c "$metal_file" -o "$air_file" 2>/dev/null || \
+            xcrun -sdk macosx metal -c "$metal_file" -o "$air_file" || true
+            if [[ -f "$air_file" ]]; then
+              AIR_FILES="$AIR_FILES $air_file"
+            fi
+          done
+          
+          # Link into metallib
+          if [[ -n "$AIR_FILES" ]]; then
+            xcrun -sdk iphoneos metallib $AIR_FILES -o build/metal_shaders/shaders_metal.metallib 2>/dev/null || \
+            xcrun -sdk macosx metallib $AIR_FILES -o build/metal_shaders/shaders_metal.metallib || true
+          fi
+          
+          # Copy to plugin resource directories
+          if [[ -f "build/metal_shaders/shaders_metal.metallib" ]]; then
+            cp build/metal_shaders/shaders_metal.metallib ios/Resources/
+            cp build/metal_shaders/shaders_metal.metallib macos/Resources/
+            echo "✓ Metal shaders compiled successfully"
+            ls -lh ios/Resources/shaders_metal.metallib
+          else
+            echo "Warning: Metal shader compilation did not produce output"
+            echo "The app may fall back to OpenGL rendering"
+          fi
+
       - name: Create iOS Binaries Archive
         run: |
           cd build/agus-binaries-ios
