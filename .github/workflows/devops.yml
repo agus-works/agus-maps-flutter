@@ -306,6 +306,7 @@ jobs:
 
       - name: Prepare iOS Artifact
         run: |
+          mkdir -p artifacts
           cd example/build/ios/iphonesimulator
           zip -r ../../../../artifacts/agus-maps-ios-simulator.app.zip Runner.app
           ls -lh ../../../../artifacts/
@@ -342,6 +343,7 @@ jobs:
 
       - name: Prepare macOS Artifact
         run: |
+          mkdir -p artifacts
           cd example/build/macos/Build/Products/Release
           zip -r ../../../../../../artifacts/agus-maps-macos.app.zip agus_maps_flutter_example.app
           ls -lh ../../../../../../artifacts/
