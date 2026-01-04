@@ -107,82 +107,17 @@ if ($SkipPatches) {
 }
 
 if ($NoCache) {
-    Bootstrap-Full -RepoRoot $RepoRoot -Platform 'all' -NoCache
+    Bootstrap-Full -RepoRoot $RepoRoot -Platform 'all' -VcpkgRoot $VcpkgRoot -NoCache
 } else {
-    Bootstrap-Full -RepoRoot $RepoRoot -Platform 'all'
+    Bootstrap-Full -RepoRoot $RepoRoot -Platform 'all' -VcpkgRoot $VcpkgRoot
 }
 
 # ============================================================================
-# Step 2: Install vcpkg (Windows-specific)
+# Step 2: Vcpkg Setup (handled by Bootstrap-Full)
 # ============================================================================
 Write-Host ""
-Write-LogHeader "Step 2: Setting up vcpkg"
-
-$vcpkgExe = Join-Path $VcpkgRoot "vcpkg.exe"
-
-if (Test-Path $vcpkgExe) {
-    Write-LogInfo "vcpkg already installed at: $VcpkgRoot"
-} else {
-    Write-LogInfo "Installing vcpkg..."
-    
-    # Clone vcpkg
-    if (Test-Path $VcpkgRoot) {
-        Write-Host "Removing existing incomplete vcpkg installation..."
-        Remove-Item -Recurse -Force $VcpkgRoot
-    }
-    
-    git clone https://github.com/Microsoft/vcpkg.git $VcpkgRoot
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to clone vcpkg"
-        exit 1
-    }
-    
-    # Bootstrap vcpkg
-    Push-Location $VcpkgRoot
-    try {
-        & .\bootstrap-vcpkg.bat
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to bootstrap vcpkg"
-            exit 1
-        }
-    } finally {
-        Pop-Location
-    }
-    
-    Write-LogInfo "vcpkg installed successfully"
-}
-
-# ============================================================================
-# Step 3: Install vcpkg dependencies
-# ============================================================================
-Write-Host ""
-Write-LogHeader "Step 3: Installing vcpkg dependencies"
-
-# vcpkg.json exists in the repo, so vcpkg will run in manifest mode.
-$manifestPath = Join-Path $RepoRoot "vcpkg.json"
-if (Test-Path $manifestPath) {
-    Write-LogInfo "Installing dependencies from manifest (x64-windows)..."
-    Push-Location $RepoRoot
-    try {
-        & $vcpkgExe install --triplet x64-windows
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to install vcpkg dependencies from manifest"
-            exit 1
-        }
-    } finally {
-        Pop-Location
-    }
-} else {
-    # Fallback for classic mode
-    Write-LogInfo "Installing zlib:x64-windows (classic mode)..."
-    & $vcpkgExe install zlib:x64-windows
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to install zlib"
-        exit 1
-    }
-}
-
-Write-LogInfo "Dependencies installed successfully"
+Write-LogHeader "Step 2: Vcpkg Setup"
+Write-LogInfo "Vcpkg setup and dependency installation is handled by Bootstrap-Full"
 
 # ============================================================================
 # Step 4: Set environment variables
@@ -190,9 +125,10 @@ Write-LogInfo "Dependencies installed successfully"
 Write-Host ""
 Write-LogHeader "Step 4: Setting environment variables"
 
-# Set VCPKG_ROOT for current session
-$env:VCPKG_ROOT = $VcpkgRoot
-Write-LogInfo "Set VCPKG_ROOT=$VcpkgRoot (current session)"
+# VCPKG_ROOT is set for current session by Bootstrap-Full -> Bootstrap-Vcpkg
+# We just need to handle permanent user persistence if requested for interactive sessions.
+
+Write-LogInfo "VCPKG_ROOT is currently set to: $env:VCPKG_ROOT"
 
 # Check if running interactively
 $isInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected

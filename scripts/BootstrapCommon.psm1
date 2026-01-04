@@ -617,6 +617,7 @@ function Bootstrap-Full {
         [string]$RepoRoot,
         [ValidateSet('all', 'windows', 'android')]
         [string]$Platform = 'all',
+        [string]$VcpkgRoot = "C:\vcpkg",
         [switch]$NoCache
     )
 
@@ -673,7 +674,91 @@ function Bootstrap-Full {
         Bootstrap-AndroidAssets -RepoRoot $RepoRoot
     }
     
+    if ($Platform -eq 'windows' -or $Platform -eq 'all') {
+        Bootstrap-Vcpkg -RepoRoot $RepoRoot -VcpkgRoot $VcpkgRoot
+    }
+    
     Write-LogHeader "Bootstrap Complete!"
+}
+
+# ============================================================================
+# Bootstrap-Vcpkg - Install vcpkg and dependencies
+# ============================================================================
+
+function Bootstrap-Vcpkg {
+    [CmdletBinding()]
+    param(
+        [string]$RepoRoot,
+        [string]$VcpkgRoot = "C:\vcpkg"
+    )
+
+    Write-LogHeader "Setting up vcpkg"
+    
+    $vcpkgExe = Join-Path $VcpkgRoot "vcpkg.exe"
+    
+    # 1. Install/Bootstrap vcpkg
+    if (Test-Path $vcpkgExe) {
+        Write-LogInfo "vcpkg already installed at: $VcpkgRoot"
+    } else {
+        Write-LogInfo "Installing vcpkg..."
+        
+        # Clone vcpkg
+        if (Test-Path $VcpkgRoot) {
+            Write-Host "Removing existing incomplete vcpkg installation..."
+            Remove-Item -Recurse -Force $VcpkgRoot
+        }
+        
+        git clone https://github.com/Microsoft/vcpkg.git $VcpkgRoot
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to clone vcpkg"
+        }
+        
+        # Bootstrap vcpkg
+        Push-Location $VcpkgRoot
+        try {
+            & .\bootstrap-vcpkg.bat
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to bootstrap vcpkg"
+            }
+        } finally {
+            Pop-Location
+        }
+        
+        Write-LogInfo "vcpkg installed successfully"
+    }
+    
+    # 2. Install dependencies
+    Write-LogHeader "Installing vcpkg dependencies"
+    
+    # vcpkg.json exists in the repo, so vcpkg will run in manifest mode.
+    $manifestPath = Join-Path $RepoRoot "vcpkg.json"
+    if (Test-Path $manifestPath) {
+        Write-LogInfo "Installing dependencies from manifest (x64-windows)..."
+        Push-Location $RepoRoot
+        try {
+            & $vcpkgExe install --triplet x64-windows
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to install vcpkg dependencies from manifest"
+            }
+        } finally {
+            Pop-Location
+        }
+    } else {
+        # Fallback for classic mode
+        Write-LogInfo "Installing zlib:x64-windows (classic mode)..."
+        & $vcpkgExe install zlib:x64-windows
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to install zlib"
+        }
+    }
+    
+    Write-LogInfo "Dependencies installed successfully"
+    
+    # 3. Set environment variable for current session
+    $env:VCPKG_ROOT = $VcpkgRoot
+    Write-LogInfo "Set VCPKG_ROOT=$VcpkgRoot (current session)"
+    
+    return $VcpkgRoot
 }
 
 # Export functions
@@ -691,5 +776,6 @@ Export-ModuleMember -Function @(
     'Bootstrap-Boost',
     'Bootstrap-Data',
     'Bootstrap-AndroidAssets',
+    'Bootstrap-Vcpkg',
     'Bootstrap-Full'
 )
