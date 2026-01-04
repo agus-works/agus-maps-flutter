@@ -101,3 +101,8 @@ example/build_log*.txt
 example/build_output.txt
 output.log
 
+# Python virtual environment (created by build_all.sh)
+.venv/
+
+# Thirdparty cache archives with version tags
+.thirdparty-*.tar.bz2
