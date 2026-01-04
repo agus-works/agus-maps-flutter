@@ -124,7 +124,9 @@ jobs:
 
       - name: Install Build Dependencies
         run: |
-          brew install ninja || true
+          brew install ninja cmake || true
+          # Verify CMake version
+          cmake --version
           # macOS 14 uses PEP 668 externally-managed Python, use venv
           python3 -m venv $HOME/.protobuf-venv
           source $HOME/.protobuf-venv/bin/activate
@@ -495,6 +497,20 @@ jobs:
           Write-Host "✓ Cache uploaded successfully (${cacheSize} MB)"
         shell: pwsh
 
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+
+      - name: Verify CMake Installation
+        run: |
+          Write-Host "CMake version:"
+          cmake --version
+          Write-Host "Ninja version:"
+          ninja --version
+        shell: pwsh
+
       - name: Cache vcpkg
         uses: actions/cache@v4
         with:
@@ -772,10 +788,50 @@ jobs:
 
       - name: Install Android NDK and CMake
         run: |
+          Write-Host "Installing Android NDK ${{ env.NDK_VERSION }} and CMake ${{ env.CMAKE_VERSION }}..."
           echo "y" | sdkmanager --licenses > $null
           sdkmanager "ndk;${{ env.NDK_VERSION }}" "cmake;${{ env.CMAKE_VERSION }}"
-          echo "ANDROID_NDK_HOME=$env:ANDROID_HOME\ndk\${{ env.NDK_VERSION }}" >> $env:GITHUB_ENV
-          echo "NDK_HOME=$env:ANDROID_HOME\ndk\${{ env.NDK_VERSION }}" >> $env:GITHUB_ENV
+          
+          # Set environment variables
+          $ndkPath = "$env:ANDROID_HOME\ndk\${{ env.NDK_VERSION }}"
+          $cmakePath = "$env:ANDROID_HOME\cmake\${{ env.CMAKE_VERSION }}\bin"
+          
+          echo "ANDROID_NDK_HOME=$ndkPath" >> $env:GITHUB_ENV
+          echo "NDK_HOME=$ndkPath" >> $env:GITHUB_ENV
+          echo "$cmakePath" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Verify Android Build Tools
+        run: |
+          Write-Host "=== Android SDK Location ==="
+          Write-Host "ANDROID_HOME: $env:ANDROID_HOME"
+          Write-Host "ANDROID_NDK_HOME: $env:ANDROID_NDK_HOME"
+          
+          Write-Host "`n=== NDK Version ==="
+          $ndkSourceProps = "$env:ANDROID_HOME\ndk\${{ env.NDK_VERSION }}\source.properties"
+          if (Test-Path $ndkSourceProps) {
+            Get-Content $ndkSourceProps | Select-String "Pkg.Revision"
+          } else {
+            Write-Error "NDK not found at expected path!"
+            exit 1
+          }
+          
+          Write-Host "`n=== CMake Version ==="
+          $cmakeExe = "$env:ANDROID_HOME\cmake\${{ env.CMAKE_VERSION }}\bin\cmake.exe"
+          if (Test-Path $cmakeExe) {
+            & $cmakeExe --version
+          } else {
+            Write-Error "CMake not found at expected path!"
+            exit 1
+          }
+          
+          Write-Host "`n=== Ninja Version ==="
+          $ninjaExe = "$env:ANDROID_HOME\cmake\${{ env.CMAKE_VERSION }}\bin\ninja.exe"
+          if (Test-Path $ninjaExe) {
+            & $ninjaExe --version
+          } else {
+            Write-Host "Ninja not bundled with CMake, will use system ninja if available"
+          }
         shell: pwsh
 
       - name: Setup Flutter
