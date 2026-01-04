@@ -19,8 +19,8 @@ jobs:
   build-and-release-mac-platforms:
     name: Build iOS and macOS
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
-    if: false
-    runs-on: macos-14-xlarge
+    if: true
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
@@ -818,6 +818,7 @@ jobs:
   release:
     name: Release
     needs: 
+      - build-and-release-mac-platforms
       - build-and-release-windows-platform
       - build-and-release-android-platform
     # Run even if some dependencies partially failed or were skipped
