@@ -817,7 +817,9 @@ jobs:
   # ==========================================================================
   release:
     name: Release
-    needs: [build-and-release-android-platform]
+    needs: 
+      - build-and-release-windows-platform
+      - build-and-release-android-platform
     # Run even if some dependencies partially failed or were skipped
     if: always()
     runs-on: ubuntu-latest
