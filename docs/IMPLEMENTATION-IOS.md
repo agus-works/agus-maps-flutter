@@ -349,7 +349,7 @@ s.vendored_frameworks = 'Frameworks/CoMaps.xcframework'
 
 | Plugin Version | CoMaps Tag | XCFramework Asset |
 |----------------|------------|-------------------|
-| 0.0.1 | v2025.12.28-2 | CoMaps.xcframework.zip |
+| 0.0.1 | v2025.12.11-2 | CoMaps.xcframework.zip |
 
 ---
 

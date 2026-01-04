@@ -45,7 +45,7 @@ set -euo pipefail
 #   --no-cache             Disable local cache (don't use/create .thirdparty.tar.bz2)
 #
 # Environment variables:
-#   COMAPS_TAG:      Git tag/commit to checkout (default: v2025.12.28-2)
+#   COMAPS_TAG:      Git tag/commit to checkout (default: v2025.12.11-2)
 #   SKIP_PATCHES:    Set to "true" to skip applying patches
 #   SKIP_BASE_MWMS:  Set to "true" to skip downloading base MWM samples
 #   NO_CACHE:        Set to "true" to disable caching (same as --no-cache)

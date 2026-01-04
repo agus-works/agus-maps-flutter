@@ -157,7 +157,7 @@ All CoMaps assets originate from the `thirdparty/comaps/data/` directory, which 
 
 This will:
 1. Clone the CoMaps repository to `thirdparty/comaps/`
-2. Checkout the version specified in `$COMAPS_TAG` (default: `v2025.12.28-2`)
+2. Checkout the version specified in `$COMAPS_TAG` (default: `v2025.12.11-2`)
 3. Initialize all git submodules recursively
 4. Apply patches from `patches/comaps/`
 
