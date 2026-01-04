@@ -117,28 +117,31 @@ function Find-AndroidSdk {
 function Find-CMake {
     param([string]$SdkPath)
     
-    # Try Android SDK CMake first
+    # IMPORTANT: Prefer system CMake (installed by workflow via lukka/get-cmake)
+    # over Android SDK's CMake. CMake 4.x in Android SDK enables C++20 module
+    # scanning by default, which causes "command line too long" errors on Windows
+    # due to hundreds of Boost include paths exceeding the 32KB limit.
+    $systemCmake = Get-Command cmake -ErrorAction SilentlyContinue
+    if ($systemCmake) {
+        return $systemCmake.Source
+    }
+    
+    # Fallback: Try specific version in Android SDK CMake
     $sdkCmakePath = Join-Path $SdkPath "cmake\3.31.10\bin\cmake.exe"
     if (Test-Path $sdkCmakePath) {
         return $sdkCmakePath
     }
     
-    # Try any version in SDK
+    # Fallback: Try any version in SDK (sorted ascending to prefer older/stable)
     $cmakeDir = Join-Path $SdkPath 'cmake'
     if (Test-Path $cmakeDir) {
-        $versions = Get-ChildItem -Path $cmakeDir -Directory | Sort-Object Name -Descending
+        $versions = Get-ChildItem -Path $cmakeDir -Directory | Sort-Object Name
         foreach ($ver in $versions) {
             $cmakePath = Join-Path $ver.FullName 'bin\cmake.exe'
             if (Test-Path $cmakePath) {
                 return $cmakePath
             }
         }
-    }
-    
-    # Try system CMake
-    $systemCmake = Get-Command cmake -ErrorAction SilentlyContinue
-    if ($systemCmake) {
-        return $systemCmake.Source
     }
     
     return $null
@@ -148,22 +151,23 @@ function Find-CMake {
 function Find-Ninja {
     param([string]$SdkPath)
     
-    # Try Android SDK CMake's ninja first
+    # Prefer system Ninja (installed by workflow via lukka/get-cmake)
+    # for consistency with CMake version
+    $systemNinja = Get-Command ninja -ErrorAction SilentlyContinue
+    if ($systemNinja) {
+        return $systemNinja.Source
+    }
+    
+    # Fallback: Try Android SDK CMake's ninja
     $cmakeDir = Join-Path $SdkPath 'cmake'
     if (Test-Path $cmakeDir) {
-        $versions = Get-ChildItem -Path $cmakeDir -Directory | Sort-Object Name -Descending
+        $versions = Get-ChildItem -Path $cmakeDir -Directory | Sort-Object Name
         foreach ($ver in $versions) {
             $ninjaPath = Join-Path $ver.FullName 'bin\ninja.exe'
             if (Test-Path $ninjaPath) {
                 return $ninjaPath
             }
         }
-    }
-    
-    # Try system Ninja
-    $systemNinja = Get-Command ninja -ErrorAction SilentlyContinue
-    if ($systemNinja) {
-        return $systemNinja.Source
     }
     
     return $null
