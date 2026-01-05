@@ -109,7 +109,7 @@ build_for_platform() {
         -DSKIP_PROTOBUF_CHECK=ON \
         -DWITH_SYSTEM_PROVIDED_3PARTY=OFF \
         -DCMAKE_C_FLAGS="-fembed-bitcode" \
-        -DCMAKE_CXX_FLAGS="-fembed-bitcode" \
+        -DCMAKE_CXX_FLAGS="-fembed-bitcode -std=c++23" \
         2>&1 | tee "$build_path/cmake_configure.log"
     
     cmake --build "$build_path" --config "$BUILD_TYPE" -j "$(sysctl -n hw.ncpu)" \
