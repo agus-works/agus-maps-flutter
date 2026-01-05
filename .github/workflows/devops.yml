@@ -189,13 +189,12 @@ jobs:
           # Find Metal shader sources
           SHADER_DIR="thirdparty/comaps/shaders/Metal"
           if [[ ! -d "$SHADER_DIR" ]]; then
-            # Try alternative location
+            echo "Default shader dir not found, searching..."
             SHADER_DIR=$(find thirdparty/comaps -type d -name "Metal" -path "*/shaders/*" 2>/dev/null | head -1)
           fi
           
           if [[ -z "$SHADER_DIR" || ! -d "$SHADER_DIR" ]]; then
-            echo "Metal shader directory not found, searching..."
-            find thirdparty/comaps -name "*.metal" 2>/dev/null | head -5
+            echo "Metal shader directory not found, trying to find .metal files..."
             SHADER_DIR=$(dirname "$(find thirdparty/comaps -name "*.metal" 2>/dev/null | head -1)")
           fi
           
@@ -210,8 +209,7 @@ jobs:
           METAL_FILES=$(find "$SHADER_DIR" -name "*.metal" 2>/dev/null)
           
           if [[ -z "$METAL_FILES" ]]; then
-            echo "Warning: No Metal shader files found. Creating placeholder..."
-            # Create a minimal placeholder shader
+            echo "No Metal shaders found. Creating placeholder..."
             cat > build/metal_shaders/placeholder.metal << 'EOF'
           #include <metal_stdlib>
           using namespace metal;
@@ -226,10 +224,9 @@ jobs:
           # Compile to AIR (intermediate) then to metallib
           AIR_FILES=""
           for metal_file in $METAL_FILES; do
-            base_name=$(basename "$metal_file" .metal)
-            air_file="build/metal_shaders/${base_name}.air"
+            air_file="build/metal_shaders/$(basename "$metal_file" .metal).air"
             xcrun -sdk iphoneos metal -c "$metal_file" -o "$air_file" 2>/dev/null || \
-            xcrun -sdk macosx metal -c "$metal_file" -o "$air_file" || true
+            xcrun -sdk macosx metal -c "$metal_file" -o "$air_file" 2>/dev/null || true
             if [[ -f "$air_file" ]]; then
               AIR_FILES="$AIR_FILES $air_file"
             fi
@@ -237,7 +234,7 @@ jobs:
           
           # Link into metallib
           if [[ -n "$AIR_FILES" ]]; then
-            xcrun -sdk iphoneos metallib $AIR_FILES -o build/metal_shaders/shaders_metal.metallib 2>/dev/null || \
+            xcrun -sdk iphoneos metallib $AIR_FILES -o build/metal_shaders/shaders_metal.metallib || true
             xcrun -sdk macosx metallib $AIR_FILES -o build/metal_shaders/shaders_metal.metallib || true
           fi
           
@@ -248,7 +245,7 @@ jobs:
             echo "✓ Metal shaders compiled successfully"
             ls -lh ios/Resources/shaders_metal.metallib
           else
-            echo "Warning: Metal shader compilation did not produce output"
+            echo "⚠ Metal shader compilation skipped or failed"
             echo "The app may fall back to OpenGL rendering"
           fi
 
@@ -366,7 +363,314 @@ jobs:
           path: artifacts/agus-maps-macos.app.zip
 
   # ==========================================================================
-  # Windows Job: Builds Windows
+  # macOS Job: Builds Android (separate job due to disk space constraints)
+  # NOTE: Android builds on macOS to avoid Windows command-line length limits
+  # ==========================================================================
+  build-and-release-android-platform:
+    name: Build Android
+    # Toggle: set to 'true' to run Android, 'false' to skip (saves cost)
+    if: true
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      # ======================================================================
+      # Setup
+      # ======================================================================
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # ======================================================================
+      # CoMaps Source Cache (Azure Blob Storage) - uses same mac cache
+      # ======================================================================
+      - name: Check CoMaps Cache
+        id: comaps-cache
+        run: |
+          # Parse Azure SAS URL into base URL and token
+          AZ_URL="${{ secrets.AZ_URL }}"
+          BASE_URL="${AZ_URL%%\?*}"
+          SAS_TOKEN="${AZ_URL#*\?}"
+          CACHE_FILE="agus/agus-comaps-mac-${{ env.COMAPS_TAG }}.tar.gz"
+          CACHE_URL="${BASE_URL}/${CACHE_FILE}?${SAS_TOKEN}"
+          
+          echo "Checking for cache: ${BASE_URL}/${CACHE_FILE}"
+          if curl -sf --head "$CACHE_URL" > /dev/null 2>&1; then
+            echo "✓ Cache found!"
+            echo "cache-hit=true" >> $GITHUB_OUTPUT
+          else
+            echo "✗ Cache not found, will clone from git"
+            echo "cache-hit=false" >> $GITHUB_OUTPUT
+          fi
+          echo "cache-url=$CACHE_URL" >> $GITHUB_OUTPUT
+
+      - name: Download CoMaps from Cache
+        if: steps.comaps-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "Downloading CoMaps from Azure Blob Storage cache..."
+          mkdir -p thirdparty
+          curl -fL "${{ steps.comaps-cache.outputs.cache-url }}" | tar -xz -C thirdparty
+          
+          echo "=== Verifying Cache Extraction ==="
+          ls -F thirdparty/comaps | head -10
+          
+          if [ ! -d "thirdparty/comaps/.git" ]; then
+            echo "CRITICAL: .git directory not found in thirdparty/comaps!"
+            exit 1
+          fi
+          
+          cd thirdparty/comaps
+          echo "Current HEAD: $(git rev-parse HEAD)"
+          echo "Expected Tag: ${{ env.COMAPS_TAG }}"
+          cd ../..
+          
+          echo "✓ CoMaps restored from cache ($(du -sh thirdparty/comaps | cut -f1))"
+
+      - name: Clone CoMaps (Cache Miss)
+        id: clone-comaps
+        if: steps.comaps-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
+          mkdir -p thirdparty
+          git clone https://github.com/comaps/comaps.git thirdparty/comaps
+          cd thirdparty/comaps
+          git fetch --tags --prune
+          git checkout --detach ${{ env.COMAPS_TAG }}
+          git submodule update --init --recursive
+          cd ../..
+          echo "✓ Clone complete ($(du -sh thirdparty/comaps | cut -f1))"
+          echo "cloned=true" >> $GITHUB_OUTPUT
+
+      - name: Upload CoMaps to Cache
+        if: steps.clone-comaps.outputs.cloned == 'true'
+        run: |
+          echo "Uploading pristine CoMaps to Azure Blob Storage cache..."
+          
+          # Install azcopy
+          echo "Installing azcopy..."
+          curl -fsSL https://aka.ms/downloadazcopy-v10-mac -o /tmp/azcopy.zip
+          unzip -q /tmp/azcopy.zip -d /tmp/azcopy
+          AZCOPY=$(find /tmp/azcopy -name 'azcopy' -type f | head -1)
+          chmod +x "$AZCOPY"
+          
+          # Compress
+          if command -v pigz &> /dev/null; then
+            tar -c -C thirdparty comaps | pigz -1 > /tmp/comaps-cache.tar.gz
+          else
+            tar -cz -C thirdparty comaps > /tmp/comaps-cache.tar.gz
+          fi
+          CACHE_SIZE=$(du -h /tmp/comaps-cache.tar.gz | cut -f1)
+          echo "Cache archive size: $CACHE_SIZE"
+          
+          # Upload
+          "$AZCOPY" copy /tmp/comaps-cache.tar.gz "${{ steps.comaps-cache.outputs.cache-url }}" \
+            --blob-type BlockBlob \
+            --overwrite=true
+          
+          rm /tmp/comaps-cache.tar.gz
+          echo "✓ Cache uploaded successfully ($CACHE_SIZE)"
+
+      # ======================================================================
+      # Android SDK/NDK Setup
+      # ======================================================================
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          echo "Installing Android NDK ${{ env.NDK_VERSION }}..."
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "ndk;${{ env.NDK_VERSION }}"
+          
+          # Set environment variables
+          NDK_PATH="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
+          
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          
+          echo "✓ NDK installed at: $NDK_PATH"
+
+      - name: Verify Android Build Tools
+        run: |
+          echo "=== Android SDK Location ==="
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+          
+          echo ""
+          echo "=== NDK Version ==="
+          NDK_PROPS="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}/source.properties"
+          if [ -f "$NDK_PROPS" ]; then
+            grep "Pkg.Revision" "$NDK_PROPS"
+          else
+            echo "ERROR: NDK not found at expected path!"
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== CMake from NDK ==="
+          # Use CMake bundled with Android SDK
+          CMAKE_PATH=$(find "$ANDROID_HOME/cmake" -name "cmake" -type f 2>/dev/null | head -1)
+          if [ -n "$CMAKE_PATH" ]; then
+            "$CMAKE_PATH" --version
+          else
+            echo "CMake not found in Android SDK, will use system cmake"
+            cmake --version || echo "No system cmake either"
+          fi
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+
+      - name: Install Build Dependencies
+        run: |
+          brew install ninja || true
+          # Verify CMake and Ninja versions
+          echo "CMake version:"
+          cmake --version
+          echo "Ninja version:"
+          ninja --version
+          # Python venv for protobuf (optional for Android but keeps consistency)
+          python3 -m venv $HOME/.protobuf-venv
+          source $HOME/.protobuf-venv/bin/activate
+          pip install --upgrade pip
+          pip install 'protobuf<4.0'
+          echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      # ======================================================================
+      # Bootstrap CoMaps (Android-focused)
+      # ======================================================================
+      - name: Bootstrap CoMaps
+        run: |
+          chmod +x scripts/bootstrap.sh
+          # Bootstrap prepares patches, boost headers, and data files
+          ./scripts/bootstrap.sh --no-cache
+
+      # ======================================================================
+      # Build Android Native Libraries
+      # ======================================================================
+      - name: Build Android Native Libraries
+        run: |
+          echo "Building Android native libraries on macOS..."
+          chmod +x scripts/build_binaries_android.sh
+          ./scripts/build_binaries_android.sh
+          
+          echo "=== Build Output ==="
+          ls -la build/agus-binaries-android/
+
+      - name: Create Android Binaries Archive
+        run: |
+          cd build/agus-binaries-android
+          zip -r ../agus-binaries-android.zip .
+          ls -lh ../agus-binaries-android.zip
+
+      - name: Upload Android Binaries Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-binaries-android
+          path: build/agus-binaries-android.zip
+
+      # ======================================================================
+      # Build Android Example App
+      # ======================================================================
+      - name: Setup Android Pre-built Binaries
+        run: |
+          mkdir -p android/prebuilt
+          cp -R build/agus-binaries-android/* android/prebuilt/
+          echo "=== Prebuilt Structure ==="
+          ls -la android/prebuilt/
+
+      - name: Get Flutter Dependencies
+        run: |
+          flutter pub get
+          cd example
+          flutter pub get
+
+      - name: Download Base MWM Files
+        run: |
+          # Download base MWM files required for the example app
+          ASSETS_DIR="example/assets/maps"
+          mkdir -p "$ASSETS_DIR"
+          
+          # Mirror and snapshot
+          MIRROR="https://omaps.wfr.software/maps/"
+          
+          # Fetch latest snapshot version from mirror listing
+          SNAPSHOT=$(curl -s "$MIRROR" | grep -oE 'href="[0-9]{6}/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
+          echo "Using snapshot: $SNAPSHOT"
+          
+          # Base MWM files to download
+          FILES="World.mwm WorldCoasts.mwm Gibraltar.mwm"
+          
+          for file in $FILES; do
+            URL="${MIRROR}${SNAPSHOT}/${file}"
+            OUTPUT="$ASSETS_DIR/$file"
+            echo "Downloading: $URL"
+            curl -fL "$URL" -o "$OUTPUT"
+            SIZE=$(du -h "$OUTPUT" | cut -f1)
+            echo "  -> $OUTPUT ($SIZE)"
+          done
+          
+          # Copy ICU data file from CoMaps (required for internationalization)
+          ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
+          ICU_DEST="$ASSETS_DIR/icudt75l.dat"
+          if [ -f "$ICU_SOURCE" ]; then
+            cp "$ICU_SOURCE" "$ICU_DEST"
+            SIZE=$(du -h "$ICU_DEST" | cut -f1)
+            echo "Copied ICU data: $ICU_DEST ($SIZE)"
+          else
+            echo "ERROR: ICU data file not found: $ICU_SOURCE"
+            exit 1
+          fi
+          
+          echo "=== Assets Directory ==="
+          ls -la "$ASSETS_DIR"
+
+      - name: Build Android App Bundle (AAB)
+        run: |
+          cd example
+          flutter build appbundle --release \
+            --build-name=1.0.0 \
+            --build-number=${{ github.run_number }}
+
+      - name: Build Android APK
+        run: |
+          cd example
+          flutter build apk --release \
+            --build-name=1.0.0 \
+            --build-number=${{ github.run_number }}
+
+      - name: Prepare Android Artifacts
+        run: |
+          mkdir -p artifacts
+          cp example/build/app/outputs/bundle/release/app-release.aab artifacts/agus-maps-android.aab
+          cp example/build/app/outputs/flutter-apk/app-release.apk artifacts/agus-maps-android.apk
+          echo "=== Android Artifacts ==="
+          ls -lh artifacts/
+
+      - name: Upload Android App Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-maps-android
+          path: artifacts/*
+
+  # ==========================================================================
+  # Windows Job: Builds Windows only
   # ==========================================================================
   build-and-release-windows-platform:
     name: Build Windows
@@ -428,7 +732,7 @@ jobs:
           $items | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.Name)" }
           
           if (-not (Test-Path "thirdparty\comaps\.git")) {
-             Write-Error "CRITICAL: .git directory not found in thirdparty\comaps! Extraction likely failed or structure is wrong."
+             Write-Error "CRITICAL: .git directory not found in thirdparty\comaps!"
              exit 1
           }
           
@@ -436,10 +740,7 @@ jobs:
           try {
              $head = git rev-parse HEAD
              Write-Host "Current HEAD: $head"
-             
-             # Also verify against expected tag (if possible to resolve)
-             $tag = "${{ env.COMAPS_TAG }}"
-             Write-Host "Expected Tag: $tag"
+             Write-Host "Expected Tag: ${{ env.COMAPS_TAG }}"
           }
           catch {
              Write-Error "Failed to verify git status"
@@ -447,8 +748,6 @@ jobs:
           finally {
              Pop-Location
           }
-          
-          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
           
           $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
           Write-Host "✓ CoMaps restored from cache (${size} GB)"
@@ -460,7 +759,6 @@ jobs:
         run: |
           Write-Host "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
           New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
-          # Clone from comaps/comaps repository (not organicmaps)
           git clone https://github.com/comaps/comaps.git thirdparty/comaps
           Push-Location thirdparty/comaps
           git fetch --tags --prune
@@ -478,17 +776,15 @@ jobs:
         run: |
           Write-Host "Uploading pristine CoMaps to Azure Blob Storage cache..."
           
-          # Verify required tools are available
           if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
-            Write-Error "7z not found! Expected to be pre-installed on Windows runners."
+            Write-Error "7z not found!"
             exit 1
           }
           if (-not (Get-Command azcopy -ErrorAction SilentlyContinue)) {
-            Write-Error "azcopy not found! Expected to be pre-installed on Windows runners."
+            Write-Error "azcopy not found!"
             exit 1
           }
           
-          # Use 7zip for faster compression (pre-installed on Windows runners)
           $tempZip = "$env:TEMP\comaps-cache.zip"
           Write-Host "Compressing with 7zip (fast mode)..."
           & 7z a -tzip -mx=1 -mmt=on $tempZip .\thirdparty\comaps\* | Out-Null
@@ -496,8 +792,6 @@ jobs:
           $cacheSize = "{0:N2}" -f ((Get-Item $tempZip).Length / 1MB)
           Write-Host "Cache archive size: ${cacheSize} MB"
           
-          # Use azcopy for large file uploads (pre-installed on Windows runners)
-          # Handles chunked transfer for multi-GB files
           $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
           Write-Host "Uploading with azcopy (chunked transfer)..."
           azcopy copy $tempZip $cacheUrl --blob-type BlockBlob --overwrite=true
@@ -534,7 +828,6 @@ jobs:
             git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
             C:\vcpkg\bootstrap-vcpkg.bat
           }
-          # Install zlib for Windows build (--classic bypasses manifest mode)
           C:\vcpkg\vcpkg.exe install zlib:x64-windows --classic
           echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
         shell: pwsh
@@ -588,20 +881,15 @@ jobs:
 
       - name: Download Base MWM Files
         run: |
-          # Download base MWM files required for the example app
           $assetsDir = "example\assets\maps"
           New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
           
-          # Mirror and snapshot
           $mirror = "https://omaps.wfr.software/maps/"
-          
-          # Fetch latest snapshot version from mirror listing
           $html = Invoke-WebRequest -Uri $mirror -UseBasicParsing
           $snapshots = [regex]::Matches($html.Content, 'href="\.?/?([0-9]{6})/"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Descending
           $snapshot = $snapshots[0]
           Write-Host "Using snapshot: $snapshot"
           
-          # Base MWM files to download
           $files = @("World.mwm", "WorldCoasts.mwm", "Gibraltar.mwm")
           
           foreach ($file in $files) {
@@ -612,12 +900,11 @@ jobs:
             Write-Host "  -> $output ($('{0:N2}' -f ((Get-Item $output).Length / 1MB)) MB)"
           }
           
-          # Copy ICU data file from CoMaps (required for internationalization)
           $icuSource = "thirdparty\comaps\data\icudt75l.dat"
           $icuDest = Join-Path $assetsDir "icudt75l.dat"
           if (Test-Path $icuSource) {
             Copy-Item -Path $icuSource -Destination $icuDest
-            Write-Host "Copied ICU data: $icuDest ($('{0:N2}' -f ((Get-Item $icuDest).Length / 1MB)) MB)"
+            Write-Host "Copied ICU data: $icuDest"
           } else {
             Write-Error "ICU data file not found: $icuSource"
             exit 1
@@ -647,317 +934,6 @@ jobs:
         with:
           name: agus-maps-windows
           path: artifacts/agus-maps-windows.zip
-
-  # ==========================================================================
-  # Android Job: Builds Android (runs on Windows Host)
-  # ==========================================================================
-  build-and-release-android-platform:
-    name: Build Android
-    if: true
-    runs-on: windows-latest
-    permissions:
-      contents: write
-    steps:
-      # ======================================================================
-      # Setup
-      # ======================================================================
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      # ======================================================================
-      # CoMaps Source Cache (Shared with Windows Job)
-      # ======================================================================
-      - name: Check CoMaps Cache
-        id: comaps-cache
-        run: |
-          # Parse Azure SAS URL into base URL and token
-          $azUrl = "${{ secrets.AZ_URL }}"
-          $baseUrl = $azUrl -replace '\?.*$', ''
-          $sasToken = $azUrl -replace '^[^?]*\?', ''
-          $cacheFile = "agus/agus-comaps-win-${{ env.COMAPS_TAG }}.zip"
-          $cacheUrl = "${baseUrl}/${cacheFile}?${sasToken}"
-          
-          Write-Host "Checking for cache: ${baseUrl}/${cacheFile}"
-          try {
-            $response = Invoke-WebRequest -Uri $cacheUrl -Method Head -UseBasicParsing -ErrorAction Stop
-            Write-Host "✓ Cache found!"
-            "cache-hit=true" >> $env:GITHUB_OUTPUT
-          } catch {
-            Write-Host "✗ Cache not found, will clone from git"
-            "cache-hit=false" >> $env:GITHUB_OUTPUT
-          }
-          "cache-url=$cacheUrl" >> $env:GITHUB_OUTPUT
-        shell: pwsh
-
-      - name: Download CoMaps from Cache
-        if: steps.comaps-cache.outputs.cache-hit == 'true'
-        run: |
-          Write-Host "Downloading CoMaps from Azure Blob Storage cache..."
-          New-Item -ItemType Directory -Force -Path thirdparty\comaps | Out-Null
-          $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
-          $tempZip = "$env:TEMP\comaps-cache.zip"
-          
-          Invoke-WebRequest -Uri $cacheUrl -OutFile $tempZip -UseBasicParsing
-          Expand-Archive -Path $tempZip -DestinationPath thirdparty\comaps -Force
-          Remove-Item $tempZip
-          
-          Write-Host "=== Verifying Cache Extraction ==="
-          $items = Get-ChildItem -Path thirdparty\comaps -Force
-          Write-Host "Found $($items.Count) items in thirdparty\comaps"
-          $items | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.Name)" }
-          
-          if (-not (Test-Path "thirdparty\comaps\.git")) {
-             Write-Error "CRITICAL: .git directory not found in thirdparty\comaps! Extraction likely failed or structure is wrong."
-             exit 1
-          }
-          
-          Push-Location thirdparty/comaps
-          try {
-             $head = git rev-parse HEAD
-             Write-Host "Current HEAD: $head"
-             
-             # Also verify against expected tag (if possible to resolve)
-             # Note: fetching might be needed if tag isn't local, but cache should have it.
-             # We just report for now to avoid network ops if possible, 
-             # but user asked to confirm proper tag is checked out.
-             
-             $tag = "${{ env.COMAPS_TAG }}"
-             Write-Host "Expected Tag: $tag"
-          }
-          catch {
-             Write-Error "Failed to verify git status"
-          }
-          finally {
-             Pop-Location
-          }
-          
-          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
-          Write-Host "✓ CoMaps restored from cache (${size} GB)"
-        shell: pwsh
-
-      - name: Clone CoMaps (Cache Miss)
-        id: clone-comaps
-        if: steps.comaps-cache.outputs.cache-hit != 'true'
-        run: |
-          Write-Host "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
-          New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
-          # Clone from comaps/comaps repository (not organicmaps)
-          git clone https://github.com/comaps/comaps.git thirdparty/comaps
-          Push-Location thirdparty/comaps
-          git fetch --tags --prune
-          git checkout --detach ${{ env.COMAPS_TAG }}
-          git submodule update --init --recursive
-          Pop-Location
-          
-          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
-          Write-Host "✓ Clone complete (${size} GB)"
-          "cloned=true" >> $env:GITHUB_OUTPUT
-        shell: pwsh
-
-      - name: Upload CoMaps to Cache
-        if: steps.clone-comaps.outputs.cloned == 'true'
-        run: |
-          Write-Host "Uploading pristine CoMaps to Azure Blob Storage cache..."
-          
-          if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
-            Write-Error "7z not found! Expected to be pre-installed on Windows runners."
-            exit 1
-          }
-          if (-not (Get-Command azcopy -ErrorAction SilentlyContinue)) {
-            Write-Error "azcopy not found! Expected to be pre-installed on Windows runners."
-            exit 1
-          }
-          
-          $tempZip = "$env:TEMP\comaps-cache.zip"
-          Write-Host "Compressing with 7zip (fast mode)..."
-          & 7z a -tzip -mx=1 -mmt=on $tempZip .\thirdparty\comaps\* | Out-Null
-          
-          $cacheSize = "{0:N2}" -f ((Get-Item $tempZip).Length / 1MB)
-          Write-Host "Cache archive size: ${cacheSize} MB"
-          
-          $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
-          Write-Host "Uploading with azcopy (chunked transfer)..."
-          azcopy copy $tempZip $cacheUrl --blob-type BlockBlob --overwrite=true
-          
-          Remove-Item $tempZip
-          Write-Host "✓ Cache uploaded successfully (${cacheSize} MB)"
-        shell: pwsh
-
-      - name: Setup CMake
-        uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: latest
-
-      - name: Verify CMake Installation
-        run: |
-          Write-Host "CMake version:"
-          cmake --version
-          Write-Host "Ninja version:"
-          ninja --version
-        shell: pwsh
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android NDK
-        run: |
-          Write-Host "Installing Android NDK ${{ env.NDK_VERSION }}..."
-          echo "y" | sdkmanager --licenses > $null
-          sdkmanager "ndk;${{ env.NDK_VERSION }}"
-          
-          # Set environment variables
-          $ndkPath = "$env:ANDROID_HOME\ndk\${{ env.NDK_VERSION }}"
-          
-          echo "ANDROID_NDK_HOME=$ndkPath" >> $env:GITHUB_ENV
-          echo "NDK_HOME=$ndkPath" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      - name: Verify Android Build Tools
-        run: |
-          Write-Host "=== Android SDK Location ==="
-          Write-Host "ANDROID_HOME: $env:ANDROID_HOME"
-          Write-Host "ANDROID_NDK_HOME: $env:ANDROID_NDK_HOME"
-          
-          Write-Host "`n=== NDK Version ==="
-          $ndkSourceProps = "$env:ANDROID_HOME\ndk\${{ env.NDK_VERSION }}\source.properties"
-          if (Test-Path $ndkSourceProps) {
-            Get-Content $ndkSourceProps | Select-String "Pkg.Revision"
-          } else {
-            Write-Error "NDK not found at expected path!"
-            exit 1
-          }
-          
-          Write-Host "`n=== CMake Version (from lukka/get-cmake) ==="
-          cmake --version
-          
-          Write-Host "`n=== Ninja Version (from lukka/get-cmake) ==="
-          ninja --version
-        shell: pwsh
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
-
-      # ======================================================================
-      # Bootstrap CoMaps
-      # ======================================================================
-      - name: Bootstrap CoMaps
-        run: |
-          .\scripts\bootstrap.ps1 -NoCache
-        shell: pwsh
-
-      # ======================================================================
-      # Build Android Native Libraries
-      # ======================================================================
-      - name: Build Android Native Libraries
-        run: |
-          # Remove Strawberry Perl from PATH to prevent ccache conflicts
-          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
-          .\scripts\build_binaries_android.ps1
-          Get-ChildItem -Path build\agus-binaries-android\ -Recurse
-        shell: pwsh
-
-      - name: Upload Android Binaries Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-binaries-android
-          path: build/agus-binaries-android.zip
-
-      # ======================================================================
-      # Build Android Example App
-      # ======================================================================
-      - name: Setup Android Pre-built Binaries
-        run: |
-          New-Item -ItemType Directory -Force -Path android\prebuilt | Out-Null
-          Get-ChildItem -Path build\agus-binaries-android\* | Copy-Item -Destination android\prebuilt\ -Force -Recurse
-          Get-ChildItem -Path android\prebuilt\ -Recurse
-        shell: pwsh
-
-      - name: Get Flutter Dependencies
-        run: |
-          flutter pub get
-          cd example
-          flutter pub get
-
-      - name: Download Base MWM Files (Required for Assets)
-        run: |
-          # Download base MWM files required for the example app assets
-          $assetsDir = "example\assets\maps"
-          New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
-          
-          # Mirror and snapshot
-          $mirror = "https://omaps.wfr.software/maps/"
-          
-          # Fetch latest snapshot version from mirror listing
-          $html = Invoke-WebRequest -Uri $mirror -UseBasicParsing
-          $snapshots = [regex]::Matches($html.Content, 'href="\.?/?([0-9]{6})/"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Descending
-          $snapshot = $snapshots[0]
-          Write-Host "Using snapshot: $snapshot"
-          
-          # Base MWM files to download
-          $files = @("World.mwm", "WorldCoasts.mwm", "Gibraltar.mwm")
-          
-          foreach ($file in $files) {
-            $url = "${mirror}${snapshot}/${file}"
-            $output = Join-Path $assetsDir $file
-            Write-Host "Downloading: $url"
-            Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing
-            Write-Host "  -> $output ($('{0:N2}' -f ((Get-Item $output).Length / 1MB)) MB)"
-          }
-          
-          # Copy ICU data file from CoMaps (required for internationalization)
-          $icuSource = "thirdparty\comaps\data\icudt75l.dat"
-          $icuDest = Join-Path $assetsDir "icudt75l.dat"
-          if (Test-Path $icuSource) {
-            Copy-Item -Path $icuSource -Destination $icuDest
-            Write-Host "Copied ICU data: $icuDest ($('{0:N2}' -f ((Get-Item $icuDest).Length / 1MB)) MB)"
-          } else {
-            Write-Error "ICU data file not found: $icuSource"
-            exit 1
-          }
-        shell: pwsh
-
-      - name: Build Android App Bundle (AAB)
-        run: |
-          cd example
-          flutter build appbundle --release `
-            --build-name=1.0.0 `
-            --build-number=${{ github.run_number }}
-        shell: pwsh
-
-      - name: Build Android APK
-        run: |
-          cd example
-          flutter build apk --release `
-            --build-name=1.0.0 `
-            --build-number=${{ github.run_number }}
-        shell: pwsh
-
-      - name: Prepare Android Artifacts
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Copy-Item -Path example\build\app\outputs\bundle\release\app-release.aab -Destination artifacts\agus-maps-android.aab
-          Copy-Item -Path example\build\app\outputs\flutter-apk\app-release.apk -Destination artifacts\agus-maps-android.apk
-          Get-ChildItem -Path artifacts\
-        shell: pwsh
-
-      - name: Upload Android App Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-maps-android
-          path: artifacts/*
 
   # ==========================================================================
   # Release Job: Aggregates artifacts from all jobs
