@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.31.10)
+cmake_minimum_required(VERSION 3.22.1)
 
 # Force CMake Re-run 2
 project(agus_maps_flutter_library LANGUAGES C CXX)
