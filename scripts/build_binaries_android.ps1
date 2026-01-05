@@ -127,7 +127,7 @@ function Find-CMake {
     }
     
     # Fallback: Try specific version in Android SDK CMake
-    $sdkCmakePath = Join-Path $SdkPath "cmake\3.22.1\bin\cmake.exe"
+    $sdkCmakePath = Join-Path $SdkPath "cmake\4.2.1\bin\cmake.exe"
     if (Test-Path $sdkCmakePath) {
         return $sdkCmakePath
     }
