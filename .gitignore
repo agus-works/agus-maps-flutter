@@ -106,3 +106,6 @@ output.log
 
 # Thirdparty cache archives with version tags
 .thirdparty-*.tar.bz2
+
+# Project Generated/Downloaded Assets
+*.mwm
