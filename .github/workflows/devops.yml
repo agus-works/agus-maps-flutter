@@ -611,7 +611,17 @@ jobs:
           MIRROR="https://omaps.wfr.software/maps/"
           
           # Fetch latest snapshot version from mirror listing
-          SNAPSHOT=$(curl -s "$MIRROR" | grep -oE 'href="[0-9]{6}/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
+          # Use perl for cross-platform regex compatibility (BSD vs GNU grep differences)
+          echo "Fetching directory listing from $MIRROR"
+          HTML=$(curl -s "$MIRROR")
+          SNAPSHOT=$(echo "$HTML" | perl -nle 'print $1 if /href="\.?\/?([0-9]{6})\/"/' | sort -r | head -1)
+          
+          if [ -z "$SNAPSHOT" ]; then
+            echo "ERROR: Could not determine snapshot version from mirror listing"
+            echo "HTML content preview:"
+            echo "$HTML" | head -50
+            exit 1
+          fi
           echo "Using snapshot: $SNAPSHOT"
           
           # Base MWM files to download
