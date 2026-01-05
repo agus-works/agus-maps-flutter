@@ -100,6 +100,7 @@ build_for_arch() {
         -DSKIP_PROTOBUF_CHECK=ON \
         -DWITH_SYSTEM_PROVIDED_3PARTY=OFF \
         -DCMAKE_CXX_FLAGS="-std=c++23" \
+        -DCMAKE_OBJCXX_FLAGS="-std=c++23" \
         2>&1 | tee "$build_path/cmake_configure.log"
     
     # Build only the 'map' target and its dependencies (not executables)
