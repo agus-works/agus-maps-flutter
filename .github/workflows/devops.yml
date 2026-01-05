@@ -601,55 +601,8 @@ jobs:
           cd example
           flutter pub get
 
-      - name: Download Base MWM Files
-        run: |
-          # Download base MWM files required for the example app
-          ASSETS_DIR="example/assets/maps"
-          mkdir -p "$ASSETS_DIR"
-          
-          # Mirror and snapshot
-          MIRROR="https://omaps.wfr.software/maps/"
-          
-          # Fetch latest snapshot version from mirror listing
-          # Use perl for cross-platform regex compatibility (BSD vs GNU grep differences)
-          echo "Fetching directory listing from $MIRROR"
-          HTML=$(curl -s "$MIRROR")
-          SNAPSHOT=$(echo "$HTML" | perl -nle 'print $1 if /href="\.?\/?([0-9]{6})\/"/' | sort -r | head -1)
-          
-          if [ -z "$SNAPSHOT" ]; then
-            echo "ERROR: Could not determine snapshot version from mirror listing"
-            echo "HTML content preview:"
-            echo "$HTML" | head -50
-            exit 1
-          fi
-          echo "Using snapshot: $SNAPSHOT"
-          
-          # Base MWM files to download
-          FILES="World.mwm WorldCoasts.mwm Gibraltar.mwm"
-          
-          for file in $FILES; do
-            URL="${MIRROR}${SNAPSHOT}/${file}"
-            OUTPUT="$ASSETS_DIR/$file"
-            echo "Downloading: $URL"
-            curl -fL "$URL" -o "$OUTPUT"
-            SIZE=$(du -h "$OUTPUT" | cut -f1)
-            echo "  -> $OUTPUT ($SIZE)"
-          done
-          
-          # Copy ICU data file from CoMaps (required for internationalization)
-          ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
-          ICU_DEST="$ASSETS_DIR/icudt75l.dat"
-          if [ -f "$ICU_SOURCE" ]; then
-            cp "$ICU_SOURCE" "$ICU_DEST"
-            SIZE=$(du -h "$ICU_DEST" | cut -f1)
-            echo "Copied ICU data: $ICU_DEST ($SIZE)"
-          else
-            echo "ERROR: ICU data file not found: $ICU_SOURCE"
-            exit 1
-          fi
-          
-          echo "=== Assets Directory ==="
-          ls -la "$ASSETS_DIR"
+      # NOTE: MWM files are downloaded during Bootstrap step via scripts/bootstrap.sh
+      # No separate download step needed - bootstrap handles ICU data and base MWM files
 
       - name: Build Android App Bundle (AAB)
         run: |
