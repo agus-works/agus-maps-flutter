@@ -63,6 +63,8 @@ dp::GraphicsContext* GetDrawContext();
 dp::GraphicsContext* GetResourcesUploadContext();
 uint32_t GetTextureId();
 bool CopyToPixelBuffer(uint8_t* buffer, int bufferSize);
+void SetSurfaceSize(int width, int height);  // Schedules deferred resize
+void CheckPendingResize();                   // Applies resize on render thread
 ```
 
 ### 2. Platform Implementation
@@ -168,6 +170,63 @@ static gboolean agus_map_texture_copy_pixels(FlPixelBufferTexture* texture,
 1. Implemented proper EGL context factory with FBO rendering
 2. Created DrapeEngine with proper surface dimensions and density
 3. Implemented `FlPixelBufferTexture` with pixel copy from native FBO
+
+### Issue 5: Window Resize Causes Map Rendering Corruption (Commit 32c5ced)
+
+**Symptom:** When resizing the Flutter app window on Linux, the map widget would become corrupted - appearing stretched, offset, or displaying incorrect rendering.
+
+**Root Cause:** EGL doesn't allow context stealing like WGL does on Windows.
+
+The original `SetSurfaceSize()` implementation attempted to:
+1. Call `eglMakeCurrent()` to acquire the draw context
+2. Perform GL operations to resize the framebuffer
+
+However, `eglMakeCurrent()` fails with `EGL_BAD_ACCESS` (0x3002) when the context is already current on another thread (the render thread). Unlike Windows WGL where `wglMakeCurrent()` can "steal" the context from another thread, EGL strictly enforces single-thread context ownership.
+
+**Error from logs:**
+```
+[CoMaps/ERROR] SetSurfaceSize: eglMakeCurrent failed: 12290
+```
+(12290 = 0x3002 = EGL_BAD_ACCESS)
+
+**Solution:** Implemented a **deferred resize pattern**:
+
+1. **`SetSurfaceSize()` (called from Flutter main thread):**
+   - Now only stores pending dimensions in atomic variables
+   - Does NOT attempt any GL operations
+   - Non-blocking, returns immediately
+
+2. **`CheckPendingResize()` (called from render thread in Present()):**
+   - Checks if a resize is pending
+   - If so, calls `ApplyPendingResize()`
+
+3. **`ApplyPendingResize()` (executes on render thread):**
+   - EGL context is already current (called from Present)
+   - Resizes texture in-place with `glTexImage2D()`
+   - Resizes depth buffer with `glRenderbufferStorage()`
+   - Re-attaches both to FBO with `glFramebufferTexture2D()`
+   - Updates viewport and scissor with `glViewport()` and `glScissor()`
+
+**Key difference from Windows:**
+
+| Platform | Context Behavior | Resize Approach |
+|----------|------------------|-----------------|
+| **Windows (WGL)** | `wglMakeCurrent()` can steal context | Immediate resize in `SetSurfaceSize()` |
+| **Linux (EGL)** | `eglMakeCurrent()` returns `EGL_BAD_ACCESS` | Deferred resize via atomic flags |
+
+**New methods added to `AgusEglContextFactory`:**
+
+| Method | Purpose |
+|--------|---------|
+| `CheckPendingResize()` | Called from `Present()`, checks and applies pending resize |
+| `ApplyPendingResize()` | Private method that performs actual GL resize operations |
+
+**New member variables:**
+```cpp
+std::atomic<bool> m_pendingResize{false};
+std::atomic<int> m_pendingWidth{0};
+std::atomic<int> m_pendingHeight{0};
+```
 
 ## Performance Characteristics
 
@@ -282,6 +341,37 @@ a full rebuild. CMake symlinks to plugin sources may not trigger rebuild detecti
 | **Frame Latency** | 2-5ms | 2-5ms | <0.5ms | <0.5ms |
 
 ## Changelog
+
+### 2026-01-06 (Session 4) - Window Resize Fix (Commit 32c5ced)
+
+- **Fixed**: Window resize causes map rendering corruption (stretched/offset display)
+  - Root cause: EGL doesn't allow context stealing like WGL does on Windows
+  - `eglMakeCurrent()` fails with `EGL_BAD_ACCESS` (0x3002) when context is current on render thread
+  - Solution: Implemented **deferred resize pattern** using atomic flags
+  
+- **Added**: `CheckPendingResize()` method in `AgusEglContextFactory`
+  - Called from `AgusEglContext::Present()` on the render thread
+  - Checks atomic `m_pendingResize` flag and applies resize if needed
+  
+- **Added**: `ApplyPendingResize()` private method in `AgusEglContextFactory`
+  - Resizes texture in-place with `glTexImage2D()` (no delete/recreate)
+  - Resizes depth buffer with `glRenderbufferStorage()`
+  - Re-attaches to FBO with `glFramebufferTexture2D()` and `glFramebufferRenderbuffer()`
+  - Updates viewport/scissor with `glViewport()` and `glScissor()`
+  
+- **Modified**: `SetSurfaceSize()` in `AgusEglContextFactory`
+  - Now only sets atomic pending resize state (non-blocking)
+  - No GL operations, no `eglMakeCurrent()` call
+  - Resize is deferred to render thread via `CheckPendingResize()`
+
+- **Modified**: `AgusEglContext::Present()` 
+  - Added call to `m_factory->CheckPendingResize()` before capturing pixels
+  - This is the only safe place to resize - on render thread where context is current
+
+- **Added**: Atomic member variables for deferred resize state:
+  - `std::atomic<bool> m_pendingResize`
+  - `std::atomic<int> m_pendingWidth`
+  - `std::atomic<int> m_pendingHeight`
 
 ### 2026-01-06 (Session 3) - Linux Now Fully Working! 🎉
 
