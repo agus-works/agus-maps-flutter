@@ -286,33 +286,34 @@ bootstrap_apply_patches() {
     
     if [[ -n "$target_file" ]] && [[ ! -e "$target_file" ]]; then
       log_warn "Skipping $patch_name (target file '$target_file' does not exist - possibly a submodule not initialized)"
-      ((skipped++))
+      ((++skipped)) || true
       continue
     fi
     
     log_info "Applying $patch_name"
     
     # Try direct apply first (fastest)
+    # Note: ((var++)) returns 1 when var was 0, so use || true to prevent set -e from exiting
     if git apply --whitespace=nowarn "$patch" 2>/dev/null; then
       echo "  Applied successfully"
-      ((applied++))
+      ((++applied)) || true
     # Try 3-way merge as fallback
     elif git apply --3way --whitespace=nowarn "$patch" 2>/dev/null; then
       echo "  Applied successfully (3-way merge)"
-      ((applied++))
+      ((++applied)) || true
     # Check if already applied
     elif git apply --check --reverse "$patch" 2>/dev/null; then
       log_warn "  Already applied (skipping)"
-      ((skipped++))
+      ((++skipped)) || true
     else
       # Final fallback: try direct file application for submodules
       log_warn "  Falling back to direct application..."
       if apply_patch_directly "$patch" "$comaps_dir"; then
         echo "  Applied via direct method"
-        ((applied++))
+        ((++applied)) || true
       else
         log_error "  Failed to apply $patch_name"
-        ((failed++))
+        ((++failed)) || true
       fi
     fi
   done
@@ -423,11 +424,12 @@ bootstrap_generate_data() {
   popd >/dev/null
   
   # Verify files were created
+  # Note: ((var++)) returns 1 when var was 0, so use || true to prevent set -e from exiting
   local generated=0
   local missing_files=()
   for file in classificator.txt types.txt visibility.txt categories.txt; do
     if [[ -f "$data_dir/$file" ]]; then
-      ((generated++))
+      ((++generated)) || true
     else
       missing_files+=("$file")
     fi

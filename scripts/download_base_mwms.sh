@@ -141,6 +141,7 @@ main() {
   log_info "Using snapshot: $snapshot_version"
   
   # Download each base MWM file
+  # Note: ((var++)) returns 1 when var was 0, so use || true to prevent set -e from exiting
   local success=0
   local failed=0
   
@@ -149,9 +150,9 @@ main() {
     local output="$ASSETS_DIR/$mwm"
     
     if download_file "$url" "$output"; then
-      ((success++))
+      ((++success)) || true
     else
-      ((failed++))
+      ((++failed)) || true
     fi
   done
   
