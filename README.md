@@ -70,7 +70,7 @@ This project is currently in the **proof of concept stage**, demonstrating zero-
 | **macOS** | ✅ Working | arm64/x86_64, window resize supported |
 | **Android** | ✅ Working | arm64-v8a, armeabi-v7a, x86_64 |
 | **Windows** | ✅ Working | x86_64 only |
-| **Linux** | ✅ Working | x86_64 with EGL/GLES3 |
+| **Linux** | ✅ Working | x86_64 with EGL/GLES3, tested on WSL2 |
 | **Windows ARM64** | 🚧 Planned | Blocked on dedicated hardware |
 
 Contributions for Windows ARM64 are welcome from developers with access to the required hardware!
@@ -214,7 +214,7 @@ See the [example app](example/) for a complete working demo showing all plugin f
 | **Windows** | x86_64 only | OpenGL + D3D11 | ❌ No (CPU-mediated) |
 | **Linux** | x86_64 | EGL + OpenGL ES 3.0 | ❌ No (CPU-mediated) |
 
-> **Windows/Linux Note:** ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware. Linux uses FlPixelBufferTexture with CPU pixel copy (~2-5ms per frame). Contributions welcome!
+> **Windows/Linux Note:** ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware. Both Windows and Linux use CPU-mediated pixel copy via `glReadPixels()` (~2-5ms per frame latency). Linux uses `FlPixelBufferTexture` - zero-copy texture sharing isn't available because Flutter's Linux embedder doesn't support direct GL texture sharing. See [Linux Implementation](docs/IMPLEMENTATION-LINUX.md) for details. Contributions welcome!
 
 ### Pros ✅
 

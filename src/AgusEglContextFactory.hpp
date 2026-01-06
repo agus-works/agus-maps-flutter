@@ -120,6 +120,9 @@ private:
   // State flags
   bool m_initialized = false;
   bool m_presentAvailable = true;
+  bool m_useSurfaceless = false;  // EGL_KHR_surfaceless_context mode for WSL2/headless
+  bool m_glFunctionsInitialized = false;  // Deferred GL init (avoid EGL_BAD_ACCESS on main thread)
+  bool m_framebufferDeferred = false;  // Framebuffer creation deferred until GetDrawContext()
 
   // Callbacks
   std::function<void()> m_frameCallback;
