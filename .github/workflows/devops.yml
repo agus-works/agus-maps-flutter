@@ -1068,6 +1068,17 @@ jobs:
           fi
           popd >/dev/null
           
+          echo "=== Generating desktop UI strings (localized_types_map.cpp) ==="
+          pushd thirdparty/comaps >/dev/null
+          if [[ -x "tools/unix/generate_desktop_ui_strings.sh" ]]; then
+            bash tools/unix/generate_desktop_ui_strings.sh 2>&1 || echo "Warning: generate_desktop_ui_strings.sh had warnings"
+          elif [[ -f "tools/python/generate_desktop_ui_strings.py" ]]; then
+            python3 tools/python/generate_desktop_ui_strings.py 2>&1 || echo "Warning: generate_desktop_ui_strings.py had warnings"
+          else
+            echo "Warning: Desktop UI strings generator not found"
+          fi
+          popd >/dev/null
+          
           echo "=== Generating CoMaps data files ==="
           pushd thirdparty/comaps >/dev/null
           if [ -f "tools/unix/generate_mwm.sh" ]; then
