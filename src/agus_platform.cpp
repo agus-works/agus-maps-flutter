@@ -8,7 +8,9 @@
 #include "base/file_name_utils.hpp"
 #include "base/logging.hpp"
 #include "base/task_loop.hpp"
+#ifdef __ANDROID__
 #include "agus_gui_thread.hpp"
+#endif
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -80,9 +82,11 @@ public:
       if (!m_settingsDir.empty() && m_settingsDir.back() != '/') m_settingsDir += '/';
       if (!m_tmpDir.empty() && m_tmpDir.back() != '/') m_tmpDir += '/';
       
+#ifdef __ANDROID__
       // Initialize the GUI thread to post tasks to Android main thread
       // This ensures thread affinity for BookmarkManager and other GUI-thread components
       SetGuiThread(std::make_unique<agus::AgusGuiThread>());
+#endif
   }
 };
 

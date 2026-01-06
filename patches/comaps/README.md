@@ -1041,28 +1041,132 @@ Unity builds combine many source files, exceeding MSVC's default object section 
 
 ---
 
-### 0059-win-platform-cmake.patch
+### 0059-libs-platform-flutter-plugin-support.patch
 
 **File Modified:** `libs/platform/CMakeLists.txt`
 
 **Category:** Build System / Platform Configuration
 
-**Purpose:** Comprehensive platform CMake configuration for Flutter plugin builds.
+**Purpose:** Comprehensive platform CMake configuration for Flutter plugin builds across all desktop and mobile platforms. This is a critical patch that enables CoMaps to be built as a headless/embedded library without Qt dependencies.
 
 **What it does:**
-1. Fixes iOS to use `http_session_manager.mm` instead of non-existent `http_user_agent_ios.mm`
-2. Adds `SKIP_ANDROID_JNI` configuration for Flutter Android (uses external platform implementation)
-3. Adds `SKIP_QT` configuration for macOS without Qt
-4. Adds `SKIP_QT` configuration for Windows without Qt
-5. Makes Qt linking conditional on `NOT SKIP_QT`
+
+1. **iOS Fix:** Changes `http_user_agent_ios.mm` → `http_session_manager.mm`
+   - The file `http_user_agent_ios.mm` does not exist in current CoMaps
+   - `http_session_manager.mm` is the correct file for HTTP session management
+
+2. **Android with `SKIP_ANDROID_JNI`:** (lines 86-96)
+   ```cmake
+   elseif(SKIP_ANDROID_JNI AND ${PLATFORM_ANDROID})
+     # Android build without JNI (for Flutter plugin with external platform impl)
+     append(SRC
+       platform_unix_impl.cpp
+       http_client_curl.cpp
+       http_uploader_background_dummy.cpp
+       localization_dummy.cpp
+       network_policy_dummy.cpp
+       secure_storage_dummy.cpp
+     )
+   ```
+   - Used when building for Flutter Android where platform implementation is external
+   - Skips JNI-based `platform_android.cpp` which requires APK/JVM access
+   - External code (`agus_platform.cpp`) provides `Platform::GetReader()` etc.
+
+3. **macOS with `SKIP_QT`:** (lines 104-121)
+   ```cmake
+   elseif(SKIP_QT AND ${PLATFORM_MAC})
+     # macOS build without Qt (for Flutter plugin)
+     append(SRC
+       gui_thread_apple.mm
+       http_client_apple.mm
+       http_thread_apple.mm
+       http_uploader_apple.mm
+       platform_mac.mm
+       ...
+     )
+   ```
+   - Used for Flutter macOS plugin (Metal rendering via podspec)
+   - Uses native Apple HTTP/networking instead of Qt
+
+4. **Windows with `SKIP_QT`:** (lines 122-135)
+   ```cmake
+   elseif(SKIP_QT AND ${PLATFORM_WIN})
+     # Windows build without Qt (for Flutter plugin)
+     append(SRC
+       gui_thread_win.cpp
+       http_client_curl.cpp
+       platform_win.cpp
+       ...
+     )
+   ```
+   - Used for Flutter Windows plugin (WGL/D3D11 rendering)
+   - Uses libcurl for HTTP instead of Qt::Network
+
+5. **Linux with `SKIP_QT`:** (lines 136-150) **[NEW for Linux support]**
+   ```cmake
+   elseif(SKIP_QT AND ${PLATFORM_LINUX})
+     # Linux build without Qt (for Flutter plugin with external platform impl)
+     append(SRC
+       http_client_curl.cpp
+       http_uploader_dummy.cpp
+       http_uploader_background_dummy.cpp
+       locale_std.cpp
+       localization_dummy.cpp
+       network_policy_dummy.cpp
+       platform_unix_impl.cpp
+       platform_unix_impl.hpp
+       secure_storage_dummy.cpp
+     )
+   ```
+   - Used for Flutter Linux plugin (EGL/GLES3 rendering)
+   - Uses libcurl for HTTP, standard locale, dummy stubs for unused features
+   - External code (`agus_maps_flutter_linux.cpp`) provides `Platform` class implementation
+   - Does NOT include `platform_linux.cpp` (requires Qt) - we provide our own
+
+6. **Conditional Qt Linking:** (lines 237-239)
+   ```cmake
+   $<$<AND:$<BOOL:${PLATFORM_DESKTOP}>,$<NOT:$<BOOL:${SKIP_QT}>>>:Qt6::Core>
+   $<$<AND:$<BOOL:${PLATFORM_LINUX}>,$<NOT:$<BOOL:${SKIP_QT}>>>:Qt6::Network>
+   $<$<AND:$<BOOL:${PLATFORM_WIN}>,$<NOT:$<BOOL:${SKIP_QT}>>>:Qt6::Network>
+   ```
+   - Only links Qt libraries when `SKIP_QT` is OFF
+   - Prevents "Qt6::Core not found" errors in Flutter builds
+
+**Platform Source File Mapping:**
+
+| Platform | Condition | Key Source Files |
+|----------|-----------|------------------|
+| iOS | `PLATFORM_IPHONE` | `platform_ios.mm`, Apple HTTP, Metal |
+| Android (JNI) | `PLATFORM_ANDROID` | `platform_android.cpp`, JNI/APK reader |
+| Android (Flutter) | `SKIP_ANDROID_JNI AND PLATFORM_ANDROID` | Unix impl + curl + dummies |
+| macOS (Flutter) | `SKIP_QT AND PLATFORM_MAC` | `platform_mac.mm`, Apple HTTP |
+| Windows (Flutter) | `SKIP_QT AND PLATFORM_WIN` | `platform_win.cpp`, curl + dummies |
+| **Linux (Flutter)** | `SKIP_QT AND PLATFORM_LINUX` | Unix impl + curl + dummies |
+| Desktop (Qt) | Default `else` | Qt-based platform, Qt::Network |
 
 **Why it's needed:**
-Flutter plugins need platform implementations without Qt and without JNI (using FFI instead).
+
+Flutter plugins cannot use Qt because:
+1. Flutter has its own event loop (conflicts with `QApplication`)
+2. Qt adds ~50MB+ to binary size
+3. Qt licensing may conflict with app requirements
+4. Flutter plugins use FFI, not JNI (for Android)
 
 **Without this patch:**
-- Cannot build platform library for Flutter integration
-- Wrong source files selected for iOS
-- Unnecessary Qt dependencies
+- iOS build fails: `http_user_agent_ios.mm: No such file or directory`
+- Android Flutter build fails: Missing JNI symbols, wrong platform impl
+- macOS Flutter build fails: `Qt6::Core not found`
+- Windows Flutter build fails: `Qt6::Network not found`
+- **Linux Flutter build fails:** `Qt6::Core not found`, `Qt6::Network not found`
+
+**Related Files in agus-maps-flutter:**
+
+| Platform | External Platform Implementation |
+|----------|----------------------------------|
+| Android | `src/agus_platform.cpp` |
+| Windows | `src/agus_platform_win.cpp` |
+| **Linux** | `src/agus_platform_linux.cpp` (HTTP stubs only) + `src/agus_maps_flutter_linux.cpp` (Platform class) |
+| iOS/macOS | Handled by CoMaps' own platform files |
 
 ---
 

@@ -104,6 +104,15 @@ elseif(ANDROID)
     "agus_ogl.cpp"
     "agus_gui_thread.cpp"
   )
+elseif(UNIX AND NOT APPLE)
+  # Linux uses EGL/GLES3 for offscreen rendering with Flutter texture sharing
+  # CoMaps provides the main platform implementation via libplatform
+  # We only need agus_platform_linux.cpp for HTTP stubs
+  set(PLATFORM_SOURCES
+    "agus_maps_flutter_linux.cpp"
+    "agus_platform_linux.cpp"
+    "AgusEglContextFactory.cpp"
+  )
 else()
   # Default (iOS/macOS uses Metal, handled separately in podspec)
   set(PLATFORM_SOURCES
@@ -266,6 +275,34 @@ if (ANDROID)
   target_link_options(agus_maps_flutter PRIVATE "-Wl,-z,max-page-size=16384")
   # Allow our stubs to override libplatform.a definitions
   target_link_options(agus_maps_flutter PRIVATE "-Wl,--allow-multiple-definition")
+endif()
+
+# ============================================================================
+# Linux Platform Configuration
+# ============================================================================
+if(UNIX AND NOT APPLE AND NOT ANDROID)
+  message(STATUS "=== Configuring Linux EGL/OpenGL Build ===")
+  
+  # Find EGL and OpenGL ES
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(EGL REQUIRED egl)
+  pkg_check_modules(GLESV2 REQUIRED glesv2)
+  
+  # Link Linux system libraries (EGL, OpenGL ES for rendering)
+  target_include_directories(agus_maps_flutter PRIVATE 
+    ${EGL_INCLUDE_DIRS}
+    ${GLESV2_INCLUDE_DIRS}
+  )
+  target_link_libraries(agus_maps_flutter PRIVATE
+    ${EGL_LIBRARIES}
+    ${GLESV2_LIBRARIES}
+  )
+  
+  # Allow multiple definitions for Platform stubs
+  target_link_options(agus_maps_flutter PRIVATE "-Wl,--allow-multiple-definition")
+  
+  message(STATUS "EGL libraries: ${EGL_LIBRARIES}")
+  message(STATUS "GLES libraries: ${GLESV2_LIBRARIES}")
 endif()
 
 # ============================================================================
