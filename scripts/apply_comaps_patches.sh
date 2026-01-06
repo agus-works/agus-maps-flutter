@@ -82,34 +82,35 @@ for patch in "${PATCHES[@]}"; do
   # BUT allow patches that create new files (from /dev/null)
   if [[ -n "$target_file" ]] && [[ "$is_new_file_patch" != "true" ]] && [[ ! -e "$target_file" ]]; then
     log_warn "skipping $patch_name (target '$target_file' does not exist)"
-    ((skipped++))
+    ((++skipped)) || true
     continue
   fi
   
   log_info "applying $patch_name"
   
   # Try direct apply first (fastest, works when blob hashes match)
+  # Note: ((var++)) returns 1 when var was 0, so use || true to prevent set -e from exiting
   if git apply --whitespace=nowarn "$patch" 2>/dev/null; then
     echo "Applied patch to '$target_file' cleanly."
-    ((applied++))
+    ((++applied)) || true
   # Try 3-way merge as fallback (helps across tags when context is close)
   elif git apply --3way --whitespace=nowarn "$patch" 2>/dev/null; then
     echo "Applied patch to '$target_file' cleanly."
-    ((applied++))
+    ((++applied)) || true
   # Check if already applied
   elif git apply --check --reverse "$patch" 2>/dev/null; then
     log_warn "already applied, skipping $patch_name"
-    ((skipped++))
+    ((++skipped)) || true
   else
     # Final fallback: try using patch command for submodule files
     echo "Falling back to direct application..."
     if patch -p1 --dry-run < "$patch" >/dev/null 2>&1; then
       patch -p1 < "$patch" >/dev/null 2>&1
       echo "Applied patch to '$target_file' cleanly."
-      ((applied++))
+      ((++applied)) || true
     else
       log_error "failed to apply $patch_name"
-      ((failed++))
+      ((++failed)) || true
     fi
   fi
 done
@@ -122,3 +123,6 @@ popd >/dev/null
 if [[ $failed -gt 0 ]]; then
   log_warn "Some patches failed. Build may still succeed if patches were optional."
 fi
+
+# Explicit success exit
+exit 0

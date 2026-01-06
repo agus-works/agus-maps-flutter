@@ -629,27 +629,28 @@ apply_patches() {
         
         if [[ -n "$target_file" ]] && [[ ! -e "$target_file" ]]; then
             log_warn "Skipping $patch_name (target '$target_file' not found)"
-            ((skipped+=1))
+            ((++skipped)) || true
             continue
         fi
         
         # Try different application methods
+        # Note: ((var++)) returns 1 when var was 0, so use || true to prevent set -e from exiting
         if git apply --whitespace=nowarn "$patch" 2>/dev/null; then
             log_info "Applied: $patch_name"
-            ((applied+=1))
+            ((++applied)) || true
         elif git apply --3way --whitespace=nowarn "$patch" 2>/dev/null; then
             log_info "Applied (3-way): $patch_name"
-            ((applied+=1))
+            ((++applied)) || true
         elif git apply --check --reverse "$patch" 2>/dev/null; then
             log_warn "Already applied: $patch_name"
-            ((skipped+=1))
+            ((++skipped)) || true
         elif patch -p1 --batch --forward --dry-run < "$patch" >/dev/null 2>&1; then
             patch -p1 --batch --forward < "$patch" >/dev/null 2>&1
             log_info "Applied (patch): $patch_name"
-            ((applied+=1))
+            ((++applied)) || true
         else
             log_error "Failed: $patch_name"
-            ((failed+=1))
+            ((++failed)) || true
             # Fail fast to debug
             # exit 1
         fi
