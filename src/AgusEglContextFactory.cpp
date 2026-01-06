@@ -94,6 +94,13 @@ public:
     if (!m_presentAvailable)
       return;
 
+    // Check for pending resize BEFORE rendering completes
+    // This is the only safe place to resize - on the render thread where context is current
+    if (m_isDrawContext && m_factory)
+    {
+      m_factory->CheckPendingResize();
+    }
+
     // Ensure rendering is complete
     glFinish();
 
@@ -443,20 +450,95 @@ void AgusEglContextFactory::SetSurfaceSize(int width, int height)
   if (width == m_width && height == m_height)
     return;
 
-  LOG(LINFO, ("Resizing surface:", m_width, "x", m_height, "->", width, "x", height));
+  LOG(LINFO, ("SetSurfaceSize: Scheduling deferred resize:", m_width, "x", m_height, "->", width, "x", height));
+
+  // EGL doesn't allow context stealing like WGL does on Windows.
+  // eglMakeCurrent() fails with EGL_BAD_ACCESS (0x3002) when the context
+  // is current on another thread (the render thread).
+  //
+  // Solution: Use deferred resize - store the pending dimensions and
+  // apply them on the render thread in CheckPendingResize() which is
+  // called from Present() where the EGL context is already current.
+  m_pendingWidth.store(width);
+  m_pendingHeight.store(height);
+  m_pendingResize.store(true);
+}
+
+void AgusEglContextFactory::CheckPendingResize()
+{
+  // Called from Present() on the render thread where EGL context is current
+  if (!m_pendingResize.load())
+    return;
+
+  int width = m_pendingWidth.load();
+  int height = m_pendingHeight.load();
+  m_pendingResize.store(false);
+
+  if (width <= 0 || height <= 0)
+    return;
+
+  if (width == m_width && height == m_height)
+    return;
+
+  LOG(LINFO, ("CheckPendingResize: Applying deferred resize:", m_width, "x", m_height, "->", width, "x", height));
+
+  ApplyPendingResize();
+}
+
+void AgusEglContextFactory::ApplyPendingResize()
+{
+  // Called on render thread where EGL context is already current
+  int width = m_pendingWidth.load();
+  int height = m_pendingHeight.load();
 
   std::lock_guard<std::mutex> lock(m_mutex);
 
+  // CRITICAL: After resizing textures attached to an FBO, we must re-attach them
+  // to the framebuffer. In OpenGL, glTexImage2D with different dimensions creates
+  // new texture storage, and the FBO attachment may become invalid or reference
+  // old dimensions. Re-attaching ensures the FBO uses the new texture storage.
+
+  // Resize render texture in-place (NOT delete/recreate)
+  glBindTexture(GL_TEXTURE_2D, m_renderTexture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  // Resize depth/stencil buffer in-place
+  glBindRenderbuffer(GL_RENDERBUFFER, m_depthStencilBuffer);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+  glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+  // CRITICAL: Re-attach resized textures to framebuffer
+  // After glTexImage2D with new dimensions, old FBO attachment becomes invalid
+  glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_renderTexture, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthStencilBuffer);
+
+  // Verify FBO completeness after resize
+  GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+  if (status != GL_FRAMEBUFFER_COMPLETE)
+  {
+    LOG(LERROR, ("ApplyPendingResize: Framebuffer incomplete:", std::hex, status, "width:", width, "height:", height));
+  }
+  else
+  {
+    LOG(LINFO, ("ApplyPendingResize: Framebuffer complete:", width, "x", height));
+  }
+
+  // Update viewport and scissor for new size
+  glViewport(0, 0, width, height);
+  glScissor(0, 0, width, height);
+
+  // Keep FBO bound for subsequent rendering
+  // (MakeCurrent will rebind it anyway, but this ensures consistency)
+
+  // Update dimensions
   m_width = width;
   m_height = height;
+  m_renderedWidth.store(width);
+  m_renderedHeight.store(height);
 
-  // Recreate framebuffer with new size
-  CleanupFramebuffer();
-  
-  if (!CreateFramebuffer(width, height))
-  {
-    LOG(LERROR, ("Failed to recreate framebuffer on resize"));
-  }
+  LOG(LINFO, ("ApplyPendingResize: Resize complete, dimensions updated to:", width, "x", height));
 }
 
 void AgusEglContextFactory::OnFrameReady()

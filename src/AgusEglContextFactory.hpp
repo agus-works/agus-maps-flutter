@@ -81,7 +81,13 @@ public:
   // Called from AgusEglContext::Present() to capture frame pixels
   void CaptureFramePixels();
 
+  // Called from AgusEglContext::Present() to apply deferred resize
+  // (resize must happen on render thread where EGL context is current)
+  void CheckPendingResize();
+
 private:
+  // Deferred resize - actual resize happens on render thread in CheckPendingResize()
+  void ApplyPendingResize();
   bool InitializeEGL();
   bool CreateFramebuffer(int width, int height);
   void CleanupEGL();
@@ -125,6 +131,12 @@ private:
   // Staging buffer for pixel data (captured in Present, read by Flutter)
   std::vector<uint8_t> m_pixelBuffer;
   std::mutex m_pixelBufferMutex;
+
+  // Deferred resize state (EGL doesn't allow context stealing like WGL)
+  // SetSurfaceSize() sets these, CheckPendingResize() applies them on render thread
+  std::atomic<bool> m_pendingResize{false};
+  std::atomic<int> m_pendingWidth{0};
+  std::atomic<int> m_pendingHeight{0};
 };
 
 }  // namespace agus
