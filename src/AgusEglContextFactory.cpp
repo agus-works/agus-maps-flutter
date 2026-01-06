@@ -5,6 +5,11 @@
  * This file provides the EGL-based OpenGL context factory used for offscreen
  * rendering on Linux. CoMaps renders to an FBO, and the resulting texture
  * is shared with Flutter via the FlTextureGL API.
+ * 
+ * Platform Support Notes:
+ * - Works with Mesa drivers (Intel, AMD, llvmpipe software renderer)
+ * - Supports surfaceless contexts (EGL_KHR_surfaceless_context) for headless/WSL2
+ * - Falls back to pbuffer surfaces if surfaceless not available
  */
 
 #if defined(__linux__) && !defined(__ANDROID__)
@@ -17,9 +22,20 @@
 #include "base/assert.hpp"
 #include "base/logging.hpp"
 
+#include <EGL/eglext.h>
 #include <GLES3/gl3.h>
 #include <vector>
 #include <cstring>
+#include <cstdlib>
+
+// EGL platform extensions for surfaceless/GBM support
+#ifndef EGL_PLATFORM_SURFACELESS_MESA
+#define EGL_PLATFORM_SURFACELESS_MESA     0x31DD
+#endif
+
+#ifndef EGL_PLATFORM_GBM_MESA
+#define EGL_PLATFORM_GBM_MESA             0x31D7
+#endif
 
 // Additional OpenGL FBO constants that may not be defined
 #ifndef GL_FRAMEBUFFER
@@ -52,12 +68,13 @@ class AgusEglContext : public dp::OGLContext
 {
 public:
   AgusEglContext(EGLDisplay display, EGLSurface surface, EGLContext context,
-                 AgusEglContextFactory * factory, bool isDrawContext)
+                 AgusEglContextFactory * factory, bool isDrawContext, bool surfaceless)
     : m_display(display)
     , m_surface(surface)
     , m_context(context)
     , m_factory(factory)
     , m_isDrawContext(isDrawContext)
+    , m_surfaceless(surfaceless)
     , m_presentAvailable(true)
   {}
 
@@ -65,13 +82,17 @@ public:
 
   void MakeCurrent() override
   {
-    if (m_context != EGL_NO_CONTEXT && m_surface != EGL_NO_SURFACE)
+    if (m_context != EGL_NO_CONTEXT)
     {
-      EGLBoolean result = eglMakeCurrent(m_display, m_surface, m_surface, m_context);
+      // Surfaceless contexts use EGL_NO_SURFACE for both read and draw
+      EGLSurface readSurface = m_surfaceless ? EGL_NO_SURFACE : m_surface;
+      EGLSurface drawSurface = m_surfaceless ? EGL_NO_SURFACE : m_surface;
+      
+      EGLBoolean result = eglMakeCurrent(m_display, drawSurface, readSurface, m_context);
       if (result != EGL_TRUE)
       {
         EGLint error = eglGetError();
-        LOG(LERROR, ("eglMakeCurrent failed:", std::hex, error));
+        LOG(LERROR, ("eglMakeCurrent failed:", std::hex, error, "surfaceless:", m_surfaceless));
       }
       else
       {
@@ -146,6 +167,7 @@ private:
   EGLContext m_context;
   AgusEglContextFactory * m_factory;
   bool m_isDrawContext;
+  bool m_surfaceless;
   std::atomic<bool> m_presentAvailable;
 };
 
@@ -169,15 +191,15 @@ AgusEglContextFactory::AgusEglContextFactory(int width, int height, float densit
     return;
   }
 
-  if (!CreateFramebuffer(width, height))
-  {
-    LOG(LERROR, ("Failed to create framebuffer"));
-    CleanupEGL();
-    return;
-  }
+  // IMPORTANT: Do NOT create framebuffer here!
+  // On Linux, this constructor runs on the main thread where Flutter's EGL context
+  // may be current. Calling eglMakeCurrent for our context would conflict.
+  // Instead, defer framebuffer creation to the first GetDrawContext() call,
+  // which happens on the render thread.
+  m_framebufferDeferred = true;
 
   m_initialized = true;
-  LOG(LINFO, ("EGL context factory created successfully, texture ID:", m_renderTexture));
+  LOG(LINFO, ("EGL context factory created successfully (framebuffer deferred)"));
 }
 
 AgusEglContextFactory::~AgusEglContextFactory()
@@ -191,13 +213,96 @@ AgusEglContextFactory::~AgusEglContextFactory()
   CleanupEGL();
 }
 
+// Helper function to convert EGL error codes to readable strings
+static const char* EglErrorString(EGLint error)
+{
+  switch (error)
+  {
+    case EGL_SUCCESS: return "EGL_SUCCESS";
+    case EGL_NOT_INITIALIZED: return "EGL_NOT_INITIALIZED";
+    case EGL_BAD_ACCESS: return "EGL_BAD_ACCESS";
+    case EGL_BAD_ALLOC: return "EGL_BAD_ALLOC";
+    case EGL_BAD_ATTRIBUTE: return "EGL_BAD_ATTRIBUTE";
+    case EGL_BAD_CONTEXT: return "EGL_BAD_CONTEXT";
+    case EGL_BAD_CONFIG: return "EGL_BAD_CONFIG";
+    case EGL_BAD_CURRENT_SURFACE: return "EGL_BAD_CURRENT_SURFACE";
+    case EGL_BAD_DISPLAY: return "EGL_BAD_DISPLAY";
+    case EGL_BAD_SURFACE: return "EGL_BAD_SURFACE";
+    case EGL_BAD_MATCH: return "EGL_BAD_MATCH";
+    case EGL_BAD_PARAMETER: return "EGL_BAD_PARAMETER";
+    case EGL_BAD_NATIVE_PIXMAP: return "EGL_BAD_NATIVE_PIXMAP";
+    case EGL_BAD_NATIVE_WINDOW: return "EGL_BAD_NATIVE_WINDOW";
+    case EGL_CONTEXT_LOST: return "EGL_CONTEXT_LOST";
+    default: return "UNKNOWN_EGL_ERROR";
+  }
+}
+
+// Check if an EGL extension is supported
+static bool HasEglExtension(EGLDisplay display, const char* extension)
+{
+  const char* extensions = nullptr;
+  if (display == EGL_NO_DISPLAY)
+  {
+    // Query client extensions (before display is created)
+    extensions = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+  }
+  else
+  {
+    extensions = eglQueryString(display, EGL_EXTENSIONS);
+  }
+  
+  if (!extensions)
+    return false;
+    
+  return strstr(extensions, extension) != nullptr;
+}
+
 bool AgusEglContextFactory::InitializeEGL()
 {
-  // Get default display
+  // Check for EGL_EXT_platform_base which provides eglGetPlatformDisplay
+  bool hasPlatformBase = HasEglExtension(EGL_NO_DISPLAY, "EGL_EXT_platform_base");
+  bool hasSurfaceless = HasEglExtension(EGL_NO_DISPLAY, "EGL_MESA_platform_surfaceless");
+  bool hasDeviceExt = HasEglExtension(EGL_NO_DISPLAY, "EGL_EXT_platform_device");
+  
+  LOG(LINFO, ("EGL client extensions - platform_base:", hasPlatformBase, 
+              "surfaceless:", hasSurfaceless, "device:", hasDeviceExt));
+
+  // Strategy: Try DEFAULT display FIRST with pbuffer surfaces
+  // 
+  // On WSL2 with llvmpipe (software rendering), the MESA surfaceless platform
+  // does NOT work reliably - eglMakeCurrent returns EGL_BAD_ACCESS even though
+  // the extension is advertised. The default display with pbuffer surfaces
+  // works correctly with llvmpipe.
+  //
+  // Only use surfaceless as a last resort if default display completely fails.
+  
+  // First, try the default display (works with llvmpipe software rendering)
   m_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+  if (m_display != EGL_NO_DISPLAY)
+  {
+    LOG(LINFO, ("Using default EGL display"));
+    m_useSurfaceless = false;
+  }
+  else if (hasPlatformBase && hasSurfaceless)
+  {
+    // Fallback to surfaceless platform only if default display failed completely
+    auto eglGetPlatformDisplayEXT = (PFNEGLGETPLATFORMDISPLAYEXTPROC)
+        eglGetProcAddress("eglGetPlatformDisplayEXT");
+    
+    if (eglGetPlatformDisplayEXT)
+    {
+      m_display = eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, nullptr);
+      if (m_display != EGL_NO_DISPLAY)
+      {
+        LOG(LINFO, ("Using MESA surfaceless platform (fallback)"));
+        m_useSurfaceless = true;
+      }
+    }
+  }
+  
   if (m_display == EGL_NO_DISPLAY)
   {
-    LOG(LERROR, ("eglGetDisplay failed"));
+    LOG(LERROR, ("Failed to get any EGL display"));
     return false;
   }
 
@@ -205,61 +310,144 @@ bool AgusEglContextFactory::InitializeEGL()
   EGLint major, minor;
   if (!eglInitialize(m_display, &major, &minor))
   {
-    LOG(LERROR, ("eglInitialize failed"));
+    EGLint error = eglGetError();
+    LOG(LERROR, ("eglInitialize failed:", EglErrorString(error)));
     return false;
   }
   LOG(LINFO, ("EGL initialized:", major, ".", minor));
 
-  // Configure EGL for OpenGL ES 3.0
-  const EGLint configAttribs[] = {
-    EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-    EGL_RED_SIZE, 8,
-    EGL_GREEN_SIZE, 8,
-    EGL_BLUE_SIZE, 8,
-    EGL_ALPHA_SIZE, 8,
-    EGL_DEPTH_SIZE, 24,
-    EGL_STENCIL_SIZE, 8,
-    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
-    EGL_NONE
-  };
-
-  EGLint numConfigs;
-  if (!eglChooseConfig(m_display, configAttribs, &m_config, 1, &numConfigs) || numConfigs == 0)
+  // Check if surfaceless context extension is available on this display
+  bool hasSurfacelessContext = HasEglExtension(m_display, "EGL_KHR_surfaceless_context");
+  LOG(LINFO, ("EGL_KHR_surfaceless_context:", hasSurfacelessContext));
+  
+  // If using surfaceless platform, we need surfaceless context support
+  if (m_useSurfaceless && !hasSurfacelessContext)
   {
-    LOG(LERROR, ("eglChooseConfig failed, numConfigs:", numConfigs));
-    return false;
+    LOG(LWARNING, ("Surfaceless platform selected but EGL_KHR_surfaceless_context not available"));
+    m_useSurfaceless = false;
   }
 
-  // Create pbuffer surface for draw context
-  const EGLint pbufferAttribs[] = {
-    EGL_WIDTH, m_width > 0 ? m_width : 1,
-    EGL_HEIGHT, m_height > 0 ? m_height : 1,
-    EGL_NONE
-  };
-
-  m_drawSurface = eglCreatePbufferSurface(m_display, m_config, pbufferAttribs);
-  if (m_drawSurface == EGL_NO_SURFACE)
-  {
-    LOG(LERROR, ("Failed to create draw pbuffer surface"));
-    return false;
-  }
-
-  // Create second pbuffer for upload context
-  m_uploadSurface = eglCreatePbufferSurface(m_display, m_config, pbufferAttribs);
-  if (m_uploadSurface == EGL_NO_SURFACE)
-  {
-    LOG(LERROR, ("Failed to create upload pbuffer surface"));
-    eglDestroySurface(m_display, m_drawSurface);
-    m_drawSurface = EGL_NO_SURFACE;
-    return false;
-  }
-
-  // Bind OpenGL ES API
+  // Bind OpenGL ES API first
   if (!eglBindAPI(EGL_OPENGL_ES_API))
   {
-    LOG(LERROR, ("eglBindAPI failed"));
+    EGLint error = eglGetError();
+    LOG(LERROR, ("eglBindAPI failed:", EglErrorString(error)));
     return false;
   }
+
+  // Configure EGL for OpenGL ES 3.0
+  // For surfaceless platform, we must explicitly set EGL_SURFACE_TYPE to 0
+  // because the surfaceless platform doesn't provide any surface types
+  EGLint numConfigs = 0;
+  
+  // Try progressively more relaxed config requirements
+  struct ConfigAttempt {
+    const char* description;
+    EGLint surfaceType;
+    EGLint depthSize;
+    EGLint stencilSize;
+  };
+  
+  // Different configs to try in order of preference
+  ConfigAttempt attempts[] = {
+    { "full (depth24/stencil8)", m_useSurfaceless ? 0 : EGL_PBUFFER_BIT, 24, 8 },
+    { "reduced depth (depth16/stencil8)", m_useSurfaceless ? 0 : EGL_PBUFFER_BIT, 16, 8 },
+    { "minimal (depth16/stencil0)", m_useSurfaceless ? 0 : EGL_PBUFFER_BIT, 16, 0 },
+    { "no depth/stencil", m_useSurfaceless ? 0 : EGL_PBUFFER_BIT, 0, 0 },
+  };
+  
+  for (const auto& attempt : attempts)
+  {
+    EGLint configAttribs[] = {
+      EGL_SURFACE_TYPE, attempt.surfaceType,
+      EGL_RED_SIZE, 8,
+      EGL_GREEN_SIZE, 8,
+      EGL_BLUE_SIZE, 8,
+      EGL_ALPHA_SIZE, 8,
+      EGL_DEPTH_SIZE, attempt.depthSize,
+      EGL_STENCIL_SIZE, attempt.stencilSize,
+      EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+      EGL_NONE
+    };
+    
+    if (eglChooseConfig(m_display, configAttribs, &m_config, 1, &numConfigs) && numConfigs > 0)
+    {
+      LOG(LINFO, ("EGL config selected with", attempt.description, "- numConfigs:", numConfigs));
+      break;
+    }
+    LOG(LWARNING, ("Config attempt failed:", attempt.description));
+  }
+  
+  if (numConfigs == 0)
+  {
+    // Last resort: try with minimal requirements
+    EGLint minimalAttribs[] = {
+      EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+      EGL_NONE
+    };
+    
+    if (!eglChooseConfig(m_display, minimalAttribs, &m_config, 1, &numConfigs) || numConfigs == 0)
+    {
+      EGLint error = eglGetError();
+      LOG(LERROR, ("eglChooseConfig failed even with minimal config:", EglErrorString(error)));
+      return false;
+    }
+    LOG(LWARNING, ("Using minimal EGL config - depth/stencil may not work correctly"));
+  }
+
+  // Create pbuffer surfaces only if not using surfaceless mode
+  if (!m_useSurfaceless)
+  {
+    const EGLint pbufferAttribs[] = {
+      EGL_WIDTH, m_width > 0 ? m_width : 1,
+      EGL_HEIGHT, m_height > 0 ? m_height : 1,
+      EGL_NONE
+    };
+
+    m_drawSurface = eglCreatePbufferSurface(m_display, m_config, pbufferAttribs);
+    if (m_drawSurface == EGL_NO_SURFACE)
+    {
+      EGLint error = eglGetError();
+      LOG(LWARNING, ("Failed to create draw pbuffer surface:", EglErrorString(error),
+                     "- trying surfaceless fallback"));
+      // If pbuffer fails but surfaceless context is available, use surfaceless
+      if (hasSurfacelessContext)
+      {
+        m_useSurfaceless = true;
+        LOG(LINFO, ("Falling back to surfaceless context mode"));
+      }
+      else
+      {
+        LOG(LERROR, ("No fallback available - pbuffer failed and no surfaceless support"));
+        return false;
+      }
+    }
+    else
+    {
+      // Create second pbuffer for upload context
+      m_uploadSurface = eglCreatePbufferSurface(m_display, m_config, pbufferAttribs);
+      if (m_uploadSurface == EGL_NO_SURFACE)
+      {
+        EGLint error = eglGetError();
+        LOG(LERROR, ("Failed to create upload pbuffer surface:", EglErrorString(error)));
+        eglDestroySurface(m_display, m_drawSurface);
+        m_drawSurface = EGL_NO_SURFACE;
+        
+        // Try surfaceless fallback
+        if (hasSurfacelessContext)
+        {
+          m_useSurfaceless = true;
+          LOG(LINFO, ("Falling back to surfaceless context mode"));
+        }
+        else
+        {
+          return false;
+        }
+      }
+    }
+  }
+  
+  LOG(LINFO, ("Using surfaceless mode:", m_useSurfaceless));
 
   // Context attributes for OpenGL ES 3.0
   const EGLint contextAttribs[] = {
@@ -271,7 +459,8 @@ bool AgusEglContextFactory::InitializeEGL()
   m_drawEglContext = eglCreateContext(m_display, m_config, EGL_NO_CONTEXT, contextAttribs);
   if (m_drawEglContext == EGL_NO_CONTEXT)
   {
-    LOG(LERROR, ("Failed to create draw EGL context"));
+    EGLint error = eglGetError();
+    LOG(LERROR, ("Failed to create draw EGL context:", EglErrorString(error)));
     return false;
   }
 
@@ -279,27 +468,23 @@ bool AgusEglContextFactory::InitializeEGL()
   m_uploadEglContext = eglCreateContext(m_display, m_config, m_drawEglContext, contextAttribs);
   if (m_uploadEglContext == EGL_NO_CONTEXT)
   {
-    LOG(LERROR, ("Failed to create upload EGL context"));
+    EGLint error = eglGetError();
+    LOG(LERROR, ("Failed to create upload EGL context:", EglErrorString(error)));
     eglDestroyContext(m_display, m_drawEglContext);
     m_drawEglContext = EGL_NO_CONTEXT;
     return false;
   }
 
-  // Make draw context current temporarily to initialize GL functions
-  if (!eglMakeCurrent(m_display, m_drawSurface, m_drawSurface, m_drawEglContext))
-  {
-    LOG(LERROR, ("Failed to make draw context current"));
-    return false;
-  }
+  // IMPORTANT: Do NOT call eglMakeCurrent here during initialization!
+  // On some systems (especially WSL2 with Mesa llvmpipe), calling eglMakeCurrent
+  // on the main thread during plugin initialization causes EGL_BAD_ACCESS because
+  // Flutter's engine may already have an EGL context current on this thread.
+  // 
+  // Instead, defer GL function initialization until the first render frame
+  // when CreateFramebuffer is called - at that point we're on the render thread.
+  m_glFunctionsInitialized = false;
 
-  // Initialize GL functions
-  GLFunctions::Init(dp::ApiVersion::OpenGLES3);
-
-  // IMPORTANT: Release context so render threads can acquire it
-  // Without this, MakeCurrent on render threads fails with EGL_BAD_ACCESS
-  eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-
-  LOG(LINFO, ("EGL contexts created successfully"));
+  LOG(LINFO, ("EGL contexts created successfully (GL init deferred)"));
   return true;
 }
 
@@ -312,7 +497,26 @@ bool AgusEglContextFactory::CreateFramebuffer(int width, int height)
   }
 
   // Make sure we're in the right context
-  eglMakeCurrent(m_display, m_drawSurface, m_drawSurface, m_drawEglContext);
+  // For surfaceless contexts, use EGL_NO_SURFACE
+  EGLSurface drawSurf = m_useSurfaceless ? EGL_NO_SURFACE : m_drawSurface;
+  EGLSurface readSurf = m_useSurfaceless ? EGL_NO_SURFACE : m_drawSurface;
+  
+  if (!eglMakeCurrent(m_display, drawSurf, readSurf, m_drawEglContext))
+  {
+    EGLint error = eglGetError();
+    LOG(LERROR, ("Failed to make context current in CreateFramebuffer:", EglErrorString(error),
+                 "surfaceless:", m_useSurfaceless));
+    return false;
+  }
+
+  // Deferred GL function initialization - do it here on first framebuffer creation
+  // This avoids EGL_BAD_ACCESS on the main thread during plugin initialization
+  if (!m_glFunctionsInitialized)
+  {
+    GLFunctions::Init(dp::ApiVersion::OpenGLES3);
+    m_glFunctionsInitialized = true;
+    LOG(LINFO, ("GL functions initialized"));
+  }
 
   // Generate framebuffer
   glGenFramebuffers(1, &m_framebuffer);
@@ -365,7 +569,10 @@ void AgusEglContextFactory::CleanupFramebuffer()
 {
   if (m_drawEglContext != EGL_NO_CONTEXT)
   {
-    eglMakeCurrent(m_display, m_drawSurface, m_drawSurface, m_drawEglContext);
+    // For surfaceless contexts, use EGL_NO_SURFACE
+    EGLSurface drawSurf = m_useSurfaceless ? EGL_NO_SURFACE : m_drawSurface;
+    EGLSurface readSurf = m_useSurfaceless ? EGL_NO_SURFACE : m_drawSurface;
+    eglMakeCurrent(m_display, drawSurf, readSurf, m_drawEglContext);
 
     if (m_framebuffer)
     {
@@ -422,11 +629,26 @@ void AgusEglContextFactory::CleanupEGL()
 
 dp::GraphicsContext * AgusEglContextFactory::GetDrawContext()
 {
+  // Deferred framebuffer creation - happens on render thread, not main thread
+  // This avoids EGL_BAD_ACCESS when Flutter's context is current on main thread
+  if (m_framebufferDeferred && m_framebuffer == 0)
+  {
+    LOG(LINFO, ("Creating deferred framebuffer on render thread"));
+    if (!CreateFramebuffer(m_width, m_height))
+    {
+      LOG(LERROR, ("Failed to create deferred framebuffer"));
+      m_initialized = false;
+      return nullptr;
+    }
+    m_framebufferDeferred = false;
+    LOG(LINFO, ("Deferred framebuffer created, texture ID:", m_renderTexture));
+  }
+
   if (!m_drawContext && m_drawEglContext != EGL_NO_CONTEXT)
   {
     m_drawContext = std::make_unique<AgusEglContext>(
-      m_display, m_drawSurface, m_drawEglContext, this, true /* isDrawContext */);
-    LOG(LINFO, ("Draw context created"));
+      m_display, m_drawSurface, m_drawEglContext, this, true /* isDrawContext */, m_useSurfaceless);
+    LOG(LINFO, ("Draw context created, surfaceless:", m_useSurfaceless));
   }
   return m_drawContext.get();
 }
@@ -436,8 +658,8 @@ dp::GraphicsContext * AgusEglContextFactory::GetResourcesUploadContext()
   if (!m_uploadContext && m_uploadEglContext != EGL_NO_CONTEXT)
   {
     m_uploadContext = std::make_unique<AgusEglContext>(
-      m_display, m_uploadSurface, m_uploadEglContext, this, false /* isDrawContext */);
-    LOG(LINFO, ("Upload context created"));
+      m_display, m_uploadSurface, m_uploadEglContext, this, false /* isDrawContext */, m_useSurfaceless);
+    LOG(LINFO, ("Upload context created, surfaceless:", m_useSurfaceless));
   }
   return m_uploadContext.get();
 }

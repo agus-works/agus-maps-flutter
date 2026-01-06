@@ -235,13 +235,14 @@ static std::string extract_map(const char* asset_path) {
   std::string exe_dir = get_executable_dir();
   fs::path source_path = fs::path(exe_dir) / "data" / "flutter_assets" / asset_path;
   
+  // Extract directly to data_dir (NOT to maps/ subdirectory)
+  // This matches iOS/macOS behavior and how CoMaps Platform searches for files
   fs::path data_dir_path = fs::path(get_data_dir());
-  fs::path maps_dir = data_dir_path / "maps";
-  fs::create_directories(maps_dir);
+  fs::create_directories(data_dir_path);
   
   // Extract filename from asset path
   fs::path filename = fs::path(asset_path).filename();
-  fs::path dest_path = maps_dir / filename;
+  fs::path dest_path = data_dir_path / filename;
   
   // Check if already extracted
   if (fs::exists(dest_path)) {
