@@ -899,6 +899,311 @@ jobs:
           path: artifacts/agus-maps-windows.zip
 
   # ==========================================================================
+  # Linux Job: Builds Linux only
+  # ==========================================================================
+  build-and-release-linux-platform:
+    name: Build Linux
+    # Toggle: set to 'true' to run Linux, 'false' to skip (saves cost)
+    if: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # ======================================================================
+      # Setup
+      # ======================================================================
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # ======================================================================
+      # CoMaps Source Cache (Azure Blob Storage)
+      # ======================================================================
+      - name: Check CoMaps Cache
+        id: comaps-cache
+        run: |
+          # Parse Azure SAS URL into base URL and token
+          AZ_URL="${{ secrets.AZ_URL }}"
+          BASE_URL="${AZ_URL%%\?*}"
+          SAS_TOKEN="${AZ_URL#*\?}"
+          CACHE_FILE="agus/agus-comaps-linux-${{ env.COMAPS_TAG }}.tar.gz"
+          CACHE_URL="${BASE_URL}/${CACHE_FILE}?${SAS_TOKEN}"
+          
+          echo "Checking for cache: ${BASE_URL}/${CACHE_FILE}"
+          if curl -sf --head "$CACHE_URL" > /dev/null 2>&1; then
+            echo "✓ Cache found!"
+            echo "cache-hit=true" >> $GITHUB_OUTPUT
+          else
+            echo "✗ Cache not found, will clone from git"
+            echo "cache-hit=false" >> $GITHUB_OUTPUT
+          fi
+          echo "cache-url=$CACHE_URL" >> $GITHUB_OUTPUT
+
+      - name: Download CoMaps from Cache
+        if: steps.comaps-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "Downloading CoMaps from Azure Blob Storage cache..."
+          mkdir -p thirdparty
+          curl -fL "${{ steps.comaps-cache.outputs.cache-url }}" | tar -xz -C thirdparty
+          
+          echo "=== Verifying Cache Extraction ==="
+          ls -F thirdparty/comaps | head -10
+          
+          if [ ! -d "thirdparty/comaps/.git" ]; then
+            echo "CRITICAL: .git directory not found in thirdparty/comaps!"
+            exit 1
+          fi
+          
+          cd thirdparty/comaps
+          echo "Current HEAD: $(git rev-parse HEAD)"
+          echo "Expected Tag: ${{ env.COMAPS_TAG }}"
+          cd ../..
+          
+          echo "✓ CoMaps restored from cache ($(du -sh thirdparty/comaps | cut -f1))"
+
+      - name: Clone CoMaps (Cache Miss)
+        id: clone-comaps
+        if: steps.comaps-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
+          mkdir -p thirdparty
+          git clone https://github.com/comaps/comaps.git thirdparty/comaps
+          cd thirdparty/comaps
+          git fetch --tags --prune
+          git checkout --detach ${{ env.COMAPS_TAG }}
+          git submodule update --init --recursive
+          cd ../..
+          echo "✓ Clone complete ($(du -sh thirdparty/comaps | cut -f1))"
+          echo "cloned=true" >> $GITHUB_OUTPUT
+
+      - name: Upload CoMaps to Cache
+        if: steps.clone-comaps.outputs.cloned == 'true'
+        run: |
+          echo "Uploading pristine CoMaps to Azure Blob Storage cache..."
+          
+          # Install azcopy
+          echo "Installing azcopy..."
+          curl -fsSL https://aka.ms/downloadazcopy-v10-linux -o /tmp/azcopy.tar.gz
+          tar -xzf /tmp/azcopy.tar.gz -C /tmp
+          AZCOPY=$(find /tmp -name 'azcopy' -type f 2>/dev/null | head -1)
+          chmod +x "$AZCOPY"
+          
+          # Compress
+          if command -v pigz &> /dev/null; then
+            tar -c -C thirdparty comaps | pigz -1 > /tmp/comaps-cache.tar.gz
+          else
+            tar -cz -C thirdparty comaps > /tmp/comaps-cache.tar.gz
+          fi
+          CACHE_SIZE=$(du -h /tmp/comaps-cache.tar.gz | cut -f1)
+          echo "Cache archive size: $CACHE_SIZE"
+          
+          # Upload
+          "$AZCOPY" copy /tmp/comaps-cache.tar.gz "${{ steps.comaps-cache.outputs.cache-url }}" \
+            --blob-type BlockBlob \
+            --overwrite=true
+          
+          rm /tmp/comaps-cache.tar.gz
+          echo "✓ Cache uploaded successfully ($CACHE_SIZE)"
+
+      # ======================================================================
+      # Install Build Dependencies
+      # ======================================================================
+      - name: Install Linux Build Dependencies
+        run: |
+          echo "Installing Linux build dependencies..."
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgl-dev \
+            libegl-dev \
+            libgles-dev \
+            libepoxy-dev \
+            libgtk-3-dev \
+            libclang-dev \
+            clang \
+            zip
+          
+          echo "CMake version:"
+          cmake --version
+          echo "Ninja version:"
+          ninja --version
+          echo "GCC version:"
+          gcc --version
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      # ======================================================================
+      # Bootstrap CoMaps
+      # ======================================================================
+      - name: Bootstrap CoMaps (Linux)
+        run: |
+          chmod +x scripts/bootstrap_common.sh
+          chmod +x scripts/apply_comaps_patches.sh
+          
+          echo "=== Applying patches ==="
+          ./scripts/apply_comaps_patches.sh
+          
+          echo "=== Building Boost headers ==="
+          pushd thirdparty/comaps/3party/boost >/dev/null
+          if [[ ! -d "boost" ]]; then
+            ./bootstrap.sh
+            ./b2 headers
+          else
+            echo "Boost headers already built"
+          fi
+          popd >/dev/null
+          
+          echo "=== Generating CoMaps data files ==="
+          pushd thirdparty/comaps >/dev/null
+          if [ -f "tools/unix/generate_mwm.sh" ]; then
+            chmod +x tools/unix/generate_mwm.sh || true
+          fi
+          
+          # Generate classificator and other data
+          if [ -d "data" ]; then
+            echo "CoMaps data directory exists"
+            ls -la data/ | head -20
+          fi
+          popd >/dev/null
+          
+          echo "=== Copying data files to example assets ==="
+          mkdir -p example/assets/resources
+          mkdir -p example/assets/fonts
+          
+          # Copy resource files
+          COMAPS_DATA="thirdparty/comaps/data"
+          if [ -d "$COMAPS_DATA" ]; then
+            # Essential resource files
+            cp -v "$COMAPS_DATA/classificator.txt" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/types.txt" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/colors.txt" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/patterns.txt" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/countries.txt" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/countries_synonyms.csv" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/packed_polygons.bin" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/drules_proto_clear.bin" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/drules_proto_dark.bin" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/drules_proto_outdoors_clear.bin" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/drules_proto_outdoors_dark.bin" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/drules_proto_vehicle_clear.bin" example/assets/resources/ 2>/dev/null || true
+            cp -v "$COMAPS_DATA/drules_proto_vehicle_dark.bin" example/assets/resources/ 2>/dev/null || true
+            
+            # ICU data
+            cp -v "$COMAPS_DATA/icudt75l.dat" example/assets/resources/ 2>/dev/null || true
+          fi
+          
+          # Copy fonts
+          COMAPS_FONTS="thirdparty/comaps/data/fonts"
+          if [ -d "$COMAPS_FONTS" ]; then
+            cp -rv "$COMAPS_FONTS"/* example/assets/fonts/ 2>/dev/null || true
+          fi
+          
+          echo "=== Bootstrap complete ==="
+          ls -la example/assets/
+
+      # ======================================================================
+      # Build Linux Native Libraries
+      # ======================================================================
+      - name: Build Linux Native Libraries
+        run: |
+          echo "Building Linux native libraries..."
+          chmod +x scripts/build_binaries_linux.sh
+          ./scripts/build_binaries_linux.sh
+          
+          echo "=== Build Output ==="
+          ls -la build/agus-binaries-linux/
+
+      - name: Upload Linux Binaries Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-binaries-linux
+          path: build/agus-binaries-linux.zip
+
+      # ======================================================================
+      # Build Linux Example App
+      # ======================================================================
+      - name: Setup Linux Pre-built Binaries
+        run: |
+          mkdir -p linux/prebuilt/x86_64
+          cp build/agus-binaries-linux/x86_64/libagus_maps_flutter.so linux/prebuilt/x86_64/
+          echo "=== Prebuilt Structure ==="
+          ls -la linux/prebuilt/
+
+      - name: Precache Linux
+        run: flutter precache --linux
+
+      - name: Get Flutter Dependencies
+        run: |
+          flutter pub get
+          cd example
+          flutter pub get
+
+      - name: Download Base MWM Files
+        run: |
+          ASSETS_DIR="example/assets/maps"
+          mkdir -p "$ASSETS_DIR"
+          
+          # Get latest snapshot from mirror
+          MIRROR="https://omaps.wfr.software/maps/"
+          SNAPSHOT=$(curl -sL "$MIRROR" | grep -oE 'href="\.?/?([0-9]{6})/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
+          echo "Using snapshot: $SNAPSHOT"
+          
+          # Download essential MWM files
+          FILES=("World.mwm" "WorldCoasts.mwm" "Gibraltar.mwm")
+          for FILE in "${FILES[@]}"; do
+            URL="${MIRROR}${SNAPSHOT}/${FILE}"
+            echo "Downloading: $URL"
+            curl -fL "$URL" -o "$ASSETS_DIR/$FILE"
+            ls -lh "$ASSETS_DIR/$FILE"
+          done
+          
+          # Copy ICU data if not already present
+          ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
+          ICU_DEST="$ASSETS_DIR/icudt75l.dat"
+          if [ -f "$ICU_SOURCE" ] && [ ! -f "$ICU_DEST" ]; then
+            cp "$ICU_SOURCE" "$ICU_DEST"
+            echo "Copied ICU data to assets/maps/"
+          fi
+          
+          echo "=== Map Assets ==="
+          ls -lh "$ASSETS_DIR/"
+
+      - name: Build Linux Release App
+        run: |
+          cd example
+          flutter build linux --release \
+            --build-name=1.0.0 \
+            --build-number=${{ github.run_number }}
+
+      - name: Prepare Linux Artifacts
+        run: |
+          mkdir -p artifacts
+          cd example/build/linux/x64/release/bundle
+          zip -r ../../../../../../artifacts/agus-maps-linux.zip .
+          ls -lh ../../../../../../artifacts/
+
+      - name: Upload Linux App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-maps-linux
+          path: artifacts/agus-maps-linux.zip
+
+  # ==========================================================================
   # Release Job: Aggregates artifacts from all jobs
   # ==========================================================================
   release:
@@ -907,6 +1212,7 @@ jobs:
       - build-and-release-mac-platforms
       - build-and-release-windows-platform
       - build-and-release-android-platform
+      - build-and-release-linux-platform
     # Run even if some dependencies partially failed or were skipped
     if: always()
     runs-on: ubuntu-latest
@@ -929,12 +1235,14 @@ jobs:
           [ -f all-artifacts/agus-binaries-ios.zip ] && cp all-artifacts/agus-binaries-ios.zip final-assets/ || true
           [ -f all-artifacts/agus-binaries-macos.zip ] && cp all-artifacts/agus-binaries-macos.zip final-assets/ || true
           [ -f all-artifacts/agus-binaries-windows.zip ] && cp all-artifacts/agus-binaries-windows.zip final-assets/ || true
+          [ -f all-artifacts/agus-binaries-linux.zip ] && cp all-artifacts/agus-binaries-linux.zip final-assets/ || true
           
           [ -f all-artifacts/agus-maps-android.aab ] && cp all-artifacts/agus-maps-android.aab final-assets/ || true
           [ -f all-artifacts/agus-maps-android.apk ] && cp all-artifacts/agus-maps-android.apk final-assets/ || true
           [ -f all-artifacts/agus-maps-ios-simulator.app.zip ] && cp all-artifacts/agus-maps-ios-simulator.app.zip final-assets/ || true
           [ -f all-artifacts/agus-maps-macos.app.zip ] && cp all-artifacts/agus-maps-macos.app.zip final-assets/ || true
           [ -f all-artifacts/agus-maps-windows.zip ] && cp all-artifacts/agus-maps-windows.zip final-assets/ || true
+          [ -f all-artifacts/agus-maps-linux.zip ] && cp all-artifacts/agus-maps-linux.zip final-assets/ || true
 
           # Generate build info
           cat > final-assets/BUILD_INFO.txt << EOF
@@ -954,6 +1262,7 @@ jobs:
           - iOS (Simulator)
           - macOS (arm64 + x86_64 universal)
           - Windows (x64)
+          - Linux (x86_64)
           EOF
           
           echo "=== Final assets collected ==="
@@ -980,6 +1289,12 @@ jobs:
             adb install agus-maps-android.apk
             ```
             
+            #### Linux
+            ```bash
+            unzip agus-maps-linux.zip -d agus-maps
+            ./agus-maps/agus_maps_flutter_example
+            ```
+            
             #### Windows
             ```powershell
             Expand-Archive agus-maps-windows.zip -DestinationPath .
@@ -1002,6 +1317,7 @@ jobs:
             |----------|------|-------------|
             | Android | `agus-maps-android.apk` | Universal APK |
             | Android | `agus-maps-android.aab` | App Bundle |
+            | Linux | `agus-maps-linux.zip` | x86_64 Release |
             | Windows | `agus-maps-windows.zip` | x64 Release |
             | macOS | `agus-maps-macos.app.zip` | Universal Release |
             | iOS | `agus-maps-ios-simulator.app.zip` | Simulator Debug |
@@ -1012,6 +1328,7 @@ jobs:
             | Headers | `agus-headers.tar.gz` | C++ Headers |
             | Android | `agus-binaries-android.zip` | .so libs |
             | iOS | `agus-binaries-ios.zip` | XCFramework |
+            | Linux | `agus-binaries-linux.zip` | .so libs |
             | macOS | `agus-binaries-macos.zip` | XCFramework |
             | Windows | `agus-binaries-windows.zip` | DLLs |
             

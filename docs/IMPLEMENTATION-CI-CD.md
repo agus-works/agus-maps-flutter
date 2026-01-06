@@ -27,6 +27,8 @@ This document outlines the implementation plan for splitting the Android build p
 | `build_binaries_ios.sh` | — | Build iOS XCFramework |
 | `build_binaries_macos.sh` | — | Build macOS XCFramework |
 | `build_binaries_android.sh` | `build_binaries_android.ps1` | Build Android native libs |
+| `build_binaries_linux.sh` | — | Build Linux native libs |
+| — | `build_binaries_windows.ps1` | Build Windows native libs |
 | — | `bootstrap_windows.ps1` | Bootstrap Windows development environment |
 | `bootstrap_android.sh` | `bootstrap_android.ps1` | Bootstrap Android dependencies |
 | `bootstrap_ios.sh` | — | Bootstrap iOS dependencies |
@@ -322,15 +324,27 @@ When working on the plugin:
 - `thirdparty/comaps` exists → builds from source
 - Can still use `FORCE_DOWNLOAD=true ./scripts/download_libs.sh <platform>` to test pre-built flow
 
-## Future Platform Support
+## Platform Support Status
 
-The architecture supports adding new platforms:
+The CI/CD pipeline now supports all major desktop and mobile platforms:
 
-| Platform | Build Script | Artifact |
-|----------|--------------|----------|
-| Linux | `build_binaries_linux.sh` | `agus-binaries-linux.tar.gz` |
-| Windows | `build_binaries_windows.sh` | `agus-binaries-windows.zip` |
-| macOS | `build_binaries_macos.sh` | `agus-binaries-macos.tar.gz` |
+| Platform | Build Script | Artifact | Status |
+|----------|--------------|----------|--------|
+| Android | `build_binaries_android.sh` | `agus-binaries-android.zip` | ✅ Implemented |
+| iOS | `build_binaries_ios.sh` | `agus-binaries-ios.zip` | ✅ Implemented |
+| macOS | `build_binaries_macos.sh` | `agus-binaries-macos.zip` | ✅ Implemented |
+| Windows | `build_binaries_windows.ps1` | `agus-binaries-windows.zip` | ✅ Implemented |
+| Linux | `build_binaries_linux.sh` | `agus-binaries-linux.zip` | ✅ Implemented |
+
+### GitHub Actions Jobs
+
+| Job | Runner | Platforms Built |
+|-----|--------|-----------------|
+| `build-and-release-mac-platforms` | `macos-latest` | iOS, macOS |
+| `build-and-release-android-platform` | `macos-latest` | Android |
+| `build-and-release-windows-platform` | `windows-latest` | Windows |
+| `build-and-release-linux-platform` | `ubuntu-latest` | Linux |
+| `release` | `ubuntu-latest` | Aggregate & publish |
 
 Headers (`agus-headers.tar.gz`) remain shared across all platforms.
 
@@ -356,18 +370,21 @@ During transition, the `release` workflow could upload artifacts with both old a
 
 ## Checklist
 
-- [ ] Create `build-headers` workflow
-- [ ] Rename `bundle_ios_headers.sh` → `bundle_headers.sh`
-- [ ] Rename `build_ios_xcframework.sh` → `build_binaries_ios.sh`
-- [ ] Refactor `build-ios-xcframework` → `build-ios-native` workflow
-- [ ] Create `build_binaries_android.sh`
-- [ ] Create `build-android-native` workflow
-- [ ] Rename `download_ios_xcframework.sh` → `download_libs.sh`
-- [ ] Update `android/build.gradle` for dual-path detection
-- [ ] Update `src/CMakeLists.txt` with `USE_PREBUILT_COMAPS` option
-- [ ] Update `ios/agus_maps_flutter.podspec`
-- [ ] Refactor `build-android` workflow
-- [ ] Refactor `build-ios` workflow
-- [ ] Update `release` workflow
-- [ ] Update `build-release` pipeline
-- [ ] Test end-to-end pipeline
+- [x] Create `build-headers` workflow
+- [x] Rename `bundle_ios_headers.sh` → `bundle_headers.sh`
+- [x] Rename `build_ios_xcframework.sh` → `build_binaries_ios.sh`
+- [x] Refactor `build-ios-xcframework` → `build-ios-native` workflow
+- [x] Create `build_binaries_android.sh`
+- [x] Create `build-android-native` workflow
+- [x] Rename `download_ios_xcframework.sh` → `download_libs.sh`
+- [x] Update `android/build.gradle` for dual-path detection
+- [x] Update `src/CMakeLists.txt` with `USE_PREBUILT_COMAPS` option
+- [x] Update `ios/agus_maps_flutter.podspec`
+- [x] Refactor `build-android` workflow
+- [x] Refactor `build-ios` workflow
+- [x] Update `release` workflow
+- [x] Update `build-release` pipeline
+- [x] Create `build_binaries_linux.sh`
+- [x] Create `build-and-release-linux-platform` workflow (GitHub Actions)
+- [x] Update `RELEASE.md` with Linux installation instructions
+- [x] Test end-to-end pipeline

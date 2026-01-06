@@ -419,6 +419,25 @@ a full rebuild. CMake symlinks to plugin sources may not trigger rebuild detecti
   - Added Linux support with `SKIP_QT` flag for headless builds without Qt
   - Provides dummy platform files for Linux embedded mode
 
+### 2026-01-06 (Session 3: CI/CD)
+
+- **Added**: `scripts/build_binaries_linux.sh` build script for Linux native libraries
+  - Builds `libagus_maps_flutter.so` for x86_64 architecture
+  - Validates prerequisites (CMake, Ninja, development packages)
+  - Creates `build/agus-binaries-linux.zip` artifact
+
+- **Added**: Linux CI/CD job in `.github/workflows/devops.yml`
+  - Runs on `ubuntu-latest` GitHub Actions runner
+  - Uses Azure Blob Storage cache for CoMaps source (similar to other platforms)
+  - Installs Linux build dependencies: `libgl-dev`, `libegl-dev`, `libgles-dev`, `libepoxy-dev`, `libgtk-3-dev`
+  - Builds native libraries and Flutter example app
+  - Produces artifacts: `agus-binaries-linux.zip` and `agus-maps-linux.zip`
+
+- **Updated**: `docs/RELEASE.md` with Linux installation instructions
+  - Added prerequisites for Ubuntu/Fedora
+  - Added troubleshooting guide for common Linux issues
+  - Updated artifact table and manual download section
+
 ### 2026-01-06 (Session 2)
 
 - **Fixed**: Duplicate `_AgusMapsFlutterPlugin` struct definitions in `linux/agus_maps_flutter_plugin.cc`

@@ -11,14 +11,17 @@ Each release includes the following artifacts:
 | `agus-headers.tar.gz` | C++ header files for compilation | ~5 MB |
 | `agus-binaries-ios.zip` | Pre-built XCFramework for iOS | ~150 MB |
 | `agus-binaries-android.zip` | Pre-built native libraries for Android | ~100 MB |
+| `agus-binaries-linux.zip` | Pre-built native libraries for Linux | ~80 MB |
 | `agus-binaries-macos.zip` | Pre-built XCFramework for macOS | ~80 MB |
+| `agus-binaries-windows.zip` | Pre-built DLLs for Windows | ~100 MB |
 | `agus-maps-android.aab` | Android App Bundle (Play Store) | ~50 MB |
 | `agus-maps-android.apk` | Universal APK (direct install) | ~80 MB |
 | `agus-maps-ios-simulator.app.zip` | iOS Simulator app (debug) | ~100 MB |
+| `agus-maps-linux.zip` | Linux app (release, x86_64) | ~100 MB |
 | `agus-maps-macos.app.zip` | macOS app (release) | ~100 MB |
 | `agus-maps-windows.zip` | Windows app (release, x86_64) | ~150 MB |
 
-> **Note:** Windows binaries are x86_64 only. ARM64 Windows is not currently supported.
+> **Note:** Windows and Linux binaries are x86_64 only. ARM64 is not currently supported on these platforms.
 
 ---
 
@@ -238,6 +241,81 @@ Since the app is unsigned, Windows may show a SmartScreen warning:
 
 ---
 
+### Linux (x86_64)
+
+The Linux app is a **release build** for **x86_64 (64-bit Intel/AMD)** systems. Tested on Ubuntu 22.04+ with Mesa drivers.
+
+> ⚠️ **Architecture Note:** Only x86_64 is supported. ARM64 Linux is not currently supported.
+
+#### Prerequisites
+
+- Ubuntu 22.04+ or equivalent (Debian, Fedora, etc.)
+- OpenGL ES 3.0 or OpenGL 3.2+ support (Mesa or proprietary drivers)
+- GTK 3 runtime libraries
+
+Install required runtime dependencies:
+```bash
+# Ubuntu/Debian
+sudo apt-get install libgtk-3-0 libgl1 libegl1 libepoxy0
+
+# Fedora
+sudo dnf install gtk3 mesa-libGL mesa-libEGL libepoxy
+```
+
+#### Installation Steps
+
+```bash
+# 1. Download and extract
+curl -LO https://github.com/bangonkali/agus-maps-flutter/releases/latest/download/agus-maps-linux.zip
+unzip agus-maps-linux.zip -d agus-maps-linux
+
+# 2. Run the app
+cd agus-maps-linux
+./agus_maps_flutter_example
+```
+
+#### Alternative: File Manager
+
+1. Download `agus-maps-linux.zip` from the [releases page](https://github.com/bangonkali/agus-maps-flutter/releases)
+2. Right-click and select **Extract Here** or use your archive manager
+3. Navigate to the extracted folder
+4. Double-click `agus_maps_flutter_example` (may require marking as executable)
+
+#### Making the App Executable
+
+If the app doesn't run when double-clicked:
+```bash
+chmod +x agus_maps_flutter_example
+./agus_maps_flutter_example
+```
+
+#### Requirements
+
+- Linux x86_64 (Ubuntu 22.04+ recommended)
+- ~500 MB free disk space for map data
+- OpenGL ES 3.0 or OpenGL 3.2+ compatible graphics driver
+- GTK 3 runtime libraries
+
+#### Known Limitations
+
+- **Not zero-copy rendering**: Linux uses CPU-mediated frame transfer (glReadPixels) similar to Windows. This may result in slightly higher CPU usage during map animations.
+- **ARM64 not supported**: ARM64 Linux devices are not supported.
+- **Wayland**: The app runs under XWayland on Wayland systems. Native Wayland support is pending Flutter upstream.
+
+---
+
+### Linux Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "error while loading shared libraries" | Install missing libraries with `apt-get install libgtk-3-0 libepoxy0` |
+| App won't start | Ensure you have OpenGL support: `glxinfo \| grep "OpenGL version"` |
+| Blank/white map | Check map data files exist in `~/.local/share/agus_maps_flutter/` |
+| Poor performance | Update Mesa drivers: `sudo apt-get upgrade mesa-*` |
+| Permission denied | Run `chmod +x agus_maps_flutter_example` |
+
+---
+
 ## Using Pre-built Libraries in Your Project
 
 If you're integrating the Agus Maps Flutter plugin into your own project, the native libraries will be downloaded automatically during the build process.
@@ -281,6 +359,14 @@ unzip agus-binaries-android.zip -d android/prebuilt/
 # Download macOS libraries
 curl -LO "https://github.com/bangonkali/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-macos.zip"
 unzip agus-binaries-macos.zip -d macos/Frameworks/
+
+# Download Linux libraries
+curl -LO "https://github.com/bangonkali/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-linux.zip"
+unzip agus-binaries-linux.zip -d linux/prebuilt/
+
+# Download Windows libraries
+curl -LO "https://github.com/bangonkali/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-windows.zip"
+unzip agus-binaries-windows.zip -d windows/prebuilt/
 ```
 
 ---
@@ -344,14 +430,31 @@ The example app includes minimal map data for testing. For production use, you'l
 
 If you prefer to build from source instead of using pre-built binaries:
 
-**Linux/macOS:**
+**Linux:**
 ```bash
 # Clone the repository
 git clone https://github.com/bangonkali/agus-maps-flutter.git
 cd agus-maps-flutter
 
-# Fetch dependencies
-./scripts/fetch_comaps.sh
+# Install dependencies
+sudo apt-get install build-essential cmake ninja-build libgtk-3-dev libepoxy-dev libegl-dev
+
+# Fetch CoMaps source
+./scripts/apply_comaps_patches.sh
+
+# Build for Linux
+cd example
+flutter build linux        # Linux
+```
+
+**macOS:**
+```bash
+# Clone the repository
+git clone https://github.com/bangonkali/agus-maps-flutter.git
+cd agus-maps-flutter
+
+# Bootstrap (fetches CoMaps, applies patches, builds boost)
+./scripts/bootstrap.sh
 
 # Build for your platform
 cd example
@@ -366,8 +469,8 @@ flutter build macos        # macOS
 git clone https://github.com/bangonkali/agus-maps-flutter.git
 cd agus-maps-flutter
 
-# Fetch dependencies
-.\scripts\fetch_comaps.ps1
+# Bootstrap (fetches CoMaps, applies patches)
+.\scripts\bootstrap.ps1
 
 # Build for your platform
 cd example
