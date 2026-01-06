@@ -368,6 +368,10 @@ Headers (`agus-headers.tar.gz`) remain shared across all platforms.
 
 During transition, the `release` workflow could upload artifacts with both old and new names for one release cycle to prevent breaking existing consumers.
 
+### Patch Application Robustness
+
+The bootstrap and CI scripts now guard simple counters with `((++var)) || true` so they do not trip `set -e` on zero-increment paths. This makes patch application and asset download loops resilient on Linux runners while keeping behavior identical on iOS, Android, macOS, and Windows.
+
 ## Checklist
 
 - [x] Create `build-headers` workflow
