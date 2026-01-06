@@ -25,7 +25,7 @@ COMAPS_TAG="v2025.12.28-2"
 
 # Tool versions - MUST match .github/workflows/devops.yml
 FLUTTER_VERSION="3.38.5"
-CMAKE_VERSION="3.31.10"
+CMAKE_VERSION="4.2.1"
 NDK_VERSION="27.3.13750724"
 
 # Build configuration
