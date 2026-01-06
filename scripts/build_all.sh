@@ -87,20 +87,33 @@ log_step()    { echo -e "${BLUE}[STEP]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 
 # ============================================================================
-# Platform check - macOS only
+# Platform check
 # ============================================================================
 
-check_macos() {
+PLATFORM="unknown"
+NUM_CORES=1
+SED_INPLACE="sed -i"
+
+check_platform() {
     log_header "Checking Platform"
     
     case "$(uname -s)" in
         Darwin)
+            PLATFORM="macos"
+            NUM_CORES=$(sysctl -n hw.ncpu)
+            SED_INPLACE="sed -i ''"
             log_info "Platform: macOS $(sw_vers -productVersion)"
             log_info "Architecture: $(uname -m)"
             ;;
+        Linux)
+            PLATFORM="linux"
+            NUM_CORES=$(nproc)
+            SED_INPLACE="sed -i"
+            log_info "Platform: Linux"
+            log_info "Architecture: $(uname -m)"
+            ;;
         *)
-            log_error "This script only runs on macOS."
-            log_error "Detected platform: $(uname -s)"
+            log_error "Unsupported platform: $(uname -s)"
             exit 1
             ;;
     esac
@@ -110,7 +123,52 @@ check_macos() {
 # Dependency checks and installation
 # ============================================================================
 
+check_linux_dependencies() {
+    log_header "Checking Linux Dependencies"
+    
+    local missing_deps=()
+    
+    # Check for commands (note: java is optional, only needed for Android builds)
+    for cmd in git cmake ninja clang curl unzip zip patch; do
+        if ! command -v "$cmd" &>/dev/null; then
+            missing_deps+=("$cmd")
+        fi
+    done
+    
+    # Check for libraries (using pkg-config)
+    if command -v pkg-config &>/dev/null; then
+        local libs_to_check=(
+            "gtk+-3.0:libgtk-3-dev"
+            "libcurl:libcurl4-openssl-dev"
+            "x11:libx11-dev"
+        )
+        for lib_pair in "${libs_to_check[@]}"; do
+            local lib_name="${lib_pair%%:*}"
+            local pkg_name="${lib_pair##*:}"
+            if ! pkg-config --exists "$lib_name"; then
+                 missing_deps+=("$pkg_name")
+            fi
+        done
+        # glu includes gl usually, but let's check basic stuff
+        # On Ubuntu, gl is provided by libgl1-mesa-dev, glu by libglu1-mesa-dev
+        # We can't easily check for libraries without compilation or pkg-config if they don't have pc files
+        # But development headers are usually what we need.
+    else
+         missing_deps+=("pkg-config")
+    fi
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        log_error "Missing dependencies: ${missing_deps[*]}"
+        log_error "Please run the following command to install them:"
+        log_error "sudo apt-get update && sudo apt-get install -y git cmake ninja-build build-essential pkg-config libgtk-3-dev libgl1-mesa-dev libglu1-mesa-dev liblz4-tool clang curl unzip zip python3-venv libcurl4-openssl-dev libx11-dev"
+        exit 1
+    fi
+    
+    log_success "Linux dependencies check passed"
+}
+
 check_homebrew() {
+    if [[ "$PLATFORM" != "macos" ]]; then return; fi
     if ! command -v brew &>/dev/null; then
         log_info "Installing Homebrew..."
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -126,6 +184,7 @@ check_homebrew() {
 }
 
 check_xcode() {
+    if [[ "$PLATFORM" != "macos" ]]; then return; fi
     if ! command -v xcodebuild &>/dev/null; then
         log_error "Xcode is not installed."
         log_error "Install from the App Store and run: xcode-select --install"
@@ -153,13 +212,20 @@ check_cmake() {
         current_version=$(cmake --version | head -1 | sed 's/cmake version //')
         if [[ "$current_version" != "$CMAKE_VERSION" ]]; then
             log_warn "CMake version mismatch: found $current_version, need $CMAKE_VERSION"
-            need_install=true
+            if [[ "$PLATFORM" == "macos" ]]; then
+                need_install=true
+            fi
         fi
     fi
     
     if [[ "$need_install" == "true" ]]; then
-        log_info "Installing CMake $CMAKE_VERSION..."
-        brew install cmake || brew upgrade cmake || true
+        if [[ "$PLATFORM" == "macos" ]]; then
+            log_info "Installing CMake $CMAKE_VERSION..."
+            brew install cmake || brew upgrade cmake || true
+        else
+            log_error "CMake not found or version mismatch. Please install CMake $CMAKE_VERSION manually."
+            exit 1
+        fi
         
         # Verify installation
         if ! command -v cmake &>/dev/null; then
@@ -174,7 +240,12 @@ check_cmake() {
 check_ninja() {
     if ! command -v ninja &>/dev/null; then
         log_info "Installing Ninja..."
-        brew install ninja
+        if [[ "$PLATFORM" == "macos" ]]; then
+            brew install ninja
+        else
+            log_error "Ninja not found. Please install ninja-build."
+            exit 1
+        fi
     fi
     log_info "Ninja: $(ninja --version)"
 }
@@ -190,7 +261,12 @@ check_git() {
 check_python() {
     if ! command -v python3 &>/dev/null; then
         log_info "Installing Python 3..."
-        brew install python3
+        if [[ "$PLATFORM" == "macos" ]]; then
+            brew install python3
+        else
+            log_error "Python 3 not found."
+            exit 1
+        fi
     fi
     log_info "Python: $(python3 --version)"
 }
@@ -200,6 +276,11 @@ check_flutter() {
     
     if ! command -v flutter &>/dev/null; then
         need_install=true
+        # Add local flutter to path if exists
+        if [[ -d "$HOME/.flutter/bin" ]]; then
+            export PATH="$HOME/.flutter/bin:$PATH"
+            need_install=false
+        fi
     else
         local current_version
         current_version=$(flutter --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
@@ -235,7 +316,14 @@ check_flutter() {
     log_info "Flutter: $(flutter --version 2>/dev/null | head -1 || echo 'installed')"
     
     # Accept licenses
-    flutter doctor --android-licenses 2>/dev/null || true
+    yes | flutter doctor --android-licenses 2>/dev/null || true
+    
+    # Configure flutter
+    if [[ "$PLATFORM" == "linux" ]]; then
+        flutter config --enable-linux-desktop >/dev/null 2>&1 || true
+    elif [[ "$PLATFORM" == "macos" ]]; then
+        flutter config --enable-macos-desktop >/dev/null 2>&1 || true
+    fi
 }
 
 check_android_sdk() {
@@ -245,6 +333,7 @@ check_android_sdk() {
         "${ANDROID_HOME:-}"
         "${ANDROID_SDK_ROOT:-}"
         "$HOME/Library/Android/sdk"
+        "$HOME/Android/Sdk"
     )
     
     ANDROID_SDK=""
@@ -321,6 +410,7 @@ check_android_cmake() {
 }
 
 check_cocoapods() {
+    if [[ "$PLATFORM" != "macos" ]]; then return; fi
     if ! command -v pod &>/dev/null; then
         log_info "Installing CocoaPods..."
         # Try gem first (faster), then brew
@@ -358,8 +448,13 @@ check_protobuf_python() {
 install_dependencies() {
     log_header "Installing Dependencies"
     
-    check_homebrew
-    check_xcode
+    if [[ "$PLATFORM" == "macos" ]]; then
+        check_homebrew
+        check_xcode
+    elif [[ "$PLATFORM" == "linux" ]]; then
+        check_linux_dependencies
+    fi
+    
     check_git
     check_cmake
     check_ninja
@@ -468,8 +563,8 @@ fetch_comaps() {
     # Fix Codeberg URLs (replace with Organic Maps GitHub mirrors) - Codeberg might be down/slow
     if [[ -f ".gitmodules" ]]; then
         log_info "Patching .gitmodules to use GitHub mirrors for stability..."
-        sed -i '' 's|https://codeberg.org/comaps/protobuf.git|https://github.com/organicmaps/protobuf.git|g' .gitmodules || true
-        sed -i '' 's|https://codeberg.org/comaps/kothic.git|https://github.com/organicmaps/kothic.git|g' .gitmodules || true
+        $SED_INPLACE 's|https://codeberg.org/comaps/protobuf.git|https://github.com/organicmaps/protobuf.git|g' .gitmodules || true
+        $SED_INPLACE 's|https://codeberg.org/comaps/kothic.git|https://github.com/organicmaps/kothic.git|g' .gitmodules || true
     fi
     
     git submodule update --init --recursive
@@ -520,33 +615,43 @@ apply_patches() {
         local patch_name
         patch_name="$(basename "$patch")"
         
+        log_info "Processing patch: $patch_name"
+        
         # Extract target file to check existence
         local target_file
         target_file=$(grep -m1 "^diff --git" "$patch" | sed 's|diff --git a/||; s| b/.*||' || true)
         
+        if [[ -n "$target_file" ]]; then
+             log_info "Target file: $target_file"
+        else
+             log_warn "Could not determine target file for $patch_name"
+        fi
+        
         if [[ -n "$target_file" ]] && [[ ! -e "$target_file" ]]; then
             log_warn "Skipping $patch_name (target '$target_file' not found)"
-            ((skipped++))
+            ((skipped+=1))
             continue
         fi
         
         # Try different application methods
         if git apply --whitespace=nowarn "$patch" 2>/dev/null; then
             log_info "Applied: $patch_name"
-            ((applied++))
+            ((applied+=1))
         elif git apply --3way --whitespace=nowarn "$patch" 2>/dev/null; then
             log_info "Applied (3-way): $patch_name"
-            ((applied++))
+            ((applied+=1))
         elif git apply --check --reverse "$patch" 2>/dev/null; then
             log_warn "Already applied: $patch_name"
-            ((skipped++))
+            ((skipped+=1))
         elif patch -p1 --batch --forward --dry-run < "$patch" >/dev/null 2>&1; then
             patch -p1 --batch --forward < "$patch" >/dev/null 2>&1
             log_info "Applied (patch): $patch_name"
-            ((applied++))
+            ((applied+=1))
         else
             log_error "Failed: $patch_name"
-            ((failed++))
+            ((failed+=1))
+            # Fail fast to debug
+            # exit 1
         fi
     done
     
@@ -720,7 +825,7 @@ download_base_mwms() {
     local html
     html=$(curl -sL "$mirror" 2>/dev/null || echo "")
     local snapshot
-    snapshot=$(echo "$html" | grep -oE '[0-9]{6}' | sort -rn | head -1)
+    snapshot=$(echo "$html" | grep -oE '[0-9]{6}' | sort -rn | head -1 || true)
     
     if [[ -z "$snapshot" ]]; then
         log_warn "Could not determine latest snapshot, using default"
@@ -780,7 +885,7 @@ build_android() {
         
         # Build
         log_info "Building $abi..."
-        "$ANDROID_CMAKE" --build "$build_path" --parallel "$(sysctl -n hw.ncpu)" \
+        "$ANDROID_CMAKE" --build "$build_path" --parallel "$NUM_CORES" \
             2>&1 | tee "$build_path/cmake_build.log"
         
         # Copy output
@@ -847,7 +952,7 @@ build_ios() {
         -DWITH_SYSTEM_PROVIDED_3PARTY=OFF \
         2>&1 | tee "$device_build/cmake_configure.log"
     
-    cmake --build "$device_build" --config "$BUILD_TYPE" -j "$(sysctl -n hw.ncpu)" \
+    cmake --build "$device_build" --config "$BUILD_TYPE" -j "$NUM_CORES" \
         2>&1 | tee "$device_build/cmake_build.log"
     
     # Build for simulator (arm64 + x86_64)
@@ -875,7 +980,7 @@ build_ios() {
         -DWITH_SYSTEM_PROVIDED_3PARTY=OFF \
         2>&1 | tee "$sim_build/cmake_configure.log"
     
-    cmake --build "$sim_build" --config "$BUILD_TYPE" -j "$(sysctl -n hw.ncpu)" \
+    cmake --build "$sim_build" --config "$BUILD_TYPE" -j "$NUM_CORES" \
         2>&1 | tee "$sim_build/cmake_build.log"
     
     # Merge static libraries for each platform
@@ -962,7 +1067,7 @@ build_macos() {
         -DWITH_SYSTEM_PROVIDED_3PARTY=OFF \
         2>&1 | tee "$arm64_build/cmake_configure.log"
     
-    cmake --build "$arm64_build" --config "$BUILD_TYPE" --target map -j "$(sysctl -n hw.ncpu)" \
+    cmake --build "$arm64_build" --config "$BUILD_TYPE" --target map -j "$NUM_CORES" \
         2>&1 | tee "$arm64_build/cmake_build.log"
     
     # Build x86_64
@@ -987,7 +1092,7 @@ build_macos() {
         -DWITH_SYSTEM_PROVIDED_3PARTY=OFF \
         2>&1 | tee "$x64_build/cmake_build.log"
     
-    cmake --build "$x64_build" --config "$BUILD_TYPE" --target map -j "$(sysctl -n hw.ncpu)" \
+    cmake --build "$x64_build" --config "$BUILD_TYPE" --target map -j "$NUM_CORES" \
         2>&1 | tee "$x64_build/cmake_build.log"
     
     # Merge static libraries
@@ -1038,6 +1143,74 @@ build_macos() {
     popd >/dev/null
     
     log_success "macOS build complete: $BUILD_DIR/agus-binaries-macos.zip"
+}
+
+build_linux() {
+    log_header "Building Linux Native Library"
+    
+    if [[ "$PLATFORM" != "linux" ]]; then return; fi
+    
+    local output_dir="$BUILD_DIR/agus-binaries-linux"
+    rm -rf "$output_dir"
+    mkdir -p "$output_dir"
+    
+    local linux_build_dir="$BUILD_DIR/linux"
+    rm -rf "$linux_build_dir"
+    mkdir -p "$linux_build_dir"
+    
+    # We build the shared library using src/CMakeLists.txt, but we need to set up the build context
+    # correctly since src/CMakeLists.txt expects to be part of a larger build or needs
+    # proper variable setup.
+    # However, src/CMakeLists.txt is designed to be included.
+    # Let's use a temporary CMakeLists.txt to build it as a standalone lib for verification/bundling.
+    
+    local tmp_cmake="$linux_build_dir/CMakeLists.txt"
+    cat > "$tmp_cmake" <<EOF
+cmake_minimum_required(VERSION 3.10)
+project(agus_maps_flutter_linux_wrapper LANGUAGES CXX C)
+set(CMAKE_CXX_STANDARD 23)
+add_subdirectory("${ROOT_DIR}/src" "src")
+EOF
+    
+    # Needs Clang for C++23 if available
+    local cxx_compiler="clang++"
+    local c_compiler="clang"
+    if ! command -v clang++ &>/dev/null; then
+         log_warn "Clang not found, trying g++ (might fail if too old)"
+         cxx_compiler="g++"
+         c_compiler="gcc"
+    fi
+
+    log_step "Configuring CMake for Linux..."
+    cmake -S "$linux_build_dir" -B "$linux_build_dir/build" \
+        -G "Ninja" \
+        -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+        -DCMAKE_CXX_COMPILER="$cxx_compiler" \
+        -DCMAKE_C_COMPILER="$c_compiler" \
+        2>&1 | tee "$linux_build_dir/cmake_configure.log"
+        
+    log_step "Building Linux library..."
+    cmake --build "$linux_build_dir/build" --parallel "$NUM_CORES" \
+        2>&1 | tee "$linux_build_dir/cmake_build.log"
+        
+    # Find and copy the library
+    local lib_path
+    lib_path=$(find "$linux_build_dir/build" -name "libagus_maps_flutter.so" | head -1)
+    
+    if [[ -f "$lib_path" ]]; then
+        cp "$lib_path" "$output_dir/"
+        log_info "Built: $output_dir/libagus_maps_flutter.so"
+    else
+        log_error "Build failed or library not found in expected location"
+        # Don't exit, just warn, as the main flutter build might still work if this was just a check
+    fi
+    
+    # Create archive
+    pushd "$BUILD_DIR" >/dev/null
+    zip -r "agus-binaries-linux.zip" "agus-binaries-linux"
+    popd >/dev/null
+    
+    log_success "Linux build complete: $BUILD_DIR/agus-binaries-linux.zip"
 }
 
 # ============================================================================
@@ -1108,13 +1281,19 @@ print_summary() {
     echo ""
     echo "Build outputs:"
     echo "  - Android: $BUILD_DIR/agus-binaries-android.zip"
-    echo "  - iOS:     $BUILD_DIR/agus-binaries-ios.zip"
-    echo "  - macOS:   $BUILD_DIR/agus-binaries-macos.zip"
+    if [[ "$PLATFORM" == "macos" ]]; then
+        echo "  - iOS:     $BUILD_DIR/agus-binaries-ios.zip"
+        echo "  - macOS:   $BUILD_DIR/agus-binaries-macos.zip"
+    elif [[ "$PLATFORM" == "linux" ]]; then
+        echo "  - Linux:   $BUILD_DIR/agus-binaries-linux.zip"
+    fi
     echo ""
     echo "Native libraries installed to:"
     echo "  - android/prebuilt/"
-    echo "  - ios/Frameworks/"
-    echo "  - macos/Frameworks/"
+    if [[ "$PLATFORM" == "macos" ]]; then
+        echo "  - ios/Frameworks/"
+        echo "  - macos/Frameworks/"
+    fi
     echo ""
     echo "To run the example app:"
     echo "  cd example"
@@ -1198,7 +1377,7 @@ main() {
     print_banner
     
     # Platform check
-    check_macos
+    check_platform
     
     # Install dependencies
     install_dependencies
@@ -1234,16 +1413,24 @@ main() {
     # Copy assets
     copy_data_to_example
     copy_android_assets
-    build_metal_shaders
+    if [[ "$PLATFORM" == "macos" ]]; then
+        build_metal_shaders
+    fi
     
     # Build all platforms
     build_android
-    build_ios
-    build_macos
+    if [[ "$PLATFORM" == "macos" ]]; then
+        build_ios
+        build_macos
+    elif [[ "$PLATFORM" == "linux" ]]; then
+        build_linux
+    fi
     
     # CocoaPods setup (requires built frameworks)
-    setup_cocoapods_ios
-    setup_cocoapods_macos
+    if [[ "$PLATFORM" == "macos" ]]; then
+        setup_cocoapods_ios
+        setup_cocoapods_macos
+    fi
     
     print_summary
 }

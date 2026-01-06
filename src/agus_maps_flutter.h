@@ -104,7 +104,12 @@ FFI_PLUGIN_EXPORT int comaps_get_registered_maps_count(void);
 // @param width Surface width in physical pixels
 // @param height Surface height in physical pixels
 // @param density Screen DPI scale factor
+// @return On Linux: returns 0 on success, negative on error. On other platforms: void.
+#if defined(__linux__) && !defined(__ANDROID__)
+FFI_PLUGIN_EXPORT int64_t agus_native_create_surface(int32_t width, int32_t height, float density);
+#else
 FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height, float density);
+#endif
 
 // Called when the surface size changes
 FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int32_t height);

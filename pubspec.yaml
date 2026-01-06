@@ -50,6 +50,7 @@ flutter:
         pluginClass: AgusMapsFlutterPlugin
         ffiPlugin: true
       linux:
+        pluginClass: AgusMapsFlutterPlugin
         ffiPlugin: true
       macos:
         pluginClass: AgusMapsFlutterPlugin

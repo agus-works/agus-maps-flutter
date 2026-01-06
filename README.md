@@ -70,10 +70,10 @@ This project is currently in the **proof of concept stage**, demonstrating zero-
 | **macOS** | ✅ Working | arm64/x86_64, window resize supported |
 | **Android** | ✅ Working | arm64-v8a, armeabi-v7a, x86_64 |
 | **Windows** | ✅ Working | x86_64 only |
-| **Linux** | 🚧 Planned | Blocked on dedicated hardware |
+| **Linux** | ✅ Working | x86_64 with EGL/GLES3 |
 | **Windows ARM64** | 🚧 Planned | Blocked on dedicated hardware |
 
-Contributions for Linux and Windows ARM64 are welcome from developers with access to the required hardware!
+Contributions for Windows ARM64 are welcome from developers with access to the required hardware!
 
 ### Why Another Map Plugin?
 
@@ -200,9 +200,9 @@ See the [example app](example/) for a complete working demo showing all plugin f
 | **Pricing** | Free | Free | Usage-based | Usage-based |
 | **Data Source** | OpenStreetMap | Any tiles | Google | Mapbox |
 | **Widget Integration** | ✅ Native | ✅ Native | ⚠️ PlatformView | ⚠️ PlatformView |
-| **Platforms** | Android, iOS, macOS, Windows | All | Android, iOS | Android, iOS |
+| **Platforms** | Android, iOS, macOS, Windows, Linux | All | Android, iOS | Android, iOS |
 
-*\*Zero-copy on iOS, macOS, Android. Windows uses optimized CPU-mediated transfer.*
+*\*Zero-copy on iOS, macOS, Android. Windows and Linux use optimized CPU-mediated transfer.*
 
 ### Platform Support
 
@@ -212,9 +212,9 @@ See the [example app](example/) for a complete working demo showing all plugin f
 | **macOS** | arm64, x86_64 | Metal | ✅ Yes (IOSurface) |
 | **Android** | arm64-v8a, armeabi-v7a, x86_64 | OpenGL ES | ✅ Yes (SurfaceTexture) |
 | **Windows** | x86_64 only | OpenGL + D3D11 | ❌ No (CPU-mediated) |
-| **Linux** | — | — | 🚧 Planned |
+| **Linux** | x86_64 | EGL + OpenGL ES 3.0 | ❌ No (CPU-mediated) |
 
-> **Windows Note:** ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware. Contributions welcome!
+> **Windows/Linux Note:** ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware. Linux uses FlPixelBufferTexture with CPU pixel copy (~2-5ms per frame). Contributions welcome!
 
 ### Pros ✅
 
