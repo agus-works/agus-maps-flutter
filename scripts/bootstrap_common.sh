@@ -27,7 +27,7 @@ set -euo pipefail
 #     to avoid interfering with CI-specific caching (e.g., Bitrise cache steps)
 #
 # Environment variables:
-#   COMAPS_TAG: git tag/commit to checkout (defaults to v2025.12.11-2)
+#   COMAPS_TAG: git tag/commit to checkout (defaults to v2025.12.28-2)
 #   COMAPS_USE_HTTPS: if set to "true", uses HTTPS instead of SSH (for CI)
 #   SKIP_PATCHES: if set to "true", skips applying patches
 #   NO_CACHE: if set to "true", disables caching (no create/use of archive)
@@ -43,7 +43,7 @@ fi
 BOOTSTRAP_ROOT_DIR="$(cd "$BOOTSTRAP_SCRIPT_DIR/.." && pwd)"
 
 # Default configuration
-COMAPS_TAG_DEFAULT="v2025.12.11-2"
+COMAPS_TAG_DEFAULT="v2025.12.28-2"
 COMAPS_TAG="${COMAPS_TAG:-$COMAPS_TAG_DEFAULT}"
 
 # Colors for output (disabled if not a tty)
@@ -396,6 +396,12 @@ bootstrap_generate_data() {
     bash tools/unix/generate_categories.sh
   else
     log_warn "generate_categories.sh not found or not executable"
+  fi
+  
+  # Generate desktop UI strings (required for indexer lib)
+  if [[ -x "tools/unix/generate_desktop_ui_strings.sh" ]]; then
+    log_info "Generating desktop UI strings..."
+    bash tools/unix/generate_desktop_ui_strings.sh 2>&1 || log_warn "generate_desktop_ui_strings.sh had warnings"
   fi
   
   # Download pre-built symbol textures from Organic Maps

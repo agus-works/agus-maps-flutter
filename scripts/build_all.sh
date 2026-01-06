@@ -21,7 +21,7 @@ set -euo pipefail
 # ============================================================================
 
 # CoMaps/comaps git tag - MUST match .github/workflows/devops.yml
-COMAPS_TAG="v2025.12.11-2"
+COMAPS_TAG="v2025.12.28-2"
 
 # Tool versions - MUST match .github/workflows/devops.yml
 FLUTTER_VERSION="3.38.5"
@@ -464,6 +464,14 @@ fetch_comaps() {
     
     # Initialize ALL submodules recursively (critical for patches)
     log_info "Initializing submodules (this may take a while)..."
+    
+    # Fix Codeberg URLs (replace with Organic Maps GitHub mirrors) - Codeberg might be down/slow
+    if [[ -f ".gitmodules" ]]; then
+        log_info "Patching .gitmodules to use GitHub mirrors for stability..."
+        sed -i '' 's|https://codeberg.org/comaps/protobuf.git|https://github.com/organicmaps/protobuf.git|g' .gitmodules || true
+        sed -i '' 's|https://codeberg.org/comaps/kothic.git|https://github.com/organicmaps/kothic.git|g' .gitmodules || true
+    fi
+    
     git submodule update --init --recursive
     
     log_info "At $(git rev-parse --short HEAD) ($(git describe --tags --always --dirty 2>/dev/null || echo 'unknown'))"
@@ -613,6 +621,12 @@ generate_comaps_data() {
     if [[ -x "tools/unix/generate_categories.sh" ]]; then
         log_info "Generating categories..."
         bash tools/unix/generate_categories.sh 2>&1 || log_warn "generate_categories.sh had warnings"
+    fi
+
+    # Generate desktop UI strings (required for indexer lib)
+    if [[ -x "tools/unix/generate_desktop_ui_strings.sh" ]]; then
+        log_info "Generating desktop UI strings..."
+        bash tools/unix/generate_desktop_ui_strings.sh 2>&1 || log_warn "generate_desktop_ui_strings.sh had warnings"
     fi
     
     # Download symbol textures

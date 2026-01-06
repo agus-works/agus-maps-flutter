@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 # Configuration
 # ============================================================================
 
-$script:COMAPS_TAG_DEFAULT = 'v2025.12.11-2'
+$script:COMAPS_TAG_DEFAULT = 'v2025.12.28-2'
 $script:COMAPS_TAG = if ($env:COMAPS_TAG) { $env:COMAPS_TAG } else { $script:COMAPS_TAG_DEFAULT }
 $script:COMAPS_GIT_URL = 'https://github.com/comaps/comaps.git'
 $script:SEVENZ_PATH = 'C:\Program Files\7-Zip\7z.exe'
@@ -577,6 +577,36 @@ function Bootstrap-Data {
 }
 
 # ============================================================================
+# Bootstrap-GenerateData - Generate CoMaps data files (classificator, types, etc.)
+# ============================================================================
+
+function Bootstrap-GenerateData {
+    [CmdletBinding()]
+    param(
+        [string]$RepoRoot
+    )
+
+    Write-LogHeader "Generating CoMaps Data Files"
+    
+    $comapsDir = Join-Path $RepoRoot 'thirdparty' 'comaps'
+    
+    # Generate desktop UI strings (required for indexer lib)
+    $script = Join-Path $comapsDir 'tools' 'python' 'generate_desktop_ui_strings.py'
+    if (Test-Path $script) {
+        Write-LogInfo "Generating desktop UI strings..."
+        Push-Location $comapsDir
+        try {
+            # Assuming python is in PATH
+            python $script
+        } finally {
+            Pop-Location
+        }
+    } else {
+        Write-LogWarn "generate_desktop_ui_strings.py not found at $script"
+    }
+}
+
+# ============================================================================
 # Bootstrap-AndroidAssets - Copy fonts to Android assets
 # ============================================================================
 
@@ -666,7 +696,10 @@ function Bootstrap-Full {
     # Step 3: Build Boost headers
     Bootstrap-Boost -RepoRoot $RepoRoot
     
-    # Step 4: Copy data files
+    # Step 4: Generate Data Files (like desktop UI strings)
+    Bootstrap-GenerateData -RepoRoot $RepoRoot
+    
+    # Step 5: Copy data files
     Bootstrap-Data -RepoRoot $RepoRoot
     
     # Platform-specific steps
@@ -774,6 +807,7 @@ Export-ModuleMember -Function @(
     'Bootstrap-CoMaps',
     'Bootstrap-ApplyPatches',
     'Bootstrap-Boost',
+    'Bootstrap-GenerateData',
     'Bootstrap-Data',
     'Bootstrap-AndroidAssets',
     'Bootstrap-Vcpkg',
