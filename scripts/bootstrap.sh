@@ -2,20 +2,25 @@
 set -euo pipefail
 
 # ============================================================================
-# bootstrap.sh - Unified Bootstrap for macOS Development
+# bootstrap.sh - Unified Bootstrap for macOS and Linux Development
 # ============================================================================
 #
 # This script sets up the complete development environment for agus_maps_flutter
-# on macOS. It prepares ALL target platforms that can be built from macOS:
+# on macOS and Linux.
+#
+# On macOS, it prepares ALL target platforms that can be built from macOS:
 #   - Android (arm64-v8a, armeabi-v7a, x86_64)
 #   - iOS (arm64 device, arm64+x86_64 simulator)
 #   - macOS (arm64, x86_64)
 #
-# IMPORTANT: This script only runs on macOS. Linux is not yet supported.
+# On Linux, it prepares:
+#   - Linux (x86_64)
+#   - Note: Native binaries are built separately via build_binaries_linux.sh
+#
 # For Windows development, use bootstrap.ps1 instead.
 #
 # What it does:
-#   1. Verify macOS environment
+#   1. Verify platform (macOS or Linux)
 #   2. Fetch CoMaps source code (or restore from local cache)
 #   3. Create cache archive after fresh clone (before patches)
 #   4. Apply patches (superset for all platforms)
@@ -23,24 +28,22 @@ set -euo pipefail
 #   6. Generate CoMaps data files (classificator, types, etc.)
 #   7. Copy CoMaps data files to example assets
 #   8. Download base MWM samples (World, Gibraltar)
-#   9. Copy Android-specific assets (fonts)
-#  10. Download or build iOS XCFramework
-#  11. Download or build macOS XCFramework
-#  12. Copy Metal shaders for macOS
+#   9. [macOS only] Copy Android-specific assets (fonts)
+#  10. [macOS only] Download or build iOS XCFramework
+#  11. [macOS only] Download or build macOS XCFramework
+#  12. [macOS only] Copy Metal shaders for macOS
 #
 # Usage:
 #   ./scripts/bootstrap.sh [--build-binaries] [--build-example-app] [--no-cache]
 #
 # Options:
 #   --build-binaries       Build all native binaries from source:
-#                          - Android: .so libraries (~15 min)
-#                          - iOS: XCFramework (~30 min)
-#                          - macOS: XCFramework (~30 min)
+#                          - macOS: Android .so, iOS/macOS XCFrameworks
+#                          - Linux: Not yet supported (use build_binaries_linux.sh)
 #                          Without this flag, downloads pre-built binaries
 #   --build-example-app    Build Flutter example apps in release mode:
-#                          - Android: APK and AAB
-#                          - iOS: Simulator .app
-#                          - macOS: .app bundle
+#                          - macOS: Android APK/AAB, iOS Simulator, macOS .app
+#                          - Linux: Not yet supported (use flutter build linux)
 #                          Requires native binaries to be present.
 #   --no-cache             Disable local cache (don't use/create .thirdparty.tar.bz2)
 #
@@ -64,29 +67,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ============================================================================
-# Check Platform - macOS Only
+# Check Platform - macOS and Linux
 # ============================================================================
+
+BUILD_PLATFORM=""
 
 check_platform() {
     case "$(uname -s)" in
         Darwin)
-            # macOS - supported
+            BUILD_PLATFORM="macos"
             ;;
         Linux)
-            echo ""
-            echo "ERROR: Linux builds are not yet supported."
-            echo ""
-            echo "The agus_maps_flutter bootstrap currently only runs on macOS."
-            echo "We are still evaluating which Linux distributions to support"
-            echo "and the best process for Linux development."
-            echo ""
-            echo "For more information, see docs/CONTRIBUTING.md"
-            echo ""
-            exit 1
+            BUILD_PLATFORM="linux"
             ;;
         MINGW*|MSYS*|CYGWIN*)
             echo ""
-            echo "ERROR: This script is for macOS only."
+            echo "ERROR: This script is for macOS/Linux only."
             echo ""
             echo "For Windows development, use PowerShell:"
             echo "  .\\scripts\\bootstrap.ps1"
@@ -166,189 +162,220 @@ echo "========================================="
 echo "Agus Maps Flutter - Unified Bootstrap"
 echo "========================================="
 echo ""
-echo "Build Machine: macOS $(sw_vers -productVersion)"
-echo "Target Platforms: Android, iOS, macOS"
+if [[ "$BUILD_PLATFORM" == "macos" ]]; then
+    echo "Build Machine: macOS $(sw_vers -productVersion)"
+    echo "Target Platforms: Android, iOS, macOS"
+else
+    echo "Build Machine: Linux $(uname -r)"
+    echo "Target Platforms: Linux"
+fi
 echo ""
 
 # Run full bootstrap for all platforms (handles CoMaps fetch, patches, boost, data)
 bootstrap_full "all"
 
 # ============================================================================
-# Android Native Libraries
+# Platform-Specific Binary Setup
 # ============================================================================
 
-log_header "Setting up Android Native Libraries"
-
+# Define paths used in status output
 ANDROID_PREBUILT_PATH="$ROOT_DIR/android/prebuilt"
-ANDROID_BUILD_OUTPUT="$ROOT_DIR/build/agus-binaries-android"
-
-if [[ "$BUILD_BINARIES" == "true" ]]; then
-    # Clean existing binaries to force rebuild
-    log_info "Cleaning existing Android binaries for rebuild..."
-    rm -rf "$ANDROID_PREBUILT_PATH" 2>/dev/null || true
-    rm -rf "$ANDROID_BUILD_OUTPUT" 2>/dev/null || true
-    log_info "Building Android native libraries from source (this may take ~15 minutes)..."
-    if [[ -f "$SCRIPT_DIR/build_binaries_android.sh" ]]; then
-        chmod +x "$SCRIPT_DIR/build_binaries_android.sh"
-        "$SCRIPT_DIR/build_binaries_android.sh"
-        
-        # Copy to android/prebuilt
-        mkdir -p "$ANDROID_PREBUILT_PATH"
-        if [[ -d "$ANDROID_BUILD_OUTPUT" ]]; then
-            cp -R "$ANDROID_BUILD_OUTPUT"/* "$ANDROID_PREBUILT_PATH/"
-            log_info "Android native libraries installed"
-        fi
-    else
-        log_error "build_binaries_android.sh not found"
-        exit 1
-    fi
-else
-    # Check if libraries already exist
-    if [[ -f "$ANDROID_PREBUILT_PATH/arm64-v8a/libagus_maps_flutter.so" ]] && \
-       [[ -f "$ANDROID_PREBUILT_PATH/armeabi-v7a/libagus_maps_flutter.so" ]] && \
-       [[ -f "$ANDROID_PREBUILT_PATH/x86_64/libagus_maps_flutter.so" ]]; then
-        log_info "Android native libraries already exist"
-    else
-        log_info "Downloading pre-built Android native libraries..."
-        if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
-            FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" android || {
-                log_warn "Download failed. Use --build-binaries to build from source."
-            }
-        else
-            log_warn "download_libs.sh not found. Use --build-binaries to build from source."
-        fi
-    fi
-fi
-
-# ============================================================================
-# iOS XCFramework
-# ============================================================================
-
-log_header "Setting up iOS XCFramework"
-
 IOS_XCFRAMEWORK_PATH="$ROOT_DIR/ios/Frameworks/CoMaps.xcframework"
-IOS_BUILD_OUTPUT="$ROOT_DIR/build/agus-binaries-ios"
-
-if [[ "$BUILD_BINARIES" == "true" ]]; then
-    # Clean existing binaries to force rebuild
-    log_info "Cleaning existing iOS binaries for rebuild..."
-    rm -rf "$IOS_XCFRAMEWORK_PATH" 2>/dev/null || true
-    rm -rf "$IOS_BUILD_OUTPUT" 2>/dev/null || true
-    
-    log_info "Building iOS XCFramework from source (this may take ~30 minutes)..."
-    if [[ -f "$SCRIPT_DIR/build_binaries_ios.sh" ]]; then
-        chmod +x "$SCRIPT_DIR/build_binaries_ios.sh"
-        "$SCRIPT_DIR/build_binaries_ios.sh"
-        
-        # Copy to ios/Frameworks
-        mkdir -p "$ROOT_DIR/ios/Frameworks"
-        if [[ -d "$IOS_BUILD_OUTPUT/CoMaps.xcframework" ]]; then
-            cp -R "$IOS_BUILD_OUTPUT/CoMaps.xcframework" "$ROOT_DIR/ios/Frameworks/"
-            log_info "iOS XCFramework installed"
-        fi
-    else
-        log_error "build_binaries_ios.sh not found"
-        exit 1
-    fi
-else
-    if [[ -d "$IOS_XCFRAMEWORK_PATH" ]]; then
-        log_info "iOS XCFramework already exists"
-    else
-        log_info "Downloading pre-built iOS XCFramework..."
-        if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
-            FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" ios || {
-                log_warn "Download failed. Use --build-binaries to build from source."
-            }
-        else
-            log_warn "download_libs.sh not found. Use --build-binaries to build from source."
-        fi
-    fi
-fi
-
-# ============================================================================
-# macOS XCFramework
-# ============================================================================
-
-log_header "Setting up macOS XCFramework"
-
 MACOS_XCFRAMEWORK_PATH="$ROOT_DIR/macos/Frameworks/CoMaps.xcframework"
-MACOS_BUILD_OUTPUT="$ROOT_DIR/build/agus-binaries-macos"
+LINUX_PREBUILT_PATH="$ROOT_DIR/linux/prebuilt"
 
-if [[ "$BUILD_BINARIES" == "true" ]]; then
-    # Clean existing binaries to force rebuild
-    log_info "Cleaning existing macOS binaries for rebuild..."
-    rm -rf "$MACOS_XCFRAMEWORK_PATH" 2>/dev/null || true
-    rm -rf "$MACOS_BUILD_OUTPUT" 2>/dev/null || true
+if [[ "$BUILD_PLATFORM" == "macos" ]]; then
+    # ==========================================================================
+    # macOS: Setup Android, iOS, and macOS binaries
+    # ==========================================================================
     
-    log_info "Building macOS XCFramework from source (this may take ~30 minutes)..."
-    if [[ -f "$SCRIPT_DIR/build_binaries_macos.sh" ]]; then
-        chmod +x "$SCRIPT_DIR/build_binaries_macos.sh"
-        "$SCRIPT_DIR/build_binaries_macos.sh"
+    # --------------------------------------------------------------------------
+    # Android Native Libraries
+    # --------------------------------------------------------------------------
+    log_header "Setting up Android Native Libraries"
+    
+    ANDROID_BUILD_OUTPUT="$ROOT_DIR/build/agus-binaries-android"
+    
+    if [[ "$BUILD_BINARIES" == "true" ]]; then
+        # Clean existing binaries to force rebuild
+        log_info "Cleaning existing Android binaries for rebuild..."
+        rm -rf "$ANDROID_PREBUILT_PATH" 2>/dev/null || true
+        rm -rf "$ANDROID_BUILD_OUTPUT" 2>/dev/null || true
+        log_info "Building Android native libraries from source (this may take ~15 minutes)..."
+        if [[ -f "$SCRIPT_DIR/build_binaries_android.sh" ]]; then
+            chmod +x "$SCRIPT_DIR/build_binaries_android.sh"
+            "$SCRIPT_DIR/build_binaries_android.sh"
+            
+            # Copy to android/prebuilt
+            mkdir -p "$ANDROID_PREBUILT_PATH"
+            if [[ -d "$ANDROID_BUILD_OUTPUT" ]]; then
+                cp -R "$ANDROID_BUILD_OUTPUT"/* "$ANDROID_PREBUILT_PATH/"
+                log_info "Android native libraries installed"
+            fi
+        else
+            log_error "build_binaries_android.sh not found"
+            exit 1
+        fi
+    else
+        # Check if libraries already exist
+        if [[ -f "$ANDROID_PREBUILT_PATH/arm64-v8a/libagus_maps_flutter.so" ]] && \
+           [[ -f "$ANDROID_PREBUILT_PATH/armeabi-v7a/libagus_maps_flutter.so" ]] && \
+           [[ -f "$ANDROID_PREBUILT_PATH/x86_64/libagus_maps_flutter.so" ]]; then
+            log_info "Android native libraries already exist"
+        else
+            log_info "Downloading pre-built Android native libraries..."
+            if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
+                FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" android || {
+                    log_warn "Download failed. Use --build-binaries to build from source."
+                }
+            else
+                log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+            fi
+        fi
+    fi
+    
+    # --------------------------------------------------------------------------
+    # iOS XCFramework
+    # --------------------------------------------------------------------------
+    log_header "Setting up iOS XCFramework"
+    
+    IOS_BUILD_OUTPUT="$ROOT_DIR/build/agus-binaries-ios"
+    
+    if [[ "$BUILD_BINARIES" == "true" ]]; then
+        # Clean existing binaries to force rebuild
+        log_info "Cleaning existing iOS binaries for rebuild..."
+        rm -rf "$IOS_XCFRAMEWORK_PATH" 2>/dev/null || true
+        rm -rf "$IOS_BUILD_OUTPUT" 2>/dev/null || true
         
-        # Copy to macos/Frameworks
-        mkdir -p "$ROOT_DIR/macos/Frameworks"
-        if [[ -d "$MACOS_BUILD_OUTPUT/CoMaps.xcframework" ]]; then
-            cp -R "$MACOS_BUILD_OUTPUT/CoMaps.xcframework" "$ROOT_DIR/macos/Frameworks/"
-            log_info "macOS XCFramework installed"
-        fi
-    else
-        log_error "build_binaries_macos.sh not found"
-        exit 1
-    fi
-else
-    if [[ -d "$MACOS_XCFRAMEWORK_PATH" ]]; then
-        log_info "macOS XCFramework already exists"
-    else
-        log_info "Downloading pre-built macOS XCFramework..."
-        if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
-            FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" macos || {
-                log_warn "Download failed. Use --build-binaries to build from source."
-            }
+        log_info "Building iOS XCFramework from source (this may take ~30 minutes)..."
+        if [[ -f "$SCRIPT_DIR/build_binaries_ios.sh" ]]; then
+            chmod +x "$SCRIPT_DIR/build_binaries_ios.sh"
+            "$SCRIPT_DIR/build_binaries_ios.sh"
+            
+            # Copy to ios/Frameworks
+            mkdir -p "$ROOT_DIR/ios/Frameworks"
+            if [[ -d "$IOS_BUILD_OUTPUT/CoMaps.xcframework" ]]; then
+                cp -R "$IOS_BUILD_OUTPUT/CoMaps.xcframework" "$ROOT_DIR/ios/Frameworks/"
+                log_info "iOS XCFramework installed"
+            fi
         else
-            log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+            log_error "build_binaries_ios.sh not found"
+            exit 1
+        fi
+    else
+        if [[ -d "$IOS_XCFRAMEWORK_PATH" ]]; then
+            log_info "iOS XCFramework already exists"
+        else
+            log_info "Downloading pre-built iOS XCFramework..."
+            if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
+                FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" ios || {
+                    log_warn "Download failed. Use --build-binaries to build from source."
+                }
+            else
+                log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+            fi
         fi
     fi
-fi
-
-# ============================================================================
-# macOS Metal Shaders
-# ============================================================================
-
-log_header "Setting up Metal Shaders"
-
-MACOS_SHADERS="$ROOT_DIR/macos/Resources/shaders_metal.metallib"
-
-if [[ -f "$MACOS_SHADERS" ]]; then
-    log_info "macOS Metal shaders already exist"
-else
-    mkdir -p "$ROOT_DIR/macos/Resources"
     
-    # Try to copy from iOS (shared shaders)
-    IOS_SHADERS="$ROOT_DIR/ios/Resources/shaders_metal.metallib"
-    if [[ -f "$IOS_SHADERS" ]]; then
-        cp "$IOS_SHADERS" "$MACOS_SHADERS"
-        log_info "Copied Metal shaders from iOS"
-    else
-        # Try to copy from build output
-        BUILD_SHADERS="$ROOT_DIR/build/metal_shaders/shaders_metal.metallib"
-        if [[ -f "$BUILD_SHADERS" ]]; then
-            cp "$BUILD_SHADERS" "$MACOS_SHADERS"
-            log_info "Copied Metal shaders from build"
+    # --------------------------------------------------------------------------
+    # macOS XCFramework
+    # --------------------------------------------------------------------------
+    log_header "Setting up macOS XCFramework"
+    
+    MACOS_BUILD_OUTPUT="$ROOT_DIR/build/agus-binaries-macos"
+    
+    if [[ "$BUILD_BINARIES" == "true" ]]; then
+        # Clean existing binaries to force rebuild
+        log_info "Cleaning existing macOS binaries for rebuild..."
+        rm -rf "$MACOS_XCFRAMEWORK_PATH" 2>/dev/null || true
+        rm -rf "$MACOS_BUILD_OUTPUT" 2>/dev/null || true
+        
+        log_info "Building macOS XCFramework from source (this may take ~30 minutes)..."
+        if [[ -f "$SCRIPT_DIR/build_binaries_macos.sh" ]]; then
+            chmod +x "$SCRIPT_DIR/build_binaries_macos.sh"
+            "$SCRIPT_DIR/build_binaries_macos.sh"
+            
+            # Copy to macos/Frameworks
+            mkdir -p "$ROOT_DIR/macos/Frameworks"
+            if [[ -d "$MACOS_BUILD_OUTPUT/CoMaps.xcframework" ]]; then
+                cp -R "$MACOS_BUILD_OUTPUT/CoMaps.xcframework" "$ROOT_DIR/macos/Frameworks/"
+                log_info "macOS XCFramework installed"
+            fi
         else
-            log_warn "Metal shaders not found. They will be built during XCFramework build."
+            log_error "build_binaries_macos.sh not found"
+            exit 1
+        fi
+    else
+        if [[ -d "$MACOS_XCFRAMEWORK_PATH" ]]; then
+            log_info "macOS XCFramework already exists"
+        else
+            log_info "Downloading pre-built macOS XCFramework..."
+            if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
+                FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" macos || {
+                    log_warn "Download failed. Use --build-binaries to build from source."
+                }
+            else
+                log_warn "download_libs.sh not found. Use --build-binaries to build from source."
+            fi
         fi
     fi
+    
+    # --------------------------------------------------------------------------
+    # macOS Metal Shaders
+    # --------------------------------------------------------------------------
+    log_header "Setting up Metal Shaders"
+    
+    MACOS_SHADERS="$ROOT_DIR/macos/Resources/shaders_metal.metallib"
+    
+    if [[ -f "$MACOS_SHADERS" ]]; then
+        log_info "macOS Metal shaders already exist"
+    else
+        mkdir -p "$ROOT_DIR/macos/Resources"
+        
+        # Try to copy from iOS (shared shaders)
+        IOS_SHADERS="$ROOT_DIR/ios/Resources/shaders_metal.metallib"
+        if [[ -f "$IOS_SHADERS" ]]; then
+            cp "$IOS_SHADERS" "$MACOS_SHADERS"
+            log_info "Copied Metal shaders from iOS"
+        else
+            # Try to copy from build output
+            BUILD_SHADERS="$ROOT_DIR/build/metal_shaders/shaders_metal.metallib"
+            if [[ -f "$BUILD_SHADERS" ]]; then
+                cp "$BUILD_SHADERS" "$MACOS_SHADERS"
+                log_info "Copied Metal shaders from build"
+            else
+                log_warn "Metal shaders not found. They will be built during XCFramework build."
+            fi
+        fi
+    fi
+
+elif [[ "$BUILD_PLATFORM" == "linux" ]]; then
+    # ==========================================================================
+    # Linux: Bootstrap only prepares source, patches, and data files
+    # Native binaries are built separately via build_binaries_linux.sh
+    # ==========================================================================
+    
+    log_header "Linux Bootstrap Complete"
+    log_info "CoMaps source code, patches, and data files are ready."
+    log_info "Native binaries will be built separately via build_binaries_linux.sh"
+    
+    # Note: On Linux, we don't automatically build or download binaries during bootstrap
+    # The CI workflow handles this separately to allow for better caching and parallelization
 fi
 
 # ============================================================================
-# Build Example Apps (optional)
+# Build Example Apps (optional, macOS only)
 # ============================================================================
 
 if [[ "$BUILD_EXAMPLE_APP" == "true" ]]; then
-    log_header "Building Example Apps (Release Mode)"
-    
-    # Check if binaries are present
-    MISSING_BINARIES=()
+    if [[ "$BUILD_PLATFORM" != "macos" ]]; then
+        log_warn "--build-example-app is only supported on macOS"
+        log_info "On Linux, build example apps manually with: cd example && flutter build linux"
+    else
+        log_header "Building Example Apps (Release Mode)"
+        
+        # Check if binaries are present
+        MISSING_BINARIES=()
     
     if [[ ! -f "$ANDROID_PREBUILT_PATH/arm64-v8a/libagus_maps_flutter.so" ]]; then
         MISSING_BINARIES+=("Android native libraries")
@@ -417,6 +444,7 @@ if [[ "$BUILD_EXAMPLE_APP" == "true" ]]; then
     echo "  Android AAB: example/build/app/outputs/bundle/release/app-release.aab"
     echo "  iOS Simulator: example/build/ios/iphonesimulator/Runner.app"
     echo "  macOS: example/build/macos/Build/Products/Release/agus_maps_flutter_example.app"
+    fi  # end macOS platform check
 fi
 
 # ============================================================================
@@ -433,25 +461,29 @@ echo "  ✓ CoMaps source code and patches"
 echo "  ✓ Boost headers"
 echo "  ✓ CoMaps data files"
 
-# Android status
-if [[ -f "$ANDROID_PREBUILT_PATH/arm64-v8a/libagus_maps_flutter.so" ]]; then
-    echo "  ✓ Android native libraries"
-else
-    echo "  ○ Android native libraries (not installed - use --build-binaries)"
-fi
+if [[ "$BUILD_PLATFORM" == "macos" ]]; then
+    # Android status
+    if [[ -f "$ANDROID_PREBUILT_PATH/arm64-v8a/libagus_maps_flutter.so" ]]; then
+        echo "  ✓ Android native libraries"
+    else
+        echo "  ○ Android native libraries (not installed - use --build-binaries)"
+    fi
 
-# iOS status
-if [[ -d "$IOS_XCFRAMEWORK_PATH" ]]; then
-    echo "  ✓ iOS XCFramework"
-else
-    echo "  ○ iOS XCFramework (not installed - use --build-binaries)"
-fi
+    # iOS status
+    if [[ -d "$IOS_XCFRAMEWORK_PATH" ]]; then
+        echo "  ✓ iOS XCFramework"
+    else
+        echo "  ○ iOS XCFramework (not installed - use --build-binaries)"
+    fi
 
-# macOS status
-if [[ -d "$MACOS_XCFRAMEWORK_PATH" ]]; then
-    echo "  ✓ macOS XCFramework"
-else
-    echo "  ○ macOS XCFramework (not installed - use --build-binaries)"
+    # macOS status
+    if [[ -d "$MACOS_XCFRAMEWORK_PATH" ]]; then
+        echo "  ✓ macOS XCFramework"
+    else
+        echo "  ○ macOS XCFramework (not installed - use --build-binaries)"
+    fi
+elif [[ "$BUILD_PLATFORM" == "linux" ]]; then
+    echo "  ○ Linux native libraries (build with: ./scripts/build_binaries_linux.sh)"
 fi
 
 # Show cache status
@@ -467,23 +499,31 @@ fi
 echo ""
 echo "Next steps:"
 echo ""
-echo "  Android:"
-echo "    cd example && flutter run -d <android-device>"
-echo ""
-echo "  iOS:"
-echo "    cd example/ios && pod install"
-echo "    cd .. && flutter run -d 'iPhone 15 Pro'"
-echo ""
-echo "  macOS:"
-echo "    cd example/macos && pod install"
-echo "    cd .. && flutter run -d macos"
-echo ""
-echo "To build all native libraries from source (~1 hour total):"
-echo "    ./scripts/bootstrap.sh --build-binaries"
-echo ""
-echo "To build example apps (requires binaries):"
-echo "    ./scripts/bootstrap.sh --build-example-app"
-echo ""
-echo "To do a full build (binaries + example apps):"
-echo "    ./scripts/bootstrap.sh --build-binaries --build-example-app"
+
+if [[ "$BUILD_PLATFORM" == "macos" ]]; then
+    echo "  Android:"
+    echo "    cd example && flutter run -d <android-device>"
+    echo ""
+    echo "  iOS:"
+    echo "    cd example/ios && pod install"
+    echo "    cd .. && flutter run -d 'iPhone 15 Pro'"
+    echo ""
+    echo "  macOS:"
+    echo "    cd example/macos && pod install"
+    echo "    cd .. && flutter run -d macos"
+    echo ""
+    echo "To build all native libraries from source (~1 hour total):"
+    echo "    ./scripts/bootstrap.sh --build-binaries"
+    echo ""
+    echo "To build example apps (requires binaries):"
+    echo "    ./scripts/bootstrap.sh --build-example-app"
+    echo ""
+    echo "To do a full build (binaries + example apps):"
+    echo "    ./scripts/bootstrap.sh --build-binaries --build-example-app"
+elif [[ "$BUILD_PLATFORM" == "linux" ]]; then
+    echo "  Linux:"
+    echo "    ./scripts/build_binaries_linux.sh"
+    echo "    cd example && flutter build linux"
+    echo "    flutter run -d linux"
+fi
 echo ""
