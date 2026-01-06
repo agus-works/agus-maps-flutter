@@ -1050,82 +1050,10 @@ jobs:
       # ======================================================================
       # Bootstrap CoMaps
       # ======================================================================
-      - name: Bootstrap CoMaps (Linux)
+      - name: Bootstrap CoMaps
         run: |
-          chmod +x scripts/bootstrap_common.sh
-          chmod +x scripts/apply_comaps_patches.sh
-          
-          echo "=== Applying patches ==="
-          ./scripts/apply_comaps_patches.sh
-          
-          echo "=== Building Boost headers ==="
-          pushd thirdparty/comaps/3party/boost >/dev/null
-          if [[ ! -d "boost" ]]; then
-            ./bootstrap.sh
-            ./b2 headers
-          else
-            echo "Boost headers already built"
-          fi
-          popd >/dev/null
-          
-          echo "=== Generating desktop UI strings (localized_types_map.cpp) ==="
-          pushd thirdparty/comaps >/dev/null
-          if [[ -x "tools/unix/generate_desktop_ui_strings.sh" ]]; then
-            bash tools/unix/generate_desktop_ui_strings.sh 2>&1 || echo "Warning: generate_desktop_ui_strings.sh had warnings"
-          elif [[ -f "tools/python/generate_desktop_ui_strings.py" ]]; then
-            python3 tools/python/generate_desktop_ui_strings.py 2>&1 || echo "Warning: generate_desktop_ui_strings.py had warnings"
-          else
-            echo "Warning: Desktop UI strings generator not found"
-          fi
-          popd >/dev/null
-          
-          echo "=== Generating CoMaps data files ==="
-          pushd thirdparty/comaps >/dev/null
-          if [ -f "tools/unix/generate_mwm.sh" ]; then
-            chmod +x tools/unix/generate_mwm.sh || true
-          fi
-          
-          # Generate classificator and other data
-          if [ -d "data" ]; then
-            echo "CoMaps data directory exists"
-            ls -la data/ | head -20
-          fi
-          popd >/dev/null
-          
-          echo "=== Copying data files to example assets ==="
-          mkdir -p example/assets/resources
-          mkdir -p example/assets/fonts
-          
-          # Copy resource files
-          COMAPS_DATA="thirdparty/comaps/data"
-          if [ -d "$COMAPS_DATA" ]; then
-            # Essential resource files
-            cp -v "$COMAPS_DATA/classificator.txt" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/types.txt" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/colors.txt" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/patterns.txt" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/countries.txt" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/countries_synonyms.csv" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/packed_polygons.bin" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/drules_proto_clear.bin" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/drules_proto_dark.bin" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/drules_proto_outdoors_clear.bin" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/drules_proto_outdoors_dark.bin" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/drules_proto_vehicle_clear.bin" example/assets/resources/ 2>/dev/null || true
-            cp -v "$COMAPS_DATA/drules_proto_vehicle_dark.bin" example/assets/resources/ 2>/dev/null || true
-            
-            # ICU data
-            cp -v "$COMAPS_DATA/icudt75l.dat" example/assets/resources/ 2>/dev/null || true
-          fi
-          
-          # Copy fonts
-          COMAPS_FONTS="thirdparty/comaps/data/fonts"
-          if [ -d "$COMAPS_FONTS" ]; then
-            cp -rv "$COMAPS_FONTS"/* example/assets/fonts/ 2>/dev/null || true
-          fi
-          
-          echo "=== Bootstrap complete ==="
-          ls -la example/assets/
+          chmod +x scripts/bootstrap.sh
+          ./scripts/bootstrap.sh --no-cache
 
       # ======================================================================
       # Build Linux Native Libraries
