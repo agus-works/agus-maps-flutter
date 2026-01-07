@@ -2,6 +2,49 @@
 
 This example application demonstrates the capabilities of the `agus_maps_flutter` plugin. It serves as a complete reference implementation for building an offline map application with map downloading, storage management, and rendering features.
 
+
+## Demos
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/YVaBJ8uW5Ag">
+        <img src="https://img.youtube.com/vi/YVaBJ8uW5Ag/maxresdefault.jpg" alt="Android Demo" width="100%">
+        <br><strong>📱 Android</strong>
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/Jt0QE9Umsng">
+        <img src="https://img.youtube.com/vi/Jt0QE9Umsng/maxresdefault.jpg" alt="iOS Demo" width="100%">
+        <br><strong>📱 iOS</strong>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/Gd53HFrAGts">
+        <img src="https://img.youtube.com/vi/Gd53HFrAGts/maxresdefault.jpg" alt="macOS Demo" width="100%">
+        <br><strong>🖥️ macOS</strong>
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/SWoLl-700LM">
+        <img src="https://img.youtube.com/vi/SWoLl-700LM/maxresdefault.jpg" alt="Windows Demo" width="100%">
+        <br><strong>🪟 Windows</strong>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/Uxb_1o9dFao">
+        <img src="https://img.youtube.com/vi/Uxb_1o9dFao/maxresdefault.jpg" alt="Linux Demo" width="100%">
+        <br><strong>🐧 Linux</strong>
+      </a>
+    </td>
+    <td width="50%"></td>
+  </tr>
+</table>
+
 ## Demonstrated Features
 
 The example app implements a full-featured map viewer including:

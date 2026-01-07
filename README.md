@@ -119,6 +119,17 @@ The following videos showcase the **Agus Maps plugin** running on various platfo
     </td>
   </tr>
 </table>
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/Uxb_1o9dFao">
+        <img src="https://img.youtube.com/vi/Uxb_1o9dFao/maxresdefault.jpg" alt="Linux Demo" width="100%">
+        <br><strong>🐧 Linux</strong>
+      </a>
+    </td>
+    <td width="50%"></td>
+  </tr>
+</table>
 
 ---
 
