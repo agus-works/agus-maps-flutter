@@ -66,25 +66,26 @@ dart run ffigen --config ffigen.yaml
 
 ### Prerequisites
 
-- Flutter SDK 3.x (stable channel)
-- Android SDK with NDK r25c+
-- CMake 3.18+
+- Flutter SDK 3.38+ (stable channel)
+- Android SDK with NDK 27.3+
+- CMake 4.2+
+- Ninja build system
 - Git (with ability to initialize submodules)
 - **macOS** for iOS, macOS, and Android builds
 - **Windows** with PowerShell 7+ for Windows and Android builds
-
-> **⚠️ Linux Not Supported:** Linux builds are not yet supported. We are still evaluating which distributions to support and the best development workflow. Contributions from developers with Linux hardware are welcome!
+- **Linux** (Ubuntu 22.04+ or equivalent) for Linux and Android builds
 
 ### Initial Setup
 
-We provide **unified bootstrap scripts** that prepare ALL target platforms supported from your build machine in a single command:
+We provide **unified build scripts** that handle the entire build process from source:
 
-| Build Machine | Targets Prepared | Command |
-|---------------|------------------|--------|
-| **macOS** | Android, iOS, macOS | `./scripts/bootstrap.sh` |
-| **Windows** | Android, Windows | `.\scripts\bootstrap.ps1` |
+| Build Machine | Target Platforms | Recommended Script |
+|---------------|------------------|-------------------|
+| **macOS** | Android, iOS, macOS | `./scripts/build_all.sh` |
+| **Windows** | Android, Windows | `.\scripts\build_all.ps1` |
+| **Linux** | Android, Linux | `./scripts/build_all.sh` |
 
-The bootstrap scripts handle:
+The `build_all` scripts handle:
 1. Fetching CoMaps source code at the correct version
 2. Applying ALL patches (superset for all platforms)
 3. Initializing ALL submodules (required for patches)
@@ -99,11 +100,11 @@ The bootstrap scripts handle:
 git clone https://github.com/agus-works/agus-maps-flutter.git
 cd agus-maps-flutter
 
-# Run unified bootstrap (prepares ALL targets)
-./scripts/bootstrap.sh
+# Run unified build script (builds ALL targets from source)
+./scripts/build_all.sh
 
-# Get Flutter dependencies
-flutter pub get
+# Or use bootstrap for quicker setup (downloads pre-built binaries)
+./scripts/bootstrap.sh
 
 # Build and run example
 cd example
@@ -116,25 +117,55 @@ flutter run -d <device>  # iOS Simulator, Android device, or macOS
 git clone https://github.com/agus-works/agus-maps-flutter.git
 cd agus-maps-flutter
 
-# Run unified bootstrap (prepares ALL targets)
-.\scripts\bootstrap.ps1
+# Run unified build script (builds ALL targets from source)
+.\scripts\build_all.ps1
 
-# Get Flutter dependencies
-flutter pub get
+# Or use bootstrap for quicker setup (downloads pre-built binaries)
+.\scripts\bootstrap.ps1
 
 # Build and run example
 cd example
 flutter run -d <device>  # Windows or Android device
 ```
 
-### Bootstrap Options
+**Linux (targets: Android, Linux):**
+```bash
+# Clone the repository
+git clone https://github.com/agus-works/agus-maps-flutter.git
+cd agus-maps-flutter
 
-**macOS (`bootstrap.sh`):**
+# Install system dependencies (Ubuntu/Debian)
+sudo apt-get install build-essential cmake ninja-build clang \
+    libgtk-3-dev libepoxy-dev libegl-dev pkg-config
+
+# Run unified build script (builds ALL targets from source)
+./scripts/build_all.sh
+
+# Build and run example
+cd example
+flutter run -d linux
+```
+
+### Build Script Options
+
+The `build_all` scripts are the recommended way to build everything from source:
+
+**macOS/Linux (`build_all.sh`):**
+```bash
+./scripts/build_all.sh                    # Full build: fetch, patch, build binaries, build apps
+```
+
+**Windows (`build_all.ps1`):**
+```powershell
+.\scripts\build_all.ps1                   # Full build: fetch, patch, build binaries, build apps
+```
+
+For quicker iteration during development, use the bootstrap scripts:
+
+**macOS/Linux (`bootstrap.sh`):**
 ```bash
 ./scripts/bootstrap.sh                    # Default: download pre-built binaries
 ./scripts/bootstrap.sh --build-binaries    # Build all binaries from source (~1 hour total)
-./scripts/bootstrap.sh --build-example-app # Build example apps (requires binaries)
-./scripts/bootstrap.sh --build-binaries --build-example-app  # Full build
 ./scripts/bootstrap.sh --no-cache          # Disable local caching
 ```
 
@@ -146,11 +177,11 @@ flutter run -d <device>  # Windows or Android device
 .\scripts\bootstrap.ps1 -VcpkgRoot D:\vcpkg # Custom vcpkg location
 ```
 
-### Bootstrap Architecture
+### Build Script Architecture
 
-The unified bootstrap scripts share common logic via:
-- **Bash**: `scripts/bootstrap_common.sh` (sourced by `bootstrap.sh`)
-- **PowerShell**: `scripts/BootstrapCommon.psm1` (imported by `bootstrap.ps1`)
+The build and bootstrap scripts share common logic:
+- **Bash**: `scripts/bootstrap_common.sh` (sourced by `bootstrap.sh` and `build_all.sh`)
+- **PowerShell**: `scripts/BootstrapCommon.psm1` (imported by `bootstrap.ps1` and `build_all.ps1`)
 
 This ensures:
 1. Same CoMaps tag is used across all platforms
