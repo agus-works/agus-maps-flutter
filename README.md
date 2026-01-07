@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./logo.png" width="120" alt="Agus Maps Logo">
+  <img src="https://github.com/agus-works/agus-maps-flutter/raw/main/logo.png" width="120" alt="Agus Maps Logo">
 </p>
 
 <h1 align="center">Agus Maps Flutter</h1>
