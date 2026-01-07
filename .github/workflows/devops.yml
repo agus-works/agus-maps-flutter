@@ -1131,6 +1131,37 @@ jobs:
           echo "=== Map Assets ==="
           ls -lh "$ASSETS_DIR/"
 
+      - name: Create Assets Archive
+        run: |
+          mkdir -p assets_package/assets
+          
+          # Copy CoMaps data
+          # We need to maintain the structure expected by the app/plugin
+          # Plugin expects: assets/comaps_data/...
+          mkdir -p assets_package/assets/comaps_data
+          cp -r thirdparty/comaps/data/* assets_package/assets/comaps_data/
+          
+          # Copy Map MWMs
+          # We only include icudt75l.dat, NOT the mwm files
+          mkdir -p assets_package/assets/maps
+          cp example/assets/maps/icudt75l.dat assets_package/assets/maps/
+          
+          echo "=== Assets Package Content ==="
+          ls -R assets_package/
+          
+          # Zip it
+          cd assets_package
+          zip -r ../agus-assets.zip assets
+          cd ..
+          
+          echo "Created agus-assets.zip ($(du -h agus-assets.zip | cut -f1))"
+
+      - name: Upload Assets Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-assets
+          path: agus-assets.zip
+
       - name: Build Linux Release App
         run: |
           cd example
@@ -1176,21 +1207,16 @@ jobs:
       - name: Prepare Final Assets
         run: |
           mkdir -p final-assets
+          VERSION_TAG="${{ github.ref_name }}"
           
-          # Move artifacts if they exist
-          [ -f all-artifacts/agus-headers.tar.gz ] && cp all-artifacts/agus-headers.tar.gz final-assets/ || true
-          [ -f all-artifacts/agus-binaries-android.zip ] && cp all-artifacts/agus-binaries-android.zip final-assets/ || true
-          [ -f all-artifacts/agus-binaries-ios.zip ] && cp all-artifacts/agus-binaries-ios.zip final-assets/ || true
-          [ -f all-artifacts/agus-binaries-macos.zip ] && cp all-artifacts/agus-binaries-macos.zip final-assets/ || true
-          [ -f all-artifacts/agus-binaries-windows.zip ] && cp all-artifacts/agus-binaries-windows.zip final-assets/ || true
-          [ -f all-artifacts/agus-binaries-linux.zip ] && cp all-artifacts/agus-binaries-linux.zip final-assets/ || true
-          
-          [ -f all-artifacts/agus-maps-android.aab ] && cp all-artifacts/agus-maps-android.aab final-assets/ || true
-          [ -f all-artifacts/agus-maps-android.apk ] && cp all-artifacts/agus-maps-android.apk final-assets/ || true
-          [ -f all-artifacts/agus-maps-ios-simulator.app.zip ] && cp all-artifacts/agus-maps-ios-simulator.app.zip final-assets/ || true
-          [ -f all-artifacts/agus-maps-macos.app.zip ] && cp all-artifacts/agus-maps-macos.app.zip final-assets/ || true
-          [ -f all-artifacts/agus-maps-windows.zip ] && cp all-artifacts/agus-maps-windows.zip final-assets/ || true
-          [ -f all-artifacts/agus-maps-linux.zip ] && cp all-artifacts/agus-maps-linux.zip final-assets/ || true
+          # Only include example apps in final release (with version in filename)
+          # Individual platform binaries are consolidated into the unified package
+          [ -f all-artifacts/agus-maps-android.aab ] && cp all-artifacts/agus-maps-android.aab "final-assets/agus-maps-android-${VERSION_TAG}.aab" || true
+          [ -f all-artifacts/agus-maps-android.apk ] && cp all-artifacts/agus-maps-android.apk "final-assets/agus-maps-android-${VERSION_TAG}.apk" || true
+          [ -f all-artifacts/agus-maps-ios-simulator.app.zip ] && cp all-artifacts/agus-maps-ios-simulator.app.zip "final-assets/agus-maps-ios-simulator-${VERSION_TAG}.app.zip" || true
+          [ -f all-artifacts/agus-maps-macos.app.zip ] && cp all-artifacts/agus-maps-macos.app.zip "final-assets/agus-maps-macos-${VERSION_TAG}.app.zip" || true
+          [ -f all-artifacts/agus-maps-windows.zip ] && cp all-artifacts/agus-maps-windows.zip "final-assets/agus-maps-windows-${VERSION_TAG}.zip" || true
+          [ -f all-artifacts/agus-maps-linux.zip ] && cp all-artifacts/agus-maps-linux.zip "final-assets/agus-maps-linux-${VERSION_TAG}.zip" || true
 
           # Generate build info
           cat > final-assets/BUILD_INFO.txt << EOF
@@ -1216,6 +1242,144 @@ jobs:
           echo "=== Final assets collected ==="
           ls -lh final-assets/
 
+      - name: Create Unified Binary Zip
+        run: |
+          mkdir -p unified_package
+          cd unified_package
+          
+          # =============================================================
+          # Create the exact structure required by the plugin's build system
+          # When user extracts this zip into the agus_maps_flutter plugin
+          # root directory, all binaries fall into the correct locations.
+          # =============================================================
+          
+          echo "Unpacking and organizing artifacts..."
+          
+          # ---------------------------------------------------------
+          # Android: android/prebuilt/{arm64-v8a,armeabi-v7a,x86_64}/
+          # Archive contains: arm64-v8a/, armeabi-v7a/, x86_64/ directly
+          # Target: android/prebuilt/
+          # ---------------------------------------------------------
+          if [ -f ../all-artifacts/agus-binaries-android.zip ]; then
+            echo "Extracting Android binaries..."
+            mkdir -p android/prebuilt
+            unzip -q ../all-artifacts/agus-binaries-android.zip -d android/prebuilt
+            echo "  ✓ Android: android/prebuilt/"
+            ls android/prebuilt/
+          fi
+          
+          # ---------------------------------------------------------
+          # iOS: ios/Frameworks/CoMaps.xcframework/
+          # Archive contains: CoMaps.xcframework/ directly
+          # Target: ios/Frameworks/
+          # ---------------------------------------------------------
+          if [ -f ../all-artifacts/agus-binaries-ios.zip ]; then
+            echo "Extracting iOS binaries..."
+            mkdir -p ios/Frameworks
+            unzip -q ../all-artifacts/agus-binaries-ios.zip -d ios/Frameworks
+            echo "  ✓ iOS: ios/Frameworks/"
+            ls ios/Frameworks/
+          fi
+          
+          # ---------------------------------------------------------
+          # macOS: macos/Frameworks/CoMaps.xcframework/
+          # Archive contains: CoMaps.xcframework/ directly
+          # Target: macos/Frameworks/
+          # ---------------------------------------------------------
+          if [ -f ../all-artifacts/agus-binaries-macos.zip ]; then
+            echo "Extracting macOS binaries..."
+            mkdir -p macos/Frameworks
+            unzip -q ../all-artifacts/agus-binaries-macos.zip -d macos/Frameworks
+            echo "  ✓ macOS: macos/Frameworks/"
+            ls macos/Frameworks/
+          fi
+          
+          # ---------------------------------------------------------
+          # Windows: windows/prebuilt/x64/
+          # Archive contains: x64/ folder with DLLs
+          # Target: windows/prebuilt/ (unzip creates x64/ inside)
+          # ---------------------------------------------------------
+          if [ -f ../all-artifacts/agus-binaries-windows.zip ]; then
+            echo "Extracting Windows binaries..."
+            mkdir -p windows/prebuilt
+            unzip -q ../all-artifacts/agus-binaries-windows.zip -d windows/prebuilt
+            echo "  ✓ Windows: windows/prebuilt/"
+            ls windows/prebuilt/
+          fi
+          
+          # ---------------------------------------------------------
+          # Linux: linux/prebuilt/x86_64/
+          # Archive contains: agus-binaries-linux/x86_64/ (wrapped!)
+          # We need to extract and move to correct location
+          # Target: linux/prebuilt/x86_64/
+          # ---------------------------------------------------------
+          if [ -f ../all-artifacts/agus-binaries-linux.zip ]; then
+            echo "Extracting Linux binaries..."
+            mkdir -p linux/prebuilt
+            # Extract to temp location first
+            unzip -q ../all-artifacts/agus-binaries-linux.zip -d /tmp/linux-extract
+            # Move from wrapped folder to correct location
+            if [ -d /tmp/linux-extract/agus-binaries-linux ]; then
+              cp -r /tmp/linux-extract/agus-binaries-linux/* linux/prebuilt/
+            else
+              # Fallback: maybe structure changed, try direct
+              cp -r /tmp/linux-extract/* linux/prebuilt/
+            fi
+            rm -rf /tmp/linux-extract
+            echo "  ✓ Linux: linux/prebuilt/"
+            ls linux/prebuilt/
+          fi
+          
+          # ---------------------------------------------------------
+          # Assets: assets/comaps_data/, assets/maps/
+          # Archive contains: assets/ folder
+          # Target: root (creates assets/ folder)
+          # Note: For plugin consumers who want app-level assets,
+          # they may need to copy assets/ to their app's assets folder.
+          # ---------------------------------------------------------
+          if [ -f ../all-artifacts/agus-assets.zip ]; then
+            echo "Extracting assets..."
+            unzip -q ../all-artifacts/agus-assets.zip -d .
+            echo "  ✓ Assets: assets/"
+            ls assets/ 2>/dev/null || echo "  (no assets folder)"
+          fi
+          
+          # ---------------------------------------------------------
+          # Headers: For developers who need to build from source
+          # Archive contains: headers/ folder with CoMaps C++ headers
+          # Target: root (creates headers/ folder)
+          # Note: Headers are NOT required for typical plugin consumers
+          # using pre-built binaries. Included for completeness.
+          # ---------------------------------------------------------
+          if [ -f ../all-artifacts/agus-headers.tar.gz ]; then
+            echo "Extracting headers..."
+            mkdir -p headers
+            tar -xzf ../all-artifacts/agus-headers.tar.gz -C headers --strip-components=1 2>/dev/null || \
+            tar -xzf ../all-artifacts/agus-headers.tar.gz -C . 2>/dev/null || true
+            echo "  ✓ Headers: headers/"
+            ls headers/ 2>/dev/null | head -5 || echo "  (headers extracted to root)"
+          fi
+          
+          echo ""
+          echo "=== Unified Package Structure ==="
+          find . -type f | head -50
+          echo ""
+          
+          # Zip everything preserving structure
+          # Name includes version from the tag for clarity
+          VERSION_TAG="${{ github.ref_name }}"
+          UNIFIED_FILENAME="agus-maps-binaries-${VERSION_TAG}.zip"
+          zip -r "../${UNIFIED_FILENAME}" .
+          cd ..
+          
+          UNIFIED_SIZE=$(du -h "${UNIFIED_FILENAME}" | cut -f1)
+          echo "✓ Created ${UNIFIED_FILENAME} ($UNIFIED_SIZE)"
+          
+          # Move to final assets
+          cp "${UNIFIED_FILENAME}" final-assets/
+          # Also create a non-versioned copy for consistent download URL
+          cp "${UNIFIED_FILENAME}" final-assets/agus-maps-binaries.zip
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -1225,60 +1389,51 @@ jobs:
             
             Offline vector maps for Flutter powered by the CoMaps engine.
             
-            📖 **[Full Installation Guide](https://github.com/agus-works/agus-maps-flutter/blob/main/docs/RELEASE.md)**
+            📖 **[Full Installation Guide](https://github.com/agus-works/agus-maps-flutter/blob/main/doc/RELEASE.md)**
             
             ---
             
-            ### Quick Start
+            ### 📦 Unified Binaries (Recommended)
             
-            #### Android
+            **Download:** `agus-maps-binaries-${{ github.ref_name }}.zip`
+            
+            **Installation:** Extract into the root of your vendored/local `agus_maps_flutter` package:
+            
             ```bash
-            # Install APK
-            adb install agus-maps-android.apk
+            cd path/to/agus_maps_flutter
+            unzip agus-maps-binaries-${{ github.ref_name }}.zip
             ```
             
-            #### Linux
-            ```bash
-            unzip agus-maps-linux.zip -d agus-maps
-            ./agus-maps/agus_maps_flutter_example
-            ```
+            This places all prebuilt binaries in the correct locations:
+            - `android/prebuilt/{arm64-v8a,armeabi-v7a,x86_64}/`
+            - `ios/Frameworks/CoMaps.xcframework/`
+            - `macos/Frameworks/CoMaps.xcframework/`
+            - `windows/prebuilt/x64/`
+            - `linux/prebuilt/x86_64/`
+            - `assets/` (CoMaps data files)
+            - `headers/` (C++ headers, for building from source)
             
-            #### Windows
-            ```powershell
-            Expand-Archive agus-maps-windows.zip -DestinationPath .
-            .\agus_maps_flutter_example.exe
-            ```
-            
-            #### macOS
-            ```bash
-            unzip agus-maps-macos.app.zip
-            xattr -cr agus_maps_flutter_example.app
-            open agus_maps_flutter_example.app
-            ```
+            > **Note:** Headers are included for developers who need to build from source.
+            > Typical plugin consumers using pre-built binaries do NOT need headers.
             
             ---
             
             ### Downloads
             
+            #### 📦 Plugin Binaries (All Platforms)
+            | File | Description |
+            |------|-------------|
+            | **`agus-maps-binaries-${{ github.ref_name }}.zip`** | **All platform binaries, assets, and headers** |
+            
             #### 📱 Example Apps
             | Platform | File | Description |
             |----------|------|-------------|
-            | Android | `agus-maps-android.apk` | Universal APK |
-            | Android | `agus-maps-android.aab` | App Bundle |
-            | Linux | `agus-maps-linux.zip` | x86_64 Release |
-            | Windows | `agus-maps-windows.zip` | x64 Release |
-            | macOS | `agus-maps-macos.app.zip` | Universal Release |
-            | iOS | `agus-maps-ios-simulator.app.zip` | Simulator Debug |
-            
-            #### 📦 Native Libraries
-            | Platform | File | Description |
-            |----------|------|-------------|
-            | Headers | `agus-headers.tar.gz` | C++ Headers |
-            | Android | `agus-binaries-android.zip` | .so libs |
-            | iOS | `agus-binaries-ios.zip` | XCFramework |
-            | Linux | `agus-binaries-linux.zip` | .so libs |
-            | macOS | `agus-binaries-macos.zip` | XCFramework |
-            | Windows | `agus-binaries-windows.zip` | DLLs |
+            | Android | `agus-maps-android-${{ github.ref_name }}.apk` | Universal APK |
+            | Android | `agus-maps-android-${{ github.ref_name }}.aab` | App Bundle (Play Store) |
+            | iOS | `agus-maps-ios-simulator-${{ github.ref_name }}.app.zip` | Simulator Debug |
+            | macOS | `agus-maps-macos-${{ github.ref_name }}.app.zip` | Universal Release |
+            | Windows | `agus-maps-windows-${{ github.ref_name }}.zip` | x64 Release |
+            | Linux | `agus-maps-linux-${{ github.ref_name }}.zip` | x86_64 Release |
             
             ---
             

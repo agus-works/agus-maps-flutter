@@ -156,7 +156,7 @@ The following videos showcase the **Agus Maps plugin** running on various platfo
 
 ```yaml
 dependencies:
-  agus_maps_flutter: ^0.1.0
+  agus_maps_flutter: ^0.1.2
 ```
 
 ### Basic Usage

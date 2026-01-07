@@ -6,22 +6,35 @@ This guide explains how to use the pre-built artifacts from GitHub Releases.
 
 Each release includes the following artifacts:
 
+### Plugin Binaries (Unified Package)
+
 | Artifact | Description | Size (approx) |
 |----------|-------------|---------------|
-| `agus-headers.tar.gz` | C++ header files for compilation | ~5 MB |
-| `agus-binaries-ios.zip` | Pre-built XCFramework for iOS | ~150 MB |
-| `agus-binaries-android.zip` | Pre-built native libraries for Android | ~100 MB |
-| `agus-binaries-linux.zip` | Pre-built native libraries for Linux | ~80 MB |
-| `agus-binaries-macos.zip` | Pre-built XCFramework for macOS | ~80 MB |
-| `agus-binaries-windows.zip` | Pre-built DLLs for Windows | ~100 MB |
-| `agus-maps-android.aab` | Android App Bundle (Play Store) | ~50 MB |
+| **`agus-maps-binaries-vX.Y.Z.zip`** | **All platform binaries, assets, and headers** | ~500 MB |
+
+The unified package contains everything needed for all platforms:
+- Android native libraries (arm64-v8a, armeabi-v7a, x86_64)
+- iOS XCFramework
+- macOS XCFramework  
+- Windows DLLs (x64)
+- Linux shared libraries (x86_64)
+- CoMaps data files and ICU data
+- C++ headers (for building from source)
+
+> **💡 Recommended:** Download only `agus-maps-binaries-vX.Y.Z.zip` and extract it into the plugin root. This places all binaries in the correct locations with a single extraction.
+
+> **Note:** Headers are included for developers who need to build from source. Typical plugin consumers using pre-built binaries do **NOT** need headers - the pre-compiled native libraries are ready to use.
+
+### Example Apps
+
+| Artifact | Description | Size (approx) |
+|----------|-------------|---------------|
 | `agus-maps-android.apk` | Universal APK (direct install) | ~80 MB |
+| `agus-maps-android.aab` | Android App Bundle (Play Store) | ~50 MB |
 | `agus-maps-ios-simulator.app.zip` | iOS Simulator app (debug) | ~100 MB |
-| `agus-maps-linux.zip` | Linux app (release, x86_64) | ~100 MB |
 | `agus-maps-macos.app.zip` | macOS app (release) | ~100 MB |
 | `agus-maps-windows.zip` | Windows app (release, x86_64) | ~150 MB |
-
-> **Note:** Windows and Linux binaries are x86_64 only. ARM64 is not currently supported on these platforms.
+| `agus-maps-linux.zip` | Linux app (release, x86_64) | ~100 MB |
 
 ---
 
@@ -340,29 +353,54 @@ The `android/build.gradle` includes a task that:
 
 No manual steps required - the Gradle sync handles everything.
 
-### Manual Download (Advanced)
+### Unified Binary Package (Recommended)
 
-If you need to download libraries manually:
+The easiest way to set up all pre-built binaries at once is to use the **unified binary package**. This single zip file contains all platform binaries structured so that extracting it into the plugin root places everything in the correct locations.
 
 ```bash
 # Set the version
 VERSION="v0.0.30"
 
-# Download iOS libraries
-curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-ios.zip"
-unzip agus-binaries-ios.zip -d ios/Frameworks/
+# Download the unified package
+curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-maps-binaries-${VERSION}.zip"
 
-# Download Android libraries
-curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-android.zip"
-unzip agus-binaries-android.zip -d android/prebuilt/
+# Navigate to your local/vendored copy of the plugin
+cd path/to/agus_maps_flutter
 
-# Download macOS libraries
-curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-macos.zip"
-unzip agus-binaries-macos.zip -d macos/Frameworks/
+# Extract - everything falls into place!
+unzip agus-maps-binaries-${VERSION}.zip
+```
 
-# Download Linux libraries
-curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-linux.zip"
-unzip agus-binaries-linux.zip -d linux/prebuilt/
+After extraction, you'll have:
+```
+agus_maps_flutter/
+├── android/prebuilt/
+│   ├── arm64-v8a/libagus_maps_flutter.so
+│   ├── armeabi-v7a/libagus_maps_flutter.so
+│   └── x86_64/libagus_maps_flutter.so
+├── ios/Frameworks/
+│   └── CoMaps.xcframework/
+├── macos/Frameworks/
+│   └── CoMaps.xcframework/
+├── windows/prebuilt/x64/
+│   ├── agus_maps_flutter.dll
+│   └── zlib1.dll
+├── linux/prebuilt/x86_64/
+│   └── libagus_maps_flutter.so
+├── assets/
+│   ├── comaps_data/
+│   │   └── ... (CoMaps resource files)
+│   └── maps/
+│       └── icudt75l.dat
+└── headers/              # For building from source (optional)
+    └── ... (C++ headers)
+```
+
+> **Note:** The `headers/` directory is only needed if you're building native code from source. For typical plugin consumers using pre-built binaries, headers can be ignored or deleted.
+
+---
+
+## Map Data
 
 # Download Windows libraries
 curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-windows.zip"
