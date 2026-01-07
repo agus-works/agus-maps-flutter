@@ -27,14 +27,16 @@ The unified package contains everything needed for all platforms:
 
 ### Example Apps
 
+All example app artifacts include the version tag in the filename (e.g., `-v0.1.2`):
+
 | Artifact | Description | Size (approx) |
 |----------|-------------|---------------|
-| `agus-maps-android.apk` | Universal APK (direct install) | ~80 MB |
-| `agus-maps-android.aab` | Android App Bundle (Play Store) | ~50 MB |
-| `agus-maps-ios-simulator.app.zip` | iOS Simulator app (debug) | ~100 MB |
-| `agus-maps-macos.app.zip` | macOS app (release) | ~100 MB |
-| `agus-maps-windows.zip` | Windows app (release, x86_64) | ~150 MB |
-| `agus-maps-linux.zip` | Linux app (release, x86_64) | ~100 MB |
+| `agus-maps-android-vX.Y.Z.apk` | Universal APK (direct install) | ~80 MB |
+| `agus-maps-android-vX.Y.Z.aab` | Android App Bundle (Play Store) | ~50 MB |
+| `agus-maps-ios-simulator-vX.Y.Z.app.zip` | iOS Simulator app (debug) | ~100 MB |
+| `agus-maps-macos-vX.Y.Z.app.zip` | macOS app (release) | ~100 MB |
+| `agus-maps-windows-vX.Y.Z.zip` | Windows app (release, x86_64) | ~150 MB |
+| `agus-maps-linux-vX.Y.Z.zip` | Linux app (release, x86_64) | ~100 MB |
 
 ---
 
@@ -54,18 +56,18 @@ The unified package contains everything needed for all platforms:
 
 3. **Install the APK**:
    ```bash
-   # Download the APK
-   curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-android.apk
+   # Download the APK (replace vX.Y.Z with actual version)
+   curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-android-vX.Y.Z.apk
    
    # Install via ADB
-   adb install agus-maps-android.apk
+   adb install agus-maps-android-vX.Y.Z.apk
    ```
 
 4. **Launch the app**: Find "Agus Maps" in your app drawer
 
 #### Option 2: Install APK directly on device
 
-1. Download `agus-maps-android.apk` on your Android device
+1. Download `agus-maps-android-vX.Y.Z.apk` on your Android device
 2. Open the downloaded file
 3. Allow installation from unknown sources if prompted
 4. Tap **Install**
@@ -76,8 +78,8 @@ The unified package contains everything needed for all platforms:
 # Start an emulator (must have Google Play or be x86_64)
 emulator -avd Pixel_6_API_34
 
-# Install the APK
-adb install agus-maps-android.apk
+# Install the APK (replace vX.Y.Z with actual version)
+adb install agus-maps-android-vX.Y.Z.apk
 
 # Launch the app
 adb shell am start -n app.agus.maps.agus_maps_flutter_example/.MainActivity
@@ -94,8 +96,8 @@ To test an AAB locally, use `bundletool`:
 # Install bundletool
 brew install bundletool
 
-# Generate APKs from AAB
-bundletool build-apks --bundle=agus-maps-android.aab --output=agus-maps.apks
+# Generate APKs from AAB (replace vX.Y.Z with actual version)
+bundletool build-apks --bundle=agus-maps-android-vX.Y.Z.aab --output=agus-maps.apks
 
 # Install on connected device
 bundletool install-apks --apks=agus-maps.apks
@@ -114,9 +116,9 @@ The iOS build is a **debug build** for the **iOS Simulator only**. It will not r
 #### Installation Steps
 
 ```bash
-# 1. Download and extract the app
-curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-ios-simulator.app.zip
-unzip agus-maps-ios-simulator.app.zip
+# 1. Download and extract the app (replace vX.Y.Z with actual version)
+curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-ios-simulator-vX.Y.Z.app.zip
+unzip agus-maps-ios-simulator-vX.Y.Z.app.zip
 
 # 2. Boot a simulator (if not already running)
 xcrun simctl boot "iPhone 15 Pro"
@@ -134,7 +136,7 @@ xcrun simctl launch booted app.agus.maps.agus_maps_flutter_example
 #### Alternative: Drag and Drop
 
 1. Open **Simulator.app** (from Xcode or Spotlight)
-2. Extract `agus-maps-ios-simulator.app.zip`
+2. Extract `agus-maps-ios-simulator-vX.Y.Z.app.zip`
 3. Drag `Runner.app` onto the simulator window
 4. The app will be installed and appear on the home screen
 
@@ -164,9 +166,9 @@ The macOS app is an **unsigned release build**. It will work on macOS 12.0 (Mont
 #### Installation Steps
 
 ```bash
-# 1. Download and extract
-curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-macos.app.zip
-unzip agus-maps-macos.app.zip
+# 1. Download and extract (replace vX.Y.Z with actual version)
+curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-macos-vX.Y.Z.app.zip
+unzip agus-maps-macos-vX.Y.Z.app.zip
 
 # 2. Remove quarantine attribute (required for unsigned apps)
 xattr -cr agus_maps_flutter_example.app
@@ -177,7 +179,7 @@ open agus_maps_flutter_example.app
 
 #### Alternative: Finder
 
-1. Download `agus-maps-macos.app.zip`
+1. Download `agus-maps-macos-vX.Y.Z.app.zip`
 2. Double-click to extract
 3. Right-click on `agus_maps_flutter_example.app` and select **Open**
 4. Click **Open** in the security dialog
@@ -206,10 +208,10 @@ The Windows app is an **unsigned release build** for **x86_64 (64-bit Intel/AMD)
 #### Installation Steps
 
 ```powershell
-# 1. Download and extract
+# 1. Download and extract (replace vX.Y.Z with actual version)
 # Using PowerShell or download from browser
-Invoke-WebRequest -Uri "https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-windows.zip" -OutFile "agus-maps-windows.zip"
-Expand-Archive -Path "agus-maps-windows.zip" -DestinationPath "agus-maps-windows"
+Invoke-WebRequest -Uri "https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-windows-vX.Y.Z.zip" -OutFile "agus-maps-windows-vX.Y.Z.zip"
+Expand-Archive -Path "agus-maps-windows-vX.Y.Z.zip" -DestinationPath "agus-maps-windows"
 
 # 2. Run the app
 .\agus-maps-windows\agus_maps_flutter_example.exe
@@ -217,7 +219,7 @@ Expand-Archive -Path "agus-maps-windows.zip" -DestinationPath "agus-maps-windows
 
 #### Alternative: File Explorer
 
-1. Download `agus-maps-windows.zip` from the [releases page](https://github.com/agus-works/agus-maps-flutter/releases)
+1. Download `agus-maps-windows-vX.Y.Z.zip` from the [releases page](https://github.com/agus-works/agus-maps-flutter/releases)
 2. Right-click and select **Extract All...**
 3. Navigate to the extracted folder
 4. Double-click `agus_maps_flutter_example.exe`
@@ -278,9 +280,9 @@ sudo dnf install gtk3 mesa-libGL mesa-libEGL libepoxy
 #### Installation Steps
 
 ```bash
-# 1. Download and extract
-curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-linux.zip
-unzip agus-maps-linux.zip -d agus-maps-linux
+# 1. Download and extract (replace vX.Y.Z with actual version)
+curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-linux-vX.Y.Z.zip
+unzip agus-maps-linux-vX.Y.Z.zip -d agus-maps-linux
 
 # 2. Run the app
 cd agus-maps-linux
@@ -289,7 +291,7 @@ cd agus-maps-linux
 
 #### Alternative: File Manager
 
-1. Download `agus-maps-linux.zip` from the [releases page](https://github.com/agus-works/agus-maps-flutter/releases)
+1. Download `agus-maps-linux-vX.Y.Z.zip` from the [releases page](https://github.com/agus-works/agus-maps-flutter/releases)
 2. Right-click and select **Extract Here** or use your archive manager
 3. Navigate to the extracted folder
 4. Double-click `agus_maps_flutter_example` (may require marking as executable)
@@ -338,7 +340,7 @@ If you're integrating the Agus Maps Flutter plugin into your own project, the na
 #### iOS (CocoaPods)
 
 The `agus_maps_flutter.podspec` includes a `prepare_command` that:
-1. Downloads `agus-binaries-ios.zip` from the latest GitHub release
+1. Downloads `agus-maps-binaries-vX.Y.Z.zip` from the GitHub release
 2. Extracts the XCFramework to `ios/Frameworks/`
 3. Links against the pre-built libraries
 
@@ -347,7 +349,7 @@ No manual steps required - just run `pod install`.
 #### Android (Gradle)
 
 The `android/build.gradle` includes a task that:
-1. Downloads `agus-binaries-android.zip` from the latest GitHub release
+1. Downloads `agus-maps-binaries-vX.Y.Z.zip` from the GitHub release
 2. Extracts native libraries to `android/prebuilt/`
 3. Includes them in the APK via `jniLibs`
 
@@ -358,8 +360,8 @@ No manual steps required - the Gradle sync handles everything.
 The easiest way to set up all pre-built binaries at once is to use the **unified binary package**. This single zip file contains all platform binaries structured so that extracting it into the plugin root places everything in the correct locations.
 
 ```bash
-# Set the version
-VERSION="v0.0.30"
+# Set the version (replace with actual version)
+VERSION="v0.1.2"
 
 # Download the unified package
 curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-maps-binaries-${VERSION}.zip"
@@ -397,15 +399,6 @@ agus_maps_flutter/
 ```
 
 > **Note:** The `headers/` directory is only needed if you're building native code from source. For typical plugin consumers using pre-built binaries, headers can be ignored or deleted.
-
----
-
-## Map Data
-
-# Download Windows libraries
-curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-windows.zip"
-unzip agus-binaries-windows.zip -d windows/prebuilt/
-```
 
 ---
 
@@ -466,57 +459,116 @@ The example app includes minimal map data for testing. For production use, you'l
 
 ## Building from Source
 
-If you prefer to build from source instead of using pre-built binaries:
+> **Note:** Building from source is intended for **developers** who want to modify the native code or build binaries from scratch. **Plugin consumers** should use the pre-built binaries from [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases).
 
-**Linux:**
-```bash
-# Clone the repository
-git clone https://github.com/agus-works/agus-maps-flutter.git
-cd agus-maps-flutter
+### Build Host → Target Platform Matrix
 
-# Install dependencies
-sudo apt-get install build-essential cmake ninja-build libgtk-3-dev libepoxy-dev libegl-dev
+The recommended build script is `build_all.ps1` for Windows and `build_all.sh` for macOS/Linux. These scripts automate the entire build process including fetching CoMaps source, applying patches, building native libraries, and generating Flutter apps.
 
-# Fetch CoMaps source
-./scripts/apply_comaps_patches.sh
+| Build Host | Script | Target Platforms | Notes |
+|------------|--------|------------------|-------|
+| **Windows** | `.\scripts\build_all.ps1` | Android, Windows | Requires Android SDK + NDK, Visual Studio |
+| **macOS** | `./scripts/build_all.sh` | Android, iOS, macOS | Requires Xcode, Android SDK + NDK |
+| **Linux** | `./scripts/build_all.sh` | Android, Linux | Requires GTK3 dev libs, Android SDK + NDK |
 
-# Build for Linux
-cd example
-flutter build linux        # Linux
-```
+### Prerequisites
 
-**macOS:**
-```bash
-# Clone the repository
-git clone https://github.com/agus-works/agus-maps-flutter.git
-cd agus-maps-flutter
+**All platforms:**
+- Flutter 3.38+ with desktop support enabled
+- CMake 4.2+
+- Ninja build system
+- Git
 
-# Bootstrap (fetches CoMaps, applies patches, builds boost)
-./scripts/bootstrap.sh
+**Windows-specific:**
+- Visual Studio 2022 with C++ desktop development workload
+- Android SDK with NDK 27.3+ (for Android targets)
+- vcpkg (for Windows native dependencies)
 
-# Build for your platform
-cd example
-flutter build apk          # Android
-flutter build ios          # iOS (requires Xcode)
-flutter build macos        # macOS
-```
+**macOS-specific:**
+- Xcode 15+ with command line tools
+- CocoaPods
+- Android SDK with NDK 27.3+ (for Android targets)
 
-**Windows PowerShell:**
+**Linux-specific:**
+- GCC/Clang with C++23 support
+- GTK3, EGL, epoxy development libraries
+- Android SDK with NDK 27.3+ (for Android targets)
+
+### Build Instructions
+
+#### Windows (PowerShell 7+)
+
 ```powershell
 # Clone the repository
 git clone https://github.com/agus-works/agus-maps-flutter.git
 cd agus-maps-flutter
 
-# Bootstrap (fetches CoMaps, applies patches)
-.\scripts\bootstrap.ps1
-
-# Build for your platform
-cd example
-flutter build apk          # Android (requires Android SDK + NDK)
-flutter build windows      # Windows
+# Run the all-in-one build script
+# This handles: CoMaps fetch, patching, Boost headers, data generation,
+# native library builds, asset copying, and Flutter app builds
+.\scripts\build_all.ps1
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions.
+**Outputs:**
+- `build\agus-binaries-android\` - Android native libraries (.so)
+- `build\agus-binaries-windows\x64\` - Windows native libraries (.dll)
+- `example\build\app\outputs\flutter-apk\app-release.apk` - Android APK
+- `example\build\windows\x64\runner\Release\` - Windows executable
+
+#### macOS
+
+```bash
+# Clone the repository
+git clone https://github.com/agus-works/agus-maps-flutter.git
+cd agus-maps-flutter
+
+# Run the all-in-one build script
+# This handles: CoMaps fetch, patching, Boost headers, data generation,
+# native library builds (iOS, macOS, Android), asset copying, and Flutter app builds
+./scripts/build_all.sh
+```
+
+**Outputs:**
+- `build/agus-binaries-android/` - Android native libraries (.so)
+- `build/agus-binaries-ios/` - iOS XCFramework
+- `build/agus-binaries-macos/` - macOS XCFramework
+- `example/build/` - Flutter app builds for each platform
+
+#### Linux
+
+```bash
+# Clone the repository
+git clone https://github.com/agus-works/agus-maps-flutter.git
+cd agus-maps-flutter
+
+# Install system dependencies (Ubuntu/Debian)
+sudo apt-get install build-essential cmake ninja-build clang \
+    libgtk-3-dev libepoxy-dev libegl-dev pkg-config
+
+# Run the all-in-one build script
+./scripts/build_all.sh
+```
+
+**Outputs:**
+- `build/agus-binaries-linux/x86_64/` - Linux native libraries (.so)
+- `build/agus-binaries-android/` - Android native libraries (.so)
+- `example/build/linux/x64/release/bundle/` - Linux executable
+
+### Caching
+
+The build scripts support intelligent caching of the CoMaps source tree:
+
+- First build: Downloads and patches CoMaps (~2-3 GB), creates `.thirdparty-<tag>.tar.bz2` cache
+- Subsequent builds: Extracts from cache (much faster)
+- Cache is tagged with CoMaps version to ensure correctness
+
+To force a fresh build, delete the cache file:
+```bash
+rm .thirdparty-*.tar.bz2
+rm -rf thirdparty/
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed development setup instructions.
 
 ---
 
