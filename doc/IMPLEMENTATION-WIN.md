@@ -1434,10 +1434,10 @@ endif()
 
 ## References
 
-- iOS Implementation: [docs/IMPLEMENTATION-IOS.md](IMPLEMENTATION-IOS.md)
-- macOS Implementation: [docs/IMPLEMENTATION-MACOS.md](IMPLEMENTATION-MACOS.md)
-- Android Implementation: [docs/IMPLEMENTATION-ANDROID.md](IMPLEMENTATION-ANDROID.md)
-- Render Loop Details: [docs/RENDER-LOOP.md](RENDER-LOOP.md)
+- iOS Implementation: [doc/IMPLEMENTATION-IOS.md](IMPLEMENTATION-IOS.md)
+- macOS Implementation: [doc/IMPLEMENTATION-MACOS.md](IMPLEMENTATION-MACOS.md)
+- Android Implementation: [doc/IMPLEMENTATION-ANDROID.md](IMPLEMENTATION-ANDROID.md)
+- Render Loop Details: [doc/RENDER-LOOP.md](RENDER-LOOP.md)
 - CoMaps drape code: `thirdparty/comaps/libs/drape/`
 
 ---

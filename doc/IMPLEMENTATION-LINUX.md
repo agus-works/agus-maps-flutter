@@ -987,7 +987,7 @@ sudo usermod -aG render $USER
   - Builds native libraries and Flutter example app
   - Produces artifacts: `agus-binaries-linux.zip` and `agus-maps-linux.zip`
 
-- **Updated**: `docs/RELEASE.md` with Linux installation instructions
+- **Updated**: `doc/RELEASE.md` with Linux installation instructions
   - Added prerequisites for Ubuntu/Fedora
   - Added troubleshooting guide for common Linux issues
   - Updated artifact table and manual download section

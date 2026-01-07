@@ -214,7 +214,7 @@ See the [example app](example/) for a complete working demo showing all plugin f
 | **Windows** | x86_64 only | OpenGL + D3D11 | ❌ No (CPU-mediated) |
 | **Linux** | x86_64 | EGL + OpenGL ES 3.0 | ❌ No (CPU-mediated) |
 
-> **Windows/Linux Note:** ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware. Both Windows and Linux use CPU-mediated pixel copy via `glReadPixels()` (~2-5ms per frame latency). Linux uses `FlPixelBufferTexture` - zero-copy texture sharing isn't available because Flutter's Linux embedder doesn't support direct GL texture sharing. See [Linux Implementation](docs/IMPLEMENTATION-LINUX.md) for details. Contributions welcome!
+> **Windows/Linux Note:** ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware. Both Windows and Linux use CPU-mediated pixel copy via `glReadPixels()` (~2-5ms per frame latency). Linux uses `FlPixelBufferTexture` - zero-copy texture sharing isn't available because Flutter's Linux embedder doesn't support direct GL texture sharing. See [Linux Implementation](doc/IMPLEMENTATION-LINUX.md) for details. Contributions welcome!
 
 ### Pros ✅
 
@@ -242,10 +242,10 @@ Agus Maps achieves excellent performance on older devices (tested on Samsung Gal
 
 | Aspect | How We Achieve It | Learn More |
 |--------|-------------------|------------|
-| **Memory** | Memory-mapped files (mmap) — only viewed tiles loaded into RAM | [Details](docs/ARCHITECTURE-ANDROID.md#memory-efficiency) |
-| **Battery** | Event-driven rendering — CPU/GPU sleep when map is idle | [Details](docs/ARCHITECTURE-ANDROID.md#battery-efficiency) |
-| **CPU** | Multi-threaded — heavy work on background threads, UI never blocked | [Details](docs/ARCHITECTURE-ANDROID.md#processor-efficiency) |
-| **Startup** | One-time asset extraction, cached on subsequent launches | [Details](docs/IMPLEMENTATION-ANDROID.md) |
+| **Memory** | Memory-mapped files (mmap) — only viewed tiles loaded into RAM | [Details](doc/ARCHITECTURE-ANDROID.md#memory-efficiency) |
+| **Battery** | Event-driven rendering — CPU/GPU sleep when map is idle | [Details](doc/ARCHITECTURE-ANDROID.md#battery-efficiency) |
+| **CPU** | Multi-threaded — heavy work on background threads, UI never blocked | [Details](doc/ARCHITECTURE-ANDROID.md#processor-efficiency) |
+| **Startup** | One-time asset extraction, cached on subsequent launches | [Details](doc/IMPLEMENTATION-ANDROID.md) |
 
 ### Zero-Copy Architecture (iOS, macOS, Android)
 
@@ -299,28 +299,28 @@ flowchart TB
 | Document | Description |
 |----------|-------------|
 | [GUIDE.md](GUIDE.md) | Architectural blueprint and design philosophy |
-| [docs/ARCHITECTURE-ANDROID.md](docs/ARCHITECTURE-ANDROID.md) | Deep dive: memory efficiency, battery savings, how it works |
-| [docs/COMAPS-ASSETS.md](docs/COMAPS-ASSETS.md) | **CoMaps asset management:** data files, localization, MWM maps |
-| [docs/IMPLEMENTATION-ANDROID.md](docs/IMPLEMENTATION-ANDROID.md) | Android build instructions, debug/release modes |
-| [docs/IMPLEMENTATION-IOS.md](docs/IMPLEMENTATION-IOS.md) | iOS build instructions and Metal integration |
-| [docs/IMPLEMENTATION-MACOS.md](docs/IMPLEMENTATION-MACOS.md) | macOS build instructions, window resize handling |
-| [docs/IMPLEMENTATION-WIN.md](docs/IMPLEMENTATION-WIN.md) | Windows build instructions, x86_64 only |
-| [docs/RENDER-LOOP.md](docs/RENDER-LOOP.md) | Render loop comparison across all platforms |
-| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer setup, commit guidelines, known issues |
+| [doc/ARCHITECTURE-ANDROID.md](doc/ARCHITECTURE-ANDROID.md) | Deep dive: memory efficiency, battery savings, how it works |
+| [doc/COMAPS-ASSETS.md](doc/COMAPS-ASSETS.md) | **CoMaps asset management:** data files, localization, MWM maps |
+| [doc/IMPLEMENTATION-ANDROID.md](doc/IMPLEMENTATION-ANDROID.md) | Android build instructions, debug/release modes |
+| [doc/IMPLEMENTATION-IOS.md](doc/IMPLEMENTATION-IOS.md) | iOS build instructions and Metal integration |
+| [doc/IMPLEMENTATION-MACOS.md](doc/IMPLEMENTATION-MACOS.md) | macOS build instructions, window resize handling |
+| [doc/IMPLEMENTATION-WIN.md](doc/IMPLEMENTATION-WIN.md) | Windows build instructions, x86_64 only |
+| [doc/RENDER-LOOP.md](doc/RENDER-LOOP.md) | Render loop comparison across all platforms |
+| [doc/CONTRIBUTING.md](doc/CONTRIBUTING.md) | Developer setup, commit guidelines, known issues |
 | [example/](example/) | Working demo application with downloads manager |
 
 ### Technical Deep Dives
 
 For those who want to understand *why* Agus Maps is efficient:
 
-- **[How Memory Mapping Works](docs/ARCHITECTURE-ANDROID.md#memory-efficiency)** — Why we use 10x less RAM than tile-based solutions
-- **[Battery Efficiency](docs/ARCHITECTURE-ANDROID.md#battery-efficiency)** — Event-driven rendering that sleeps when idle
-- **[Multi-threaded Architecture](docs/ARCHITECTURE-ANDROID.md#processor-efficiency)** — How we keep the UI thread responsive
-- **[Old Phone Compatibility](docs/ARCHITECTURE-ANDROID.md#why-this-works-on-older-phones)** — Tested on Samsung Galaxy S10 and similar devices
+- **[How Memory Mapping Works](doc/ARCHITECTURE-ANDROID.md#memory-efficiency)** — Why we use 10x less RAM than tile-based solutions
+- **[Battery Efficiency](doc/ARCHITECTURE-ANDROID.md#battery-efficiency)** — Event-driven rendering that sleeps when idle
+- **[Multi-threaded Architecture](doc/ARCHITECTURE-ANDROID.md#processor-efficiency)** — How we keep the UI thread responsive
+- **[Old Phone Compatibility](doc/ARCHITECTURE-ANDROID.md#why-this-works-on-older-phones)** — Tested on Samsung Galaxy S10 and similar devices
 
 ### Known Issues & Optimization Opportunities
 
-We track efficiency-related issues in dedicated files. See [CONTRIBUTING.md](docs/CONTRIBUTING.md#known-issues) for the full list, including:
+We track efficiency-related issues in dedicated files. See [CONTRIBUTING.md](doc/CONTRIBUTING.md#known-issues) for the full list, including:
 
 - Debug logging overhead in release builds
 - EGL context recreation on app resume

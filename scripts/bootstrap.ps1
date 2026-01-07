@@ -50,7 +50,7 @@
 
 .NOTES
     For macOS/Linux development, use bootstrap.sh instead.
-    Linux is not yet supported - see docs/CONTRIBUTING.md for details.
+    Linux is not yet supported - see doc/CONTRIBUTING.md for details.
 #>
 
 param(

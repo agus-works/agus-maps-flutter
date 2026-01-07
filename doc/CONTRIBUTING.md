@@ -24,7 +24,7 @@ agus_maps_flutter/
 ├── thirdparty/             # External dependencies (CoMaps engine)
 ├── patches/                # Patches applied to CoMaps
 ├── scripts/                # Build and setup automation
-└── docs/                   # Documentation
+└── doc/                   # Documentation
 ```
 
 ## Building and Bundling Native Code

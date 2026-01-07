@@ -459,10 +459,10 @@ We target **12.0** to match iOS 15.6 parity and ensure modern Metal features.
 
 ## References
 
-- iOS Implementation: [docs/IMPLEMENTATION-IOS.md](IMPLEMENTATION-IOS.md)
-- Android Implementation: [docs/IMPLEMENTATION-ANDROID.md](IMPLEMENTATION-ANDROID.md)
-- Render Loop Details: [docs/RENDER-LOOP.md](RENDER-LOOP.md)
-- CI/CD Plan: [docs/IMPLEMENTATION-CI-CD.md](IMPLEMENTATION-CI-CD.md)
+- iOS Implementation: [doc/IMPLEMENTATION-IOS.md](IMPLEMENTATION-IOS.md)
+- Android Implementation: [doc/IMPLEMENTATION-ANDROID.md](IMPLEMENTATION-ANDROID.md)
+- Render Loop Details: [doc/RENDER-LOOP.md](RENDER-LOOP.md)
+- CI/CD Plan: [doc/IMPLEMENTATION-CI-CD.md](IMPLEMENTATION-CI-CD.md)
 - CoMaps macOS code: `thirdparty/comaps/platform/platform_mac.mm`
 
 ---
