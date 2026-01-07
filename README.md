@@ -87,7 +87,7 @@ Most Flutter map solutions either:
 
 ## Demos
 
-The following videos demonstrate the **example app** ([source code](example/)) running on each platform. This example app showcases the `AgusMap` widget and serves as a reference implementation for developers integrating the plugin into their own apps.
+The following videos showcase the **Agus Maps plugin** running on various platforms. To explore the reference implementation producing these results, check out the [example app](example/) source code.
 
 <table>
   <tr>
@@ -132,10 +132,8 @@ The following videos demonstrate the **example app** ([source code](example/)) r
 - 🖱️ **macOS Trackpad Zoom** — Pinch or two-finger parallel swipe (Google Maps-style) with cursor-centered zoom
 - 📐 **Responsive** — Automatically handles resize and device pixel ratio
 - 🔌 **Simple API** — Drop-in `AgusMap` widget with `AgusMapController`
-- 📥 **Map Download Manager** — Browse and download maps from mirror servers with progress tracking
-- 🔍 **Fuzzy Search** — Search for regions with intelligent fuzzy matching
-- 💾 **Caching** — Downloaded region data cached locally for instant subsequent loads
-- 📊 **Disk Space Management** — Real-time disk space monitoring with safety checks
+-  **Fuzzy Search API** — Fast offline search logic for finding map regions
+
 
 ---
 
@@ -358,7 +356,7 @@ We track efficiency-related issues in dedicated files. See [CONTRIBUTING.md](doc
 Agus Maps uses MWM files from OpenStreetMap. You can download maps from:
 - [Organic Maps Downloads](https://organicmaps.app/downloads/)
 - [CoMaps Mirror](https://omaps.webfreak.org/)
-- **In-app**: Use the built-in Downloads tab to browse and download regions
+- **In-app (Example)**: Use the example app's Downloads tab to browse and download regions
 
 The example app bundles a small Gibraltar map for testing.
 
