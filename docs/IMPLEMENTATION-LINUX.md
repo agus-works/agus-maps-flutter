@@ -505,14 +505,14 @@ sudo usermod -aG render $USER
 **Symptom:** Framework initialization succeeds but maps fail to load:
 ```
 [CoMaps/WARN] platform/local_country_file_utils.cpp:272 FindAllLocalMapsAndCleanup(): Can't find any: World Reason: File World.mwm doesn't exist in the scope r
-w:  /home/bangonkali/.local/share/agus_maps_flutter/
-r:  /home/bangonkali/.local/share/agus_maps_flutter/
+w:  $HOME/.local/share/agus_maps_flutter/
+r:  $HOME/.local/share/agus_maps_flutter/
 s:
 ```
 
 Yet the extraction logs show the files exist:
 ```
-[AgusMapsFlutter] Map already exists at: /home/bangonkali/.local/share/agus_maps_flutter/maps/World.mwm
+[AgusMapsFlutter] Map already exists at: $HOME/.local/share/agus_maps_flutter/maps/World.mwm
 ```
 
 **Root Cause:** Path mismatch between extraction and framework search:

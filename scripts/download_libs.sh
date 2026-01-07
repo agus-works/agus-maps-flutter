@@ -20,7 +20,7 @@ set -euo pipefail
 #
 # Environment variables:
 #   LIBS_VERSION: Version tag to download (default: from pubspec.yaml)
-#   GITHUB_REPO: Repository URL (default: bangonkali/agus-maps-flutter)
+#   GITHUB_REPO: Repository URL (default: agus-works/agus-maps-flutter)
 #   FORCE_DOWNLOAD: Set to "true" to force re-download even if files exist
 #
 # Output (iOS):
@@ -32,7 +32,7 @@ set -euo pipefail
 #   android/headers/comaps/  (external consumers only)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GITHUB_REPO="${GITHUB_REPO:-bangonkali/agus-maps-flutter}"
+GITHUB_REPO="${GITHUB_REPO:-agus-works/agus-maps-flutter}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -55,7 +55,7 @@ usage() {
     echo ""
     echo "Environment variables:"
     echo "  LIBS_VERSION    Version tag to download (default: from pubspec.yaml)"
-    echo "  GITHUB_REPO     Repository URL (default: bangonkali/agus-maps-flutter)"
+    echo "  GITHUB_REPO     Repository URL (default: agus-works/agus-maps-flutter)"
     echo "  FORCE_DOWNLOAD  Set to 'true' to force re-download"
     exit 1
 }

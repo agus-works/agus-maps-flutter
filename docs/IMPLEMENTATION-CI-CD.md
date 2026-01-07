@@ -392,3 +392,41 @@ The bootstrap and CI scripts now guard simple counters with `((++var)) || true` 
 - [x] Create `build-and-release-linux-platform` workflow (GitHub Actions)
 - [x] Update `RELEASE.md` with Linux installation instructions
 - [x] Test end-to-end pipeline
+
+## Publishing to pub.dev
+
+The `agus_maps_flutter` package relies on pre-compiled binaries hosted on GitHub Releases. Therefore, a strict order of operations must be followed when publishing a new version to `pub.dev`.
+
+### Prerequisites
+
+- Administrator access to the `agus.app` publisher on `pub.dev`.
+- Write access to the GitHub repository to create releases.
+
+### Release Workflow
+
+1.  **Tag and Release**:
+    - Ensure the `version` in `pubspec.yaml` matches the tag you intend to create (e.g., `0.0.1`).
+    - Create a new GitHub Release with the tag `v<version>` (e.g., `v0.0.1`).
+    - **Wait for CI/CD**: The "Build and Release" workflow in `.github/workflows/devops.yml` **MUST** complete successfully. It will automatically upload the following assets to the release:
+        - `agus-headers.tar.gz`
+        - `agus-binaries-ios.zip`
+        - `agus-binaries-android.zip`
+        - `agus-binaries-macos.zip`
+        - `agus-binaries-windows.zip`
+        - `agus-binaries-linux.zip` (if available)
+
+2.  **Verify Assets**:
+    - Manually verify that all expected zip/tar.gz files are present on the GitHub Release page. If they are missing, `pub publish` will result in a broken package for consumers.
+
+3.  **Publish to pub.dev**:
+    - Run the dry run command to catch any issues:
+      ```bash
+      flutter pub publish --dry-run
+      ```
+    - If successful, publish the package:
+      ```bash
+      flutter pub publish
+      ```
+
+> **CRITICAL**: Do **NOT** publish to `pub.dev` until the GitHub Release assets are verified. The `download_libs.sh` script run by consumers depends on being able to download these files from the release URL matching the version in `pubspec.yaml`.
+

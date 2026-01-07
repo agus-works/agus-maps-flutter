@@ -11,7 +11,7 @@ A Flutter plugin that provides high-performance offline vector map rendering
 using the CoMaps (Organic Maps fork) C++ engine. Features zero-copy GPU texture
 sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
                        DESC
-  s.homepage         = 'https://github.com/bangonkali/agus-maps-flutter'
+  s.homepage         = 'https://github.com/agus-works/agus-maps-flutter'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Agus Maps' => 'agus@example.com' }
   s.source           = { :path => '.' }

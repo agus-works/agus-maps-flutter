@@ -1,8 +1,8 @@
 name: agus_maps_flutter
-description: "A new Flutter FFI plugin project."
-version: 0.0.1
-homepage:
-
+description: High-performance offline vector maps for Flutter using the CoMaps rendering engine.
+version: 0.1.0
+homepage: https://agus.app
+repository: https://github.com/agus-works/agus-maps-flutter
 environment:
   sdk: ^3.6.0
   flutter: '>=3.3.0'

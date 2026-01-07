@@ -42,7 +42,7 @@ Each release includes the following artifacts:
 3. **Install the APK**:
    ```bash
    # Download the APK
-   curl -LO https://github.com/bangonkali/agus-maps-flutter/releases/latest/download/agus-maps-android.apk
+   curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-android.apk
    
    # Install via ADB
    adb install agus-maps-android.apk
@@ -102,7 +102,7 @@ The iOS build is a **debug build** for the **iOS Simulator only**. It will not r
 
 ```bash
 # 1. Download and extract the app
-curl -LO https://github.com/bangonkali/agus-maps-flutter/releases/latest/download/agus-maps-ios-simulator.app.zip
+curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-ios-simulator.app.zip
 unzip agus-maps-ios-simulator.app.zip
 
 # 2. Boot a simulator (if not already running)
@@ -152,7 +152,7 @@ The macOS app is an **unsigned release build**. It will work on macOS 12.0 (Mont
 
 ```bash
 # 1. Download and extract
-curl -LO https://github.com/bangonkali/agus-maps-flutter/releases/latest/download/agus-maps-macos.app.zip
+curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-macos.app.zip
 unzip agus-maps-macos.app.zip
 
 # 2. Remove quarantine attribute (required for unsigned apps)
@@ -195,7 +195,7 @@ The Windows app is an **unsigned release build** for **x86_64 (64-bit Intel/AMD)
 ```powershell
 # 1. Download and extract
 # Using PowerShell or download from browser
-Invoke-WebRequest -Uri "https://github.com/bangonkali/agus-maps-flutter/releases/latest/download/agus-maps-windows.zip" -OutFile "agus-maps-windows.zip"
+Invoke-WebRequest -Uri "https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-windows.zip" -OutFile "agus-maps-windows.zip"
 Expand-Archive -Path "agus-maps-windows.zip" -DestinationPath "agus-maps-windows"
 
 # 2. Run the app
@@ -204,7 +204,7 @@ Expand-Archive -Path "agus-maps-windows.zip" -DestinationPath "agus-maps-windows
 
 #### Alternative: File Explorer
 
-1. Download `agus-maps-windows.zip` from the [releases page](https://github.com/bangonkali/agus-maps-flutter/releases)
+1. Download `agus-maps-windows.zip` from the [releases page](https://github.com/agus-works/agus-maps-flutter/releases)
 2. Right-click and select **Extract All...**
 3. Navigate to the extracted folder
 4. Double-click `agus_maps_flutter_example.exe`
@@ -266,7 +266,7 @@ sudo dnf install gtk3 mesa-libGL mesa-libEGL libepoxy
 
 ```bash
 # 1. Download and extract
-curl -LO https://github.com/bangonkali/agus-maps-flutter/releases/latest/download/agus-maps-linux.zip
+curl -LO https://github.com/agus-works/agus-maps-flutter/releases/latest/download/agus-maps-linux.zip
 unzip agus-maps-linux.zip -d agus-maps-linux
 
 # 2. Run the app
@@ -276,7 +276,7 @@ cd agus-maps-linux
 
 #### Alternative: File Manager
 
-1. Download `agus-maps-linux.zip` from the [releases page](https://github.com/bangonkali/agus-maps-flutter/releases)
+1. Download `agus-maps-linux.zip` from the [releases page](https://github.com/agus-works/agus-maps-flutter/releases)
 2. Right-click and select **Extract Here** or use your archive manager
 3. Navigate to the extracted folder
 4. Double-click `agus_maps_flutter_example` (may require marking as executable)
@@ -349,23 +349,23 @@ If you need to download libraries manually:
 VERSION="v0.0.30"
 
 # Download iOS libraries
-curl -LO "https://github.com/bangonkali/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-ios.zip"
+curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-ios.zip"
 unzip agus-binaries-ios.zip -d ios/Frameworks/
 
 # Download Android libraries
-curl -LO "https://github.com/bangonkali/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-android.zip"
+curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-android.zip"
 unzip agus-binaries-android.zip -d android/prebuilt/
 
 # Download macOS libraries
-curl -LO "https://github.com/bangonkali/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-macos.zip"
+curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-macos.zip"
 unzip agus-binaries-macos.zip -d macos/Frameworks/
 
 # Download Linux libraries
-curl -LO "https://github.com/bangonkali/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-linux.zip"
+curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-linux.zip"
 unzip agus-binaries-linux.zip -d linux/prebuilt/
 
 # Download Windows libraries
-curl -LO "https://github.com/bangonkali/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-windows.zip"
+curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-binaries-windows.zip"
 unzip agus-binaries-windows.zip -d windows/prebuilt/
 ```
 
@@ -433,7 +433,7 @@ If you prefer to build from source instead of using pre-built binaries:
 **Linux:**
 ```bash
 # Clone the repository
-git clone https://github.com/bangonkali/agus-maps-flutter.git
+git clone https://github.com/agus-works/agus-maps-flutter.git
 cd agus-maps-flutter
 
 # Install dependencies
@@ -450,7 +450,7 @@ flutter build linux        # Linux
 **macOS:**
 ```bash
 # Clone the repository
-git clone https://github.com/bangonkali/agus-maps-flutter.git
+git clone https://github.com/agus-works/agus-maps-flutter.git
 cd agus-maps-flutter
 
 # Bootstrap (fetches CoMaps, applies patches, builds boost)
@@ -466,7 +466,7 @@ flutter build macos        # macOS
 **Windows PowerShell:**
 ```powershell
 # Clone the repository
-git clone https://github.com/bangonkali/agus-maps-flutter.git
+git clone https://github.com/agus-works/agus-maps-flutter.git
 cd agus-maps-flutter
 
 # Bootstrap (fetches CoMaps, applies patches)

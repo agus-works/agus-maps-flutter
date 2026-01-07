@@ -96,7 +96,7 @@ The bootstrap scripts handle:
 **macOS (targets: Android, iOS, macOS):**
 ```bash
 # Clone the repository
-git clone https://github.com/bangonkali/agus-maps-flutter.git
+git clone https://github.com/agus-works/agus-maps-flutter.git
 cd agus-maps-flutter
 
 # Run unified bootstrap (prepares ALL targets)
@@ -113,7 +113,7 @@ flutter run -d <device>  # iOS Simulator, Android device, or macOS
 **Windows PowerShell 7+ (targets: Android, Windows):**
 ```powershell
 # Clone the repository
-git clone https://github.com/bangonkali/agus-maps-flutter.git
+git clone https://github.com/agus-works/agus-maps-flutter.git
 cd agus-maps-flutter
 
 # Run unified bootstrap (prepares ALL targets)
