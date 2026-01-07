@@ -28,15 +28,11 @@ agus_maps_flutter/
 * Updated `doc/RELEASE.md` with comprehensive installation guide for the unified binary package.
 * Added notes clarifying that headers are optional for plugin consumers.
 
----
-
 ## 0.1.1
 
 * CI/CD improvements for multi-platform builds.
 * Azure Blob Storage caching for CoMaps source.
 * Build workflow optimizations.
-
----
 
 ## 0.1.0
 
