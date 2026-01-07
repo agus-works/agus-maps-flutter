@@ -388,8 +388,9 @@ class _AgusMapState extends State<AgusMap> {
   }
 
   Future<void> _handleResize(Size newLogicalSize, double pixelRatio) async {
-    if (_currentSize == newLogicalSize && _devicePixelRatio == pixelRatio)
+    if (_currentSize == newLogicalSize && _devicePixelRatio == pixelRatio) {
       return;
+    }
     if (_textureId == null) return;
 
     _devicePixelRatio = pixelRatio;

@@ -157,8 +157,9 @@ class MwmStorage {
   bool hasUpdate(String regionName, String latestSnapshotVersion) {
     final current = getByRegion(regionName);
     if (current == null) return false;
-    if (current.isBundled)
+    if (current.isBundled) {
       return false; // Don't suggest updates for bundled files
+    }
     return current.snapshotVersion != latestSnapshotVersion;
   }
 
