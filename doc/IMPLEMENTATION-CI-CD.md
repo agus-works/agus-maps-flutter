@@ -15,9 +15,10 @@ This document outlines the implementation plan for splitting the Android build p
 
 | Artifact | Description | Platforms |
 |----------|-------------|-----------|
-| `agus-headers.tar.gz` | Shared C++ headers | All platforms |
-| `agus-binaries-ios.zip` | iOS XCFramework | iOS (device + simulator) |
-| `agus-binaries-android.zip` | Android static libs | Android (arm64-v8a, armeabi-v7a, x86_64) |
+| `agus-maps-binaries-vX.Y.Z.zip` | **Unified package** with all platform binaries, assets, and headers | All platforms |
+| `agus-headers.tar.gz` | Shared C++ headers (included in unified package) | All platforms |
+
+> **Note:** Individual platform zips (`agus-binaries-ios.zip`, `agus-binaries-android.zip`, etc.) are generated as intermediate CI artifacts but are NOT published to GitHub Releases. Only the unified package is published.
 
 ### Script Naming Convention
 
@@ -34,7 +35,6 @@ This document outlines the implementation plan for splitting the Android build p
 | `bootstrap_ios.sh` | — | Bootstrap iOS dependencies |
 | `bootstrap_macos.sh` | — | Bootstrap macOS dependencies |
 | `bootstrap_common.sh` | `BootstrapCommon.psm1` | Shared bootstrap utilities module |
-| `download_libs.sh` | — | Download headers + platform binaries |
 | `fetch_comaps.sh` | `fetch_comaps.ps1` | Clone/update CoMaps source |
 | `apply_comaps_patches.sh` | `apply_comaps_patches.ps1` | Apply patches to CoMaps |
 | `copy_comaps_data.sh` | `copy_comaps_data.ps1` | Copy CoMaps data files |
@@ -42,6 +42,8 @@ This document outlines the implementation plan for splitting the Android build p
 | `validate_patches.sh` | `validate_patches.ps1` | Validate patches match current state |
 
 > **Note:** Windows developers can use the `.ps1` PowerShell scripts for local development and testing. The CI/CD pipeline uses bash scripts on Linux/macOS runners.
+>
+> **Consumer Note (v0.1.2+):** Consumers should download the unified binary package from GitHub Releases and extract it directly to their Flutter app root. No auto-download scripts are used - the build systems simply detect pre-built binaries.
 
 ## Pipeline Architecture
 
@@ -170,29 +172,24 @@ build-android-native:
     - deploy-to-bitrise-io (intermediate file: ANDROID_BINARIES_PATH)
 ```
 
-### Phase 4: Download Script Unification
+### Phase 4: Manual Binary Distribution (v0.1.3+)
 
-#### Step 4.1: Rename `download_ios_xcframework.sh` → `download_libs.sh`
+> **Note (v0.1.3+):** Auto-download scripts have been removed. The unified binary package is downloaded manually by consumers before building.
 
-Update script to:
-1. Accept platform argument: `download_libs.sh <platform>` (ios, android)
-2. Download `agus-headers.tar.gz` (always)
-3. Download platform-specific binaries (`agus-binaries-ios.zip` or `agus-binaries-android.zip`)
-4. Extract to appropriate locations
-5. Support dual-mode detection (in-repo vs external consumer)
+The CI/CD pipeline creates a unified binary package containing all platform binaries:
 
 ### Phase 5: Consumer Integration
 
 #### Step 5.1: Update `android/build.gradle`
 
-Add Gradle task to:
-1. Detect if `thirdparty/comaps` exists (in-repo build)
-2. If not, run `download_libs.sh android`
-3. Pass `-DUSE_PREBUILT_COMAPS=ON` to CMake
+Configure detection-only logic:
+1. Detect if binaries exist in `android/prebuilt/`
+2. Fail with clear error if not found, directing users to download
+3. No network calls during build
 
 #### Step 5.2: Update `src/CMakeLists.txt`
 
-Add `USE_PREBUILT_COMAPS` option:
+Add detection logic (no download):
 ```cmake
 option(USE_PREBUILT_COMAPS "Use pre-built CoMaps libraries" OFF)
 
@@ -208,14 +205,9 @@ endif()
 
 #### Step 5.3: Update `ios/agus_maps_flutter.podspec`
 
-Change `prepare_command` to call `download_libs.sh ios`:
-```ruby
-s.prepare_command = <<-CMD
-    ./scripts/download_libs.sh ios
-CMD
-```
+> **Note (v0.1.3+):** The `prepare_command` approach has been removed. Consumers must manually download and extract the unified binary package before running `pod install`.
 
-Update artifact references to new names.
+Update artifact references to use the unified package naming convention.
 
 ### Phase 6: App Build Workflow Refactoring
 
@@ -307,22 +299,28 @@ build-release:
 
 ### For Plugin Consumers (pub.dev, git dependency)
 
+> **Note (v0.1.3+):** Build systems are detection-only. No auto-download occurs during build.
+
 When adding `agus_maps_flutter` to a Flutter project:
 
-1. **iOS**: `pod install` triggers `download_libs.sh ios`
-   - Downloads `agus-headers.tar.gz` and `agus-binaries-ios.zip`
-   - Extracts to `ios/Headers/` and `ios/Frameworks/`
+1. **Download binaries manually:**
+   - Download `agus-maps-binaries-vX.Y.Z.zip` from GitHub Releases
+   - Extract directly to your app's root directory
 
-2. **Android**: Gradle sync triggers download task
-   - Downloads `agus-headers.tar.gz` and `agus-binaries-android.zip`
-   - Extracts to `android/prebuilt/` and `android/headers/`
-   - CMake links pre-built libraries
+2. **iOS/macOS**: `pod install` expects XCFramework to be present
+   - Binaries location: `ios/Frameworks/` or `macos/Frameworks/`
+
+3. **Android**: Gradle expects native libraries to be present
+   - Binaries location: `android/prebuilt/{arm64-v8a,armeabi-v7a,x86_64}/`
+
+4. **Windows/Linux**: CMake expects DLL/SO files to be present
+   - Binaries location: `windows/prebuilt/x64/` or `linux/prebuilt/x64/`
 
 ### For Plugin Developers (in-repo build)
 
 When working on the plugin:
 - `thirdparty/comaps` exists → builds from source
-- Can still use `FORCE_DOWNLOAD=true ./scripts/download_libs.sh <platform>` to test pre-built flow
+- Or download unified package and extract to plugin root
 
 ## Platform Support Status
 
@@ -352,17 +350,18 @@ Headers (`agus-headers.tar.gz`) remain shared across all platforms.
 
 ### Breaking Changes
 
-1. Artifact names change:
-   - `CoMaps.xcframework.zip` → `agus-binaries-ios.zip`
-   - `CoMaps-headers.tar.gz` → `agus-headers.tar.gz`
+1. Artifact names changed to unified versioned format:
+   - Individual: `agus-binaries-android.zip`, `agus-binaries-ios.zip`, etc.
+   - Unified: `agus-maps-binaries-vX.Y.Z.zip` (contains all platforms)
 
-2. Script names change:
-   - `download_ios_xcframework.sh` → `download_libs.sh`
+2. Build script changes:
+   - `download_libs.sh` has been **removed** (v0.1.3)
    - `build_ios_xcframework.sh` → `build_binaries_ios.sh`
    - `bundle_ios_headers.sh` → `bundle_headers.sh`
 
-3. Workflow names change:
+3. Workflow changes:
    - `build-ios-xcframework` → `build-ios-native`
+   - Auto-download removed from all build systems
 
 ### Backward Compatibility
 
@@ -380,9 +379,9 @@ The bootstrap and CI scripts now guard simple counters with `((++var)) || true` 
 - [x] Refactor `build-ios-xcframework` → `build-ios-native` workflow
 - [x] Create `build_binaries_android.sh`
 - [x] Create `build-android-native` workflow
-- [x] Rename `download_ios_xcframework.sh` → `download_libs.sh`
-- [x] Update `android/build.gradle` for dual-path detection
-- [x] Update `src/CMakeLists.txt` with `USE_PREBUILT_COMAPS` option
+- [x] Remove `download_libs.sh` (v0.1.3 - manual download only)
+- [x] Update `android/build.gradle` for detection-only logic
+- [x] Update CMakeLists.txt files with detection-only logic
 - [x] Update `ios/agus_maps_flutter.podspec`
 - [x] Refactor `build-android` workflow
 - [x] Refactor `build-ios` workflow
@@ -428,5 +427,5 @@ The `agus_maps_flutter` package relies on pre-compiled binaries hosted on GitHub
       flutter pub publish
       ```
 
-> **CRITICAL**: Do **NOT** publish to `pub.dev` until the GitHub Release assets are verified. The `download_libs.sh` script run by consumers depends on being able to download these files from the release URL matching the version in `pubspec.yaml`.
+> **Note (v0.1.3+)**: Consumers must manually download binaries from GitHub Releases before building. The build systems are detection-only and do not auto-download.
 

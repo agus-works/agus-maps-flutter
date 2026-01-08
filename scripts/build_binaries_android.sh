@@ -204,22 +204,6 @@ build_abi() {
     fi
 }
 
-# Create archive
-create_archive() {
-    log_step "Creating archive..."
-    
-    local archive_path="$ROOT_DIR/build/agus-binaries-android.zip"
-    
-    pushd "$ROOT_DIR/build" >/dev/null
-    rm -f "agus-binaries-android.zip"
-    zip -r "agus-binaries-android.zip" "agus-binaries-android"
-    popd >/dev/null
-    
-    local size
-    size=$(du -h "$archive_path" | cut -f1)
-    log_info "Archive created: $archive_path ($size)"
-}
-
 # Print summary
 print_summary() {
     log_info "========================================="
@@ -238,9 +222,8 @@ print_summary() {
         fi
     done
     log_info ""
-    log_info "Archive: $ROOT_DIR/build/agus-binaries-android.zip"
-    log_info ""
-    log_info "To use in CI release, upload the zip to GitHub Releases"
+    log_info "To create archive for release, run from build/:"
+    log_info "  cd build/agus-binaries-android && zip -r ../agus-binaries-android.zip ."
     log_info "========================================="
 }
 
@@ -266,7 +249,6 @@ main() {
         build_abi "$abi"
     done
     
-    create_archive
     print_summary
 }
 

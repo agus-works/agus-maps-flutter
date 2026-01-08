@@ -168,18 +168,29 @@ The CoMaps static libraries are pre-built into a universal XCFramework and publi
 #   └── Info.plist
 ```
 
-### Download During Pod Install
+### Manual Binary Setup (Required)
 
-The XCFramework is automatically downloaded during `pod install` via the podspec's `prepare_command`:
+As of v0.1.3, there is no auto-download. You must manually download and extract the unified binary package before running `pod install`:
+
+```bash
+# 1. Download unified package from GitHub Releases
+curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/vX.Y.Z/agus-maps-binaries-vX.Y.Z.zip"
+
+# 2. Extract to your app's root directory
+unzip agus-maps-binaries-vX.Y.Z.zip -d /path/to/my_app/
+
+# 3. Run pod install
+cd /path/to/my_app/macos && pod install
+```
+
+The podspec expects the XCFramework to be present at `macos/Frameworks/CoMaps.xcframework`:
 
 ```ruby
 # macos/agus_maps_flutter.podspec
-s.prepare_command = <<-CMD
-  ./scripts/download_libs.sh macos
-CMD
-
 s.vendored_frameworks = 'Frameworks/CoMaps.xcframework'
 ```
+
+If the XCFramework is not found, `pod install` will fail with an error.
 
 ### Version Mapping
 
@@ -256,7 +267,7 @@ Update `macos/agus_maps_flutter.podspec`:
 - Add Metal, MetalKit, CoreVideo frameworks
 - Configure C++23 and header search paths
 - Add vendored framework and resource bundles
-- Add `prepare_command` for downloading binaries
+- Add documentation comments explaining manual binary setup
 
 ### Step 6: Create Build Script
 
@@ -265,17 +276,13 @@ Create `scripts/build_binaries_macos.sh`:
 - Create universal binary with `lipo`
 - Package as XCFramework
 
-### Step 7: Update download_libs.sh
-
-Add `macos` case to download the macOS-specific binaries.
-
-### Step 8: Create Bootstrap Script
+### Step 7: Create Bootstrap Script
 
 Create `scripts/bootstrap_macos.sh`:
 - Fetch CoMaps source
 - Apply patches
 - Build Boost headers
-- Build or download XCFramework
+- Build or download XCFramework (manual download for consumers)
 - Copy Metal shaders
 
 ---

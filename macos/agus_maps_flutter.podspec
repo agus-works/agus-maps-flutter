@@ -16,15 +16,18 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
   s.author           = { 'Agus Maps' => 'agus@example.com' }
   s.source           = { :path => '.' }
 
-  # Download pre-built XCFramework and headers before pod install
-  s.prepare_command = <<-CMD
-    cd "$(dirname "$0")/.."
-    if [ -x "./scripts/download_libs.sh" ]; then
-      ./scripts/download_libs.sh macos
-    else
-      echo "Warning: download_libs.sh not found or not executable"
-    fi
-  CMD
+  # ============================================================================
+  # Pre-built XCFramework Required
+  # ============================================================================
+  # Download the unified binary package from GitHub Releases and extract it to
+  # your Flutter app root BEFORE running pod install:
+  #
+  #   1. Download: https://github.com/agus-works/agus-maps-flutter/releases
+  #   2. Extract to your app root: unzip agus-maps-binaries-vX.Y.Z.zip -d my_app/
+  #   3. This creates: my_app/macos/Frameworks/CoMaps.xcframework/
+  #
+  # The build will fail if macos/Frameworks/CoMaps.xcframework is not present.
+  # ============================================================================
 
   # Source files - Swift plugin + Objective-C++ native code
   s.source_files = [
@@ -51,8 +54,8 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
     'agus_maps_flutter_shaders' => ['Resources/shaders_metal.metallib']
   }
 
-  # Vendored CoMaps XCFramework (downloaded by prepare_command or built locally)
-  # For static library XCFrameworks, we need vendored_frameworks
+  # Vendored CoMaps XCFramework - must be manually placed before pod install
+  # Download from GitHub Releases: agus-maps-binaries-vX.Y.Z.zip
   s.vendored_frameworks = 'Frameworks/CoMaps.xcframework'
   
   # Build settings for C++ interop

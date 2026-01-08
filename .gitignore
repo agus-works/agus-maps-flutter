@@ -104,6 +104,9 @@ output.log
 # Python virtual environment (created by build_all.sh)
 .venv/
 
+# Download cache directory (for binary packages)
+.cache/
+
 # Thirdparty cache archives with version tags
 .thirdparty-*.tar.bz2
 

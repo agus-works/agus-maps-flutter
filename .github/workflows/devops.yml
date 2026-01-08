@@ -1076,6 +1076,16 @@ jobs:
           echo "=== Build Output ==="
           ls -la build/agus-binaries-linux/
 
+      - name: Create Linux Binaries Archive
+        run: |
+          # Create archive with content at root (no wrapper folder)
+          # Rename x86_64 to x64 for consistency with Windows
+          cd build/agus-binaries-linux
+          mv x86_64 x64 || true
+          rm -f ../agus-binaries-linux.zip
+          zip -r ../agus-binaries-linux.zip .
+          ls -lh ../agus-binaries-linux.zip
+
       - name: Upload Linux Binaries Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -1087,8 +1097,8 @@ jobs:
       # ======================================================================
       - name: Setup Linux Pre-built Binaries
         run: |
-          mkdir -p linux/prebuilt/x86_64
-          cp build/agus-binaries-linux/x86_64/libagus_maps_flutter.so linux/prebuilt/x86_64/
+          mkdir -p linux/prebuilt/x64
+          cp build/agus-binaries-linux/x64/libagus_maps_flutter.so linux/prebuilt/x64/
           echo "=== Prebuilt Structure ==="
           ls -la linux/prebuilt/
 
@@ -1308,24 +1318,14 @@ jobs:
           fi
           
           # ---------------------------------------------------------
-          # Linux: linux/prebuilt/x86_64/
-          # Archive contains: agus-binaries-linux/x86_64/ (wrapped!)
-          # We need to extract and move to correct location
-          # Target: linux/prebuilt/x86_64/
+          # Linux: linux/prebuilt/x64/
+          # Archive contains: x64/ folder with .so files directly
+          # Target: linux/prebuilt/ (unzip creates x64/ inside)
           # ---------------------------------------------------------
           if [ -f ../all-artifacts/agus-binaries-linux.zip ]; then
             echo "Extracting Linux binaries..."
             mkdir -p linux/prebuilt
-            # Extract to temp location first
-            unzip -q ../all-artifacts/agus-binaries-linux.zip -d /tmp/linux-extract
-            # Move from wrapped folder to correct location
-            if [ -d /tmp/linux-extract/agus-binaries-linux ]; then
-              cp -r /tmp/linux-extract/agus-binaries-linux/* linux/prebuilt/
-            else
-              # Fallback: maybe structure changed, try direct
-              cp -r /tmp/linux-extract/* linux/prebuilt/
-            fi
-            rm -rf /tmp/linux-extract
+            unzip -q ../all-artifacts/agus-binaries-linux.zip -d linux/prebuilt
             echo "  ✓ Linux: linux/prebuilt/"
             ls linux/prebuilt/
           fi

@@ -27,42 +27,29 @@ rootProject.allprojects {
 
 apply plugin: "com.android.library"
 
-// Detect if we're in the plugin repository (in-repo build)
-// or being consumed as a dependency (external consumer)
+// ============================================================================
+// Build Mode Detection
+// ============================================================================
+// Detect if we're in the plugin repository (in-repo build from source)
+// or being consumed as a dependency (external consumer with pre-built binaries)
 def isInRepo = file("${projectDir}/../.git").exists() && 
                file("${projectDir}/../thirdparty/comaps").exists()
 
 def prebuiltDir = file("${projectDir}/prebuilt")
 def headersDir = file("${projectDir}/headers")
 
-// For external consumers, we need to download pre-built libraries
-if (!isInRepo) {
-    task downloadPrebuiltLibraries {
-        description = "Download pre-built CoMaps libraries for external consumers"
-        
-        doFirst {
-            println "=== Downloading pre-built CoMaps libraries ==="
-            
-            def downloadScript = file("${projectDir}/../scripts/download_libs.sh")
-            if (downloadScript.exists()) {
-                exec {
-                    commandLine 'bash', downloadScript.absolutePath, 'android'
-                    workingDir projectDir.parentFile
-                }
-            } else {
-                println "Warning: download_libs.sh not found, expecting pre-built libraries to exist"
-            }
-        }
-    }
-    
-    // Run download before native build
-    tasks.whenTaskAdded { task ->
-        if (task.name.contains("CMake") || task.name.contains("Ninja") || 
-            task.name.contains("externalNativeBuild")) {
-            task.dependsOn downloadPrebuiltLibraries
-        }
-    }
-}
+// ============================================================================
+// Pre-built Binaries Required for External Consumers
+// ============================================================================
+// Download the unified binary package from GitHub Releases and extract it to
+// your Flutter app root BEFORE building:
+//
+//   1. Download: https://github.com/agus-works/agus-maps-flutter/releases
+//   2. Extract to your app root: unzip agus-maps-binaries-vX.Y.Z.zip -d my_app/
+//   3. This creates: my_app/android/prebuilt/{arm64-v8a,armeabi-v7a,x86_64}/
+//
+// The build will fail if android/prebuilt/ is not present with the native libs.
+// ============================================================================
 
 android {
     namespace = "app.agus.maps.agus_maps_flutter"
@@ -103,13 +90,24 @@ android {
         // Pass CMake arguments based on build mode
         externalNativeBuild {
             cmake {
-                // Only use pre-built libraries for external consumers (not in-repo)
-                // In-repo builds (CI or local dev) should build from source using thirdparty/comaps
-                // Pre-built mode is for external consumers who don't have the full source
-                if (!isInRepo && prebuiltDir.exists() && prebuiltDir.listFiles()?.length > 0) {
+                // Check multiple locations for pre-built binaries:
+                // 1. Plugin-local (downloaded by script or manually placed): ${projectDir}/prebuilt
+                // 2. Project-root (manual offline workflow): ${rootDir}/../agus_maps_flutter/android/prebuilt
+                
+                def manualPrebuiltDir = file("${rootDir.parentFile}/agus_maps_flutter/android/prebuilt")
+                def effectivePrebuiltDir = null
+
+                if (prebuiltDir.exists() && prebuiltDir.listFiles()?.length > 0) {
+                     effectivePrebuiltDir = prebuiltDir
+                } else if (manualPrebuiltDir.exists() && manualPrebuiltDir.listFiles()?.length > 0) {
+                     effectivePrebuiltDir = manualPrebuiltDir
+                }
+
+                // If valid prebuilts found, use them
+                if (effectivePrebuiltDir != null) {
                     arguments "-DUSE_PREBUILT_COMAPS=ON",
-                              "-DPREBUILT_DIR=${prebuiltDir.absolutePath}"
-                    println "Using pre-built CoMaps libraries from: ${prebuiltDir.absolutePath}"
+                              "-DPREBUILT_DIR=${effectivePrebuiltDir.absolutePath}"
+                    println "Using pre-built CoMaps libraries from: ${effectivePrebuiltDir.absolutePath}"
                     
                     // Pass headers directory for external consumers
                     if (headersDir.exists() && file("${headersDir}/comaps").exists()) {
@@ -119,7 +117,7 @@ android {
                 } else if (isInRepo) {
                     println "Building CoMaps from source (in-repo development mode)"
                 } else {
-                    println "Warning: Pre-built libraries not found and not in repo. Build may fail."
+                    println "Warning: Pre-built libraries not found in plugin dir or project root. Build may fail."
                 }
             }
         }

@@ -154,10 +154,149 @@ The following videos showcase the **Agus Maps plugin** running on various platfo
 
 ### Installation
 
+#### Step 1: Add the Plugin Dependency
+
+Add `agus_maps_flutter` to your `pubspec.yaml`:
+
 ```yaml
 dependencies:
-  agus_maps_flutter: ^0.1.2
+  agus_maps_flutter: ^0.1.3
 ```
+
+Run `flutter pub get` to download the plugin.
+
+#### Step 2: Download Pre-built Binaries
+
+Download the unified binary package from [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases):
+
+```bash
+# Download the package (replace X.Y.Z with your plugin version)
+curl -L -o binaries.zip https://github.com/agus-works/agus-maps-flutter/releases/download/vX.Y.Z/agus-maps-binaries-vX.Y.Z.zip
+```
+
+Or download manually from your browser.
+
+#### Step 3: Extract to Your App Root
+
+Extract the ZIP directly to your Flutter app's root directory:
+
+```bash
+# Linux/macOS
+unzip binaries.zip -d /path/to/my_app/
+
+# Windows (PowerShell)
+Expand-Archive -Path binaries.zip -DestinationPath C:\path\to\my_app\
+```
+
+After extraction, your app directory should contain:
+
+```
+my_app/
+├── android/prebuilt/           ← Native libraries for Android
+├── ios/Frameworks/             ← XCFramework for iOS
+├── macos/Frameworks/           ← XCFramework for macOS
+├── windows/prebuilt/x64/       ← DLLs for Windows
+├── linux/prebuilt/x64/         ← Shared libraries for Linux
+├── assets/
+│   ├── comaps_data/            ← CoMaps engine data files
+│   └── maps/                   ← Map files (icudt73l.dat, MWMs)
+├── lib/                        ← Your app code
+├── pubspec.yaml
+└── ...
+```
+
+> **Note:** The platform-specific directories (`android/prebuilt/`, `ios/Frameworks/`, etc.) merge with your existing Flutter project structure without conflicts.
+
+#### Step 4: Configure Assets
+
+Add the assets to your `pubspec.yaml`:
+
+```yaml
+flutter:
+  assets:
+    - assets/comaps_data/
+    - assets/maps/
+```
+
+#### Step 5: Build and Run
+
+```bash
+flutter run
+```
+
+That's it! The build system will automatically detect the pre-built binaries.
+
+### Upgrading the Plugin
+
+> **⚠️ Important:** When upgrading `agus_maps_flutter` to a new version, you must **manually download and extract the new binaries package**. The build system does NOT auto-download binaries - it only detects pre-existing ones.
+
+**Upgrade steps:**
+
+1. Update the version in your `pubspec.yaml`:
+   ```yaml
+   dependencies:
+     agus_maps_flutter: ^X.Y.Z  # New version
+   ```
+
+2. Run `flutter pub get`
+
+3. Download the **matching** unified binary package from [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases):
+   ```bash
+   curl -L -o binaries.zip https://github.com/agus-works/agus-maps-flutter/releases/download/vX.Y.Z/agus-maps-binaries-vX.Y.Z.zip
+   ```
+
+4. Extract to your app root (this will overwrite existing binaries):
+   ```bash
+   # Linux/macOS
+   unzip -o binaries.zip -d /path/to/my_app/
+
+   # Windows (PowerShell)
+   Expand-Archive -Path binaries.zip -DestinationPath C:\path\to\my_app\ -Force
+   ```
+
+5. Rebuild your app:
+   ```bash
+   flutter clean
+   flutter build <platform>
+   ```
+
+> **Why manual?** This approach ensures deterministic builds with no network calls during compilation. You always know exactly which binaries are being used, and CI/CD pipelines work reliably in air-gapped environments.
+
+### Alternative: Vendored Plugin
+
+For projects that need to vendor the plugin locally (offline builds, custom modifications):
+
+1. Clone or download the plugin into your project:
+   ```bash
+   cd your_app
+   mkdir packages
+   git clone https://github.com/agus-works/agus-maps-flutter.git packages/agus_maps_flutter
+   ```
+
+2. Download and extract the unified binary package to the vendored plugin:
+   ```bash
+   cd packages/agus_maps_flutter
+   curl -L -o binaries.zip https://github.com/agus-works/agus-maps-flutter/releases/download/v0.1.3/agus-maps-binaries-v0.1.3.zip
+   unzip binaries.zip
+   rm binaries.zip
+   ```
+
+3. Reference the local plugin in your `pubspec.yaml`:
+   ```yaml
+   dependencies:
+     agus_maps_flutter:
+       path: packages/agus_maps_flutter
+   ```
+
+4. Copy assets to your app:
+   ```bash
+   cp -r packages/agus_maps_flutter/assets/comaps_data assets/
+   cp -r packages/agus_maps_flutter/assets/maps assets/
+   ```
+
+5. Add assets to your `pubspec.yaml` and build.
+
+> **Note:** The `assets/maps/` directory contains the ICU data file and is where downloaded MWM map files will be stored. You can pre-bundle specific region maps here.
 
 ### Basic Usage
 

@@ -332,18 +332,29 @@ The CoMaps static libraries are pre-built into a universal XCFramework and publi
 #   └── Info.plist
 ```
 
-### Download During Pod Install
+### Manual Binary Setup (Required)
 
-The XCFramework is automatically downloaded during `pod install` via the podspec's `prepare_command`:
+As of v0.1.3, there is no auto-download. You must manually download and extract the unified binary package before running `pod install`:
+
+```bash
+# 1. Download unified package from GitHub Releases
+curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/vX.Y.Z/agus-maps-binaries-vX.Y.Z.zip"
+
+# 2. Extract to your app's root directory
+unzip agus-maps-binaries-vX.Y.Z.zip -d /path/to/my_app/
+
+# 3. Run pod install
+cd /path/to/my_app/ios && pod install
+```
+
+The podspec expects the XCFramework to be present at `ios/Frameworks/CoMaps.xcframework`:
 
 ```ruby
 # ios/agus_maps_flutter.podspec
-s.prepare_command = <<-CMD
-  ./scripts/download_ios_xcframework.sh
-CMD
-
 s.vendored_frameworks = 'Frameworks/CoMaps.xcframework'
 ```
+
+If the XCFramework is not found, `pod install` will fail with an error.
 
 ### Version Mapping
 
@@ -357,47 +368,34 @@ s.vendored_frameworks = 'Frameworks/CoMaps.xcframework'
 
 ### Overview
 
-When developers install this plugin in their own Flutter projects (via pub.dev or git), they need:
-1. **CoMaps.xcframework.zip** — Pre-built static libraries
-2. **CoMaps-headers.tar.gz** — Header files required for compilation
+When developers install this plugin in their own Flutter projects (via pub.dev or git), they need to manually download the unified binary package which contains:
+1. **CoMaps.xcframework** — Pre-built static libraries for iOS
+2. **Headers** — Header files required for compilation (bundled in unified package)
+3. **Assets** — CoMaps resource data and ICU data
 
-Both artifacts are published to GitHub Releases and automatically downloaded during `pod install`.
+Both artifacts are published to GitHub Releases and must be manually downloaded and extracted before building.
 
-### In-Repo vs External Consumer Detection
+### Manual Setup Required
 
-The download script uses dual-mode detection:
+External consumers must:
 
-| Scenario | Detection | Behavior |
-|----------|-----------|----------|
-| **In-repo (example app)** | `.git` exists AND `thirdparty/comaps` exists | Skip download, use local headers |
-| **External consumer** | No `.git` or no `thirdparty/comaps` | Download from GitHub Releases, fail loudly on error |
+1. Add the plugin dependency to `pubspec.yaml`
+2. Download `agus-maps-binaries-vX.Y.Z.zip` from GitHub Releases
+3. Extract to their app's root directory
+4. Run `flutter build ios`
+
+The unified package extracts to create:
+```
+my_app/
+├── ios/Frameworks/CoMaps.xcframework/
+├── assets/comaps_data/
+├── assets/maps/icudt75l.dat
+└── headers/  (optional, for source builds)
+```
 
 ### Header Distribution
 
-External consumers don't have access to `thirdparty/comaps/` (it's git-ignored and not published). Instead:
-
-1. **Bitrise CI** bundles all headers from `thirdparty/comaps/` into `CoMaps-headers.tar.gz`
-2. **Download script** fetches and extracts headers to `ios/Headers/`
-3. **Podspec** uses conditional header paths:
-   - In-repo: `$(PODS_TARGET_SRCROOT)/../thirdparty/comaps/...`
-   - External: `$(PODS_TARGET_SRCROOT)/Headers/...`
-
-### Version Verification
-
-The download script verifies that the GitHub Release version matches `pubspec.yaml`:
-- Extracts version from `pubspec.yaml` (e.g., `0.0.1`)
-- Downloads from `https://github.com/.../releases/download/v0.0.1/`
-- **Fails loudly** if version mismatch or download fails (external consumers only)
-
-### GitHub Release Artifacts
-
-Each release includes:
-
-| Artifact | Size (approx) | Purpose |
-|----------|---------------|---------|
-| `CoMaps.xcframework.zip` | ~150MB | Pre-built static libraries (device + simulator) |
-| `CoMaps-headers.tar.gz` | ~50-100MB | Header files for compilation |
-| `agus-maps-android.aab` | ~50MB | Android App Bundle |
+External consumers don't have access to `thirdparty/comaps/` (it's git-ignored and not published). The unified package includes:
 | `agus-maps-android.apk` | ~80MB | Universal Android APK |
 
 ### Scripts

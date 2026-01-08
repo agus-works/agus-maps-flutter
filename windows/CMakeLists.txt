@@ -38,21 +38,75 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ============================================================================
-# Prebuilt Binary Detection (CI builds)
+# Prebuilt Binary Detection
 # ============================================================================
-# Check for pre-built DLLs in windows/prebuilt/x64/
-# This is used in CI where binaries are built separately and downloaded
-set(PREBUILT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64")
-set(PREBUILT_DLL "${PREBUILT_DIR}/agus_maps_flutter.dll")
-set(PREBUILT_ZLIB "${PREBUILT_DIR}/zlib1.dll")
+# Searches for pre-built Windows binaries in multiple locations.
+# 
+# For plugin consumers:
+#   1. Download agus-maps-binaries-vX.Y.Z.zip from GitHub Releases
+#   2. Extract to your Flutter app root (e.g., my_app/)
+#   3. Run flutter build windows
+#
+# After extraction, binaries should be at: my_app/windows/prebuilt/x64/
 
-if(EXISTS "${PREBUILT_DLL}")
+set(PREBUILT_DIR "")
+set(PREBUILT_DLL "")
+set(PREBUILT_ZLIB "")
+
+# Detect if we're in the plugin repository (in-repo build)
+set(IS_IN_REPO OFF)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../.git" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/comaps")
+  set(IS_IN_REPO ON)
+  message(STATUS "Detected in-repo development environment")
+endif()
+
+# Location 1: Plugin-local prebuilt (CI builds, or plugin vendored with binaries)
+set(PLUGIN_PREBUILT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64")
+if(EXISTS "${PLUGIN_PREBUILT_DIR}/agus_maps_flutter.dll")
+  set(PREBUILT_DIR "${PLUGIN_PREBUILT_DIR}")
+  set(PREBUILT_DLL "${PREBUILT_DIR}/agus_maps_flutter.dll")
+  set(PREBUILT_ZLIB "${PREBUILT_DIR}/zlib1.dll")
+  message(STATUS "Found pre-built binaries in plugin dir: ${PREBUILT_DIR}")
+endif()
+
+# Location 2: Project root windows/prebuilt (consumer extracts unified package to app root)
+# This is the PRIMARY location for consumers: my_app/windows/prebuilt/x64/
+if(NOT PREBUILT_DIR)
+  set(PROJECT_WINDOWS_PREBUILT_DIR "${CMAKE_SOURCE_DIR}/prebuilt/x64")
+  if(EXISTS "${PROJECT_WINDOWS_PREBUILT_DIR}/agus_maps_flutter.dll")
+    set(PREBUILT_DIR "${PROJECT_WINDOWS_PREBUILT_DIR}")
+    set(PREBUILT_DLL "${PREBUILT_DIR}/agus_maps_flutter.dll")
+    set(PREBUILT_ZLIB "${PREBUILT_DIR}/zlib1.dll")
+    message(STATUS "Found pre-built binaries in project windows dir: ${PREBUILT_DIR}")
+  endif()
+endif()
+
+# Determine build mode
+if(PREBUILT_DIR)
   set(USE_PREBUILT_WINDOWS ON)
   message(STATUS "=== Using pre-built Windows binaries ===")
   message(STATUS "Pre-built DLL: ${PREBUILT_DLL}")
-else()
+elseif(IS_IN_REPO)
   set(USE_PREBUILT_WINDOWS OFF)
   message(STATUS "=== Building Windows binaries from source ===")
+else()
+  # External consumer without binaries - provide helpful error
+  message(STATUS "")
+  message(STATUS "========================================================")
+  message(STATUS "ERROR: Pre-built Windows binaries not found!")
+  message(STATUS "========================================================")
+  message(STATUS "")
+  message(STATUS "To fix this:")
+  message(STATUS "  1. Download: agus-maps-binaries-vX.Y.Z.zip")
+  message(STATUS "     From: https://github.com/agus-works/agus-maps-flutter/releases")
+  message(STATUS "")
+  message(STATUS "  2. Extract to your Flutter app root directory")
+  message(STATUS "     Expected location: ${CMAKE_SOURCE_DIR}/prebuilt/x64/")
+  message(STATUS "")
+  message(STATUS "  3. Run 'flutter build windows' again")
+  message(STATUS "")
+  message(STATUS "========================================================")
+  message(FATAL_ERROR "Pre-built binaries required for external consumers")
 endif()
 
 # ============================================================================

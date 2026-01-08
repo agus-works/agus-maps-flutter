@@ -27,7 +27,7 @@ The unified package contains everything needed for all platforms:
 
 ### Example Apps
 
-All example app artifacts include the version tag in the filename (e.g., `-v0.1.2`):
+All example app artifacts include the version tag in the filename (e.g., `-vX.Y.Z`):
 
 | Artifact | Description | Size (approx) |
 |----------|-------------|---------------|
@@ -333,49 +333,64 @@ chmod +x agus_maps_flutter_example
 
 ## Using Pre-built Libraries in Your Project
 
-If you're integrating the Agus Maps Flutter plugin into your own project, the native libraries will be downloaded automatically during the build process.
+If you're integrating the Agus Maps Flutter plugin into your own project, you must **manually download and extract** the pre-built binaries before building.
 
-### How It Works
+> **⚠️ Important (v0.1.3+):** The build systems do NOT auto-download binaries. You must manually download and extract the unified package before building. This ensures deterministic builds with no network calls during compilation.
 
-#### iOS (CocoaPods)
+### Manual Setup (Required)
 
-The `agus_maps_flutter.podspec` includes a `prepare_command` that:
-1. Downloads `agus-maps-binaries-vX.Y.Z.zip` from the GitHub release
-2. Extracts the XCFramework to `ios/Frameworks/`
-3. Links against the pre-built libraries
+**Step 1: Add the plugin dependency**
 
-No manual steps required - just run `pod install`.
+```yaml
+# pubspec.yaml
+dependencies:
+  agus_maps_flutter: ^0.1.3
+```
 
-#### Android (Gradle)
+**Step 2: Download the unified binary package**
 
-The `android/build.gradle` includes a task that:
-1. Downloads `agus-maps-binaries-vX.Y.Z.zip` from the GitHub release
-2. Extracts native libraries to `android/prebuilt/`
-3. Includes them in the APK via `jniLibs`
-
-No manual steps required - the Gradle sync handles everything.
-
-### Unified Binary Package (Recommended)
-
-The easiest way to set up all pre-built binaries at once is to use the **unified binary package**. This single zip file contains all platform binaries structured so that extracting it into the plugin root places everything in the correct locations.
+Download `agus-maps-binaries-vX.Y.Z.zip` from [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases).
 
 ```bash
-# Set the version (replace with actual version)
-VERSION="v0.1.2"
-
-# Download the unified package
-curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/${VERSION}/agus-maps-binaries-${VERSION}.zip"
-
-# Navigate to your local/vendored copy of the plugin
-cd path/to/agus_maps_flutter
-
-# Extract - everything falls into place!
-unzip agus-maps-binaries-${VERSION}.zip
+# Replace X.Y.Z with your plugin version
+curl -LO "https://github.com/agus-works/agus-maps-flutter/releases/download/vX.Y.Z/agus-maps-binaries-vX.Y.Z.zip"
 ```
 
-After extraction, you'll have:
+**Step 3: Extract to your app root**
+
+Extract the ZIP directly to your Flutter app's root directory:
+
+```bash
+# Linux/macOS
+unzip agus-maps-binaries-vX.Y.Z.zip -d /path/to/my_app/
+
+# Windows (PowerShell)
+Expand-Archive -Path agus-maps-binaries-vX.Y.Z.zip -DestinationPath C:\path\to\my_app\
 ```
-agus_maps_flutter/
+
+**Step 4: Configure assets**
+
+Add the assets to your `pubspec.yaml`:
+
+```yaml
+flutter:
+  assets:
+    - assets/comaps_data/
+    - assets/maps/
+```
+
+**Step 5: Build**
+
+```bash
+flutter build <platform>
+```
+
+### Unified Package Structure
+
+After extraction, your app directory should contain:
+
+```
+my_app/
 ├── android/prebuilt/
 │   ├── arm64-v8a/libagus_maps_flutter.so
 │   ├── armeabi-v7a/libagus_maps_flutter.so
@@ -387,18 +402,73 @@ agus_maps_flutter/
 ├── windows/prebuilt/x64/
 │   ├── agus_maps_flutter.dll
 │   └── zlib1.dll
-├── linux/prebuilt/x86_64/
+├── linux/prebuilt/x64/
 │   └── libagus_maps_flutter.so
 ├── assets/
 │   ├── comaps_data/
 │   │   └── ... (CoMaps resource files)
 │   └── maps/
 │       └── icudt75l.dat
-└── headers/              # For building from source (optional)
-    └── ... (C++ headers)
+├── headers/              # For building from source (optional)
+│   └── ... (C++ headers)
+├── lib/                  # Your app code
+└── pubspec.yaml
 ```
 
 > **Note:** The `headers/` directory is only needed if you're building native code from source. For typical plugin consumers using pre-built binaries, headers can be ignored or deleted.
+
+### Upgrading to a New Version
+
+When upgrading the plugin version, you must also update the binaries:
+
+1. Update `pubspec.yaml` with the new version
+2. Run `flutter pub get`
+3. Download the **matching** unified binary package
+4. Extract to your app root (overwrites existing binaries)
+5. Run `flutter clean && flutter build <platform>`
+
+> **Why manual?** This approach ensures deterministic builds with no network calls during compilation. CI/CD pipelines work reliably in air-gapped environments, and you always know exactly which binaries are being used.
+
+### How Each Platform Detects Binaries
+
+All platforms use **detection-only** logic with clear error messages when binaries are missing:
+
+#### iOS (CocoaPods)
+
+The `agus_maps_flutter.podspec` expects:
+- `ios/Frameworks/CoMaps.xcframework/`
+
+If not found, CocoaPods will fail with an error during `pod install`.
+
+#### macOS (CocoaPods)
+
+The `agus_maps_flutter.podspec` expects:
+- `macos/Frameworks/CoMaps.xcframework/`
+
+If not found, CocoaPods will fail with an error during `pod install`.
+
+#### Android (Gradle)
+
+The `android/build.gradle` checks:
+1. `android/prebuilt/{arm64-v8a,armeabi-v7a,x86_64}/` in the app's android folder
+
+If not found, the build will fail with instructions to download the binaries.
+
+#### Windows (CMake)
+
+The `windows/CMakeLists.txt` checks:
+1. Plugin-local: `<plugin>/windows/prebuilt/x64/`
+2. App project: `<app>/windows/prebuilt/x64/`
+
+If not found, CMake will fail with a `FATAL_ERROR` and download instructions.
+
+#### Linux (CMake)
+
+The `linux/CMakeLists.txt` checks:
+1. Plugin-local: `<plugin>/linux/prebuilt/x64/`
+2. App project: `<app>/linux/prebuilt/x64/`
+
+If not found, CMake will fail with a `FATAL_ERROR` and download instructions.
 
 ---
 

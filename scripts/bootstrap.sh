@@ -223,14 +223,10 @@ if [[ "$BUILD_PLATFORM" == "macos" ]]; then
            [[ -f "$ANDROID_PREBUILT_PATH/x86_64/libagus_maps_flutter.so" ]]; then
             log_info "Android native libraries already exist"
         else
-            log_info "Downloading pre-built Android native libraries..."
-            if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
-                FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" android || {
-                    log_warn "Download failed. Use --build-binaries to build from source."
-                }
-            else
-                log_warn "download_libs.sh not found. Use --build-binaries to build from source."
-            fi
+            log_warn "Android native libraries not found."
+            log_warn "Download the unified binary package from GitHub Releases:"
+            log_warn "  https://github.com/agus-works/agus-maps-flutter/releases"
+            log_warn "Extract to plugin root, or use --build-binaries to build from source."
         fi
     fi
     
@@ -266,14 +262,10 @@ if [[ "$BUILD_PLATFORM" == "macos" ]]; then
         if [[ -d "$IOS_XCFRAMEWORK_PATH" ]]; then
             log_info "iOS XCFramework already exists"
         else
-            log_info "Downloading pre-built iOS XCFramework..."
-            if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
-                FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" ios || {
-                    log_warn "Download failed. Use --build-binaries to build from source."
-                }
-            else
-                log_warn "download_libs.sh not found. Use --build-binaries to build from source."
-            fi
+            log_warn "iOS XCFramework not found."
+            log_warn "Download the unified binary package from GitHub Releases:"
+            log_warn "  https://github.com/agus-works/agus-maps-flutter/releases"
+            log_warn "Extract to plugin root, or use --build-binaries to build from source."
         fi
     fi
     
@@ -309,14 +301,10 @@ if [[ "$BUILD_PLATFORM" == "macos" ]]; then
         if [[ -d "$MACOS_XCFRAMEWORK_PATH" ]]; then
             log_info "macOS XCFramework already exists"
         else
-            log_info "Downloading pre-built macOS XCFramework..."
-            if [[ -x "$SCRIPT_DIR/download_libs.sh" ]]; then
-                FORCE_DOWNLOAD=true "$SCRIPT_DIR/download_libs.sh" macos || {
-                    log_warn "Download failed. Use --build-binaries to build from source."
-                }
-            else
-                log_warn "download_libs.sh not found. Use --build-binaries to build from source."
-            fi
+            log_warn "macOS XCFramework not found."
+            log_warn "Download the unified binary package from GitHub Releases:"
+            log_warn "  https://github.com/agus-works/agus-maps-flutter/releases"
+            log_warn "Extract to plugin root, or use --build-binaries to build from source."
         fi
     fi
     
