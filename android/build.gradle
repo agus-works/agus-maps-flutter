@@ -154,6 +154,7 @@ android {
                         println ""
                         println "========================================================================"
                         throw new GradleException("Pre-built CoMaps libraries not found. Set AGUS_MAPS_HOME.")
+                    }
                 }
             }
         }

@@ -344,7 +344,7 @@ If you're integrating the Agus Maps Flutter plugin into your own project, you mu
 ```yaml
 # pubspec.yaml
 dependencies:
-  agus_maps_flutter: ^0.1.7
+  agus_maps_flutter: ^0.1.8
 ```
 
 **Step 2: Download the unified binary package**

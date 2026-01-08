@@ -1,3 +1,23 @@
+## 0.1.8
+
+### Bug Fixes
+
+* **Android Gradle syntax error**: Fixed a missing closing brace in `android/build.gradle` inside the external CMake configuration block. The malformed `else { ... }` caused Gradle to report `Unexpected input: '{'` at the `android {` line during CI. The block is now correctly closed and parses under AGP 8.x.
+
+* **NDK handling aligned with v0.1.6**: Retained `ndkVersion = android.ndkVersion` to match prior successful builds. No changes to NDK behavior versus `0.1.6`; the consuming app continues to define the NDK version used.
+
+### CI Stability
+
+* **GitHub Actions (Android)**: With the Gradle file corrected, CI can evaluate the project and proceed to build native libraries and example artifacts without early failure. NDK behavior remains unchanged from `0.1.6`. No workflow changes are required.
+
+### Cross‑platform Impact
+
+* **No changes to iOS/macOS/Linux/Windows**: The fix is scoped to Android Gradle configuration only. Other platforms and their build systems (CocoaPods/CMake) remain unchanged and continue to work as in `0.1.7`.
+
+### Migration
+
+No action required for consumers upgrading from `0.1.7`. NDK behavior is unchanged compared to `0.1.6`.
+
 ## 0.1.7
 
 ### Breaking Changes

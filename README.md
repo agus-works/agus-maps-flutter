@@ -147,7 +147,7 @@ Add `agus_maps_flutter` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  agus_maps_flutter: ^0.1.7
+  agus_maps_flutter: ^0.1.8
 ```
 
 Run `flutter pub get` to download the plugin.
