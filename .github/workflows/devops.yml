@@ -821,6 +821,7 @@ jobs:
         shell: pwsh
 
       - name: Create Windows Binaries Archive
+        shell: bash
         run: |
           # Create archive with content at root (no wrapper folder)
           # This ensures windows/prebuilt/x64/ structure in unified package
