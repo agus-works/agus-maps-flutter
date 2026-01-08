@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'agus_maps_flutter'
-  s.version          = '0.1.5'
+  s.version          = '0.1.6'
   s.summary          = 'High-performance offline maps for Flutter using CoMaps engine.'
   s.description      = <<-DESC
 A Flutter plugin that provides high-performance offline vector map rendering
@@ -30,7 +30,7 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
   s.prepare_command = <<-CMD
     set -e
     
-    PLUGIN_VERSION="0.1.5"
+    PLUGIN_VERSION="0.1.6"
     FRAMEWORK_NAME="CoMaps.xcframework"
     
     # Check if framework already exists (in-repo build or CI)

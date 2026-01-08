@@ -1,3 +1,9 @@
+## 0.1.6
+
+### Bug Fixes
+
+* **Fixed Windows CI archive creation step**: Resolved a CI failure where the "Create Windows Binaries Archive" step was using bash-style commands (`rm -f`, `zip`) but running in PowerShell by default. PowerShell interpreted `rm -f` as `Remove-Item` with an ambiguous `-f` parameter. Changed to native PowerShell commands (`Remove-Item`, `Compress-Archive`) with explicit `shell: pwsh` for consistency with other Windows steps.
+
 ## 0.1.5
 
 ### Bug Fixes
