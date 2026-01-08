@@ -17,15 +17,11 @@
   <a href="#roadmap">Roadmap</a>
 </p>
 
----
-
 ## What is Agus Maps?
 
 Agus Maps Flutter is a **native Flutter plugin** that embeds the powerful [CoMaps](https://codeberg.org/comaps/comaps) rendering engine directly into your Flutter app. Unlike tile-based solutions, it renders **vector maps** with zero-copy GPU acceleration, delivering smooth 60fps performance even on low-end devices.
 
 > **Note:** Agus Maps follows the **CoMaps** implementation specifically. While CoMaps shares historical heritage with [Organic Maps](https://organicmaps.app/) and the original MAPS.ME, we track CoMaps as our upstream reference. CoMaps is actively developed with a focus on community-driven improvements and modern tooling.
-
----
 
 ### 🗺️ New to CoMaps? Try it First!
 
@@ -58,8 +54,6 @@ Other ideas: hiking apps, travel guides, field data collection, emergency servic
 
 > **📜 Licensing:** Agus Maps Flutter is released under the [Apache 2.0 License](LICENSE). Please review our [NOTICE](NOTICE) file for attribution requirements and third-party dependencies. **We recommend consulting with a legal professional** to understand how these licenses apply to your specific use case.
 
----
-
 ### 🚧 Current Status: Proof of Concept
 
 This project is currently in the **proof of concept stage**, demonstrating zero-copy (or optimized) rendering integration between the CoMaps engine and Flutter's texture system. The [example app](example/) successfully runs on:
@@ -82,8 +76,6 @@ Most Flutter map solutions either:
 - Use PlatformView embedding (performance overhead, gesture conflicts, "airspace" issues)
 
 **Agus Maps takes a different approach:** The C++ rendering engine draws directly to a GPU texture that Flutter composites natively—no copies, no bridges, no compromises.
-
----
 
 ## Demos
 
@@ -131,8 +123,6 @@ The following videos showcase the **Agus Maps plugin** running on various platfo
   </tr>
 </table>
 
----
-
 ## Features
 
 - 🚀 **Zero-Copy Rendering** — Map data flows directly from disk to GPU via memory-mapping (iOS, macOS, Android)
@@ -144,9 +134,6 @@ The following videos showcase the **Agus Maps plugin** running on various platfo
 - 📐 **Responsive** — Automatically handles resize and device pixel ratio
 - 🔌 **Simple API** — Drop-in `AgusMap` widget with `AgusMapController`
 -  **Fuzzy Search API** — Fast offline search logic for finding map regions
-
-
----
 
 ## Quick Start
 
@@ -160,7 +147,7 @@ Add `agus_maps_flutter` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  agus_maps_flutter: ^0.1.3
+  agus_maps_flutter: ^0.1.4
 ```
 
 Run `flutter pub get` to download the plugin.
@@ -334,8 +321,6 @@ See the [example app](example/) for a complete working demo showing all plugin f
 
 > **For Plugin Users:** The example app source code in `./example/` is your best reference for integrating Agus Maps into your own Flutter application.
 
----
-
 <h2 id="comparison">Comparison with Other Solutions</h2>
 
 | Feature | Agus Maps | flutter_map | google_maps_flutter | mapbox_gl |
@@ -381,8 +366,6 @@ See the [example app](example/) for a complete working demo showing all plugin f
 - **Windows x86_64 only** — ARM64 Windows not yet supported
 - **MWM format required** — Must use pre-generated map files (not arbitrary tile servers)
 - **Early stage** — Search and routing APIs not yet exposed
-
----
 
 ## Why It's Efficient
 
@@ -440,8 +423,6 @@ flowchart TB
 
 > **Note:** While Windows is not true zero-copy, the map data itself (MWM files) still uses memory-mapping. The CPU-mediated transfer only affects the frame display, not the map data loading.
 
----
-
 ## Documentation
 
 | Document | Description |
@@ -474,9 +455,6 @@ We track efficiency-related issues in dedicated files. See [CONTRIBUTING.md](doc
 - EGL context recreation on app resume
 - Touch event throttling considerations
 
----
-
-## Roadmap
 
 ### ✅ Proof of Concept Complete
 - Zero-copy rendering to Flutter Texture (iOS, macOS, Android)
@@ -498,8 +476,6 @@ We track efficiency-related issues in dedicated files. See [CONTRIBUTING.md](doc
 - Animated camera transitions
 - UI widgets (compass, scale bar)
 - Map deletion/management
-
----
 
 ## Map Data
 
@@ -604,8 +580,6 @@ cp *.mwm /var/www/html/maps/YYMMDD/
 
 > **Tip:** Configure your app to use your custom server by modifying the mirror URLs in the download manager or `MirrorService`.
 
----
-
 ## License
 
 ```
@@ -635,8 +609,6 @@ The [NOTICE](NOTICE) file includes:
 ### Heritage
 
 This project incorporates code from [CoMaps](https://codeberg.org/comaps/comaps) (Apache 2.0), which is our primary upstream reference. CoMaps itself descends from [Organic Maps](https://github.com/organicmaps/organicmaps) and the original [MAPS.ME](https://github.com/mapsme/omim), all under Apache 2.0.
-
----
 
 <p align="center">
   <sub>Built with ❤️ for the Flutter community</sub>

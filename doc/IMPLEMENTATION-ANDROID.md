@@ -154,8 +154,6 @@ This ensures:
 - **Debug builds:** `DEBUG=1` is defined
 - **Release builds:** `RELEASE=1` and `NDEBUG=1` are defined
 
----
-
 ## Goal
 Get the Android example app to:
 

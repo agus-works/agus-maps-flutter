@@ -1,3 +1,14 @@
+## 0.1.4
+
+### Bug Fixes
+
+* **Fixed Android CI build failure**: Resolved an issue where in-repo builds (CI, local development) incorrectly used pre-built binary mode instead of building from source. This caused compilation failures with "file not found" errors for CoMaps headers (`base/task_loop.hpp`, `platform/platform.hpp`, etc.) because the headers directory was not set.
+
+### Build System Changes
+
+* **Prioritize source builds for in-repo development**: Changed Android Gradle build logic to always build from source when running in-repo (when `.git` and `thirdparty/comaps` exist), regardless of whether `android/prebuilt/` contains binaries. This ensures CI builds and local development always use the source code.
+* **Clearer error for external consumers**: External consumers (Flutter apps using this plugin as a dependency) now receive a clear `GradleException` with download instructions if pre-built binaries are missing, instead of a generic warning.
+
 ## 0.1.3
 
 ### Breaking Changes
@@ -68,8 +79,6 @@ my_app/
 * Updated `doc/IMPLEMENTATION-MACOS.md` with manual binary setup instructions.
 * Updated `doc/IMPLEMENTATION-CI-CD.md` with consumer workflow notes.
 * Updated iOS/macOS podspec comments to reflect manual setup requirement.
-
----
 
 ## 0.1.2
 

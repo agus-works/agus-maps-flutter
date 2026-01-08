@@ -90,34 +90,43 @@ android {
         // Pass CMake arguments based on build mode
         externalNativeBuild {
             cmake {
-                // Check multiple locations for pre-built binaries:
-                // 1. Plugin-local (downloaded by script or manually placed): ${projectDir}/prebuilt
-                // 2. Project-root (manual offline workflow): ${rootDir}/../agus_maps_flutter/android/prebuilt
+                // Build mode priority:
+                // 1. In-repo (have full source) → always build from source
+                // 2. External consumer → require pre-built binaries
+                //
+                // Pre-built binary locations (for external consumers):
+                // - Plugin-local: ${projectDir}/prebuilt
+                // - Project-root: ${rootDir}/../agus_maps_flutter/android/prebuilt
                 
-                def manualPrebuiltDir = file("${rootDir.parentFile}/agus_maps_flutter/android/prebuilt")
-                def effectivePrebuiltDir = null
-
-                if (prebuiltDir.exists() && prebuiltDir.listFiles()?.length > 0) {
-                     effectivePrebuiltDir = prebuiltDir
-                } else if (manualPrebuiltDir.exists() && manualPrebuiltDir.listFiles()?.length > 0) {
-                     effectivePrebuiltDir = manualPrebuiltDir
-                }
-
-                // If valid prebuilts found, use them
-                if (effectivePrebuiltDir != null) {
-                    arguments "-DUSE_PREBUILT_COMAPS=ON",
-                              "-DPREBUILT_DIR=${effectivePrebuiltDir.absolutePath}"
-                    println "Using pre-built CoMaps libraries from: ${effectivePrebuiltDir.absolutePath}"
-                    
-                    // Pass headers directory for external consumers
-                    if (headersDir.exists() && file("${headersDir}/comaps").exists()) {
-                        arguments "-DCOMAPS_HEADERS_DIR=${headersDir.absolutePath}"
-                        println "Using downloaded headers from: ${headersDir.absolutePath}"
-                    }
-                } else if (isInRepo) {
+                if (isInRepo) {
+                    // In-repo build: always build from source, ignore any prebuilt
                     println "Building CoMaps from source (in-repo development mode)"
                 } else {
-                    println "Warning: Pre-built libraries not found in plugin dir or project root. Build may fail."
+                    // External consumer: require pre-built binaries
+                    def manualPrebuiltDir = file("${rootDir.parentFile}/agus_maps_flutter/android/prebuilt")
+                    def effectivePrebuiltDir = null
+
+                    if (prebuiltDir.exists() && prebuiltDir.listFiles()?.length > 0) {
+                         effectivePrebuiltDir = prebuiltDir
+                    } else if (manualPrebuiltDir.exists() && manualPrebuiltDir.listFiles()?.length > 0) {
+                         effectivePrebuiltDir = manualPrebuiltDir
+                    }
+
+                    if (effectivePrebuiltDir != null) {
+                        arguments "-DUSE_PREBUILT_COMAPS=ON",
+                                  "-DPREBUILT_DIR=${effectivePrebuiltDir.absolutePath}"
+                        println "Using pre-built CoMaps libraries from: ${effectivePrebuiltDir.absolutePath}"
+                        
+                        // Pass headers directory for external consumers
+                        if (headersDir.exists() && file("${headersDir}/comaps").exists()) {
+                            arguments "-DCOMAPS_HEADERS_DIR=${headersDir.absolutePath}"
+                            println "Using downloaded headers from: ${headersDir.absolutePath}"
+                        }
+                    } else {
+                        println "ERROR: Pre-built libraries not found. External consumers must download binaries."
+                        println "Download from: https://github.com/agus-works/agus-maps-flutter/releases"
+                        throw new GradleException("Pre-built CoMaps libraries not found. See README for setup instructions.")
+                    }
                 }
             }
         }
