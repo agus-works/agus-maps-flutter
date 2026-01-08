@@ -816,9 +816,18 @@ jobs:
         run: |
           # Remove Strawberry Perl from PATH to prevent ccache conflicts
           $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
-          .\scripts\build_binaries_windows.ps1 -VcpkgRoot "C:\vcpkg"
+          .\scripts\build_binaries_windows.ps1 -VcpkgRoot "C:\vcpkg" -SkipArchive
           Get-ChildItem -Path build\agus-binaries-windows\ -Recurse
         shell: pwsh
+
+      - name: Create Windows Binaries Archive
+        run: |
+          # Create archive with content at root (no wrapper folder)
+          # This ensures windows/prebuilt/x64/ structure in unified package
+          cd build/agus-binaries-windows
+          rm -f ../agus-binaries-windows.zip
+          zip -r ../agus-binaries-windows.zip .
+          ls -lh ../agus-binaries-windows.zip
 
       - name: Upload Windows Binaries Artifact
         uses: actions/upload-artifact@v4
@@ -1227,6 +1236,11 @@ jobs:
           [ -f all-artifacts/agus-maps-macos.app.zip ] && cp all-artifacts/agus-maps-macos.app.zip "final-assets/agus-maps-macos-${VERSION_TAG}.app.zip" || true
           [ -f all-artifacts/agus-maps-windows.zip ] && cp all-artifacts/agus-maps-windows.zip "final-assets/agus-maps-windows-${VERSION_TAG}.zip" || true
           [ -f all-artifacts/agus-maps-linux.zip ] && cp all-artifacts/agus-maps-linux.zip "final-assets/agus-maps-linux-${VERSION_TAG}.zip" || true
+          
+          # Individual iOS/macOS binary zips for CocoaPods auto-download
+          # These are downloaded by the podspec prepare_command for pub.dev consumers
+          [ -f all-artifacts/agus-binaries-ios.zip ] && cp all-artifacts/agus-binaries-ios.zip "final-assets/agus-binaries-ios-${VERSION_TAG}.zip" || true
+          [ -f all-artifacts/agus-binaries-macos.zip ] && cp all-artifacts/agus-binaries-macos.zip "final-assets/agus-binaries-macos-${VERSION_TAG}.zip" || true
 
           # Generate build info
           cat > final-assets/BUILD_INFO.txt << EOF
@@ -1377,8 +1391,6 @@ jobs:
           
           # Move to final assets
           cp "${UNIFIED_FILENAME}" final-assets/
-          # Also create a non-versioned copy for consistent download URL
-          cp "${UNIFIED_FILENAME}" final-assets/agus-maps-binaries.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -1424,6 +1436,15 @@ jobs:
             | File | Description |
             |------|-------------|
             | **`agus-maps-binaries-${{ github.ref_name }}.zip`** | **All platform binaries, assets, and headers** |
+            
+            #### 🍎 Individual Platform Binaries (Auto-downloaded by CocoaPods)
+            | Platform | File | Description |
+            |----------|------|-------------|
+            | iOS | `agus-binaries-ios-${{ github.ref_name }}.zip` | XCFramework for iOS (auto-downloaded) |
+            | macOS | `agus-binaries-macos-${{ github.ref_name }}.zip` | XCFramework for macOS (auto-downloaded) |
+            
+            > These are automatically downloaded by the CocoaPods `prepare_command` for pub.dev consumers.
+            > You still need to extract the unified package for assets.
             
             #### 📱 Example Apps
             | Platform | File | Description |

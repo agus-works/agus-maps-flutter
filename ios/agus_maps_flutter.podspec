@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'agus_maps_flutter'
-  s.version          = '0.0.1'
+  s.version          = '0.1.5'
   s.summary          = 'High-performance offline maps for Flutter using CoMaps engine.'
   s.description      = <<-DESC
 A Flutter plugin that provides high-performance offline vector map rendering
@@ -15,6 +15,101 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Agus Maps' => 'agus@example.com' }
   s.source           = { :path => '.' }
+
+  # ============================================================================
+  # Prepare Command - Find or Download XCFramework
+  # ============================================================================
+  # Priority:
+  # 1. Framework already exists in plugin directory (in-repo/CI builds)
+  # 2. Framework found via relative paths (vendored plugin)
+  # 3. Auto-download from GitHub releases (pub.dev consumers)
+  #
+  # NOTE: Even with auto-download, consumers MUST still extract the unified
+  # binary package to their app root for assets (maps, ICU data, etc.)
+  # ============================================================================
+  s.prepare_command = <<-CMD
+    set -e
+    
+    PLUGIN_VERSION="0.1.5"
+    FRAMEWORK_NAME="CoMaps.xcframework"
+    
+    # Check if framework already exists (in-repo build or CI)
+    if [ -d "Frameworks/${FRAMEWORK_NAME}" ]; then
+      echo "[agus_maps_flutter] Found existing ${FRAMEWORK_NAME} in plugin directory"
+      exit 0
+    fi
+    
+    echo "[agus_maps_flutter] Searching for ${FRAMEWORK_NAME}..."
+    
+    # Search relative paths (vendored plugin scenario)
+    SEARCH_PATHS=(
+      "../../../../../Frameworks"
+      "../../../../Frameworks"
+      "../../../Frameworks"
+      "../../Frameworks"
+      "../ios/Frameworks"
+      "../../ios/Frameworks"
+    )
+    
+    for path in "${SEARCH_PATHS[@]}"; do
+      if [ -d "${path}/${FRAMEWORK_NAME}" ]; then
+        echo "[agus_maps_flutter] Found ${FRAMEWORK_NAME} at ${path}"
+        mkdir -p Frameworks
+        cp -R "${path}/${FRAMEWORK_NAME}" Frameworks/
+        echo "[agus_maps_flutter] Copied ${FRAMEWORK_NAME} to plugin Frameworks/"
+        exit 0
+      fi
+    done
+    
+    # Not found locally - download from GitHub releases
+    echo "[agus_maps_flutter] ${FRAMEWORK_NAME} not found locally, downloading from GitHub releases..."
+    
+    DOWNLOAD_URL="https://github.com/agus-works/agus-maps-flutter/releases/download/v${PLUGIN_VERSION}/agus-binaries-ios-v${PLUGIN_VERSION}.zip"
+    TEMP_DIR=$(mktemp -d)
+    TEMP_ZIP="${TEMP_DIR}/ios-binaries.zip"
+    
+    echo "[agus_maps_flutter] Downloading from: ${DOWNLOAD_URL}"
+    
+    if command -v curl &> /dev/null; then
+      curl -fsSL "${DOWNLOAD_URL}" -o "${TEMP_ZIP}"
+    elif command -v wget &> /dev/null; then
+      wget -q "${DOWNLOAD_URL}" -O "${TEMP_ZIP}"
+    else
+      echo "[agus_maps_flutter] ERROR: Neither curl nor wget found!"
+      rm -rf "${TEMP_DIR}"
+      exit 1
+    fi
+    
+    if [ ! -f "${TEMP_ZIP}" ]; then
+      echo "[agus_maps_flutter] ERROR: Download failed!"
+      rm -rf "${TEMP_DIR}"
+      exit 1
+    fi
+    
+    echo "[agus_maps_flutter] Extracting ${FRAMEWORK_NAME}..."
+    mkdir -p Frameworks
+    unzip -q "${TEMP_ZIP}" -d Frameworks/
+    
+    rm -rf "${TEMP_DIR}"
+    
+    if [ -d "Frameworks/${FRAMEWORK_NAME}" ]; then
+      echo "[agus_maps_flutter] Successfully downloaded and extracted ${FRAMEWORK_NAME}"
+      echo ""
+      echo "======================================================================="
+      echo "IMPORTANT: You still need to download assets for your app!"
+      echo "======================================================================="
+      echo ""
+      echo "The XCFramework was auto-downloaded, but you must still:"
+      echo "  1. Download: https://github.com/agus-works/agus-maps-flutter/releases/download/v${PLUGIN_VERSION}/agus-maps-binaries-v${PLUGIN_VERSION}.zip"
+      echo "  2. Extract to your app root to get assets/comaps_data/ and assets/maps/"
+      echo "  3. Add assets to your pubspec.yaml"
+      echo ""
+      exit 0
+    else
+      echo "[agus_maps_flutter] ERROR: Extraction failed - ${FRAMEWORK_NAME} not found!"
+      exit 1
+    fi
+  CMD
 
   # ============================================================================
   # Pre-built XCFramework Required

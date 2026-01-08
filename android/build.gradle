@@ -103,11 +103,20 @@ android {
                     println "Building CoMaps from source (in-repo development mode)"
                 } else {
                     // External consumer: require pre-built binaries
+                    // Check multiple locations where binaries might be:
+                    // 1. Plugin-local prebuilt (vendored plugin with binaries)
+                    // 2. Consumer app's android/prebuilt (unified package extracted to app root)
+                    //    Note: For Flutter Android, rootDir = my_app/android/, so rootDir/prebuilt
+                    //    is correct for binaries at my_app/android/prebuilt/
+                    // 3. Manual vendored plugin path
+                    def consumerPrebuiltDir = file("${rootDir}/prebuilt")
                     def manualPrebuiltDir = file("${rootDir.parentFile}/agus_maps_flutter/android/prebuilt")
                     def effectivePrebuiltDir = null
 
                     if (prebuiltDir.exists() && prebuiltDir.listFiles()?.length > 0) {
                          effectivePrebuiltDir = prebuiltDir
+                    } else if (consumerPrebuiltDir.exists() && consumerPrebuiltDir.listFiles()?.length > 0) {
+                         effectivePrebuiltDir = consumerPrebuiltDir
                     } else if (manualPrebuiltDir.exists() && manualPrebuiltDir.listFiles()?.length > 0) {
                          effectivePrebuiltDir = manualPrebuiltDir
                     }

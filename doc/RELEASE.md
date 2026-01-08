@@ -344,7 +344,7 @@ If you're integrating the Agus Maps Flutter plugin into your own project, you mu
 ```yaml
 # pubspec.yaml
 dependencies:
-  agus_maps_flutter: ^0.1.4
+  agus_maps_flutter: ^0.1.5
 ```
 
 **Step 2: Download the unified binary package**
@@ -435,17 +435,21 @@ All platforms use **detection-only** logic with clear error messages when binari
 
 #### iOS (CocoaPods)
 
-The `agus_maps_flutter.podspec` expects:
+The `agus_maps_flutter.podspec` looks for:
 - `ios/Frameworks/CoMaps.xcframework/`
 
-If not found, CocoaPods will fail with an error during `pod install`.
+**Starting with v0.1.5:** If the framework is not found locally, it will be **automatically downloaded** from GitHub releases during `pod install`. This eliminates the need to manually place the XCFramework for iOS builds.
+
+> **Note:** You still need to extract the unified package for `assets/comaps_data/` and `assets/maps/`.
 
 #### macOS (CocoaPods)
 
-The `agus_maps_flutter.podspec` expects:
+The `agus_maps_flutter.podspec` looks for:
 - `macos/Frameworks/CoMaps.xcframework/`
 
-If not found, CocoaPods will fail with an error during `pod install`.
+**Starting with v0.1.5:** If the framework is not found locally, it will be **automatically downloaded** from GitHub releases during `pod install`. This eliminates the need to manually place the XCFramework for macOS builds.
+
+> **Note:** You still need to extract the unified package for `assets/comaps_data/` and `assets/maps/`.
 
 #### Android (Gradle)
 

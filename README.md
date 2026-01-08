@@ -147,7 +147,7 @@ Add `agus_maps_flutter` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  agus_maps_flutter: ^0.1.4
+  agus_maps_flutter: ^0.1.5
 ```
 
 Run `flutter pub get` to download the plugin.
@@ -162,6 +162,8 @@ curl -L -o binaries.zip https://github.com/agus-works/agus-maps-flutter/releases
 ```
 
 Or download manually from your browser.
+
+> **📱 iOS/macOS Note:** Starting with v0.1.5, the XCFramework for iOS and macOS is **automatically downloaded** during `pod install` if not found locally. You still need to extract the unified package for **assets** (`assets/comaps_data/`, `assets/maps/`).
 
 #### Step 3: Extract to Your App Root
 
@@ -263,7 +265,7 @@ For projects that need to vendor the plugin locally (offline builds, custom modi
 2. Download and extract the unified binary package to the vendored plugin:
    ```bash
    cd packages/agus_maps_flutter
-   curl -L -o binaries.zip https://github.com/agus-works/agus-maps-flutter/releases/download/v0.1.3/agus-maps-binaries-v0.1.3.zip
+   curl -L -o binaries.zip https://github.com/agus-works/agus-maps-flutter/releases/download/v0.1.5/agus-maps-binaries-v0.1.5.zip
    unzip binaries.zip
    rm binaries.zip
    ```

@@ -1,3 +1,31 @@
+## 0.1.5
+
+### Bug Fixes
+
+* **Fixed Windows binaries path in unified package**: Resolved an issue where Windows binaries in `agus-maps-binaries-vX.Y.Z.zip` were incorrectly placed at `windows/prebuilt/agus-binaries-windows/x64/` instead of `windows/prebuilt/x64/`. This caused Windows consumers to get "file not found" errors when using the unified binary package.
+
+### New Features
+
+* **Auto-download XCFramework for iOS/macOS**: Pub.dev consumers no longer need to manually place iOS/macOS frameworks. The CocoaPods `prepare_command` now automatically downloads the XCFramework from GitHub releases when not found locally. This solves the issue where pub-cache installed plugins couldn't find frameworks extracted to the consumer app's directory (different directory trees).
+
+  **Important:** Consumers still need to download and extract the unified binary package to their app root for **assets** (`assets/comaps_data/`, `assets/maps/`). Only the XCFramework download is automated.
+
+### Build System Improvements
+
+* **Updated podspec versions**: iOS and macOS podspecs now correctly specify version `0.1.5` (previously `0.0.1`).
+
+* **Improved iOS/macOS podspec documentation**: Added detailed comments explaining the three-tier framework resolution: (1) local existence check, (2) relative path search for vendored plugins, (3) auto-download from GitHub releases.
+
+* **Improved Android build.gradle documentation**: Added clarifying comments about how `rootDir` resolves in Flutter Android builds to help future maintainers understand the prebuilt binary search logic.
+
+### CI/CD Improvements
+
+* **Consistent archive creation for Windows**: Added a dedicated "Create Windows Binaries Archive" step in CI workflow (similar to Android and Linux) that creates the zip with content at root level, ensuring the correct `windows/prebuilt/x64/` structure in the unified package.
+
+* **Removed duplicate release artifact**: Removed the redundant non-versioned `agus-maps-binaries.zip` from releases. Only the versioned `agus-maps-binaries-vX.Y.Z.zip` is now uploaded, avoiding confusion and reducing release artifact size.
+
+* **Individual iOS/macOS binary zips in releases**: Added `agus-binaries-ios.zip` and `agus-binaries-macos.zip` to GitHub releases for CocoaPods auto-download functionality.
+
 ## 0.1.4
 
 ### Bug Fixes
