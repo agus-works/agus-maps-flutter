@@ -65,54 +65,61 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../.git" AND EXISTS "${CMAKE_CURRENT_SOUR
   message(STATUS "Detected in-repo development environment")
 endif()
 
-# Location 1: Plugin-local prebuilt directory (CI builds copy binaries here)
-set(PLUGIN_PREBUILT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64")
-if(EXISTS "${PLUGIN_PREBUILT_DIR}/libagus_maps_flutter.so" AND EXISTS "${PLUGIN_PREBUILT_DIR}/libagus.so")
-  set(PREBUILT_DIR "${PLUGIN_PREBUILT_DIR}")
-  set(PREBUILT_FOUND ON)
-  message(STATUS "Found pre-built Linux binaries in plugin dir: ${PREBUILT_DIR}")
+# Detect CI environment (GitHub Actions, etc.)
+set(IS_CI OFF)
+if(DEFINED ENV{CI})
+  set(IS_CI ON)
+  message(STATUS "Detected CI environment")
+endif()
+
+# Location 1a: AGUS_MAPS_HOME (Environment Variable)
+if(DEFINED ENV{AGUS_MAPS_HOME} AND NOT PREBUILT_FOUND)
+  set(AGUS_SDK_HOME "$ENV{AGUS_MAPS_HOME}")
+  set(SDK_LINUX_PREBUILT_DIR "${AGUS_SDK_HOME}/linux/prebuilt/x64")
+  if(EXISTS "${SDK_LINUX_PREBUILT_DIR}/libagus_maps_flutter.so" AND EXISTS "${SDK_LINUX_PREBUILT_DIR}/libagus.so")
+    set(PREBUILT_DIR "${SDK_LINUX_PREBUILT_DIR}")
+    set(PREBUILT_FOUND ON)
+    message(STATUS "Found pre-built Linux binaries in AGUS_MAPS_HOME: ${PREBUILT_DIR}")
+  else()
+    message(STATUS "WARNING: AGUS_MAPS_HOME set to ${AGUS_SDK_HOME} but binaries not found in ${SDK_LINUX_PREBUILT_DIR}")
+  endif()
+endif()
+
+# Location 1b: Plugin-local prebuilt directory (CI builds copy binaries here)
+if(NOT PREBUILT_FOUND AND (IS_CI OR EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64/libagus_maps_flutter.so"))
+  set(PLUGIN_PREBUILT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64")
+  if(EXISTS "${PLUGIN_PREBUILT_DIR}/libagus_maps_flutter.so" AND EXISTS "${PLUGIN_PREBUILT_DIR}/libagus.so")
+    set(PREBUILT_DIR "${PLUGIN_PREBUILT_DIR}")
+    set(PREBUILT_FOUND ON)
+    if(IS_CI)
+      message(STATUS "CI environment: Found pre-built Linux binaries in plugin dir: ${PREBUILT_DIR}")
+    else()
+      message(STATUS "Found pre-built Linux binaries in plugin dir: ${PREBUILT_DIR}")
+    endif()
+  endif()
 endif()
 
 # Location 2: Project linux directory (consumer extracts unified package to app root)
-# Unified package extracts linux/prebuilt/ to my_app/linux/prebuilt/
-if(NOT PREBUILT_FOUND)
-  set(PROJECT_LINUX_PREBUILT_DIR "${CMAKE_SOURCE_DIR}/prebuilt/x64")
-  if(EXISTS "${PROJECT_LINUX_PREBUILT_DIR}/libagus_maps_flutter.so" AND EXISTS "${PROJECT_LINUX_PREBUILT_DIR}/libagus.so")
-    set(PREBUILT_DIR "${PROJECT_LINUX_PREBUILT_DIR}")
-    set(PREBUILT_FOUND ON)
-    message(STATUS "Found pre-built Linux binaries in project linux dir: ${PREBUILT_DIR}")
-  endif()
-endif()
+# REMOVED: Legacy support for binary extraction to root is deprecated.
 
 # If binaries not found and we're an external consumer, provide clear instructions
 if(NOT PREBUILT_FOUND AND NOT IS_IN_REPO)
   message(FATAL_ERROR "\n"
     "========================================================================\n"
-    "Pre-built Linux binaries not found!\n"
+    "ERROR: Pre-built binaries not found for agus_maps_flutter.\n"
     "========================================================================\n"
     "\n"
-    "To use agus_maps_flutter, you need to download the pre-built binaries:\n"
+    "For app consumers:\n"
+    "  1. Download agus-maps-sdk-vX.Y.Z.zip from GitHub Releases\n"
+    "     https://github.com/agus-works/agus-maps-flutter/releases\n"
+    "  2. Extract the archive\n"
+    "  3. Set environment variable: export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-vX.Y.Z\n"
+    "  4. Copy SDK assets/ contents to your Flutter app's assets/ folder\n"
+    "  5. Rebuild your app\n"
     "\n"
-    "1. Download the unified package from GitHub Releases:\n"
-    "   https://github.com/agus-works/agus-maps-flutter/releases\n"
-    "   File: agus-maps-binaries-vX.Y.Z.zip\n"
+    "For plugin contributors:\n"
+    "  Use scripts/build_all.sh (macOS/Linux) or scripts/build_all.ps1 (Windows)\n"
     "\n"
-    "2. Extract the ZIP contents directly to your Flutter app root:\n"
-    "   unzip agus-maps-binaries-vX.Y.Z.zip -d /path/to/my_app/\n"
-    "\n"
-    "3. Your app should then have:\n"
-    "   my_app/linux/prebuilt/x64/libagus_maps_flutter.so\n"
-    "   my_app/linux/prebuilt/x64/libagus.so\n"
-    "   my_app/assets/comaps_data/\n"
-    "   my_app/assets/maps/\n"
-    "\n"
-    "4. Add assets to your pubspec.yaml:\n"
-    "   flutter:\n"
-    "     assets:\n"
-    "       - assets/comaps_data/\n"
-    "       - assets/maps/\n"
-    "\n"
-    "5. Run flutter build again.\n"
     "========================================================================\n"
   )
 endif()

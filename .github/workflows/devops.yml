@@ -1383,8 +1383,8 @@ jobs:
           
           # Zip everything preserving structure
           # Name includes version from the tag for clarity
-          VERSION_TAG="${{ github.ref_name }}"
-          UNIFIED_FILENAME="agus-maps-binaries-${VERSION_TAG}.zip"
+          VERSION_TAG="${GITHUB_REF_NAME}"
+          UNIFIED_FILENAME="agus-maps-sdk-${VERSION_TAG}.zip"
           zip -r "../${UNIFIED_FILENAME}" .
           cd ..
           
@@ -1407,24 +1407,30 @@ jobs:
             
             ---
             
-            ### 📦 Unified Binaries (Recommended)
+            ### 📦 Unified SDK (Recommended)
             
-            **Download:** `agus-maps-binaries-${{ github.ref_name }}.zip`
+            **Download:** `agus-maps-sdk-${{ github.ref_name }}.zip`
             
-            **Installation:** Extract into the root of your vendored/local `agus_maps_flutter` package:
+            **Installation:**
             
-            ```bash
-            cd path/to/agus_maps_flutter
-            unzip agus-maps-binaries-${{ github.ref_name }}.zip
-            ```
+            1. Download and extract `agus-maps-sdk-${{ github.ref_name }}.zip`
+            2. Set environment variable:
+               ```bash
+               export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-${{ github.ref_name }}
+               ```
+            3. Copy assets to your Flutter app:
+               ```bash
+               cp -r $AGUS_MAPS_HOME/assets/* your_app/assets/
+               ```
+            4. Build your app
             
-            This places all prebuilt binaries in the correct locations:
+            This SDK contains all platform binaries:
             - `android/prebuilt/{arm64-v8a,armeabi-v7a,x86_64}/`
             - `ios/Frameworks/CoMaps.xcframework/`
             - `macos/Frameworks/CoMaps.xcframework/`
             - `windows/prebuilt/x64/`
-            - `linux/prebuilt/x86_64/`
-            - `assets/` (CoMaps data files)
+            - `linux/prebuilt/x64/`
+            - `assets/` (CoMaps data files - copy to your app)
             - `headers/` (C++ headers, for building from source)
             
             > **Note:** Headers are included for developers who need to build from source.
@@ -1434,10 +1440,10 @@ jobs:
             
             ### Downloads
             
-            #### 📦 Plugin Binaries (All Platforms)
+            #### 📦 SDK Package (All Platforms)
             | File | Description |
             |------|-------------|
-            | **`agus-maps-binaries-${{ github.ref_name }}.zip`** | **All platform binaries, assets, and headers** |
+            | **`agus-maps-sdk-${{ github.ref_name }}.zip`** | **All platform binaries, assets, and headers** |
             
             #### 🍎 Individual Platform Binaries (Auto-downloaded by CocoaPods)
             | Platform | File | Description |

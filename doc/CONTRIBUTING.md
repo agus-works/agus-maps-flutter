@@ -75,6 +75,8 @@ dart run ffigen --config ffigen.yaml
 - **Windows** with PowerShell 7+ for Windows and Android builds
 - **Linux** (Ubuntu 22.04+ or equivalent) for Linux and Android builds
 
+> **Important for Contributors:** Do NOT set the `AGUS_MAPS_HOME` environment variable when working on the plugin. The build scripts handle everything automatically by building from source. `AGUS_MAPS_HOME` is only for **consumers** of the published plugin who download the pre-built SDK.
+
 ### Initial Setup
 
 We provide **unified build scripts** that handle the entire build process from source:

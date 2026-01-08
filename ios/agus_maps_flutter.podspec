@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'agus_maps_flutter'
-  s.version          = '0.1.6'
+  s.version          = '0.1.7'
   s.summary          = 'High-performance offline maps for Flutter using CoMaps engine.'
   s.description      = <<-DESC
 A Flutter plugin that provides high-performance offline vector map rendering
@@ -30,7 +30,6 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
   s.prepare_command = <<-CMD
     set -e
     
-    PLUGIN_VERSION="0.1.6"
     FRAMEWORK_NAME="CoMaps.xcframework"
     
     # Check if framework already exists (in-repo build or CI)
@@ -39,76 +38,49 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
       exit 0
     fi
     
-    echo "[agus_maps_flutter] Searching for ${FRAMEWORK_NAME}..."
-    
-    # Search relative paths (vendored plugin scenario)
-    SEARCH_PATHS=(
-      "../../../../../Frameworks"
-      "../../../../Frameworks"
-      "../../../Frameworks"
-      "../../Frameworks"
-      "../ios/Frameworks"
-      "../../ios/Frameworks"
-    )
-    
-    for path in "${SEARCH_PATHS[@]}"; do
-      if [ -d "${path}/${FRAMEWORK_NAME}" ]; then
-        echo "[agus_maps_flutter] Found ${FRAMEWORK_NAME} at ${path}"
-        mkdir -p Frameworks
-        cp -R "${path}/${FRAMEWORK_NAME}" Frameworks/
-        echo "[agus_maps_flutter] Copied ${FRAMEWORK_NAME} to plugin Frameworks/"
-        exit 0
-      fi
-    done
-    
-    # Not found locally - download from GitHub releases
-    echo "[agus_maps_flutter] ${FRAMEWORK_NAME} not found locally, downloading from GitHub releases..."
-    
-    DOWNLOAD_URL="https://github.com/agus-works/agus-maps-flutter/releases/download/v${PLUGIN_VERSION}/agus-binaries-ios-v${PLUGIN_VERSION}.zip"
-    TEMP_DIR=$(mktemp -d)
-    TEMP_ZIP="${TEMP_DIR}/ios-binaries.zip"
-    
-    echo "[agus_maps_flutter] Downloading from: ${DOWNLOAD_URL}"
-    
-    if command -v curl &> /dev/null; then
-      curl -fsSL "${DOWNLOAD_URL}" -o "${TEMP_ZIP}"
-    elif command -v wget &> /dev/null; then
-      wget -q "${DOWNLOAD_URL}" -O "${TEMP_ZIP}"
-    else
-      echo "[agus_maps_flutter] ERROR: Neither curl nor wget found!"
-      rm -rf "${TEMP_DIR}"
-      exit 1
-    fi
-    
-    if [ ! -f "${TEMP_ZIP}" ]; then
-      echo "[agus_maps_flutter] ERROR: Download failed!"
-      rm -rf "${TEMP_DIR}"
-      exit 1
-    fi
-    
-    echo "[agus_maps_flutter] Extracting ${FRAMEWORK_NAME}..."
-    mkdir -p Frameworks
-    unzip -q "${TEMP_ZIP}" -d Frameworks/
-    
-    rm -rf "${TEMP_DIR}"
-    
-    if [ -d "Frameworks/${FRAMEWORK_NAME}" ]; then
-      echo "[agus_maps_flutter] Successfully downloaded and extracted ${FRAMEWORK_NAME}"
-      echo ""
-      echo "======================================================================="
-      echo "IMPORTANT: You still need to download assets for your app!"
-      echo "======================================================================="
-      echo ""
-      echo "The XCFramework was auto-downloaded, but you must still:"
-      echo "  1. Download: https://github.com/agus-works/agus-maps-flutter/releases/download/v${PLUGIN_VERSION}/agus-maps-binaries-v${PLUGIN_VERSION}.zip"
-      echo "  2. Extract to your app root to get assets/comaps_data/ and assets/maps/"
-      echo "  3. Add assets to your pubspec.yaml"
-      echo ""
+    # Check for CI environment (GitHub Actions, etc.)
+    if [ -n "$CI" ]; then
+      echo "[agus_maps_flutter] CI environment detected, framework will be copied by CI workflow"
+      # CI workflow copies frameworks before pod install, so this is a timing issue
+      # Create placeholder to allow pod install to proceed
+      mkdir -p Frameworks
+      echo "[agus_maps_flutter] WARNING: Framework not yet available, CI should copy it before build"
       exit 0
-    else
-      echo "[agus_maps_flutter] ERROR: Extraction failed - ${FRAMEWORK_NAME} not found!"
-      exit 1
     fi
+
+    # Check AGUS_MAPS_HOME for consumer builds
+    if [ -n "$AGUS_MAPS_HOME" ]; then
+      echo "[agus_maps_flutter] AGUS_MAPS_HOME set to $AGUS_MAPS_HOME"
+      SDK_FRAMEWORK="$AGUS_MAPS_HOME/ios/Frameworks/${FRAMEWORK_NAME}"
+      if [ -d "$SDK_FRAMEWORK" ]; then
+         echo "[agus_maps_flutter] Found ${FRAMEWORK_NAME} in AGUS_MAPS_HOME"
+         mkdir -p Frameworks
+         cp -R "$SDK_FRAMEWORK" Frameworks/
+         echo "[agus_maps_flutter] Copied from AGUS_MAPS_HOME"
+         exit 0
+      else
+         echo "[agus_maps_flutter] WARNING: ${FRAMEWORK_NAME} not found in $AGUS_MAPS_HOME/ios/Frameworks"
+      fi
+    fi
+    
+    echo ""
+    echo "========================================================================"
+    echo "[agus_maps_flutter] ERROR: Pre-built binaries not found."
+    echo "========================================================================"
+    echo ""
+    echo "For app consumers:"
+    echo "  1. Download agus-maps-sdk-vX.Y.Z.zip from GitHub Releases"
+    echo "     https://github.com/agus-works/agus-maps-flutter/releases"
+    echo "  2. Extract the archive"
+    echo "  3. Set environment variable: export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-vX.Y.Z"
+    echo "  4. Copy SDK assets/ contents to your Flutter app's assets/ folder"
+    echo "  5. Rebuild your app"
+    echo ""
+    echo "For plugin contributors:"
+    echo "  Use scripts/build_all.sh (macOS/Linux) or scripts/build_all.ps1 (Windows)"
+    echo ""
+    echo "========================================================================"
+    exit 1
   CMD
 
   # ============================================================================
@@ -232,7 +204,7 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
       "\"#{thirdparty_3party}/minizip/minizip\"",
       "\"#{thirdparty_3party}/pugixml/pugixml/src\"",
       "\"#{thirdparty_3party}/protobuf/protobuf/src\"",
-      # Downloaded headers paths (external consumers / CI)
+      # Downloaded headers paths (fallback)
       "\"#{headers_base}\"",
       "\"#{headers_base}/libs\"",
       "\"#{headers_3party}/boost\"",

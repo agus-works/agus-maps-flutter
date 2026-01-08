@@ -1,3 +1,50 @@
+## 0.1.7
+
+### Breaking Changes
+
+* **Mandatory `AGUS_MAPS_HOME` for consumers**: Plugin consumers must now set the `AGUS_MAPS_HOME` environment variable pointing to the extracted SDK directory. The fallback to extracting binaries into the app root directory has been removed.
+
+* **SDK Package Renamed**: The release artifact is now named `agus-maps-sdk-vX.Y.Z.zip` (previously `agus-maps-binaries-vX.Y.Z.zip`) to better reflect that it contains the complete SDK with binaries, assets, and optional headers.
+
+### New Features
+
+* **CI Environment Detection**: All build systems (Gradle, CMake, CocoaPods) now detect CI environments via the `CI` environment variable. This allows CI workflows to use plugin-local `prebuilt/` directories without requiring `AGUS_MAPS_HOME`.
+
+* **Standardized Error Messages**: All platforms now display consistent, actionable error messages when binaries are not found, clearly distinguishing between consumer and contributor workflows.
+
+### Build System Improvements
+
+* **Android `build.gradle`**: Fixed a bug with orphaned if-block in prebuilt detection logic. Added CI detection to allow plugin-local prebuilt directories only in CI or when binaries actually exist.
+
+* **iOS/macOS podspecs**: Enhanced `prepare_command` with CI detection. CI builds now proceed with a placeholder, allowing the workflow to copy frameworks before the actual build step.
+
+* **Linux/Windows CMakeLists**: Added `IS_CI` detection alongside `IS_IN_REPO` for cleaner workflow separation.
+
+### Documentation
+
+* **Rewrote `GUIDE.md`**: Replaced historical architecture document with current implementation details. Now covers the three workflow types (contributor, CI, consumer) and actual platform implementations.
+
+* **Updated `README.md`**: Refined consumer installation instructions with platform-specific commands for setting `AGUS_MAPS_HOME`. Added Windows CMD example alongside PowerShell.
+
+* **Updated `CONTRIBUTING.md`**: Added explicit warning that contributors should NOT set `AGUS_MAPS_HOME` - the build scripts handle everything automatically.
+
+### Migration Guide
+
+If upgrading from v0.1.6:
+
+1. Download `agus-maps-sdk-v0.1.7.zip` from [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases)
+2. Extract to a permanent location (e.g., `~/agus-sdk/agus-maps-sdk-v0.1.7`)
+3. Set `AGUS_MAPS_HOME` environment variable:
+   ```bash
+   # macOS/Linux (add to ~/.bashrc or ~/.zshrc)
+   export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-v0.1.7
+   
+   # Windows PowerShell (add to profile or set system env var)
+   $env:AGUS_MAPS_HOME = "C:\path\to\agus-maps-sdk-v0.1.7"
+   ```
+4. Copy assets from SDK to your Flutter app's `assets/` folder
+5. Rebuild with `flutter clean && flutter build`
+
 ## 0.1.6
 
 ### Bug Fixes

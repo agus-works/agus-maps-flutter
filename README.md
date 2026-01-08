@@ -147,58 +147,53 @@ Add `agus_maps_flutter` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  agus_maps_flutter: ^0.1.6
+  agus_maps_flutter: ^0.1.7
 ```
 
 Run `flutter pub get` to download the plugin.
 
-#### Step 2: Download Pre-built Binaries
+#### Step 2: Download the SDK
 
-Download the unified binary package from [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases):
+Since `agus-maps-flutter` contains a high-performance C++ engine, users must manually download the pre-compiled SDK to match their plugin version.
+
+1. Go to [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases).
+2. Download `agus-maps-sdk-v0.1.7.zip` for the version you are using.
+3. Extract this zip file to a location on your machine (e.g., `~/agus-sdk` or `C:\agus-sdk`).
+
+#### Step 3: Set Environment Variable
+
+You must set the `AGUS_MAPS_HOME` environment variable to point to the extracted SDK directory.
+
+**macOS/Linux:**
+```bash
+export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-v0.1.7
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:AGUS_MAPS_HOME = "C:\path\to\agus-maps-sdk-v0.1.7"
+```
+
+**Windows (CMD):**
+```cmd
+set AGUS_MAPS_HOME=C:\path\to\agus-maps-sdk-v0.1.7
+```
+
+> **Tip:** Add this to your shell profile (`.bashrc`, `.zshrc`, PowerShell profile) so it persists across terminal sessions.
+
+#### Step 4: Copy Assets
+
+Copy the `assets` folder from the SDK into your Flutter app's root directory.
 
 ```bash
-# Download the package (replace X.Y.Z with your plugin version)
-curl -L -o binaries.zip https://github.com/agus-works/agus-maps-flutter/releases/download/vX.Y.Z/agus-maps-binaries-vX.Y.Z.zip
+# MacOS/Linux
+cp -r $AGUS_MAPS_HOME/assets/ my_flutter_app/assets/
+
+# Windows
+Copy-Item -Recurse "$env:AGUS_MAPS_HOME\assets" "my_flutter_app\assets"
 ```
 
-Or download manually from your browser.
-
-> **📱 iOS/macOS Note:** Starting with v0.1.5, the XCFramework for iOS and macOS is **automatically downloaded** during `pod install` if not found locally. You still need to extract the unified package for **assets** (`assets/comaps_data/`, `assets/maps/`).
-
-#### Step 3: Extract to Your App Root
-
-Extract the ZIP directly to your Flutter app's root directory:
-
-```bash
-# Linux/macOS
-unzip binaries.zip -d /path/to/my_app/
-
-# Windows (PowerShell)
-Expand-Archive -Path binaries.zip -DestinationPath C:\path\to\my_app\
-```
-
-After extraction, your app directory should contain:
-
-```
-my_app/
-├── android/prebuilt/           ← Native libraries for Android
-├── ios/Frameworks/             ← XCFramework for iOS
-├── macos/Frameworks/           ← XCFramework for macOS
-├── windows/prebuilt/x64/       ← DLLs for Windows
-├── linux/prebuilt/x64/         ← Shared libraries for Linux
-├── assets/
-│   ├── comaps_data/            ← CoMaps engine data files
-│   └── maps/                   ← Map files (icudt73l.dat, MWMs)
-├── lib/                        ← Your app code
-├── pubspec.yaml
-└── ...
-```
-
-> **Note:** The platform-specific directories (`android/prebuilt/`, `ios/Frameworks/`, etc.) merge with your existing Flutter project structure without conflicts.
-
-#### Step 4: Configure Assets
-
-Add the assets to your `pubspec.yaml`:
+Then add the assets to your `pubspec.yaml`:
 
 ```yaml
 flutter:
@@ -213,11 +208,11 @@ flutter:
 flutter run
 ```
 
-That's it! The build system will automatically detect the pre-built binaries.
+The build system will automatically find the binaries and headers using `AGUS_MAPS_HOME`.
 
 ### Upgrading the Plugin
 
-> **⚠️ Important:** When upgrading `agus_maps_flutter` to a new version, you must **manually download and extract the new binaries package**. The build system does NOT auto-download binaries - it only detects pre-existing ones.
+> **⚠️ Important:** When upgrading `agus_maps_flutter` to a new version, you must also **download the new SDK** and update your `AGUS_MAPS_HOME` variable.
 
 **Upgrade steps:**
 
@@ -229,27 +224,19 @@ That's it! The build system will automatically detect the pre-built binaries.
 
 2. Run `flutter pub get`
 
-3. Download the **matching** unified binary package from [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases):
-   ```bash
-   curl -L -o binaries.zip https://github.com/agus-works/agus-maps-flutter/releases/download/vX.Y.Z/agus-maps-binaries-vX.Y.Z.zip
-   ```
+3. Download the **matching** SDK (`agus-maps-sdk-vX.Y.Z.zip`) from [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases).
 
-4. Extract to your app root (this will overwrite existing binaries):
-   ```bash
-   # Linux/macOS
-   unzip -o binaries.zip -d /path/to/my_app/
+4. Extract it to a new directory (e.g., `agus-maps-sdk-vX.Y.Z`).
 
-   # Windows (PowerShell)
-   Expand-Archive -Path binaries.zip -DestinationPath C:\path\to\my_app\ -Force
-   ```
+5. Update your environment variable `AGUS_MAPS_HOME` to point to the new directory.
 
-5. Rebuild your app:
+6. **Copy the new assets** to your app root (overwriting old ones).
+
+7. Rebuild your app:
    ```bash
    flutter clean
-   flutter build <platform>
+   flutter run
    ```
-
-> **Why manual?** This approach ensures deterministic builds with no network calls during compilation. You always know exactly which binaries are being used, and CI/CD pipelines work reliably in air-gapped environments.
 
 ### Alternative: Vendored Plugin
 
@@ -262,12 +249,11 @@ For projects that need to vendor the plugin locally (offline builds, custom modi
    git clone https://github.com/agus-works/agus-maps-flutter.git packages/agus_maps_flutter
    ```
 
-2. Download and extract the unified binary package to the vendored plugin:
+2. Download and extract the SDK to a global location:
    ```bash
-   cd packages/agus_maps_flutter
-   curl -L -o binaries.zip https://github.com/agus-works/agus-maps-flutter/releases/download/v0.1.5/agus-maps-binaries-v0.1.5.zip
-   unzip binaries.zip
-   rm binaries.zip
+   curl -L -o sdk.zip https://github.com/agus-works/agus-maps-flutter/releases/download/v0.1.7/agus-maps-sdk-v0.1.7.zip
+   unzip sdk.zip -d ~/agus-sdk
+   export AGUS_MAPS_HOME=~/agus-sdk/agus-maps-sdk-v0.1.7
    ```
 
 3. Reference the local plugin in your `pubspec.yaml`:
@@ -279,8 +265,8 @@ For projects that need to vendor the plugin locally (offline builds, custom modi
 
 4. Copy assets to your app:
    ```bash
-   cp -r packages/agus_maps_flutter/assets/comaps_data assets/
-   cp -r packages/agus_maps_flutter/assets/maps assets/
+   cp -r $AGUS_MAPS_HOME/assets/comaps_data assets/
+   cp -r $AGUS_MAPS_HOME/assets/maps assets/
    ```
 
 5. Add assets to your `pubspec.yaml` and build.
