@@ -1,3 +1,67 @@
+## 0.1.9
+
+### Build System Improvements
+
+* **Streamlined Android prebuilt binary integration**: Refactored `android/build.gradle` to provide a cleaner separation between in-repo development mode and external consumer mode. External consumers now exclusively use pre-built binaries via `jniLibs.srcDirs`, while in-repo contributors continue to build from source via CMake.
+
+* **Enhanced AGUS_MAPS_HOME detection**: When `AGUS_MAPS_HOME` environment variable is set and points to a valid directory, the build system now explicitly forces external consumer mode. This prevents accidental source builds when consumers have the SDK properly configured.
+
+* **Disabled CMake for external consumers**: The `externalNativeBuild` block in `android/build.gradle` is now conditionally applied only for in-repo builds. External consumers no longer trigger CMake configuration, eliminating unnecessary build overhead and potential configuration errors.
+
+* **Simplified prebuilt library lookup**: Removed complex multi-tier fallback logic in favor of a straightforward approach:
+  1. Check `AGUS_MAPS_HOME` environment variable
+  2. Use `jniLibs.srcDirs` to point to the prebuilt libraries
+  3. Provide clear error messages if binaries are not found
+  
+  This eliminates the plugin-local `prebuilt/` directory fallback for non-CI builds, making the consumer workflow more explicit and predictable.
+
+### Bug Fixes
+
+* **Asset extraction verification**: Enhanced the asset extraction check in `AgusMapsFlutterPlugin.java` to verify that essential files (e.g., `unicode_blocks.txt`) exist before skipping re-extraction. This prevents runtime errors caused by incomplete or corrupted asset extractions.
+
+  The plugin now checks:
+  - Marker file (`.comaps_data_extracted`) indicating prior extraction
+  - Essential asset file (`fonts/unicode_blocks.txt`) to confirm completeness
+  
+  If either check fails, assets are re-extracted automatically.
+
+### Error Message Improvements
+
+* **Clearer setup instructions**: Error messages when `AGUS_MAPS_HOME` is missing or invalid now provide more actionable guidance:
+  - For consumers: Step-by-step instructions to download, extract, configure, and use the SDK
+  - For contributors: Direct reference to build scripts (`build_all.sh` / `build_all.ps1`)
+  - Distinguished between AGUS_MAPS_HOME path issues vs. missing binaries entirely
+
+### Technical Details
+
+* **Build mode detection logic**: The build system now evaluates build mode in this order:
+  1. **AGUS_MAPS_HOME override**: If set and valid, force external consumer mode
+  2. **In-repo check**: If `.git` and `thirdparty/comaps` exist AND AGUS_MAPS_HOME is not set, use in-repo development mode
+  3. **External consumer**: Otherwise, require AGUS_MAPS_HOME with valid prebuilt binaries
+
+* **jniLibs.srcDirs approach**: Instead of using CMake arguments to configure prebuilt paths, the Gradle build now directly adds the prebuilt directory to `sourceSets.main.jniLibs.srcDirs`. This is the standard Android approach for including pre-compiled native libraries and avoids CMake entirely for consumers.
+
+### Migration
+
+No breaking changes. Consumers using `AGUS_MAPS_HOME` correctly will see improved build performance (no CMake overhead) and clearer error messages. Ensure your `AGUS_MAPS_HOME` points to a valid SDK directory with the following structure:
+
+```
+agus-maps-sdk-v0.1.9/
+├── android/prebuilt/{arm64-v8a,armeabi-v7a,x86_64}/
+├── ios/Frameworks/CoMaps.xcframework/
+├── macos/Frameworks/CoMaps.xcframework/
+├── windows/prebuilt/x64/
+├── linux/prebuilt/x64/
+└── assets/
+    ├── comaps_data/
+    └── ...
+```
+
+### Cross-Platform Impact
+
+* **Android only**: All changes are scoped to Android Gradle configuration and Java plugin code
+* **No changes to iOS/macOS/Linux/Windows**: Build systems for other platforms remain unchanged
+
 ## 0.1.8
 
 ### Bug Fixes

@@ -243,7 +243,11 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     
     // Check if data is already extracted by looking for a marker file
     File markerFile = new File(filesDir, ".comaps_data_extracted");
-    if (markerFile.exists()) {
+    File fontsDir = new File(filesDir, "fonts");
+    File unicodeBlockFile = new File(fontsDir, "unicode_blocks.txt");
+    
+    // Check if data is already extracted AND essential files exist
+    if (markerFile.exists() && unicodeBlockFile.exists()) {
         android.util.Log.d("AgusMapsFlutter", "Data already extracted at: " + filesDir.getAbsolutePath());
         return filesDir.getAbsolutePath();
     }

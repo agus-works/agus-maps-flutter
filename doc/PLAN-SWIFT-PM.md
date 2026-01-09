@@ -252,7 +252,7 @@ let package = Package(
         // Binary dependency - auto-downloaded from GitHub releases
         .binaryTarget(
             name: "CoMaps",
-            url: "https://github.com/agus-works/agus-maps-flutter/releases/download/v0.1.8/CoMaps-ios.xcframework.zip",
+            url: "https://github.com/agus-works/agus-maps-flutter/releases/download/vX.Y.Z/CoMaps-ios.xcframework.zip",
             checksum: "PLACEHOLDER_CHECKSUM_SHA256"
         ),
         
@@ -283,12 +283,12 @@ let package = Package(
 
 ### Consumer Experience Comparison
 
-#### SwiftPM Consumer (New - v0.1.8+)
+#### SwiftPM Consumer (New - vX.Y.Z+)
 
 ```yaml
 # pubspec.yaml
 dependencies:
-  agus_maps_flutter: ^0.1.8
+  agus_maps_flutter: ^X.Y.Z
 
 flutter:
   assets:
@@ -309,7 +309,7 @@ flutter run
 ```yaml
 # pubspec.yaml
 dependencies:
-  agus_maps_flutter: ^0.1.8
+  agus_maps_flutter: ^X.Y.Z
 
 flutter:
   disable-swift-package-manager: true  # Force CocoaPods
@@ -319,7 +319,7 @@ flutter:
 ```
 
 ```bash
-export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-v0.1.8
+export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-vX.Y.Z
 flutter run
 ```
 
@@ -381,7 +381,7 @@ flutter run
 - [ ] Update README.md with SwiftPM instructions
 - [ ] Update GUIDE.md with SwiftPM architecture
 - [ ] Update CONTRIBUTING.md
-- [ ] Add CHANGELOG.md entry for v0.1.8
+- [ ] Add CHANGELOG.md entry for vX.Y.Z
 
 ---
 
@@ -399,14 +399,14 @@ flutter run
 
 **Option A: Two-Phase Release (Recommended)**
 
-1. **Pre-release tag** (`v0.1.8-rc1`):
+1. **Pre-release tag** (`vX.Y.Z-rc1`):
    - Build XCFrameworks
    - Upload ZIPs to pre-release
    - Compute checksums
    - Update `Package.swift` with checksums
    - Commit checksum update
 
-2. **Final release tag** (`v0.1.8`):
+2. **Final release tag** (`vX.Y.Z`):
    - Tag the commit with updated checksums
    - Move artifacts from pre-release to final release
    - Delete pre-release
@@ -466,12 +466,12 @@ Then in `Package.swift`:
 
 ## Migration Path
 
-### For Existing CocoaPods Users (v0.1.7 → v0.1.8)
+### For Existing CocoaPods Users (v0.1.7 → vX.Y.Z)
 
 **No changes required.** CocoaPods workflow remains identical:
 
 ```bash
-export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-v0.1.8
+export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-vX.Y.Z
 flutter clean && flutter run
 ```
 
@@ -485,14 +485,14 @@ flutter clean && flutter run
 2. Add dependency (no AGUS_MAPS_HOME needed):
    ```yaml
    dependencies:
-     agus_maps_flutter: ^0.1.8
+     agus_maps_flutter: ^X.Y.Z
    ```
 
 3. Copy assets to app (still required):
    ```bash
    # Download SDK for assets only
-   curl -LO https://github.com/.../agus-maps-sdk-v0.1.8.zip
-   unzip agus-maps-sdk-v0.1.8.zip -d /tmp/sdk
+   curl -LO https://github.com/.../agus-maps-sdk-vX.Y.Z.zip
+   unzip agus-maps-sdk-vX.Y.Z.zip -d /tmp/sdk
    cp -r /tmp/sdk/assets/* my_app/assets/
    ```
 
@@ -560,7 +560,7 @@ Flutter supports a `darwin/` directory for code shared between iOS and macOS. Ou
 - A) Keep separate `ios/` and `macos/` (current)
 - B) Create unified `darwin/` package with platform conditionals
 
-**Recommendation:** Keep separate for v0.1.8. Unification can be v0.2.0.
+**Recommendation:** Keep separate for vX.Y.Z. Unification can be v0.2.0.
 
 ### Q2: How to handle assets for SwiftPM users?
 
@@ -571,7 +571,7 @@ SwiftPM handles the XCFramework, but assets (`comaps_data/`, `maps/`) must still
 - B) Create separate assets-only package
 - C) Publish assets as SwiftPM resource bundle
 
-**Recommendation:** Option A for v0.1.8. Document clearly.
+**Recommendation:** Option A for vX.Y.Z. Document clearly.
 
 ### Q3: Minimum iOS/macOS version for SwiftPM?
 

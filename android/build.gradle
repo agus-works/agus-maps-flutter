@@ -35,6 +35,13 @@ apply plugin: "com.android.library"
 def isInRepo = file("${projectDir}/../.git").exists() && 
                file("${projectDir}/../thirdparty/comaps").exists()
 
+// If AGUS_MAPS_HOME is defined and exists, force external consumer mode
+def envAgusMapsHome = System.getenv("AGUS_MAPS_HOME")
+if (envAgusMapsHome != null && file(envAgusMapsHome).exists()) {
+    println "AGUS_MAPS_HOME detected (" + envAgusMapsHome + "), forcing external consumer mode."
+    isInRepo = false
+}
+
 def prebuiltDir = file("${projectDir}/prebuilt")
 def headersDir = file("${projectDir}/headers")
 
@@ -65,17 +72,11 @@ android {
     ndkVersion = android.ndkVersion
 
     // Invoke the shared CMake build with the Android Gradle Plugin.
-    externalNativeBuild {
-        cmake {
-            path = "../src/CMakeLists.txt"
-
-            // The default CMake version for the Android Gradle Plugin is 3.10.2.
-            // https://developer.android.com/studio/projects/install-ndk#vanilla_cmake
-            //
-            // The Flutter tooling requires that developers have CMake 3.10 or later
-            // installed. You should not increase this version, as doing so will cause
-            // the plugin to fail to compile for some customers of the plugin.
-            // version "3.10.2"
+    if (isInRepo) {
+        externalNativeBuild {
+            cmake {
+                path = "../src/CMakeLists.txt"
+            }
         }
     }
 
@@ -88,54 +89,64 @@ android {
         minSdk = 24
         
         // Pass CMake arguments based on build mode
-        externalNativeBuild {
-            cmake {
-                // Build mode priority:
-                // 1. In-repo (have full source) → always build from source
-                // 2. External consumer → require pre-built binaries
-                
-                if (isInRepo) {
-                    // In-repo build: always build from source, ignore any prebuilt
+        if (isInRepo) {
+            externalNativeBuild {
+                cmake {
+                    // In-repo build: always build from source
                     println "Building CoMaps from source (in-repo development mode)"
-                } else {
-                    // External consumer: require pre-built binaries
-                    
-                    // CHECK AGUS_MAPS_HOME FIRST
-                    def agusMapsHome = System.getenv("AGUS_MAPS_HOME")
-                    def effectivePrebuiltDir = null
-                    def effectiveHeadersDir = null
+                }
+            }
+        }
+    }
 
-                    // Check for CI environment (GitHub Actions, etc.)
-                    def isCI = System.getenv("CI") != null
-                    
-                    if (agusMapsHome != null) {
-                        def sdkDir = file(agusMapsHome)
-                        if (sdkDir.exists()) {
-                             println "AGUS_MAPS_HOME found: ${sdkDir.absolutePath}"
-                             def sdkPrebuilt = file("${sdkDir}/android/prebuilt")
-                             if (sdkPrebuilt.exists() && sdkPrebuilt.listFiles()?.length > 0) {
-                                 effectivePrebuiltDir = sdkPrebuilt
-                             }
-                        } else {
-                             println "WARNING: AGUS_MAPS_HOME is set to ${agusMapsHome} but directory does not exist"
-                        }
-                    }
-                    
-                    // Fallback: plugin-local prebuilt (for CI builds that copy binaries here)
-                    if (effectivePrebuiltDir == null && (isCI || prebuiltDir.exists())) {
-                        if (prebuiltDir.exists() && prebuiltDir.listFiles()?.length > 0) {
-                             effectivePrebuiltDir = prebuiltDir
-                             if (isCI) {
-                                 println "CI environment detected, using plugin-local prebuilt: ${prebuiltDir.absolutePath}"
-                             }
-                        }
-                    }
+    if (!isInRepo) {
+        // External consumer logic
+        
+        // CHECK AGUS_MAPS_HOME FIRST
+        def agusMapsHome = System.getenv("AGUS_MAPS_HOME")
+        def effectivePrebuiltDir = null
 
-                    if (effectivePrebuiltDir != null) {
-                        arguments "-DUSE_PREBUILT_COMAPS=ON",
-                                  "-DPREBUILT_DIR=${effectivePrebuiltDir.absolutePath}"
-                        println "Using pre-built CoMaps libraries from: ${effectivePrebuiltDir.absolutePath}"
-                    } else {
+        // Check for CI environment
+        def isCI = System.getenv("CI") != null
+        
+        if (agusMapsHome != null) {
+            def sdkDir = file(agusMapsHome)
+            if (sdkDir.exists()) {
+                 println "AGUS_MAPS_HOME found: ${sdkDir.absolutePath}"
+                 def sdkPrebuilt = file("${sdkDir}/android/prebuilt")
+                 if (sdkPrebuilt.exists() && sdkPrebuilt.listFiles()?.length > 0) {
+                     effectivePrebuiltDir = sdkPrebuilt
+                 }
+            } else {
+                        println ""
+                        println "========================================================================"
+                        println "ERROR: Pre-built binaries not found on path defined in AGUS_MAPS_HOME."
+                        println "========================================================================"
+                        println ""
+                        println "For app consumers:"
+                        println "  1. Download agus-maps-sdk-vX.Y.Z.zip from GitHub Releases"
+                        println "     https://github.com/agus-works/agus-maps-flutter/releases"
+                        println "  2. Extract the archive"
+                        println "  3. Set environment variable: export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-vX.Y.Z"
+                        println "  4. Copy SDK assets/ contents to your Flutter app's assets/ folder"
+                        println "  5. Rebuild your app"
+                        println ""
+                        println "For plugin contributors:"
+                        println "  Use scripts/build_all.sh (macOS/Linux) or scripts/build_all.ps1 (Windows)"
+                        println ""
+                        println "========================================================================"
+                        throw new GradleException("Pre-built CoMaps libraries not found. Set AGUS_MAPS_HOME.")
+            }
+        }
+        
+        if (effectivePrebuiltDir != null) {
+            println "Using pre-built libraries from (jniLibs): ${effectivePrebuiltDir.absolutePath}"
+            sourceSets {
+                main {
+                    jniLibs.srcDirs += effectivePrebuiltDir
+                }
+            }
+        } else {
                         println ""
                         println "========================================================================"
                         println "ERROR: Pre-built binaries not found for agus_maps_flutter."
@@ -154,9 +165,6 @@ android {
                         println ""
                         println "========================================================================"
                         throw new GradleException("Pre-built CoMaps libraries not found. Set AGUS_MAPS_HOME.")
-                    }
-                }
-            }
         }
     }
 }

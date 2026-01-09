@@ -1091,7 +1091,7 @@ void _handlePointerEvent(PointerEvent event) {
 **Risk:** Old cached WASM binaries cause compatibility issues.
 
 **Mitigation:**
-- Version service worker cache by release (agus-maps-flutter-v0.1.8)
+- Version service worker cache by release (agus-maps-flutter-vX.Y.Z)
 - Implement cache versioning and cleanup
 - Show "reload required" prompt if binary changes
 - Clear old caches on install
