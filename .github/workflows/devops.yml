@@ -261,6 +261,8 @@ jobs:
           name: agus-binaries-ios
           path: build/agus-binaries-ios.zip
 
+
+
       # ======================================================================
       # Build macOS XCFramework
       # ======================================================================
@@ -281,6 +283,8 @@ jobs:
         with:
           name: agus-binaries-macos
           path: build/agus-binaries-macos.zip
+
+
 
       # ======================================================================
       # Build iOS Example App (Simulator)
@@ -1239,10 +1243,6 @@ jobs:
           [ -f all-artifacts/agus-maps-windows.zip ] && cp all-artifacts/agus-maps-windows.zip "final-assets/agus-maps-windows-${VERSION_TAG}.zip" || true
           [ -f all-artifacts/agus-maps-linux.zip ] && cp all-artifacts/agus-maps-linux.zip "final-assets/agus-maps-linux-${VERSION_TAG}.zip" || true
           
-          # Individual iOS/macOS binary zips for CocoaPods auto-download
-          # These are downloaded by the podspec prepare_command for pub.dev consumers
-          [ -f all-artifacts/agus-binaries-ios.zip ] && cp all-artifacts/agus-binaries-ios.zip "final-assets/agus-binaries-ios-${VERSION_TAG}.zip" || true
-          [ -f all-artifacts/agus-binaries-macos.zip ] && cp all-artifacts/agus-binaries-macos.zip "final-assets/agus-binaries-macos-${VERSION_TAG}.zip" || true
 
           # Generate build info
           cat > final-assets/BUILD_INFO.txt << EOF
@@ -1445,14 +1445,6 @@ jobs:
             |------|-------------|
             | **`agus-maps-sdk-${{ github.ref_name }}.zip`** | **All platform binaries, assets, and headers** |
             
-            #### 🍎 Individual Platform Binaries (Auto-downloaded by CocoaPods)
-            | Platform | File | Description |
-            |----------|------|-------------|
-            | iOS | `agus-binaries-ios-${{ github.ref_name }}.zip` | XCFramework for iOS (auto-downloaded) |
-            | macOS | `agus-binaries-macos-${{ github.ref_name }}.zip` | XCFramework for macOS (auto-downloaded) |
-            
-            > These are automatically downloaded by the CocoaPods `prepare_command` for pub.dev consumers.
-            > You still need to extract the unified package for assets.
             
             #### 📱 Example Apps
             | Platform | File | Description |

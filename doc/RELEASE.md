@@ -430,18 +430,14 @@ All platforms use **detection-only** logic with clear error messages when binari
 The `agus_maps_flutter.podspec` looks for:
 - `ios/Frameworks/CoMaps.xcframework/`
 
-**Starting with v0.1.5:** If the framework is not found locally, it will be **automatically downloaded** from GitHub releases during `pod install`. This eliminates the need to manually place the XCFramework for iOS builds.
-
-> **Note:** You still need to extract the unified package for `assets/comaps_data/` and `assets/maps/`.
+**Requirement:** The `CoMaps.xcframework` must be present. The recommended way is to set `AGUS_MAPS_HOME` which points to the SDK containing this framework. The podspec will automatically copy it from the SDK during `pod install`.
 
 #### macOS (CocoaPods)
 
 The `agus_maps_flutter.podspec` looks for:
 - `macos/Frameworks/CoMaps.xcframework/`
 
-**Starting with v0.1.5:** If the framework is not found locally, it will be **automatically downloaded** from GitHub releases during `pod install`. This eliminates the need to manually place the XCFramework for macOS builds.
-
-> **Note:** You still need to extract the unified package for `assets/comaps_data/` and `assets/maps/`.
+**Requirement:** The `CoMaps.xcframework` must be present. The recommended way is to set `AGUS_MAPS_HOME` which points to the SDK containing this framework. The podspec will automatically copy it from the SDK during `pod install`.
 
 #### Android (Gradle)
 
