@@ -55,6 +55,9 @@ macos/Frameworks/
 # macOS resources (copied during build)
 macos/Resources/
 
+# macOS headers (downloaded/copied during pod install)
+macos/Headers/
+
 # Android native libraries (downloaded during build)
 android/src/main/jniLibs/
 

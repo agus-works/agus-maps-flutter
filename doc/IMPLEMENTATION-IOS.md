@@ -102,7 +102,6 @@ flutter run --profile -d <device-id>
 
 After installing via `flutter run --release`, you can disconnect the laptop and launch the app from the home screen.
 
----
 
 ## Goal
 
@@ -124,7 +123,6 @@ This matches how CoMaps/Organic Maps operates: maps are stored as standalone `.m
 
 Those come after we have a repeatable dependency + data workflow and a stable FFI boundary.
 
----
 
 ## Architecture Overview
 
@@ -312,7 +310,6 @@ The active frame callback leverages CoMaps' existing efficiency:
 
 All CoMaps modifications are captured in `patches/comaps/0012-active-frame-callback.patch`, which is automatically applied by `./scripts/apply_comaps_patches.sh`.
 
----
 
 ## XCFramework Distribution
 
@@ -362,7 +359,6 @@ If the XCFramework is not found, `pod install` will fail with an error.
 |----------------|------------|-------------------|
 | 0.0.1 | v2025.12.28-2 | CoMaps.xcframework.zip |
 
----
 
 ## Plugin Distribution for External Consumers
 
@@ -406,7 +402,6 @@ External consumers don't have access to `thirdparty/comaps/` (it's git-ignored a
 | `scripts/download_ios_xcframework.sh` | Downloads XCFramework + headers (dual-mode) |
 | `scripts/build_ios_xcframework.sh` | Builds XCFramework from source |
 
----
 
 ## File Structure
 
@@ -449,7 +444,6 @@ example/ios/
 └── Runner.xcworkspace/              # Xcode workspace
 ```
 
----
 
 ## Implementation Details
 
@@ -566,7 +560,6 @@ void GuiThread::Push(Task && task) {
 }
 ```
 
----
 
 ## Bitrise CI/CD Workflows
 
@@ -590,7 +583,6 @@ Builds the Flutter example app for iOS simulator:
 4. Run `flutter build ios --simulator`
 5. Archive as `.app` bundle
 
----
 
 ## Status Report
 
@@ -714,7 +706,6 @@ pod install
 2. **Performance profiling** - Measure CPU/battery savings vs. continuous polling
 3. **Memory profiling** - Ensure no leaks in CVPixelBuffer handling
 
----
 
 ## Acceptance Criteria
 
@@ -726,7 +717,6 @@ pod install
   - Renders map via Metal → CVPixelBuffer → FlutterTexture
   - Shows success/failure in UI and native logs
 
----
 
 ## Next Milestones
 
@@ -739,7 +729,6 @@ pod install
 7. **Phase 7:** Active frame callback (efficient rendering) ✅
 8. **Phase 8:** Performance profiling + optimization 🚧 ← Current
 
----
 
 ## Phase 4 Implementation Details (Completed)
 
@@ -812,7 +801,6 @@ int comaps_register_single_map(const char* fullPath) {
 }
 ```
 
----
 
 ## Phase 5: Touch/Gesture Handling (Completed)
 
@@ -890,7 +878,6 @@ Touch handling on iOS uses Flutter's built-in `Listener` widget, **not** native 
 - Touch events naturally flow through Flutter's gesture system
 - This is simpler and avoids Swift↔C++ bridging complexity
 
----
 
 ## Phase 6: Real Device Testing + Code Signing (Current)
 
@@ -937,7 +924,6 @@ Use Xcode Instruments for:
 - Allocations (memory usage)
 - Energy Log (battery impact)
 
----
 
 ## Phase 7: Active Frame Callback (Completed)
 

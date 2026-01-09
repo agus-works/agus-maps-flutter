@@ -13,7 +13,6 @@ The analysis covers:
 6. **Recommended Implementation Path** - Realistic, phased approach
 7. **Risk Assessment & Trade-offs** - Known challenges and limitations
 
----
 
 ## Table of Contents
 
@@ -27,7 +26,6 @@ The analysis covers:
 8. [Risk Assessment](#risk-assessment)
 9. [Success Criteria](#success-criteria)
 
----
 
 ## Current Architecture Analysis
 
@@ -86,7 +84,6 @@ All platforms follow these high-level patterns:
 
 Windows and Linux implementations already use CPU-mediated pixel transfer (glReadPixels → buffer copy). This is **directly analogous to WebGL readPixels + Canvas updates**, suggesting the web implementation would follow a similar pattern with acceptable overhead.
 
----
 
 ## Asset Management Strategy
 
@@ -238,7 +235,6 @@ Emscripten Virtual FS Layers:
 - Support S3/CDN mirror service for map downloads
 - Add storage quota awareness and cleanup prompts
 
----
 
 ## WASM Compilation Strategy
 
@@ -442,7 +438,6 @@ Total (gzipped):          ~2-2.5 MB
 - Android .so: ~8-12 MB (per ABI)
 - WASM is competitive and distributes more easily
 
----
 
 ## Browser Storage Solutions
 
@@ -640,7 +635,6 @@ self.addEventListener('fetch', (event) => {
 });
 ```
 
----
 
 ## Rendering Architecture for Web
 
@@ -800,7 +794,6 @@ self.onmessage = async (e) => {
 **Pros:** Rendering doesn't block Flutter UI  
 **Cons:** Added complexity with OffscreenCanvas browser support
 
----
 
 ## API Surface & Dart-WASM Bridge
 
@@ -952,7 +945,6 @@ void _handlePointerEvent(PointerEvent event) {
 }
 ```
 
----
 
 ## Implementation Phases
 
@@ -1022,7 +1014,6 @@ void _handlePointerEvent(PointerEvent event) {
 - Map update notifications
 - Graceful degradation if network fails
 
----
 
 ## Risk Assessment
 
@@ -1149,7 +1140,6 @@ void _handlePointerEvent(PointerEvent event) {
 
 **Test:** Verify shader load time <100ms on slow device.
 
----
 
 ## Success Criteria
 
@@ -1189,7 +1179,6 @@ void _handlePointerEvent(PointerEvent event) {
 - [ ] Graceful offline fallback if CDN unavailable
 - [ ] Documented in API docs and examples
 
----
 
 ## Recommendations & Next Steps
 
@@ -1246,7 +1235,6 @@ void _handlePointerEvent(PointerEvent event) {
   - IndexedDB for large MWM files (per-file management)
   - Service Worker for static assets (app.js, .wasm)
 
----
 
 ## Appendix: Platform Pattern Mapping
 
@@ -1264,7 +1252,6 @@ void _handlePointerEvent(PointerEvent event) {
 
 **Key Insight:** WASM follows the Windows/Linux pattern (CPU-mediated readPixels) more than iOS/Android, but applies modern web standards (Canvas, Service Workers, IndexedDB).
 
----
 
 ## Conclusion
 

@@ -690,7 +690,6 @@ flutter build windows --release
 - `agus_maps_flutter.dll` (~10MB) - Native CoMaps FFI library
 - `zlib1.dll` (~100KB) - Compression library dependency (from vcpkg)
 
----
 
 ## Goal
 
@@ -708,7 +707,6 @@ Get the Windows example app to:
 - Download manager / storage management
 - Vulkan backend (OpenGL is used for Windows MVP)
 
----
 
 ## Architecture Overview
 
@@ -792,7 +790,6 @@ The Windows plugin (`agus_maps_flutter_plugin.dll`) acts as a bridge between Flu
 | Plugin Class | AgusMapsFlutterPlugin (Swift) | AgusMapsFlutterPlugin (Java) | AgusMapsFlutterPluginCApi (C++) |
 | Architecture | arm64, x86_64 | arm64-v8a, armeabi-v7a, x86_64 | x86_64 only |
 
----
 
 ## File Structure
 
@@ -816,7 +813,6 @@ patches/comaps/
 └── *.patch                      # MSVC compatibility patches
 ```
 
----
 
 ## MethodChannel API
 
@@ -840,7 +836,6 @@ The Windows plugin implements the following MethodChannel methods:
 | CoMaps Data | `Documents/agus_maps_flutter/` |
 | Extraction Marker | `Documents/agus_maps_flutter/.comaps_data_extracted` |
 
----
 
 ## Build Configuration
 
@@ -877,7 +872,6 @@ target_link_libraries(...
 )
 ```
 
----
 
 ## vcpkg Integration
 
@@ -893,7 +887,6 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 }
 ```
 
----
 
 ## Implementation Progress
 
@@ -927,7 +920,6 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 - [ ] Kinetic scrolling (fling)
 - [ ] Map animation smoothness
 
----
 
 ## Acceptance Criteria
 
@@ -939,7 +931,6 @@ vcpkg is used for additional Windows dependencies. The toolchain is automaticall
 - [ ] Map renders at 60fps with minimal CPU usage
 - [ ] Release build is under 150MB
 
----
 
 ## Known Issues & Considerations
 
@@ -1160,7 +1151,6 @@ With `isAnim=false`:
 **Why iOS/macOS/Android work with animation:**
 On these platforms, the render loop is driven by the system's VSync/display link, and the initial screen state may be properly configured before the first frame. Windows uses a custom WGL render loop where the timing differs.
 
----
 
 ## Troubleshooting
 
@@ -1430,7 +1420,6 @@ endif()
 
 **Note:** The symbol texture files (`symbols.sdf`, `symbols.png`) in `example/assets/comaps_data/symbols/` are pre-generated. Regenerating them requires Qt6 tools from CoMaps build system.
 
----
 
 ## References
 
@@ -1440,7 +1429,6 @@ endif()
 - Render Loop Details: [doc/RENDER-LOOP.md](RENDER-LOOP.md)
 - CoMaps drape code: `thirdparty/comaps/libs/drape/`
 
----
 
 
 ### Map Style Error: "Symbol name must be valid for feature"

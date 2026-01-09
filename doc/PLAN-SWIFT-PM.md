@@ -16,7 +16,6 @@ This document outlines the plan to add Swift Package Manager (SwiftPM) support t
 | **CocoaPods** | ✅ Yes | ❌ No (v0.1.7+) | Enterprise, air-gapped, custom SDK locations |
 | **SwiftPM** | ❌ No | ✅ Yes | Standard consumers, simpler setup |
 
----
 
 ## Table of Contents
 
@@ -31,7 +30,6 @@ This document outlines the plan to add Swift Package Manager (SwiftPM) support t
 9. [Open Questions](#open-questions)
 10. [References](#references)
 
----
 
 ## Background
 
@@ -52,7 +50,6 @@ As of Flutter 3.24+, SwiftPM support is available (opt-in). Flutter falls back t
 - **CI detection** - Allows plugin-local prebuilt directories for CI builds
 - **No SwiftPM support** - Consumers with SwiftPM enabled fall back to CocoaPods
 
----
 
 ## Current Architecture
 
@@ -100,7 +97,6 @@ ios/
 └─────────────────────────────────────────────────────────────────┘
 ```
 
----
 
 ## SwiftPM Constraints
 
@@ -198,7 +194,6 @@ Accessing resources in code:
 #endif
 ```
 
----
 
 ## Proposed Architecture
 
@@ -325,7 +320,6 @@ flutter run
 
 **Trade-off:** More manual setup, but full control over SDK location.
 
----
 
 ## Implementation Tasks
 
@@ -383,7 +377,6 @@ flutter run
 - [ ] Update CONTRIBUTING.md
 - [ ] Add CHANGELOG.md entry for vX.Y.Z
 
----
 
 ## CI/CD Changes
 
@@ -462,7 +455,6 @@ Then in `Package.swift`:
     git push
 ```
 
----
 
 ## Migration Path
 
@@ -521,7 +513,6 @@ export AGUS_MAPS_HOME=/path/to/sdk
 flutter clean && flutter run
 ```
 
----
 
 ## Risk Assessment
 
@@ -548,7 +539,6 @@ flutter clean && flutter run
 | File path conflicts | Build warnings | Careful directory naming |
 | Documentation confusion | User frustration | Clear separation in docs |
 
----
 
 ## Open Questions
 
@@ -589,7 +579,6 @@ Once SwiftPM support is added, Flutter will prefer it over CocoaPods.
 
 **Recommendation:** Yes, let SwiftPM be default. Document the opt-out for AGUS_MAPS_HOME users.
 
----
 
 ## References
 
@@ -605,7 +594,6 @@ Once SwiftPM support is added, Flutter will prefer it over CocoaPods.
 ### Related Issues
 - Flutter SwiftPM tracking: [flutter/flutter#126005](https://github.com/flutter/flutter/issues/126005)
 
----
 
 ## Appendix A: Module Map Template
 
@@ -631,7 +619,6 @@ If module maps prove problematic, we can use a bridging header approach:
 
 Note: SwiftPM doesn't officially support bridging headers, but some workarounds exist.
 
----
 
 ## Changelog
 

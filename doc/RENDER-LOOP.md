@@ -2,7 +2,6 @@
 
 This document provides a detailed analysis of the render loop implementations for the Agus Maps Flutter plugin across all supported platforms: iOS, macOS, Android, Windows, and Linux. It serves as a reference for understanding the rendering pipeline, performance characteristics, and potential optimization paths.
 
----
 
 ## Executive Summary
 
@@ -14,7 +13,6 @@ This document provides a detailed analysis of the render loop implementations fo
 | **Windows** | OpenGL -> D3D11 | ❌ **No (CPU Mediated)** | `glReadPixels` -> CPU -> D3D11 Staging -> Shared Texture |
 | **Linux** | OpenGLES | ❌ **No (CPU Mediated)** | `CopyToPixelBuffer` -> CPU -> `FlPixelBufferTexture` (GTK) |
 
----
 
 ## 1. iOS Implementation (Zero-Copy)
 
@@ -173,7 +171,6 @@ Flutter calls this when compositing the frame. No data is copied; Flutter gets a
 ### Removal of CPU Mediation
 **Already Zero-Copy** - no removal needed. This is the reference implementation.
 
----
 
 ## 2. macOS Implementation (Zero-Copy)
 
@@ -239,7 +236,6 @@ void AgusMetalContextFactory::SetPixelBuffer(CVPixelBufferRef pixelBuffer, m2::P
 ### Zero-Copy Status
 ✅ **Yes** - same as iOS.
 
----
 
 ## 3. Android Implementation (Zero-Copy)
 
@@ -367,7 +363,6 @@ static void notifyFlutterFrameReady() {
 ### Zero-Copy Status
 ✅ **Yes** - standard Android EGL/SurfaceTexture pipeline.
 
----
 
 ## 4. Windows Implementation (CPU Mediated)
 
@@ -583,7 +578,6 @@ wglDXUnlockObjectsNV(glHandle, 1, &glObject);
 - **Typical frame time:** ~16-24ms on mid-range hardware (RTX 3060, AMD RX 6600).
 - **Memory bandwidth:** ~500-700 MB/s for 60fps at 1080p.
 
----
 
 ## 5. Linux Implementation (CPU Mediated)
 
@@ -741,7 +735,6 @@ glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, eglImage);
 - **Typical frame time:** ~12-18ms on modern Linux desktops (Intel/AMD integrated graphics).
 - **Memory bandwidth:** ~400-600 MB/s for 60fps at 1080p.
 
----
 
 ## Summary Table
 
@@ -754,7 +747,6 @@ glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, eglImage);
 | **Typical Frame Time (1080p)** | 8-16ms | 8-16ms | 10-20ms | 16-24ms | 12-18ms |
 | **Future Optimization** | N/A | N/A | N/A | ANGLE / WGL_NV_DX_interop | FlTextureGL / DMABUF |
 
----
 
 ## References
 
@@ -789,6 +781,5 @@ glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, eglImage);
 - Active Frame Callback Patch: [`patches/comaps/0012-active-frame-callback.patch`](https://github.com/bangonkali/agus-maps-flutter/blob/main/patches/comaps/0012-active-frame-callback.patch)
 - DrapeEngine Source: `thirdparty/comaps/libs/drape_frontend/frontend_renderer.cpp` (not in repo - vendored)
 
----
 
 *Last updated: January 2026*

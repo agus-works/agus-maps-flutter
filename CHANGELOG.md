@@ -1,3 +1,35 @@
+## 0.1.10
+
+### iOS and macOS Build System Improvements
+
+* **Development Pod header support**: Added automatic header copying at `pod install` time for Development Pods (path dependency) on both iOS and macOS. When using the plugin as a development dependency (e.g., `path: ../agus_maps_flutter`), headers are now copied from `AGUS_MAPS_HOME` during pod installation, fixing "file not found" errors for CoMaps headers like `boost/regex.hpp`.
+
+* **SDK source tracking**: Introduced a marker file (`.sdk_source`) in the `ios/Headers/` and `macos/Headers/` directories to track which SDK the headers were copied from. The build system now detects when `AGUS_MAPS_HOME` changes and automatically refreshes headers, ensuring consumers always have the correct headers for their configured SDK version.
+
+* **Header copying in `prepare_command`**: Both iOS and macOS podspec `prepare_command` blocks now copy headers from `AGUS_MAPS_HOME/headers` to `Headers/comaps/` alongside the XCFramework. This ensures pub.dev consumers have all necessary headers for compilation.
+
+* **Prioritized header search paths** (macOS): Reordered `HEADER_SEARCH_PATHS` in the macOS podspec to prioritize downloaded headers (`Headers/comaps/`) over in-repo thirdparty paths. This ensures consumers using the SDK binaries get consistent header resolution without interference from missing in-repo sources.
+
+### Repository Maintenance
+
+* **Updated `.gitignore`**: Added `macos/Headers/` and `ios/Headers/` to ignore downloaded headers, keeping the repository clean when using SDK binaries.
+
+### Technical Details
+
+* **Development Pod vs. Published Pod behavior**:
+  - **Published pods** (from pub.dev): `prepare_command` runs during `pod install`, copying frameworks and headers
+  - **Development pods** (path dependency): `prepare_command` is skipped; new Ruby code at the top of the podspec handles header copying
+
+* **Header refresh triggers**:
+  1. `Headers/comaps/` directory missing
+  2. `.sdk_source` marker file missing
+  3. `.sdk_source` contains a different path than current `AGUS_MAPS_HOME`
+
+### Migration
+
+No breaking changes. Consumers using `AGUS_MAPS_HOME` will benefit from automatic header management on both iOS and macOS. If you encounter stale headers after changing SDK versions, delete `ios/Headers/` or `macos/Headers/` and run `pod install` again.
+
+
 ## 0.1.9
 
 ### Build System Improvements

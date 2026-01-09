@@ -6,7 +6,6 @@
 - `9f79c20` - fix(macos): window resize breaks map rendering (initial fix)
 - `TBD` - fix(macos): resize instability with rapid events (debouncing + thread safety)
 
----
 
 ## Problem Description
 
@@ -62,7 +61,6 @@ DrawMetalContext(id<MTLDevice> device, id<MTLTexture> renderTexture, ...)
 
 The lambda was stored in `MetalBaseContext::m_drawableRequest` and called every frame to get the drawable. Since `renderTexture` was captured by value, updating `m_renderTexture` member had no effect on what the lambda returned.
 
----
 
 ## Solution
 
@@ -140,7 +138,6 @@ private func nativeResizeSurface(pixelBuffer: CVPixelBuffer, width: Int32, heigh
 }
 ```
 
----
 
 ## Files Changed
 
@@ -151,7 +148,6 @@ private func nativeResizeSurface(pixelBuffer: CVPixelBuffer, width: Int32, heigh
 | `macos/Classes/AgusMetalContextFactory.mm` | Added `g_currentRenderTexture` global, updated constructor and `SetRenderTexture()` |
 | `macos/Classes/AgusMapsFlutterPlugin.swift` | Added `nativeResizeSurface()` wrapper, updated `handleResizeMapSurface()` |
 
----
 
 ## Follow-up Fix: Resize Instability with Rapid Events
 
@@ -268,7 +264,6 @@ extern "C" void agus_native_resize_surface(CVPixelBufferRef pixelBuffer, int32_t
 | `macos/Classes/AgusMetalContextFactory.mm` | Added `#include <mutex>`, `g_textureMutex`, mutex protection |
 | `macos/Classes/agus_maps_flutter_macos.mm` | Added early return check, `MakeFrameActive()` call |
 
----
 
 ## Why macOS-Only?
 
@@ -282,7 +277,6 @@ This fix is specific to macOS because:
 
 The existing `agus_native_on_size_changed()` function is preserved for compatibility with iOS and for cases where only the Framework needs to know about size changes without replacing the underlying texture.
 
----
 
 ## Testing
 
@@ -292,13 +286,11 @@ The existing `agus_native_on_size_changed()` function is preserved for compatibi
 4. Verify map continues to render correctly at new size
 5. Verify pan/zoom gestures still work after resize
 
----
 
 ## Related Issues
 
 - [ISSUE-egl-context-recreation.md](ISSUE-egl-context-recreation.md) - Similar issue on Android with EGL context
 - [RENDER-LOOP.md](RENDER-LOOP.md) - Render loop architecture documentation
 
----
 
 *Created: January 2026*

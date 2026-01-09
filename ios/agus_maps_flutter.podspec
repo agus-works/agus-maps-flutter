@@ -2,9 +2,65 @@
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
 # Run `pod lib lint agus_maps_flutter.podspec` to validate before publishing.
 #
+require 'fileutils'
+
+# ==============================================================================
+# Development Helper: Copy headers and frameworks from AGUS_MAPS_HOME
+# This runs during `pod install` to support Development Pods (path dependency)
+# where prepare_command is skipped.
+#
+# Uses a marker file (.sdk_source) to track the SDK that was used, and re-copies
+# headers/frameworks when AGUS_MAPS_HOME changes or when files are missing.
+# ==============================================================================
+if ENV['AGUS_MAPS_HOME']
+  agus_maps_home = ENV['AGUS_MAPS_HOME']
+  pod_dir = File.dirname(__FILE__)
+  headers_dir = File.join(pod_dir, 'Headers')
+  target_dir = File.join(headers_dir, 'comaps')
+  source_headers = File.join(agus_maps_home, 'headers')
+  marker_file = File.join(headers_dir, '.sdk_source')
+  
+  # Check if we need to update headers:
+  # 1. Headers directory doesn't exist
+  # 2. Marker file doesn't exist (unknown source)
+  # 3. Marker file points to a different SDK path
+  needs_update = false
+  
+  if !File.directory?(target_dir)
+    needs_update = true
+    puts "[agus_maps_flutter] Headers directory missing, will copy from SDK"
+  elsif !File.exist?(marker_file)
+    needs_update = true
+    puts "[agus_maps_flutter] SDK source marker missing, will refresh headers"
+  else
+    previous_sdk = File.read(marker_file).strip
+    if previous_sdk != agus_maps_home
+      needs_update = true
+      puts "[agus_maps_flutter] SDK changed from #{previous_sdk} to #{agus_maps_home}"
+    end
+  end
+  
+  if needs_update && File.directory?(source_headers)
+    puts "[agus_maps_flutter] AGUS_MAPS_HOME detected: #{agus_maps_home}"
+    puts "[agus_maps_flutter] Copying headers to #{target_dir}..."
+    
+    # Remove old headers and copy fresh
+    FileUtils.rm_rf(target_dir) if File.directory?(target_dir)
+    FileUtils.mkdir_p(target_dir)
+    FileUtils.cp_r(Dir.glob("#{source_headers}/*"), target_dir)
+    
+    # Write marker file to track which SDK was used
+    FileUtils.mkdir_p(headers_dir)
+    File.write(marker_file, agus_maps_home)
+    
+    puts "[agus_maps_flutter] Headers copied successfully from #{agus_maps_home}"
+  elsif !needs_update
+    puts "[agus_maps_flutter] Headers are up-to-date from #{agus_maps_home}"
+  end
+end
 Pod::Spec.new do |s|
   s.name             = 'agus_maps_flutter'
-  s.version          = '0.1.9'
+  s.version          = '0.1.10'
   s.summary          = 'High-performance offline maps for Flutter using CoMaps engine.'
   s.description      = <<-DESC
 A Flutter plugin that provides high-performance offline vector map rendering
@@ -57,6 +113,20 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
          mkdir -p Frameworks
          cp -R "$SDK_FRAMEWORK" Frameworks/
          echo "[agus_maps_flutter] Copied from AGUS_MAPS_HOME"
+         
+         # Copy headers
+         SDK_HEADERS="$AGUS_MAPS_HOME/headers"
+         if [ -d "$SDK_HEADERS" ]; then
+             echo "[agus_maps_flutter] Found headers in AGUS_MAPS_HOME"
+             rm -rf Headers/comaps
+             mkdir -p Headers/comaps
+             # Copy contents of headers folder to Headers/comaps using /." syntax
+             cp -R "$SDK_HEADERS/." Headers/comaps/
+             echo "[agus_maps_flutter] Copied headers from AGUS_MAPS_HOME"
+         else
+             echo "[agus_maps_flutter] WARNING: headers not found in $AGUS_MAPS_HOME/headers"
+         fi
+         
          exit 0
       else
          echo "[agus_maps_flutter] WARNING: ${FRAMEWORK_NAME} not found in $AGUS_MAPS_HOME/ios/Frameworks"

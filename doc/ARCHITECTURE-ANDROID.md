@@ -13,7 +13,6 @@
 7. [Why This Works on Older Phones](#why-this-works-on-older-phones)
 8. [Component Deep Dives](#component-deep-dives)
 
----
 
 ## Overview
 
@@ -30,7 +29,6 @@ Unlike web-based maps (Google Maps JS, Leaflet) that constantly download tiles, 
 - Renders **on-device using OpenGL ES 3.0**
 - **Sleeps when idle** - no CPU usage when you're not interacting with the map
 
----
 
 ## Architecture Layers
 
@@ -72,7 +70,6 @@ graph TB
 | **Native** | C++ | Map rendering, touch handling |
 | **Data** | mmap | Zero-copy file access |
 
----
 
 ## Data Flow Diagram
 
@@ -122,7 +119,6 @@ sequenceDiagram
     Drape->>Drape: Request redraw only if needed
 ```
 
----
 
 ## Memory Efficiency
 
@@ -178,7 +174,6 @@ Your Samsung Galaxy S10 has 8GB RAM, but many apps compete for it. With mmap:
 - When you return to the map, only needed pages reload
 - No "out of memory" crashes from large map files
 
----
 
 ## Battery Efficiency
 
@@ -236,7 +231,6 @@ When the map is idle:
 | Slow pan | 100% GPU, 50% CPU | 100% GPU, 20% CPU |
 | Fast zoom | 100% GPU, 80% CPU | 100% GPU, 40% CPU |
 
----
 
 ## Processor Efficiency
 
@@ -292,7 +286,6 @@ base::TaskLoop::PushResult AgusGuiThread::Push(Task && task) {
 - Touch events are processed immediately
 - Scrolling stays smooth even while loading new areas
 
----
 
 ## Why This Works on Older Phones
 
@@ -325,7 +318,6 @@ Our requirements:
 3. **Level-of-detail**: Reduces geometry at low zoom
 4. **Texture compression**: Uses ETC2/ASTC formats
 
----
 
 ## Component Deep Dives
 
@@ -394,7 +386,6 @@ void comaps_touch(int type, int id1, float x1, float y1, ...) {
 }
 ```
 
----
 
 ## Summary
 
@@ -408,7 +399,6 @@ This architecture achieves excellent performance on older devices through:
 
 The result: A map that feels native, runs smoothly on 5-year-old phones, and doesn't drain your battery when you're not using it.
 
----
 
 ## Related Documentation
 

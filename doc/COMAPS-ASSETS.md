@@ -6,7 +6,6 @@ This document provides a comprehensive guide to managing CoMaps assets in the Ag
 - **App developers** integrating the plugin into their Flutter apps
 - **Troubleshooting** when maps fail to load or display incorrectly
 
----
 
 ## Table of Contents
 
@@ -20,7 +19,6 @@ This document provides a comprehensive guide to managing CoMaps assets in the Ag
 8. [Troubleshooting](#troubleshooting)
 9. [Manual Intervention Guide](#manual-intervention-guide)
 
----
 
 ## Overview
 
@@ -65,7 +63,6 @@ The CoMaps rendering engine requires several categories of static data files to 
 
 This avoids duplicating ~200,000+ lines of JSON localization files in the repository.
 
----
 
 ## Asset Categories
 
@@ -137,7 +134,6 @@ This file enables search transliteration (e.g., searching "cafe" finds "café").
 
 See [MWM Map Files](#mwm-map-files) section for details.
 
----
 
 ## Source of Truth: thirdparty/comaps
 
@@ -172,7 +168,6 @@ ls thirdparty/comaps/data/
 # categories.txt       countries_meta.txt  fonts/  ...
 ```
 
----
 
 ## Build-Time Asset Population
 
@@ -255,7 +250,6 @@ flutter:
 
 **Important:** Flutter does NOT recursively include subdirectory contents. Each subdirectory must be listed explicitly.
 
----
 
 ## Runtime Asset Extraction
 
@@ -318,7 +312,6 @@ const fs::path requiredFiles[] = {
 };
 ```
 
----
 
 ## Platform-Specific Behavior
 
@@ -428,7 +421,6 @@ std::string AgusMapsFlutterPlugin::ExtractAllDataFiles() {
 }
 ```
 
----
 
 ## MWM Map Files
 
@@ -574,7 +566,6 @@ flutter:
     - assets/maps/icudt75l.dat
 ```
 
----
 
 ## Troubleshooting
 
@@ -635,7 +626,6 @@ flutter:
 flutter build <platform>
 ```
 
----
 
 ## Manual Intervention Guide
 
@@ -717,7 +707,6 @@ For production apps, host your own MWM files:
    ```
 3. **Configure mirror service** to use your server
 
----
 
 ## Related Documentation
 

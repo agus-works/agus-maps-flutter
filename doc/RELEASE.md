@@ -38,7 +38,6 @@ All example app artifacts include the version tag in the filename (e.g., `-vX.Y.
 | `agus-maps-windows-vX.Y.Z.zip` | Windows app (release, x86_64) | ~150 MB |
 | `agus-maps-linux-vX.Y.Z.zip` | Linux app (release, x86_64) | ~100 MB |
 
----
 
 ## Installing the Example App
 
@@ -103,7 +102,6 @@ bundletool build-apks --bundle=agus-maps-android-vX.Y.Z.aab --output=agus-maps.a
 bundletool install-apks --apks=agus-maps.apks
 ```
 
----
 
 ### iOS Simulator
 
@@ -155,7 +153,6 @@ xcrun simctl list devices
 xcrun simctl boot "iPhone 14"
 ```
 
----
 
 ### macOS
 
@@ -197,7 +194,6 @@ Since the app is unsigned, macOS will show a security warning. To bypass:
 - Apple Silicon (M1/M2/M3) or Intel Mac
 - ~500 MB free disk space for map data
 
----
 
 ### Windows (x86_64)
 
@@ -243,7 +239,6 @@ Since the app is unsigned, Windows may show a SmartScreen warning:
 - **Not zero-copy rendering**: Windows uses CPU-mediated frame transfer (glReadPixels). This may result in slightly higher CPU usage during map animations compared to iOS/macOS/Android.
 - **ARM64 not supported**: ARM64 Windows devices (Snapdragon X, etc.) are not supported.
 
----
 
 ### Windows Troubleshooting
 
@@ -254,7 +249,6 @@ Since the app is unsigned, Windows may show a SmartScreen warning:
 | Blank/white map | Check map data files exist in `Documents\agus_maps_flutter\` |
 | Poor performance | Update graphics drivers; ensure hardware OpenGL is available |
 
----
 
 ### Linux (x86_64)
 
@@ -317,7 +311,6 @@ chmod +x agus_maps_flutter_example
 - **ARM64 not supported**: ARM64 Linux devices are not supported.
 - **Wayland**: The app runs under XWayland on Wayland systems. Native Wayland support is pending Flutter upstream.
 
----
 
 ### Linux Troubleshooting
 
@@ -329,7 +322,6 @@ chmod +x agus_maps_flutter_example
 | Poor performance | Update Mesa drivers: `sudo apt-get upgrade mesa-*` |
 | Permission denied | Run `chmod +x agus_maps_flutter_example` |
 
----
 
 ## Using Pre-built Libraries in Your Project
 
@@ -344,7 +336,7 @@ If you're integrating the Agus Maps Flutter plugin into your own project, you mu
 ```yaml
 # pubspec.yaml
 dependencies:
-  agus_maps_flutter: ^0.1.9
+  agus_maps_flutter: ^0.1.10
 ```
 
 **Step 2: Download the unified binary package**
@@ -474,7 +466,6 @@ The `linux/CMakeLists.txt` checks:
 
 If not found, CMake will fail with a `FATAL_ERROR` and download instructions.
 
----
 
 ## Map Data
 
@@ -501,7 +492,6 @@ The example app includes minimal map data for testing. For production use, you'l
     └── <region>.mwm
 ```
 
----
 
 ## Troubleshooting
 
@@ -529,7 +519,6 @@ The example app includes minimal map data for testing. For production use, you'l
 | "Cannot verify developer" | Right-click > Open > Open |
 | Blank map | Ensure map data files are in place |
 
----
 
 ## Building from Source
 
@@ -644,7 +633,6 @@ rm -rf thirdparty/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed development setup instructions.
 
----
 
 ## Version History
 

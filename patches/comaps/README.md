@@ -25,7 +25,6 @@ The patch application scripts (`apply_comaps_patches.sh` / `apply_comaps_patches
 
 This means patches for uninitialized submodules won't cause the entire process to fail.
 
----
 
 ## Patch Catalog
 
@@ -50,7 +49,6 @@ Flutter plugins extract map data files to the filesystem rather than reading dir
 - Map classification data, style files, and other resources would fail to load
 - The map would not render correctly or crash on startup
 
----
 
 ### 0003-transliteration-directory-resources.patch
 
@@ -74,7 +72,6 @@ The ICU library needs its data file for transliteration support. When resources 
 - Search functionality that relies on transliteration (e.g., converting between scripts) would not work
 - The app might crash or silently fail to provide proper search results
 
----
 
 ### 0004-fix-android-gl-function-pointers.patch
 
@@ -103,7 +100,6 @@ On Android, taking the address of GL symbols like `::glGenVertexArrays` returns 
 - Map rendering would be completely broken or crash immediately
 - Shader compilation errors would be harder to diagnose
 
----
 
 ### 0005-libs-map-framework-cpp.patch
 
@@ -126,7 +122,6 @@ Framework initialization involves many components. When debugging startup issues
 
 **Status:** Debug/Development patch - could potentially be removed in production builds.
 
----
 
 ### 0006-libs-map-routing_manager-cpp.patch
 
@@ -150,7 +145,6 @@ Routing initialization is complex and involves multiple factories. Debug logging
 
 **Status:** Debug/Development patch - could potentially be removed in production builds.
 
----
 
 ### 0007-libs-routing-routing_session-cpp.patch
 
@@ -174,7 +168,6 @@ Session state changes need visibility for debugging routing-related crashes or h
 
 **Status:** Debug/Development patch - could potentially be removed in production builds.
 
----
 
 ### 0008-libs-routing-speed_camera_manager-cpp.patch
 
@@ -196,7 +189,6 @@ In embedded contexts, the speed camera clear callback might not be registered. C
 - App would crash when `SpeedCameraManager::Reset()` is called without a registered callback
 - Crash during routing session cleanup
 
----
 
 ### 0009-fix-android-gl3stub-include-path.patch
 
@@ -218,7 +210,6 @@ The project targets Android API 24+ which has native GLES 3.0 support. Using nat
 - Build would fail looking for the `gl3stub.h` file in the CoMaps Android SDK path
 - Would need to maintain the complex gl3stub loading mechanism
 
----
 
 ### 0010-fix-ios-cmake-missing-files.patch
 
@@ -247,7 +238,6 @@ When CoMaps is used as a subdirectory of another project (like a Flutter plugin)
 - Windows builds would fail with "too many sections" errors
 - Xcode/Visual Studio multi-config builds would break
 
----
 
 ### 0011-3party-icu-CMakeLists-txt.patch
 
@@ -267,7 +257,6 @@ This file is required for ICU resource bundle conversion functionality. Without 
 - Linker errors for missing ICU symbols
 - ICU functionality would be incomplete
 
----
 
 ### 0012-active-frame-callback.patch
 
@@ -293,7 +282,6 @@ Flutter plugins need to know when the map texture has new content to display. Wi
 - No clean way to know when map content actually changed
 - Higher battery consumption and CPU usage
 
----
 
 ### 0015-libs-platform-platform_mac-mm.patch
 
@@ -320,7 +308,6 @@ When building for macOS without the full app context, certain platform functions
 - Linker errors for missing Platform functions on macOS
 - macOS build would fail
 
----
 
 ### 0016-libs-search-CMakeLists-txt.patch
 
@@ -341,7 +328,6 @@ When building as a library (not a full application), test/quality tools aren't n
 - Unnecessary test code would be compiled
 - Potential build failures from test dependencies
 
----
 
 ### 0017-libs-shaders-metal_program_pool-mm.patch
 
@@ -366,7 +352,6 @@ Flutter plugins package Metal shaders separately from the main app. The shader l
 - Metal shader library would not be found in Flutter plugin builds
 - Map rendering would fail on iOS/macOS with Metal
 
----
 
 ### 0018-fix-shutdown-threads-null-safety.patch
 
@@ -389,7 +374,6 @@ During app termination, static destruction order can cause `Platform` to be dest
 - Crash from double-shutdown attempts
 - Undefined behavior from null pointer access
 
----
 
 ### 0019-vulkan-windows-surface.patch
 
@@ -410,7 +394,6 @@ Windows requires specific Vulkan extensions for window surface creation and memo
 - Vulkan rendering would fail on Windows
 - No window surface could be created
 
----
 
 ### 0022-3party-freetype-CMakeLists-txt.patch
 
@@ -430,7 +413,6 @@ When building as a static library for bundling, FreeType's install rules conflic
 - CMake install rules from FreeType would pollute the parent project
 - Potential conflicts during installation
 
----
 
 ### 0024-3party-jansson-jansson_config-h.patch
 
@@ -451,7 +433,6 @@ MSVC doesn't have GCC's `__atomic` or `__sync` builtins. Jansson needs to use al
 - Compilation errors on MSVC about undefined `__atomic_*` functions
 - Build would fail on Windows
 
----
 
 ### 0025-3party-opening_hours-rules_evaluation-cpp.patch
 
@@ -472,7 +453,6 @@ Windows doesn't have POSIX `localtime_r`. Windows provides `localtime_s` with re
 - Compilation error on Windows: `localtime_r` not found
 - Opening hours parsing would not compile
 
----
 
 ### 0026-3party-protobuf-CMakeLists-txt.patch
 
@@ -493,7 +473,6 @@ Windows `wingdi.h` defines `#define ERROR 0`, which conflicts with protobuf's `G
 - Protobuf compilation fails on Windows with macro redefinition errors
 - Build errors about `ERROR` being defined as `0`
 
----
 
 ### 0028-libs-base-logging-cpp.patch
 
@@ -513,7 +492,6 @@ On Windows MSVC, `std::toupper(char)` can trigger an assertion failure if the ch
 - Debug assertion failure on Windows with non-ASCII log level strings
 - Potential crash in debug builds
 
----
 
 ### 0029-libs-base-string_utils-hpp.patch
 
@@ -534,7 +512,6 @@ The original code passes `char***` where `char**` is expected, causing undefined
 - Integer parsing would fail or produce garbage results on Windows
 - Potential crashes from type confusion
 
----
 
 ### 0030-libs-base-thread_checker-cpp.patch
 
@@ -556,7 +533,6 @@ Embedded applications (like Flutter plugins) have different threading models. Ob
 - Thread checker assertions would fire in legitimate embedded usage patterns
 - Crashes in debug builds from thread checker failures
 
----
 
 ### 0031-libs-base-thread_checker-hpp.patch
 
@@ -580,7 +556,6 @@ Must match the implementation in the .cpp file. Header changes allow the compile
 - Mismatched definitions between header and implementation
 - Thread checker wouldn't be fully disabled
 
----
 
 ### 0032-libs-base-timer-cpp.patch
 
@@ -600,7 +575,6 @@ Same as 0028 - Windows MSVC debug runtime asserts on negative character values.
 - Debug assertion failure when parsing timestamps with certain characters
 - Crash in debug builds
 
----
 
 ### 0033-libs-drape-drape_tests-gl_functions-cpp.patch
 
@@ -621,7 +595,6 @@ Patch 0004 added a `debugName` parameter to `GLFunctions::glShaderSource`. Test 
 - Test compilation fails due to signature mismatch
 - Drape tests would not build
 
----
 
 ### 0034-libs-drape-dynamic_texture-hpp.patch
 
@@ -641,7 +614,6 @@ Windows `WinBase.h` defines `FindResource` as `FindResourceW` or `FindResourceA`
 - Compilation error: `FindResource` method gets macro-expanded
 - drape library won't compile on Windows
 
----
 
 ### 0035-libs-drape-framebuffer-hpp.patch
 
@@ -660,7 +632,6 @@ Same as 0034 - framebuffer.hpp also uses code that conflicts with the Windows ma
 **Without this patch:**
 - Same compilation errors as 0034 but in different header
 
----
 
 ### 0036-libs-drape-gl_functions-hpp.patch
 
@@ -680,7 +651,6 @@ Header must match implementation changed in patch 0004. Default parameter mainta
 - Header/implementation mismatch
 - Existing code calling `glShaderSource` would fail to compile
 
----
 
 ### 0037-libs-drape-shader-cpp.patch
 
@@ -703,7 +673,6 @@ Shader compilation can fail transiently on some drivers. Fatal crashes prevent d
 - No retry for transient driver issues
 - Harder to diagnose shader problems
 
----
 
 ### 0038-libs-drape-texture-hpp.patch
 
@@ -722,7 +691,6 @@ Same Windows macro conflict issue in the texture header.
 **Without this patch:**
 - Same compilation errors in texture-related code
 
----
 
 ### 0039-libs-drape-tm_read_resources-hpp.patch
 
@@ -743,7 +711,6 @@ Pattern files may have Windows line endings. `std::getline` leaves `\r` at end o
 - Pattern parsing fails with Windows-format files
 - `\r` characters would be part of pattern data
 
----
 
 ### 0040-libs-drape-vertex_array_buffer-cpp.patch
 
@@ -765,7 +732,6 @@ Shader compilers may optimize out unused attributes. The original assert crashes
 - Crash when shader compiler optimizes out an attribute
 - Cannot use shaders with optimized attributes
 
----
 
 ### 0041-libs-drape_frontend-frontend_renderer-cpp.patch
 
@@ -786,7 +752,6 @@ This is the actual integration point for the callback mechanism created in patch
 - Active frame callback would never be invoked
 - Patch 0012 would be useless
 
----
 
 ### 0042-libs-indexer-categories_holder-cpp.patch
 
@@ -805,7 +770,6 @@ Same Windows MSVC debug runtime issue as patches 0028, 0032.
 **Without this patch:**
 - Debug assertion failure when processing category names
 
----
 
 ### 0043-libs-indexer-editable_map_object-cpp.patch
 
@@ -825,7 +789,6 @@ Same Windows MSVC debug runtime issue for character classification functions.
 **Without this patch:**
 - Debug assertion failures when validating flats/phone numbers
 
----
 
 ### 0044-libs-indexer-search_string_utils-cpp.patch
 
@@ -844,7 +807,6 @@ Same Windows MSVC debug runtime issue.
 **Without this patch:**
 - Debug assertion failure in search token processing
 
----
 
 ### 0045-libs-platform-local_country_file_utils-cpp.patch
 
@@ -863,7 +825,6 @@ Same Windows MSVC debug runtime issue.
 **Without this patch:**
 - Debug assertion failure when parsing map version strings
 
----
 
 ### 0046-libs-platform-platform_win-cpp.patch
 
@@ -882,7 +843,6 @@ Without the `std::` prefix, the compiler might find wrong `bind` overloads depen
 **Without this patch:**
 - Potential compilation errors or wrong function binding
 
----
 
 ### 0047-libs-routing-lanes-lanes_parser-cpp.patch
 
@@ -901,7 +861,6 @@ Same Windows MSVC debug runtime issue for character classification.
 **Without this patch:**
 - Debug assertion failure when parsing lane information
 
----
 
 ### 0048-libs-routing-routing_quality-api-google-google_api-cpp.patch
 
@@ -922,7 +881,6 @@ Windows `struct tm` doesn't have `tm_gmtoff` member. Need platform-specific code
 **Without this patch:**
 - Compilation error on Windows: `tm_gmtoff` not a member of `tm`
 
----
 
 ### 0049-libs-search-latlon_match-cpp.patch
 
@@ -941,7 +899,6 @@ Same Windows MSVC debug runtime issue.
 **Without this patch:**
 - Debug assertion failure when parsing latitude/longitude
 
----
 
 ### 0050-libs-search-processor-cpp.patch
 
@@ -961,7 +918,6 @@ Same Windows MSVC debug runtime issue.
 **Without this patch:**
 - Debug assertion failures in search processing
 
----
 
 ### 0051-libs-search-search_quality-samples_generation_tool-samples_generation_tool-cpp.patch
 
@@ -980,7 +936,6 @@ Same Windows MSVC debug runtime issue.
 **Without this patch:**
 - Debug assertion failure in samples generation tool
 
----
 
 ### 0052-libs-shaders-gl_program_pool-cpp.patch
 
@@ -1001,7 +956,6 @@ Windows builds using ANGLE (EGL/GLES emulation) need GLES shader version strings
 - Shader compilation fails on Windows with wrong GLSL version
 - Map rendering broken on Windows
 
----
 
 ### 0053-libs-transit-transit_schedule-cpp.patch
 
@@ -1020,7 +974,6 @@ Same as patch 0025 - transit schedule needs thread-safe time conversion.
 **Without this patch:**
 - Compilation error on Windows in transit module
 
----
 
 ### 0054-3party-opening_hours-CMakeLists-txt.patch
 
@@ -1039,7 +992,6 @@ Unity builds combine many source files, exceeding MSVC's default object section 
 **Without this patch:**
 - Build error: "file too big" or "too many sections" on Windows
 
----
 
 ### 0059-libs-platform-flutter-plugin-support.patch
 
@@ -1168,7 +1120,6 @@ Flutter plugins cannot use Qt because:
 | **Linux** | `src/agus_platform_linux.cpp` (HTTP stubs only) + `src/agus_maps_flutter_linux.cpp` (Platform class) |
 | iOS/macOS | Handled by CoMaps' own platform files |
 
----
 
 ### 0060-3party-gflags-skip-install.patch
 
@@ -1189,7 +1140,6 @@ Flutter Windows builds use generator expressions in install prefix (`$<TARGET_FI
 - CMake configuration fails on Flutter Windows builds
 - Error about invalid characters in path
 
----
 
 ### 0061-3party-protobuf-stubs-time.patch
 
@@ -1210,7 +1160,6 @@ Windows `winbase.h` defines `GetCurrentTime` as a macro. Protobuf has a `GetCurr
 **Without this patch:**
 - Protobuf compilation fails with macro expansion errors
 
----
 
 ### 0062-libs-platform-gui_thread_win-cpp.patch
 
@@ -1232,7 +1181,6 @@ The platform library needs a `GuiThread` implementation for Windows without Qt. 
 - Linker error: missing `GuiThread::Push` on Windows
 - Cannot post tasks to GUI thread
 
----
 
 ### 0063-3party-boost-qvm-quat_traits-hpp.patch
 
@@ -1251,7 +1199,6 @@ Some compilers reject the `template` keyword in this context when not in a depen
 **Without this patch:**
 - Compilation errors with certain compilers in quaternion code
 
----
 
 ### 0064-3party-boost-gil-algorithm-hpp.patch
 
@@ -1270,7 +1217,6 @@ Same as patch 0063 - template keyword syntax issue.
 **Without this patch:**
 - Compilation errors in image processing code
 
----
 
 ### 0065-3party-jansson-hashtable_seed-undef-long.patch
 
@@ -1290,7 +1236,6 @@ In Unity builds, `dtoa.c` defines `#define Long int`. This leaks to `hashtable_s
 - Unity build fails: "DWORD followed by int is illegal"
 - Windows header parsing errors
 
----
 
 ### 0066-3party-jansson-dtoa-undef-long-end.patch
 
@@ -1310,7 +1255,6 @@ In Unity builds, `dtoa.c` defines `#define Long int`. This leaks to `hashtable_s
 - Unity build errors in files compiled after dtoa.c
 - Windows header conflicts with `Long` macro
 
----
 
 ### 0067-3party-jansson-disable-unity-build.patch
 
@@ -1332,7 +1276,6 @@ Even with patches 0065 and 0066, jansson's `dtoa.c` macro issues are fragile in 
 
 **Note:** This patch, combined with 0065 and 0066, provides defense in depth. Any one of them might be sufficient, but having all three ensures robustness.
 
----
 
 ## Policy
 
@@ -1351,7 +1294,6 @@ The following patches are primarily for debugging and could potentially be remov
 The following patches have overlapping functionality and could be consolidated:
 - **0065, 0066, 0067** - All address jansson Unity build issues. Patch 0067 alone might be sufficient.
 
----
 
 ### 0068-libs-drape-metal-mtlviewport-init.patch
 
@@ -1372,7 +1314,6 @@ The following patches have overlapping functionality and could be consolidated:
 - iOS and macOS builds fail with: `error: no matching constructor for initialization of 'MTLViewport'`
 - The drape (rendering) library cannot be compiled for Apple platforms
 
----
 
 .\scripts\apply_comaps_patches.ps1
 ```

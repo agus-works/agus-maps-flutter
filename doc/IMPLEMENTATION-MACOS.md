@@ -59,7 +59,6 @@ flutter build macos --release
 - Performance: Full speed, minimal battery usage
 - App size: ~100MB (stripped, compressed)
 
----
 
 ## Goal
 
@@ -81,7 +80,6 @@ This matches how CoMaps/Organic Maps operates: maps are stored as standalone `.m
 
 Those come after we have a repeatable dependency + data workflow and a stable FFI boundary.
 
----
 
 ## Architecture Overview
 
@@ -150,7 +148,6 @@ The following files are **mostly identical** between iOS and macOS:
 | `AgusPlatformXXX.h/.mm` | `AgusPlatformIOS` | `AgusPlatformMacOS` | Path handling differs |
 | `agus_maps_flutter_xxx.mm` | `agus_maps_flutter_ios.mm` | `agus_maps_flutter_macos.mm` | macOS has `g_metalContextFactory` |
 
----
 
 ## XCFramework Distribution
 
@@ -198,7 +195,6 @@ If the XCFramework is not found, `pod install` will fail with an error.
 |----------------|------------|-------------------|
 | 0.0.1 | v2025.12.28-2 | agus-binaries-macos.tar.gz |
 
----
 
 ## File Structure
 
@@ -227,7 +223,6 @@ macos/
 
 **Note:** Unlike iOS, the macOS `AgusBridge.h` includes `agus_native_resize_surface()` for handling window resize. The iOS version does not have this function since iOS apps don't support window resizing.
 
----
 
 ## Implementation Steps
 
@@ -285,7 +280,6 @@ Create `scripts/bootstrap_macos.sh`:
 - Build or download XCFramework (manual download for consumers)
 - Copy Metal shaders
 
----
 
 ## Build Configuration
 
@@ -329,7 +323,6 @@ s.frameworks = [
 ]
 ```
 
----
 
 ## CI/CD Integration
 
@@ -386,7 +379,6 @@ build-release:
       depends_on: [build-ios, build-android, build-macos]
 ```
 
----
 
 ## Acceptance Criteria
 
@@ -400,7 +392,6 @@ build-release:
 - [ ] Release build is under 150MB
 - [ ] Bootstrap script works on fresh checkout
 
----
 
 ## Known Issues & Considerations
 
@@ -462,7 +453,6 @@ macOS apps distributed via App Store must be sandboxed:
 
 We target **12.0** to match iOS 15.6 parity and ensure modern Metal features.
 
----
 
 ## References
 
@@ -472,6 +462,5 @@ We target **12.0** to match iOS 15.6 parity and ensure modern Metal features.
 - CI/CD Plan: [doc/IMPLEMENTATION-CI-CD.md](IMPLEMENTATION-CI-CD.md)
 - CoMaps macOS code: `thirdparty/comaps/platform/platform_mac.mm`
 
----
 
 *Last updated: January 2026*
