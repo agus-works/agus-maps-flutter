@@ -4,6 +4,17 @@
 
 * **iOS Release build failure** (critical): Fixed missing `GCC_PREPROCESSOR_DEFINITIONS` configuration overrides for Debug/Release builds in the iOS podspec. Without these, CoMaps' `base/base.hpp` triggers a static assertion: `Either Debug or Release should be defined, but not both`. This affected pub.dev consumers building for iOS in Release mode. The fix adds `DEBUG=1` for Debug builds and `RELEASE=1 NDEBUG=1` for Release/Profile builds, matching the macOS podspec.
 
+### Documentation
+
+* **New Build Configuration Guide**: Added `doc/BUILD-CONFIGURATION.md` to comprehensively document build configurations (Debug/Release/Profile), preprocessor definitions, and platform-specific build details.
+* **Release Guide Update**: Updated `doc/RELEASE.md` to reflect the deprecation of individual binary downloads. It now focuses on the Unified Binary Package and provides detailed instructions for installing pre-built Example Apps on all platforms.
+
+### Release & Distribution
+
+* **Deprecated Individual Binary Downloads**: The release workflow now only distributes the unified `agus-maps-sdk`. Individual platform zip files (e.g., `agus-binaries-ios.zip`) are no longer generated to streamline distribution.
+* **Release Artifacts Cleanup**: The `devops.yml` workflow was updated to stop uploading deprecated artifacts.
+
+
 ## 0.1.10
 
 ### iOS and macOS Build System Improvements
