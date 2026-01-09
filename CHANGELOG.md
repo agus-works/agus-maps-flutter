@@ -1,3 +1,9 @@
+## 0.1.11
+
+### Bug Fixes
+
+* **iOS Release build failure** (critical): Fixed missing `GCC_PREPROCESSOR_DEFINITIONS` configuration overrides for Debug/Release builds in the iOS podspec. Without these, CoMaps' `base/base.hpp` triggers a static assertion: `Either Debug or Release should be defined, but not both`. This affected pub.dev consumers building for iOS in Release mode. The fix adds `DEBUG=1` for Debug builds and `RELEASE=1 NDEBUG=1` for Release/Profile builds, matching the macOS podspec.
+
 ## 0.1.10
 
 ### iOS and macOS Build System Improvements

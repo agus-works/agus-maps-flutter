@@ -60,7 +60,7 @@ if ENV['AGUS_MAPS_HOME']
 end
 Pod::Spec.new do |s|
   s.name             = 'agus_maps_flutter'
-  s.version          = '0.1.10'
+  s.version          = '0.1.11'
   s.summary          = 'High-performance offline maps for Flutter using CoMaps engine.'
   s.description      = <<-DESC
 A Flutter plugin that provides high-performance offline vector map rendering
@@ -299,12 +299,13 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
     # Preprocessor definitions
     # CoMaps requires either DEBUG or RELEASE/NDEBUG to be defined (see base/base.hpp)
     # Base definitions that apply to all configurations
-    'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) OMIM_METAL_AVAILABLE=1 PLATFORM_MAC=1 PLATFORM_DESKTOP=1',
+    # OMIM_METAL_AVAILABLE is defined in drape_global.hpp (Apple-specific), so we don't need it here.
+    'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) PLATFORM_MAC=1 PLATFORM_DESKTOP=1',
     # Debug configuration needs DEBUG explicitly defined
-    'GCC_PREPROCESSOR_DEFINITIONS[config=Debug]' => '$(inherited) OMIM_METAL_AVAILABLE=1 PLATFORM_MAC=1 PLATFORM_DESKTOP=1 DEBUG=1',
+    'GCC_PREPROCESSOR_DEFINITIONS[config=Debug]' => '$(inherited) PLATFORM_MAC=1 PLATFORM_DESKTOP=1 DEBUG=1',
     # Release configuration needs RELEASE and NDEBUG explicitly
-    'GCC_PREPROCESSOR_DEFINITIONS[config=Release]' => '$(inherited) OMIM_METAL_AVAILABLE=1 PLATFORM_MAC=1 PLATFORM_DESKTOP=1 RELEASE=1 NDEBUG=1',
-    'GCC_PREPROCESSOR_DEFINITIONS[config=Profile]' => '$(inherited) OMIM_METAL_AVAILABLE=1 PLATFORM_MAC=1 PLATFORM_DESKTOP=1 RELEASE=1 NDEBUG=1',
+    'GCC_PREPROCESSOR_DEFINITIONS[config=Release]' => '$(inherited) PLATFORM_MAC=1 PLATFORM_DESKTOP=1 RELEASE=1 NDEBUG=1',
+    'GCC_PREPROCESSOR_DEFINITIONS[config=Profile]' => '$(inherited) PLATFORM_MAC=1 PLATFORM_DESKTOP=1 RELEASE=1 NDEBUG=1',
   }
 
   s.swift_version = '5.0'
