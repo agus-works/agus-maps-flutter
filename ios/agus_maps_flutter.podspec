@@ -15,23 +15,31 @@ require 'fileutils'
 if ENV['AGUS_MAPS_HOME']
   agus_maps_home = ENV['AGUS_MAPS_HOME']
   pod_dir = File.dirname(__FILE__)
+  
+  # Headers Config
   headers_dir = File.join(pod_dir, 'Headers')
-  target_dir = File.join(headers_dir, 'comaps')
+  target_headers = File.join(headers_dir, 'comaps')
   source_headers = File.join(agus_maps_home, 'headers')
+  
+  # Resources Config
+  target_resources = File.join(pod_dir, 'Resources')
+  source_resources = File.join(agus_maps_home, 'ios', 'Frameworks', 'Resources')
+  if !File.directory?(source_resources)
+     source_resources = File.join(agus_maps_home, 'ios', 'Resources')
+  end
+
   marker_file = File.join(headers_dir, '.sdk_source')
   
-  # Check if we need to update headers:
-  # 1. Headers directory doesn't exist
-  # 2. Marker file doesn't exist (unknown source)
-  # 3. Marker file points to a different SDK path
+  # Check update conditions:
+  # 1. Artifacts missing
+  # 2. Marker missing or changed
   needs_update = false
-  
-  if !File.directory?(target_dir)
+  if !File.directory?(target_headers) || !File.directory?(target_resources)
     needs_update = true
-    puts "[agus_maps_flutter] Headers directory missing, will copy from SDK"
+    puts "[agus_maps_flutter] Missing artifacts, will copy from SDK"
   elsif !File.exist?(marker_file)
     needs_update = true
-    puts "[agus_maps_flutter] SDK source marker missing, will refresh headers"
+    puts "[agus_maps_flutter] SDK marker missing, will refresh"
   else
     previous_sdk = File.read(marker_file).strip
     if previous_sdk != agus_maps_home
@@ -40,27 +48,39 @@ if ENV['AGUS_MAPS_HOME']
     end
   end
   
-  if needs_update && File.directory?(source_headers)
+  if needs_update
     puts "[agus_maps_flutter] AGUS_MAPS_HOME detected: #{agus_maps_home}"
-    puts "[agus_maps_flutter] Copying headers to #{target_dir}..."
     
-    # Remove old headers and copy fresh
-    FileUtils.rm_rf(target_dir) if File.directory?(target_dir)
-    FileUtils.mkdir_p(target_dir)
-    FileUtils.cp_r(Dir.glob("#{source_headers}/*"), target_dir)
-    
-    # Write marker file to track which SDK was used
+    # Copy Headers
+    if File.directory?(source_headers)
+        FileUtils.rm_rf(target_headers)
+        FileUtils.mkdir_p(target_headers)
+        FileUtils.cp_r(Dir.glob("#{source_headers}/*"), target_headers)
+        puts "[agus_maps_flutter] Copied headers"
+    else
+        puts "[agus_maps_flutter] WARNING: Headers not found in #{source_headers}"
+    end
+
+    # Copy Resources (Metal shaders)
+    if File.directory?(source_resources)
+        # Only overwrite Resources if they exist in SDK
+        FileUtils.mkdir_p(target_resources)
+        FileUtils.cp_r(Dir.glob("#{source_resources}/*"), target_resources)
+        puts "[agus_maps_flutter] Copied resources from #{source_resources}"
+    else 
+        puts "[agus_maps_flutter] WARNING: Resources not found in #{source_resources}"
+    end
+
+    # Update marker
     FileUtils.mkdir_p(headers_dir)
     File.write(marker_file, agus_maps_home)
-    
-    puts "[agus_maps_flutter] Headers copied successfully from #{agus_maps_home}"
   elsif !needs_update
-    puts "[agus_maps_flutter] Headers are up-to-date from #{agus_maps_home}"
+     puts "[agus_maps_flutter] Artifacts up-to-date from #{agus_maps_home}"
   end
 end
 Pod::Spec.new do |s|
   s.name             = 'agus_maps_flutter'
-  s.version          = '0.1.11'
+  s.version          = '0.1.12'
   s.summary          = 'High-performance offline maps for Flutter using CoMaps engine.'
   s.description      = <<-DESC
 A Flutter plugin that provides high-performance offline vector map rendering
@@ -130,6 +150,22 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
          exit 0
       else
          echo "[agus_maps_flutter] WARNING: ${FRAMEWORK_NAME} not found in $AGUS_MAPS_HOME/ios/Frameworks"
+      fi
+
+      # Copy Resources (Metal shaders)
+      # Check both Frameworks/Resources (if unzipped into Frameworks) and Resources/ (if sibling)
+      SDK_RESOURCES="$AGUS_MAPS_HOME/ios/Frameworks/Resources"
+      if [ ! -d "$SDK_RESOURCES" ]; then
+          SDK_RESOURCES="$AGUS_MAPS_HOME/ios/Resources"
+      fi
+      
+      if [ -d "$SDK_RESOURCES" ]; then
+          echo "[agus_maps_flutter] Found resources in $SDK_RESOURCES"
+          mkdir -p Resources
+          cp -R "$SDK_RESOURCES/." Resources/
+          echo "[agus_maps_flutter] Copied resources from AGUS_MAPS_HOME"
+      else
+          echo "[agus_maps_flutter] WARNING: Resources not found in AGUS_MAPS_HOME (shaders may be missing)"
       fi
     fi
     

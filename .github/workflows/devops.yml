@@ -251,8 +251,10 @@ jobs:
 
       - name: Create iOS Binaries Archive
         run: |
+          mkdir -p build/agus-binaries-ios/Resources
+          cp ios/Resources/shaders_metal.metallib build/agus-binaries-ios/Resources/
           cd build/agus-binaries-ios
-          zip -r ../agus-binaries-ios.zip CoMaps.xcframework
+          zip -r ../agus-binaries-ios.zip CoMaps.xcframework Resources
           ls -lh ../agus-binaries-ios.zip
 
       - name: Upload iOS Binaries Artifact
@@ -274,8 +276,10 @@ jobs:
 
       - name: Create macOS Binaries Archive
         run: |
+          mkdir -p build/agus-binaries-macos/Resources
+          cp macos/Resources/shaders_metal.metallib build/agus-binaries-macos/Resources/
           cd build/agus-binaries-macos
-          zip -r ../agus-binaries-macos.zip CoMaps.xcframework
+          zip -r ../agus-binaries-macos.zip CoMaps.xcframework Resources
           ls -lh ../agus-binaries-macos.zip
 
       - name: Upload macOS Binaries Artifact

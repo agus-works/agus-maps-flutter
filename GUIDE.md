@@ -68,7 +68,7 @@ GitHub Actions builds are detected via `CI=true`. The workflow:
 
 For developers using the published plugin:
 
-1. Add dependency: `agus_maps_flutter: ^0.1.11`
+1. Add dependency: `agus_maps_flutter: ^0.1.12`
 2. Download `agus-maps-sdk-v0.1.7.zip` from [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases)
 3. Extract and set environment variable:
    ```bash

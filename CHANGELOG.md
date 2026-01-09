@@ -1,3 +1,11 @@
+## 0.1.12
+
+### Bug Fixes
+
+* **Missing Metal Shaders in Release Binaries**: Fixed a critical packaging issue where `shaders_metal.metallib` was omitted from the `agus-binaries-ios.zip` and `agus-binaries-macos.zip` release artifacts. This caused runtime crashes on iOS and macOS (specifically `CHECK(libPath != nil) shaders_metal.metallib not found in any bundle!`). The CI/CD workflow and local build scripts now correctly package the `Resources` directory containing the compiled shaders.
+
+* **Development Pod Resource Copying**: Updated the `podspec` development helper script (used when the plugin is a local path dependency) to copy `Resources` (shaders) from `AGUS_MAPS_HOME` in addition to headers. This ensures that local example apps and development workflows correctly include the necessary Metal shaders.
+
 ## 0.1.11
 
 ### Bug Fixes

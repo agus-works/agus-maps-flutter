@@ -1024,7 +1024,9 @@ build_ios() {
     
     # Create archive
     pushd "$output_dir" >/dev/null
-    zip -r "$BUILD_DIR/agus-binaries-ios.zip" "CoMaps.xcframework"
+    mkdir -p "$output_dir/Resources"
+    cp -R "$ROOT_DIR/ios/Resources/"* "$output_dir/Resources/"
+    zip -r "$BUILD_DIR/agus-binaries-ios.zip" "CoMaps.xcframework" "Resources"
     popd >/dev/null
     
     log_success "iOS build complete: $BUILD_DIR/agus-binaries-ios.zip"
@@ -1140,7 +1142,9 @@ build_macos() {
     
     # Create archive
     pushd "$output_dir" >/dev/null
-    zip -r "$BUILD_DIR/agus-binaries-macos.zip" "CoMaps.xcframework"
+    mkdir -p "$output_dir/Resources"
+    cp -R "$ROOT_DIR/macos/Resources/"* "$output_dir/Resources/"
+    zip -r "$BUILD_DIR/agus-binaries-macos.zip" "CoMaps.xcframework" "Resources"
     popd >/dev/null
     
     log_success "macOS build complete: $BUILD_DIR/agus-binaries-macos.zip"
