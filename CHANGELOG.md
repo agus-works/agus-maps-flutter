@@ -1,3 +1,23 @@
+## 0.1.13
+
+### Documentation
+
+* **Comprehensive API Reference**: Added `doc/API.md` with complete documentation of all existing APIs and a roadmap for future API additions. Includes detailed implementation patterns for FFI and MethodChannel APIs, code review checklists, and CoMaps framework reference.
+
+* **Enhanced README**: Significantly improved setup instructions with detailed platform-specific configuration for iOS, macOS, and Android minimum versions. Added a new "Quick Test" section with a compact example app to verify plugin setup.
+
+* **API Reference Links**: Updated README and CONTRIBUTING.md to include links to the new API reference documentation. Moved Features section to the example app README for better organization.
+
+### Linux Build System
+
+* **Simplified Binary Distribution**: Removed the separate `libagus.so` dependency from Linux builds. All CoMaps functionality is now statically linked into `libagus_maps_flutter.so`, reducing deployment complexity and eliminating potential library loading issues.
+
+* **Streamlined CMakeLists.txt**: Updated `linux/CMakeLists.txt` to check only for `libagus_maps_flutter.so` during prebuilt detection, reflecting the consolidated library architecture.
+
+### Migration
+
+No action required for consumers upgrading from `0.1.12`. The Linux build changes are fully backward compatible—existing `AGUS_MAPS_HOME` setups will continue to work with the new single-library architecture.
+
 ## 0.1.12
 
 ### Bug Fixes

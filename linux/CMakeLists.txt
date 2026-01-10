@@ -76,7 +76,7 @@ endif()
 if(DEFINED ENV{AGUS_MAPS_HOME} AND NOT PREBUILT_FOUND)
   set(AGUS_SDK_HOME "$ENV{AGUS_MAPS_HOME}")
   set(SDK_LINUX_PREBUILT_DIR "${AGUS_SDK_HOME}/linux/prebuilt/x64")
-  if(EXISTS "${SDK_LINUX_PREBUILT_DIR}/libagus_maps_flutter.so" AND EXISTS "${SDK_LINUX_PREBUILT_DIR}/libagus.so")
+  if(EXISTS "${SDK_LINUX_PREBUILT_DIR}/libagus_maps_flutter.so")
     set(PREBUILT_DIR "${SDK_LINUX_PREBUILT_DIR}")
     set(PREBUILT_FOUND ON)
     message(STATUS "Found pre-built Linux binaries in AGUS_MAPS_HOME: ${PREBUILT_DIR}")
@@ -88,7 +88,7 @@ endif()
 # Location 1b: Plugin-local prebuilt directory (CI builds copy binaries here)
 if(NOT PREBUILT_FOUND AND (IS_CI OR EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64/libagus_maps_flutter.so"))
   set(PLUGIN_PREBUILT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64")
-  if(EXISTS "${PLUGIN_PREBUILT_DIR}/libagus_maps_flutter.so" AND EXISTS "${PLUGIN_PREBUILT_DIR}/libagus.so")
+  if(EXISTS "${PLUGIN_PREBUILT_DIR}/libagus_maps_flutter.so")
     set(PREBUILT_DIR "${PLUGIN_PREBUILT_DIR}")
     set(PREBUILT_FOUND ON)
     if(IS_CI)
@@ -128,21 +128,12 @@ if(PREBUILT_FOUND)
   message(STATUS "=== Using pre-built Linux binaries ===")
   
   # Define IMPORTED target for agus_maps_flutter (the native CoMaps wrapper)
+  # Note: All CoMaps functionality is statically linked into this single shared library
   add_library(agus_maps_flutter SHARED IMPORTED)
   set_target_properties(agus_maps_flutter PROPERTIES
     IMPORTED_LOCATION "${PREBUILT_DIR}/libagus_maps_flutter.so"
     INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/../src"
   )
-
-  # Define IMPORTED target for agus (the core library, if separate)
-  # Note: Adjust if your architecture merges them or has different names
-  add_library(agus SHARED IMPORTED)
-  set_target_properties(agus PROPERTIES
-    IMPORTED_LOCATION "${PREBUILT_DIR}/libagus.so"
-  )
-
-  # Link the wrapper to the core library
-  target_link_libraries(agus_maps_flutter INTERFACE agus)
 
 else()
   message(STATUS "=== Building Linux binaries from source ===")
@@ -161,9 +152,8 @@ if(PREBUILT_FOUND)
   set(agus_maps_flutter_bundled_libraries
     # The plugin library itself
     $<TARGET_FILE:${PLUGIN_NAME}>
-    # The prebuilt libraries
+    # The prebuilt native library
     "${PREBUILT_DIR}/libagus_maps_flutter.so"
-    "${PREBUILT_DIR}/libagus.so"
     PARENT_SCOPE
   )
 else()

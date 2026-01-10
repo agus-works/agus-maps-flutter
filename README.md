@@ -399,7 +399,7 @@ The build system will automatically find the binaries and headers using `AGUS_MA
 
 Before integrating Agus Maps into your own Flutter app, you can test your development environment by downloading and building the **compact quickstart example app**:
 
-**Download:** [Quickstart Example App (v0.1.12)](https://bit.ly/3NcQeMi)
+**Download:** [Quickstart Example App (vX.Y.Z)](https://bit.ly/3NcQeMi)
 
 This is a simple Flutter app that demonstrates the basic Agus Maps integration and can help verify that your setup is correct for any supported platform target (Android, iOS, macOS, Windows, or Linux).
 
@@ -657,8 +657,8 @@ See **[API.md](doc/API.md#future-api-candidates)** for detailed roadmap of plann
 ## Map Data
 
 Agus Maps uses MWM files from OpenStreetMap. You can download maps from:
-- [Organic Maps Downloads](https://organicmaps.app/downloads/)
-- [CoMaps Mirror](https://omaps.webfreak.org/)
+- [WebFreak's Organic Maps mirror](https://omaps.webfreak.org/)
+- [Organic Maps mirror by WFR Software](https://omaps.wfr.software/)
 - **In-app (Example)**: Use the example app's Downloads tab to browse and download regions
 
 The example app bundles a small Gibraltar map for testing.
