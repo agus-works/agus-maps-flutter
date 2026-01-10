@@ -13,7 +13,7 @@
   <a href="#quick-start">Quick Start</a> •
   <a href="#comparison">Comparison</a> •
   <a href="#documentation">Docs</a> •
-  <a href="#roadmap">Roadmap</a>
+  <a href="doc/API.md#future-api-candidates">Roadmap</a>
 </p>
 
 ## What is Agus Maps?
@@ -134,41 +134,103 @@ Add `agus_maps_flutter` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  agus_maps_flutter: ^0.1.12
+  agus_maps_flutter: ^X.Y.Z # see https://github.com/agus-works/agus-maps-flutter/releases
 ```
 
 Run `flutter pub get` to download the plugin.
 
-#### Step 2: Download the SDK
+#### Step 2: Configure Minimum Platform Versions
+
+Agus Maps Flutter requires specific minimum platform versions. **You must configure these in your Flutter app** before building.
+
+**iOS (15.6+)**
+
+Update your `ios/Podfile` to specify the minimum iOS version:
+
+```ruby
+platform :ios, '15.6'
+```
+
+The plugin's podspec enforces iOS 15.6, but explicitly setting it in your Podfile ensures consistency. After updating, run:
+
+```bash
+cd ios
+pod install
+cd ..
+```
+
+**macOS (12.0+)**
+
+Update your `macos/Podfile` to specify the minimum macOS version:
+
+```ruby
+platform :osx, '12.0'
+```
+
+The plugin's podspec enforces macOS 12.0. After updating, run:
+
+```bash
+cd macos
+pod install
+cd ..
+```
+
+**Android (API 24+)**
+
+**⚠️ Critical:** You must set `minSdk = 24` in your app's `android/app/build.gradle` or `android/app/build.gradle.kts`:
+
+**Groovy (build.gradle):**
+```groovy
+android {
+    defaultConfig {
+        minSdkVersion 24
+        // ... other config
+    }
+}
+```
+
+**Kotlin DSL (build.gradle.kts):**
+```kotlin
+android {
+    defaultConfig {
+        minSdk = 24
+        // ... other config
+    }
+}
+```
+
+> **Note:** If your app's `minSdk` is lower than 24, the build will fail. The plugin requires Android API 24 (Android 7.0 Nougat) or higher.
+
+#### Step 3: Download the SDK
 
 Since `agus-maps-flutter` contains a high-performance C++ engine, users must manually download the pre-compiled SDK to match their plugin version.
 
 1. Go to [GitHub Releases](https://github.com/agus-works/agus-maps-flutter/releases).
-2. Download `agus-maps-sdk-v0.1.7.zip` for the version you are using.
+2. Download `agus-maps-sdk-vX.Y.Z.zip` for the version you are using.
 3. Extract this zip file to a location on your machine (e.g., `~/agus-sdk` or `C:\agus-sdk`).
 
-#### Step 3: Set Environment Variable
+#### Step 4: Set Environment Variable
 
 You must set the `AGUS_MAPS_HOME` environment variable to point to the extracted SDK directory.
 
 **macOS/Linux:**
 ```bash
-export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-v0.1.7
+export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-vX.Y.Z
 ```
 
 **Windows (PowerShell):**
 ```powershell
-$env:AGUS_MAPS_HOME = "C:\path\to\agus-maps-sdk-v0.1.7"
+$env:AGUS_MAPS_HOME = "C:\path\to\agus-maps-sdk-vX.Y.Z"
 ```
 
 **Windows (CMD):**
 ```cmd
-set AGUS_MAPS_HOME=C:\path\to\agus-maps-sdk-v0.1.7
+set AGUS_MAPS_HOME=C:\path\to\agus-maps-sdk-vX.Y.Z
 ```
 
 > **Tip:** Add this to your shell profile (`.bashrc`, `.zshrc`, PowerShell profile) so it persists across terminal sessions.
 
-#### Step 4: Copy Assets
+#### Step 5: Copy Assets
 
 Copy the `assets` folder from the SDK into your Flutter app's root directory.
 
@@ -180,22 +242,179 @@ cp -r $AGUS_MAPS_HOME/assets/ my_flutter_app/assets/
 Copy-Item -Recurse "$env:AGUS_MAPS_HOME\assets" "my_flutter_app\assets"
 ```
 
-Then add the assets to your `pubspec.yaml`:
+Then add the assets to your `pubspec.yaml`. For now, there are a lot of assets that needs to be added. This is the way until we figure out a better way to do this.
 
 ```yaml
 flutter:
   assets:
+    # sensible default embedded
+    - assets/maps/World.mwm
+    - assets/maps/WorldCoasts.mwm
+    # default regions pre-loaded. optional!
+    - assets/maps/Philippines_Luzon_Manila.mwm
+    - assets/maps/Philippines_Luzon_North.mwm
+    - assets/maps/Philippines_Luzon_South.mwm
+    - assets/maps/Philippines_Mindanao.mwm
+    - assets/maps/Philippines_Visayas.mwm
+    # everything below seems to be required.
+    - assets/maps/icudt75l.dat
     - assets/comaps_data/
-    - assets/maps/
+    - assets/comaps_data/fonts/
+    - assets/comaps_data/categories-strings/ar.json/
+    - assets/comaps_data/categories-strings/be.json/
+    - assets/comaps_data/categories-strings/bg.json/
+    - assets/comaps_data/categories-strings/ca.json/
+    - assets/comaps_data/categories-strings/cs.json/
+    - assets/comaps_data/categories-strings/da.json/
+    - assets/comaps_data/categories-strings/de.json/
+    - assets/comaps_data/categories-strings/el.json/
+    - assets/comaps_data/categories-strings/en-AU.json/
+    - assets/comaps_data/categories-strings/en-GB.json/
+    - assets/comaps_data/categories-strings/en-US.json/
+    - assets/comaps_data/categories-strings/en.json/
+    - assets/comaps_data/categories-strings/es-MX.json/
+    - assets/comaps_data/categories-strings/es.json/
+    - assets/comaps_data/categories-strings/et.json/
+    - assets/comaps_data/categories-strings/eu.json/
+    - assets/comaps_data/categories-strings/fa.json/
+    - assets/comaps_data/categories-strings/fi.json/
+    - assets/comaps_data/categories-strings/fr.json/
+    - assets/comaps_data/categories-strings/he.json/
+    - assets/comaps_data/categories-strings/hi.json/
+    - assets/comaps_data/categories-strings/hu.json/
+    - assets/comaps_data/categories-strings/id.json/
+    - assets/comaps_data/categories-strings/it.json/
+    - assets/comaps_data/categories-strings/ja.json/
+    - assets/comaps_data/categories-strings/ko.json/
+    - assets/comaps_data/categories-strings/lv.json/
+    - assets/comaps_data/categories-strings/mr.json/
+    - assets/comaps_data/categories-strings/nb.json/
+    - assets/comaps_data/categories-strings/nl.json/
+    - assets/comaps_data/categories-strings/pl.json/
+    - assets/comaps_data/categories-strings/pt-BR.json/
+    - assets/comaps_data/categories-strings/pt.json/
+    - assets/comaps_data/categories-strings/ro.json/
+    - assets/comaps_data/categories-strings/ru.json/
+    - assets/comaps_data/categories-strings/sk.json/
+    - assets/comaps_data/categories-strings/sr.json/
+    - assets/comaps_data/categories-strings/sv.json/
+    - assets/comaps_data/categories-strings/sw.json/
+    - assets/comaps_data/categories-strings/th.json/
+    - assets/comaps_data/categories-strings/tr.json/
+    - assets/comaps_data/categories-strings/uk.json/
+    - assets/comaps_data/categories-strings/vi.json/
+    - assets/comaps_data/categories-strings/zh-Hans.json/
+    - assets/comaps_data/categories-strings/zh-Hant.json/
+    - assets/comaps_data/countries-strings/ar.json/
+    - assets/comaps_data/countries-strings/ast.json/
+    - assets/comaps_data/countries-strings/az.json/
+    - assets/comaps_data/countries-strings/be.json/
+    - assets/comaps_data/countries-strings/ca.json/
+    - assets/comaps_data/countries-strings/cs.json/
+    - assets/comaps_data/countries-strings/cy.json/
+    - assets/comaps_data/countries-strings/da.json/
+    - assets/comaps_data/countries-strings/de.json/
+    - assets/comaps_data/countries-strings/default.json/
+    - assets/comaps_data/countries-strings/el.json/
+    - assets/comaps_data/countries-strings/en.json/
+    - assets/comaps_data/countries-strings/es.json/
+    - assets/comaps_data/countries-strings/et.json/
+    - assets/comaps_data/countries-strings/eu.json/
+    - assets/comaps_data/countries-strings/fa.json/
+    - assets/comaps_data/countries-strings/fi.json/
+    - assets/comaps_data/countries-strings/fr.json/
+    - assets/comaps_data/countries-strings/he.json/
+    - assets/comaps_data/countries-strings/hu.json/
+    - assets/comaps_data/countries-strings/ia.json/
+    - assets/comaps_data/countries-strings/id.json/
+    - assets/comaps_data/countries-strings/it.json/
+    - assets/comaps_data/countries-strings/ja.json/
+    - assets/comaps_data/countries-strings/kab.json/
+    - assets/comaps_data/countries-strings/ko.json/
+    - assets/comaps_data/countries-strings/lt.json/
+    - assets/comaps_data/countries-strings/mr.json/
+    - assets/comaps_data/countries-strings/nb.json/
+    - assets/comaps_data/countries-strings/nl.json/
+    - assets/comaps_data/countries-strings/pl.json/
+    - assets/comaps_data/countries-strings/pt.json/
+    - assets/comaps_data/countries-strings/ro.json/
+    - assets/comaps_data/countries-strings/ru.json/
+    - assets/comaps_data/countries-strings/sk.json/
+    - assets/comaps_data/countries-strings/sr.json/
+    - assets/comaps_data/countries-strings/sr_Latn.json/
+    - assets/comaps_data/countries-strings/sv.json/
+    - assets/comaps_data/countries-strings/th.json/
+    - assets/comaps_data/countries-strings/tr.json/
+    - assets/comaps_data/countries-strings/uk.json/
+    - assets/comaps_data/countries-strings/vi.json/
+    - assets/comaps_data/countries-strings/zh-Hans.json/
+    - assets/comaps_data/countries-strings/zh-Hant.json/
+    - assets/comaps_data/symbols/
+    - assets/comaps_data/symbols/6plus/
+    - assets/comaps_data/symbols/6plus/dark/
+    - assets/comaps_data/symbols/6plus/light/
+    - assets/comaps_data/symbols/default/
+    - assets/comaps_data/symbols/hdpi/
+    - assets/comaps_data/symbols/hdpi/dark/
+    - assets/comaps_data/symbols/hdpi/light/
+    - assets/comaps_data/symbols/mdpi/
+    - assets/comaps_data/symbols/mdpi/dark/
+    - assets/comaps_data/symbols/mdpi/light/
+    - assets/comaps_data/symbols/xhdpi/
+    - assets/comaps_data/symbols/xhdpi/dark/
+    - assets/comaps_data/symbols/xhdpi/light/
+    - assets/comaps_data/symbols/xxhdpi/
+    - assets/comaps_data/symbols/xxhdpi/dark/
+    - assets/comaps_data/symbols/xxhdpi/light/
+    - assets/comaps_data/symbols/xxxhdpi/
+    - assets/comaps_data/symbols/xxxhdpi/dark/
+    - assets/comaps_data/symbols/xxxhdpi/light/
+    - assets/comaps_data/styles/
+    - assets/comaps_data/styles/default/
+    - assets/comaps_data/styles/default/include/
+    - assets/comaps_data/styles/default/light/
+    - assets/comaps_data/styles/default/light/symbols/
+    - assets/comaps_data/styles/default/light/symbols-ad/
+    - assets/comaps_data/styles/default/dark/
+    - assets/comaps_data/styles/default/dark/symbols/
+    - assets/comaps_data/styles/default/dark/symbols-ad/
+    - assets/comaps_data/styles/vehicle/
+    - assets/comaps_data/styles/vehicle/include/
+    - assets/comaps_data/styles/vehicle/light/
+    - assets/comaps_data/styles/vehicle/dark/
+    - assets/comaps_data/styles/outdoors/
+    - assets/comaps_data/styles/outdoors/include/
+    - assets/comaps_data/styles/outdoors/light/
 ```
 
-#### Step 5: Build and Run
+#### Step 6: Build and Run
 
 ```bash
 flutter run
 ```
 
 The build system will automatically find the binaries and headers using `AGUS_MAPS_HOME`.
+
+### Quick Test: Quickstart Example App
+
+Before integrating Agus Maps into your own Flutter app, you can test your development environment by downloading and building the **compact quickstart example app**:
+
+**Download:** [Quickstart Example App (v0.1.12)](https://bit.ly/3NcQeMi)
+
+This is a simple Flutter app that demonstrates the basic Agus Maps integration and can help verify that your setup is correct for any supported platform target (Android, iOS, macOS, Windows, or Linux).
+
+**Requirements:**
+- Follow **Steps 1-4** above (add plugin dependency, configure platform versions, download SDK, set `AGUS_MAPS_HOME`)
+- Extract the quickstart app archive
+- Set `AGUS_MAPS_HOME` to point to your extracted SDK directory (same as Step 4)
+- Build and run for your target platform:
+  ```bash
+  flutter run -d <device>
+  ```
+
+> **Note:** The quickstart app requires a valid `AGUS_MAPS_HOME` environment variable pointing to the extracted SDK directory (see Step 4 above). If the build fails, verify that `AGUS_MAPS_HOME` is set correctly and the SDK binaries are present.
+
+If you can successfully build and run the quickstart app, your development environment is correctly configured and ready for integrating Agus Maps into your own Flutter application!
 
 ### Upgrading the Plugin
 
@@ -238,9 +457,9 @@ For projects that need to vendor the plugin locally (offline builds, custom modi
 
 2. Download and extract the SDK to a global location:
    ```bash
-   curl -L -o sdk.zip https://github.com/agus-works/agus-maps-flutter/releases/download/v0.1.7/agus-maps-sdk-v0.1.7.zip
+   curl -L -o sdk.zip https://github.com/agus-works/agus-maps-flutter/releases/download/vX.Y.Z/agus-maps-sdk-vX.Y.Z.zip
    unzip sdk.zip -d ~/agus-sdk
-   export AGUS_MAPS_HOME=~/agus-sdk/agus-maps-sdk-v0.1.7
+   export AGUS_MAPS_HOME=~/agus-sdk/agus-maps-sdk-vX.Y.Z
    ```
 
 3. Reference the local plugin in your `pubspec.yaml`:
@@ -431,27 +650,9 @@ We track efficiency-related issues in dedicated files. See [CONTRIBUTING.md](doc
 - EGL context recreation on app resume
 - Touch event throttling considerations
 
+## Roadmap
 
-### ✅ Proof of Concept Complete
-- Zero-copy rendering to Flutter Texture (iOS, macOS, Android)
-- Optimized CPU-mediated rendering (Windows x86_64)
-- Touch/mouse gesture forwarding (pan, zoom, rotation)
-- Viewport resize with DPI scaling
-- Basic Dart API (`AgusMap`, `AgusMapController`)
-- Map Download Manager with mirror selection
-- Example app demonstrating all features
-
-### 🚧 Platform Expansion (Needs Hardware)
-- Linux x86_64 / arm64 implementation
-- Windows ARM64 support
-
-### 📋 Future Development
-- Search API integration
-- Routing API integration
-- POI tap callbacks
-- Animated camera transitions
-- UI widgets (compass, scale bar)
-- Map deletion/management
+See **[API.md](doc/API.md#future-api-candidates)** for detailed roadmap of planned API features including search, routing, bookmarks, location services, and more. The roadmap includes implementation priority recommendations and difficulty assessments.
 
 ## Map Data
 
