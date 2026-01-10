@@ -9,7 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> •
   <a href="#demos">Demos</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#comparison">Comparison</a> •
@@ -122,18 +121,6 @@ The following videos showcase the **Agus Maps plugin** running on various platfo
     <td width="50%"></td>
   </tr>
 </table>
-
-## Features
-
-- 🚀 **Zero-Copy Rendering** — Map data flows directly from disk to GPU via memory-mapping (iOS, macOS, Android)
-- 🖥️ **Windows Support** — Full Windows x86_64 support with optimized CPU-mediated rendering
-- 📴 **Fully Offline** — No internet required; uses compact MWM map files from OpenStreetMap
-- 🎯 **Native Performance** — The battle-tested Drape engine from Organic Maps
-- 🖐️ **Gesture Support** — Pan, pinch-to-zoom, rotation (multitouch)
-- 🖱️ **macOS Trackpad Zoom** — Pinch or two-finger parallel swipe (Google Maps-style) with cursor-centered zoom
-- 📐 **Responsive** — Automatically handles resize and device pixel ratio
-- 🔌 **Simple API** — Drop-in `AgusMap` widget with `AgusMapController`
--  **Fuzzy Search API** — Fast offline search logic for finding map regions
 
 ## Quick Start
 
@@ -416,6 +403,7 @@ flowchart TB
 | Document | Description |
 |----------|-------------|
 | [GUIDE.md](GUIDE.md) | Architectural blueprint and design philosophy |
+| [doc/API.md](doc/API.md) | **API Reference** - All existing APIs exposed to Flutter and roadmap for future additions |
 | [doc/ARCHITECTURE-ANDROID.md](doc/ARCHITECTURE-ANDROID.md) | Deep dive: memory efficiency, battery savings, how it works |
 | [doc/COMAPS-ASSETS.md](doc/COMAPS-ASSETS.md) | **CoMaps asset management:** data files, localization, MWM maps |
 | [doc/IMPLEMENTATION-ANDROID.md](doc/IMPLEMENTATION-ANDROID.md) | Android build instructions, debug/release modes |

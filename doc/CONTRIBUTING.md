@@ -279,6 +279,7 @@ See [GUIDE.md](../GUIDE.md) for the full architectural blueprint.
 
 | Document | Description |
 |----------|-------------|
+| [API.md](./API.md) | **API Reference** - All existing APIs and roadmap for future additions |
 | [ARCHITECTURE-ANDROID.md](./ARCHITECTURE-ANDROID.md) | Deep dive into Android integration, memory/battery efficiency |
 | [IMPLEMENTATION-ANDROID.md](./IMPLEMENTATION-ANDROID.md) | Build instructions, debug/release modes |
 | [GUIDE.md](../GUIDE.md) | High-level plugin architecture |

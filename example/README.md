@@ -45,6 +45,20 @@ This example application demonstrates the capabilities of the `agus_maps_flutter
   </tr>
 </table>
 
+## Features
+
+The `agus_maps_flutter` plugin and this example app demonstrate:
+
+- 🚀 **Zero-Copy Rendering** — Map data flows directly from disk to GPU via memory-mapping (iOS, macOS, Android)
+- 🖥️ **Windows Support** — Full Windows x86_64 support with optimized CPU-mediated rendering
+- 📴 **Fully Offline** — No internet required; uses compact MWM map files from OpenStreetMap
+- 🎯 **Native Performance** — The battle-tested Drape engine from Organic Maps
+- 🖐️ **Gesture Support** — Pan, pinch-to-zoom, rotation (multitouch)
+- 🖱️ **macOS Trackpad Zoom** — Pinch or two-finger parallel swipe (Google Maps-style) with cursor-centered zoom
+- 📐 **Responsive** — Automatically handles resize and device pixel ratio
+- 🔌 **Simple API** — Drop-in `AgusMap` widget with `AgusMapController`
+- **Fuzzy Search API** — Fast offline search logic for finding map regions
+
 ## Demonstrated Features
 
 The example app implements a full-featured map viewer including:
@@ -56,7 +70,7 @@ The example app implements a full-featured map viewer including:
 - **Interactive Map**:
   - **Zero-Copy Rendering**: Smooth 60fps rendering using the `AgusMap` widget.
   - **Gesture Support**: Pan, pinch-to-zoom, and rotation.
-  - **Trackpad Support**: Native MacOS trackpad gestures (pinch/swipe).
+  - **Trackpad Support**: Native macOS trackpad gestures (pinch/swipe).
 - **Responsive UI**: Adapts layout for mobile and desktop window sizes.
 
 ## Getting Started
