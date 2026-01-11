@@ -319,6 +319,36 @@ jobs:
           cd example
           flutter pub get
 
+      - name: Download Base MWM Files
+        run: |
+          ASSETS_DIR="example/assets/maps"
+          mkdir -p "$ASSETS_DIR"
+          
+          # Get latest snapshot from mirror
+          MIRROR="https://omaps.wfr.software/maps/"
+          SNAPSHOT=$(curl -sL "$MIRROR" | grep -oE 'href="\.?/?([0-9]{6})/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
+          echo "Using snapshot: $SNAPSHOT"
+          
+          # Download essential MWM files
+          FILES=("World.mwm" "WorldCoasts.mwm" "Gibraltar.mwm")
+          for FILE in "${FILES[@]}"; do
+            URL="${MIRROR}${SNAPSHOT}/${FILE}"
+            echo "Downloading: $URL"
+            curl -fL "$URL" -o "$ASSETS_DIR/$FILE"
+            ls -lh "$ASSETS_DIR/$FILE"
+          done
+          
+          # Copy ICU data if not already present
+          ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
+          ICU_DEST="$ASSETS_DIR/icudt75l.dat"
+          if [ -f "$ICU_SOURCE" ] && [ ! -f "$ICU_DEST" ]; then
+            cp "$ICU_SOURCE" "$ICU_DEST"
+            echo "Copied ICU data to assets/maps/"
+          fi
+          
+          echo "=== Map Assets ==="
+          ls -lh "$ASSETS_DIR/"
+
       - name: Install iOS CocoaPods Dependencies
         run: |
           cd example/ios
@@ -355,6 +385,41 @@ jobs:
 
       - name: Precache macOS
         run: flutter precache --macos
+
+      - name: Get Flutter Dependencies
+        run: |
+          cd example
+          flutter pub get
+
+      - name: Download Base MWM Files
+        run: |
+          ASSETS_DIR="example/assets/maps"
+          mkdir -p "$ASSETS_DIR"
+          
+          # Get latest snapshot from mirror
+          MIRROR="https://omaps.wfr.software/maps/"
+          SNAPSHOT=$(curl -sL "$MIRROR" | grep -oE 'href="\.?/?([0-9]{6})/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
+          echo "Using snapshot: $SNAPSHOT"
+          
+          # Download essential MWM files
+          FILES=("World.mwm" "WorldCoasts.mwm" "Gibraltar.mwm")
+          for FILE in "${FILES[@]}"; do
+            URL="${MIRROR}${SNAPSHOT}/${FILE}"
+            echo "Downloading: $URL"
+            curl -fL "$URL" -o "$ASSETS_DIR/$FILE"
+            ls -lh "$ASSETS_DIR/$FILE"
+          done
+          
+          # Copy ICU data if not already present
+          ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
+          ICU_DEST="$ASSETS_DIR/icudt75l.dat"
+          if [ -f "$ICU_SOURCE" ] && [ ! -f "$ICU_DEST" ]; then
+            cp "$ICU_SOURCE" "$ICU_DEST"
+            echo "Copied ICU data to assets/maps/"
+          fi
+          
+          echo "=== Map Assets ==="
+          ls -lh "$ASSETS_DIR/"
 
       - name: Install macOS CocoaPods Dependencies
         run: |
@@ -630,8 +695,35 @@ jobs:
           cd example
           flutter pub get
 
-      # NOTE: MWM files are downloaded during Bootstrap step via dart run tool/build.dart
-      # No separate download step needed - bootstrap handles ICU data and base MWM files
+      - name: Download Base MWM Files
+        run: |
+          ASSETS_DIR="example/assets/maps"
+          mkdir -p "$ASSETS_DIR"
+          
+          # Get latest snapshot from mirror
+          MIRROR="https://omaps.wfr.software/maps/"
+          SNAPSHOT=$(curl -sL "$MIRROR" | grep -oE 'href="\.?/?([0-9]{6})/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
+          echo "Using snapshot: $SNAPSHOT"
+          
+          # Download essential MWM files
+          FILES=("World.mwm" "WorldCoasts.mwm" "Gibraltar.mwm")
+          for FILE in "${FILES[@]}"; do
+            URL="${MIRROR}${SNAPSHOT}/${FILE}"
+            echo "Downloading: $URL"
+            curl -fL "$URL" -o "$ASSETS_DIR/$FILE"
+            ls -lh "$ASSETS_DIR/$FILE"
+          done
+          
+          # Copy ICU data if not already present
+          ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
+          ICU_DEST="$ASSETS_DIR/icudt75l.dat"
+          if [ -f "$ICU_SOURCE" ] && [ ! -f "$ICU_DEST" ]; then
+            cp "$ICU_SOURCE" "$ICU_DEST"
+            echo "Copied ICU data to assets/maps/"
+          fi
+          
+          echo "=== Map Assets ==="
+          ls -lh "$ASSETS_DIR/"
 
       - name: Build Android App Bundle (AAB)
         run: |
