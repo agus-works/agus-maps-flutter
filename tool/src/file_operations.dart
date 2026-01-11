@@ -2,7 +2,6 @@
 
 import 'dart:io';
 import 'package:path/path.dart' as path;
-import 'platform_detector.dart' show normalizePath, joinPaths;
 
 /// Copy file or directory recursively
 Future<void> copyPath(String source, String dest) async {
@@ -14,21 +13,45 @@ Future<void> copyPath(String source, String dest) async {
       await destDir.create(recursive: true);
     }
     
-    await for (final entity in Directory(source).list(recursive: true)) {
-      final relativePath = path.relative(entity.path, from: source);
-      final destPath = path.join(dest, relativePath);
+    // Normalize paths to handle Windows path issues
+    final normalizedSource = path.normalize(path.absolute(source));
+    final normalizedDest = path.normalize(path.absolute(dest));
+    
+    await for (final entity in Directory(normalizedSource).list(recursive: true)) {
+      // Use absolute path and compute relative path more carefully
+      final entityAbsolute = path.normalize(path.absolute(entity.path));
+      final relativePath = path.relative(entityAbsolute, from: normalizedSource);
+      final destPath = path.join(normalizedDest, relativePath);
       
       if (entity is File) {
         final destFile = File(destPath);
-        await destFile.parent.create(recursive: true);
-        await entity.copy(destPath);
+        final parentDir = destFile.parent;
+        if (!await parentDir.exists()) {
+          await parentDir.create(recursive: true);
+        }
+        // Check if source file exists before copying (handle race conditions and symlinks)
+        try {
+          if (await entity.exists()) {
+            await entity.copy(destPath);
+          }
+        } catch (e) {
+          // Skip files that can't be copied (might be symlinks, missing files, etc.)
+          // This is especially important on Windows where path handling can be tricky
+          print('Warning: Skipping file ${entity.path}: $e');
+        }
       } else if (entity is Directory) {
-        await Directory(destPath).create(recursive: true);
+        final destDir = Directory(destPath);
+        if (!await destDir.exists()) {
+          await destDir.create(recursive: true);
+        }
       }
     }
   } else if (sourceEntity == FileSystemEntityType.file) {
     final destFile = File(dest);
-    await destFile.parent.create(recursive: true);
+    final parentDir = destFile.parent;
+    if (!await parentDir.exists()) {
+      await parentDir.create(recursive: true);
+    }
     await File(source).copy(dest);
   } else {
     throw Exception('Source path does not exist: $source');
