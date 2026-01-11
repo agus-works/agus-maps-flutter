@@ -357,12 +357,19 @@ Future<void> buildWindowsLibrary({
     throw Exception('vcpkg toolchain not found: $toolchainFile');
   }
 
-  // Check for Ninja
+  // On Windows, prefer Visual Studio generator to avoid GCC/MinGW compatibility issues
+  // (ICU has known issues with newer GCC versions like 15.2.0)
   String? generator;
-  if (await commandExists('ninja')) {
-    generator = 'Ninja';
-  } else {
+  if (Platform.isWindows) {
+    // Use Visual Studio generator on Windows to avoid GCC/MinGW issues
     generator = 'Visual Studio 17 2022';
+  } else {
+    // On other platforms, use Ninja if available
+    if (await commandExists('ninja')) {
+      generator = 'Ninja';
+    } else {
+      generator = 'Unix Makefiles';
+    }
   }
 
   final variables = <String, String>{
