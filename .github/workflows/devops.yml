@@ -151,12 +151,19 @@ jobs:
           cache: true
 
       # ======================================================================
+      # Get Flutter Dependencies (for Dart build tool)
+      # ======================================================================
+      - name: Get Flutter Dependencies
+        run: flutter pub get
+
+      # ======================================================================
       # Bootstrap CoMaps (shared for all platforms)
       # ======================================================================
       - name: Bootstrap CoMaps
-        run: |
-          chmod +x scripts/bootstrap.sh
-          ./scripts/bootstrap.sh --no-cache
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
+        run: dart run tool/build.dart --no-cache
 
       # ======================================================================
       # Bundle Headers (for caching/release)
@@ -177,9 +184,11 @@ jobs:
       # Build iOS XCFramework
       # ======================================================================
       - name: Build iOS XCFramework
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
         run: |
-          chmod +x scripts/build_binaries_ios.sh
-          ./scripts/build_binaries_ios.sh
+          dart run tool/build.dart --build-binaries --platform ios
           ls -la build/agus-binaries-ios/
 
       - name: Compile Metal Shaders for iOS/macOS
@@ -269,9 +278,11 @@ jobs:
       # Build macOS XCFramework
       # ======================================================================
       - name: Build macOS XCFramework
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
         run: |
-          chmod +x scripts/build_binaries_macos.sh
-          ./scripts/build_binaries_macos.sh
+          dart run tool/build.dart --build-binaries --platform macos
           ls -la build/agus-binaries-macos/
 
       - name: Create macOS Binaries Archive
@@ -561,22 +572,32 @@ jobs:
           cache: true
 
       # ======================================================================
+      # Get Flutter Dependencies (for Dart build tool)
+      # ======================================================================
+      - name: Get Flutter Dependencies
+        run: flutter pub get
+
+      # ======================================================================
       # Bootstrap CoMaps (Android-focused)
       # ======================================================================
       - name: Bootstrap CoMaps
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
         run: |
-          chmod +x scripts/bootstrap.sh
           # Bootstrap prepares patches, boost headers, and data files
-          ./scripts/bootstrap.sh --no-cache
+          dart run tool/build.dart --no-cache
 
       # ======================================================================
       # Build Android Native Libraries
       # ======================================================================
       - name: Build Android Native Libraries
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
         run: |
           echo "Building Android native libraries on macOS..."
-          chmod +x scripts/build_binaries_android.sh
-          ./scripts/build_binaries_android.sh
+          dart run tool/build.dart --build-binaries --platform android
           
           echo "=== Build Output ==="
           ls -la build/agus-binaries-android/
@@ -609,7 +630,7 @@ jobs:
           cd example
           flutter pub get
 
-      # NOTE: MWM files are downloaded during Bootstrap step via scripts/bootstrap.sh
+      # NOTE: MWM files are downloaded during Bootstrap step via dart run tool/build.dart
       # No separate download step needed - bootstrap handles ICU data and base MWM files
 
       - name: Build Android App Bundle (AAB)
@@ -810,21 +831,34 @@ jobs:
           cache: true
 
       # ======================================================================
+      # Get Flutter Dependencies (for Dart build tool)
+      # ======================================================================
+      - name: Get Flutter Dependencies
+        run: flutter pub get
+
+      # ======================================================================
       # Bootstrap CoMaps
       # ======================================================================
       - name: Bootstrap CoMaps
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
         run: |
-          .\scripts\bootstrap.ps1 -NoCache
+          dart run tool/build.dart --no-cache
         shell: pwsh
 
       # ======================================================================
       # Build Windows Native Libraries
       # ======================================================================
       - name: Build Windows Native Libraries
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          VCPKG_ROOT: C:\vcpkg
+          AGUS_MAPS_BUILD_MODE: contributor
         run: |
           # Remove Strawberry Perl from PATH to prevent ccache conflicts
           $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
-          .\scripts\build_binaries_windows.ps1 -VcpkgRoot "C:\vcpkg" -SkipArchive
+          dart run tool/build.dart --build-binaries --platform windows
           Get-ChildItem -Path build\agus-binaries-windows\ -Recurse
         shell: pwsh
 
@@ -1076,21 +1110,31 @@ jobs:
           cache: true
 
       # ======================================================================
+      # Get Flutter Dependencies (for Dart build tool)
+      # ======================================================================
+      - name: Get Flutter Dependencies
+        run: flutter pub get
+
+      # ======================================================================
       # Bootstrap CoMaps
       # ======================================================================
       - name: Bootstrap CoMaps
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
         run: |
-          chmod +x scripts/bootstrap.sh
-          ./scripts/bootstrap.sh --no-cache
+          dart run tool/build.dart --no-cache
 
       # ======================================================================
       # Build Linux Native Libraries
       # ======================================================================
       - name: Build Linux Native Libraries
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
         run: |
           echo "Building Linux native libraries..."
-          chmod +x scripts/build_binaries_linux.sh
-          ./scripts/build_binaries_linux.sh
+          dart run tool/build.dart --build-binaries --platform linux
           
           echo "=== Build Output ==="
           ls -la build/agus-binaries-linux/

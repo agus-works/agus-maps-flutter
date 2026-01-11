@@ -1,6 +1,6 @@
 name: agus_maps_flutter
 description: High-performance offline vector maps for Flutter using the CoMaps rendering engine.
-version: 0.1.13
+version: 0.1.14
 homepage: https://agus.app
 repository: https://github.com/agus-works/agus-maps-flutter
 environment:
@@ -16,8 +16,17 @@ dependencies:
   shared_preferences: ^2.2.0
   # For HTTP requests (mirror service)
   http: ^1.1.0
+  # For Dart hooks (build orchestration)
+  hooks: ^1.0.0
+  # For archive operations (compress/extract)
+  archive: ^3.4.0
+  # For YAML parsing (pubspec.yaml)
+  yaml: ^3.1.2
+  # For path operations (cross-platform)
+  path: ^1.9.1
 
 dev_dependencies:
+  args: ^2.5.0
   ffigen: ^13.0.0
   flutter_test:
     sdk: flutter
