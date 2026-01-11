@@ -189,13 +189,28 @@ Future<void> _generateComapsData() async {
   final generateDrulesScript = path.join(comapsDir, 'tools', 'unix', 'generate_drules.sh');
   if (await File(generateDrulesScript).exists()) {
     print('Generating drawing rules...');
-    // On Windows, use Git Bash (usually available in CI)
-    final bashCmd = Platform.isWindows ? 'bash' : 'bash';
+    // On Windows, convert paths to Unix format for bash
+    final scriptPath = Platform.isWindows 
+        ? generateDrulesScript.replaceAll('\\', '/')
+        : generateDrulesScript;
+    final workingDir = Platform.isWindows
+        ? comapsDir.replaceAll('\\', '/')
+        : comapsDir;
+    // Convert environment paths to Unix format on Windows
+    final bashEnv = Map<String, String>.from(env);
+    if (Platform.isWindows) {
+      if (bashEnv.containsKey('OMIM_PATH')) {
+        bashEnv['OMIM_PATH'] = bashEnv['OMIM_PATH']!.replaceAll('\\', '/');
+      }
+      if (bashEnv.containsKey('DATA_PATH')) {
+        bashEnv['DATA_PATH'] = bashEnv['DATA_PATH']!.replaceAll('\\', '/');
+      }
+    }
     await runProcess(
-      bashCmd,
-      [generateDrulesScript],
-      workingDirectory: comapsDir,
-      environment: env,
+      'bash',
+      [scriptPath],
+      workingDirectory: workingDir,
+      environment: bashEnv,
     );
   }
 
@@ -203,11 +218,28 @@ Future<void> _generateComapsData() async {
   final generateCategoriesScript = path.join(comapsDir, 'tools', 'unix', 'generate_categories.sh');
   if (await File(generateCategoriesScript).exists()) {
     print('Generating categories...');
+    // On Windows, convert paths to Unix format for bash
+    final scriptPath = Platform.isWindows 
+        ? generateCategoriesScript.replaceAll('\\', '/')
+        : generateCategoriesScript;
+    final workingDir = Platform.isWindows
+        ? comapsDir.replaceAll('\\', '/')
+        : comapsDir;
+    // Convert environment paths to Unix format on Windows (for consistency)
+    final bashEnv = Map<String, String>.from(env);
+    if (Platform.isWindows) {
+      if (bashEnv.containsKey('OMIM_PATH')) {
+        bashEnv['OMIM_PATH'] = bashEnv['OMIM_PATH']!.replaceAll('\\', '/');
+      }
+      if (bashEnv.containsKey('DATA_PATH')) {
+        bashEnv['DATA_PATH'] = bashEnv['DATA_PATH']!.replaceAll('\\', '/');
+      }
+    }
     await runProcess(
       'bash',
-      [generateCategoriesScript],
-      workingDirectory: comapsDir,
-      environment: env,
+      [scriptPath],
+      workingDirectory: workingDir,
+      environment: bashEnv,
     );
   }
 
@@ -215,11 +247,18 @@ Future<void> _generateComapsData() async {
   final generateDesktopUIScript = path.join(comapsDir, 'tools', 'unix', 'generate_desktop_ui_strings.sh');
   if (await File(generateDesktopUIScript).exists()) {
     print('Generating desktop UI strings...');
+    // On Windows, convert paths to Unix format for bash
+    final scriptPath = Platform.isWindows 
+        ? generateDesktopUIScript.replaceAll('\\', '/')
+        : generateDesktopUIScript;
+    final workingDir = Platform.isWindows
+        ? comapsDir.replaceAll('\\', '/')
+        : comapsDir;
     try {
       await runProcess(
         'bash',
-        [generateDesktopUIScript],
-        workingDirectory: comapsDir,
+        [scriptPath],
+        workingDirectory: workingDir,
         environment: env,
         throwOnError: false,
       );
