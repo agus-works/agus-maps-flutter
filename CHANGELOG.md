@@ -1,3 +1,65 @@
+## 0.1.14
+
+### Build System Overhaul
+
+* **Dart Build Tool Migration**: Replaced shell scripts (`.sh`, `.ps1`) with a unified Dart build tool (`tool/build.dart`) for all platforms. This provides better cross-platform compatibility, easier maintenance, and consistent behavior across macOS, Linux, and Windows.
+
+* **Dart Hooks Infrastructure**: Implemented Dart hooks system (`hook/build.dart`) to automatically download and install the SDK during `flutter pub get` for plugin consumers. This eliminates the manual download step and the need for `AGUS_MAPS_HOME` environment variable for typical consumers.
+
+  - **Consumer Workflow**: The hook automatically downloads the SDK from GitHub Releases during `flutter pub get`
+  - **Contributor Workflow**: Contributors can use `dart run tool/build.dart --build-binaries` to build from source
+  - **Fallback Support**: The `AGUS_MAPS_HOME` environment variable remains supported as a fallback for manual SDK management
+
+* **CI/CD Modernization**: Updated `.github/workflows/devops.yml` to use `dart run tool/build.dart` instead of shell scripts for:
+  - CoMaps bootstrap (`dart run tool/build.dart --no-cache`)
+  - Platform-specific native builds (`dart run tool/build.dart --build-binaries --platform <platform>`)
+  
+  This simplifies CI/CD maintenance and ensures consistency between local and CI builds.
+
+### Dependencies
+
+* **New Build Dependencies**: Added the following packages to support the Dart build system:
+  - `hooks: ^1.0.0` - Dart hooks API for build automation
+  - `archive: ^3.4.0` - Archive operations (ZIP extraction/creation)
+  - `yaml: ^3.1.2` - YAML parsing for pubspec.yaml
+  - `path: ^1.9.1` - Cross-platform path operations
+
+### Technical Details
+
+* **Build Tool Structure**: Created modular Dart build system in `tool/src/`:
+  - `build_runner.dart` - Main build orchestration
+  - `cmake_build.dart` - CMake build logic for all platforms
+  - `sdk_downloader.dart` - SDK download and installation
+  - `platform_detector.dart` - OS and platform detection
+  - `file_operations.dart` - Cross-platform file operations
+  - `process_runner.dart` - External process execution
+  - `git_operations.dart` - Git operations (clone, checkout, submodules)
+  - `patch_applicator.dart` - CoMaps patch application
+  - `archive_manager.dart` - Archive operations
+  - `config.dart` - Build configuration and constants
+
+* **Hook Timing**: The Dart hook runs during `flutter pub get`, ensuring SDK binaries are available before platform build systems (Gradle, CocoaPods, CMake) configure, eliminating timing issues.
+
+* **Build Mode Detection**: The build tool automatically detects build mode:
+  - **Consumer mode**: Downloads pre-built SDK (default for plugin consumers)
+  - **Contributor mode**: Builds from source (when `AGUS_MAPS_BUILD_MODE=contributor` or in-repo)
+
+### Migration
+
+No action required for consumers upgrading from `0.1.13`. The Dart hooks system provides a smoother experience:
+
+- **First-time setup**: Simply run `flutter pub get` - the SDK will be downloaded automatically
+- **Existing `AGUS_MAPS_HOME` users**: Your existing setup continues to work; the environment variable takes precedence over auto-download
+- **Contributors**: Use `dart run tool/build.dart --build-binaries` instead of shell scripts
+
+### Future Enhancements
+
+The Dart hooks infrastructure paves the way for future improvements:
+- Automatic SDK version management
+- Incremental SDK updates
+- Better error messages and recovery
+- Potential removal of manual SDK download requirement entirely
+
 ## 0.1.13
 
 ### Documentation
