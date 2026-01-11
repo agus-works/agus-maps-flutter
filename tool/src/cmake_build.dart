@@ -68,6 +68,19 @@ Future<void> buildWithCMake(CMakeBuildConfig config) async {
     config.buildDir,
   ];
 
+  // Visual Studio generator uses multi-config builds, so --config is required
+  // For single-config generators (Ninja, Unix Makefiles), CMAKE_BUILD_TYPE is used instead
+  final isMultiConfig = config.generator != null && 
+      (config.generator!.contains('Visual Studio') || 
+       config.generator!.contains('Xcode'));
+  
+  if (isMultiConfig) {
+    // For multi-config generators, use --config flag
+    // Extract build type from variables if CMAKE_BUILD_TYPE is set
+    final buildType = config.variables['CMAKE_BUILD_TYPE'] ?? BuildConfig.buildType;
+    buildArgs.addAll(['--config', buildType]);
+  }
+
   if (config.target != null) {
     buildArgs.addAll(['--target', config.target!]);
   }
@@ -391,9 +404,12 @@ Future<void> buildWindowsLibrary({
   // Copy output DLL
   await ensureDir(outputDir);
   final dllName = 'agus_maps_flutter.dll';
+  // Visual Studio generator uses multi-config, so DLL is in buildDir/Release/ or buildDir/Debug/
+  // Ninja generator uses single-config, so DLL is in buildDir/ (CMAKE_BUILD_TYPE sets the location)
+  final buildType = BuildConfig.buildType; // Release or Debug
   final dllPaths = [
-    path.join(buildDir, dllName),
-    path.join(buildDir, BuildConfig.buildType, dllName),
+    path.join(buildDir, buildType, dllName), // Visual Studio: buildDir/Release/ or buildDir/Debug/
+    path.join(buildDir, dllName), // Ninja/single-config: buildDir/
   ];
 
   for (final dllPath in dllPaths) {
