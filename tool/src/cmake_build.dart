@@ -335,7 +335,7 @@ Future<void> _createMacOSXCFramework(String arm64BuildDir, String x64BuildDir, S
   await _mergeStaticLibraries(x64Libs, x64Merged);
 
   // Create universal binary
-  final universalLib = path.join(outputDir, 'libcomaps-universal.a');
+  final universalLib = path.join(outputDir, 'libcomaps.a');
   await runProcess('lipo', [
     '-create',
     arm64Merged,
