@@ -202,19 +202,25 @@ Future<void> buildiOSXCFramework({
 
 /// Create iOS XCFramework from device and simulator builds
 Future<void> _createiOSXCFramework(String deviceBuildDir, String simBuildDir, String outputDir) async {
-  await ensureDir(outputDir);
+  // Create temporary directories for merged libraries (separate to avoid overwriting)
+  final tempDir = path.join(outputDir, 'temp');
+  final deviceTempDir = path.join(tempDir, 'iphoneos');
+  final simTempDir = path.join(tempDir, 'iphonesimulator');
+  await ensureDir(deviceTempDir);
+  await ensureDir(simTempDir);
 
-  // Merge static libraries for device
+  // Merge static libraries for device (same filename but different directory)
   final deviceLibs = await _findStaticLibraries(deviceBuildDir);
-  final deviceMerged = path.join(outputDir, 'device_libcomaps.a');
+  final deviceMerged = path.join(deviceTempDir, 'libcomaps.a');
   await _mergeStaticLibraries(deviceLibs, deviceMerged);
 
-  // Merge static libraries for simulator
+  // Merge static libraries for simulator (same filename but different directory)
   final simLibs = await _findStaticLibraries(simBuildDir);
-  final simMerged = path.join(outputDir, 'simulator_libcomaps.a');
+  final simMerged = path.join(simTempDir, 'libcomaps.a');
   await _mergeStaticLibraries(simLibs, simMerged);
 
-  // Create XCFramework
+  // Create XCFramework with the same library name (CocoaPods requirement)
+  // Both libraries must have the same name 'libcomaps.a' but in different directories
   final xcframeworkPath = path.join(outputDir, 'CoMaps.xcframework');
   await runProcess('xcodebuild', [
     '-create-xcframework',
@@ -222,6 +228,12 @@ Future<void> _createiOSXCFramework(String deviceBuildDir, String simBuildDir, St
     '-library', simMerged,
     '-output', xcframeworkPath,
   ]);
+
+  // Clean up temp directory
+  final tempDirObj = Directory(tempDir);
+  if (await tempDirObj.exists()) {
+    await tempDirObj.delete(recursive: true);
+  }
 
   print('Created XCFramework: $xcframeworkPath');
 }

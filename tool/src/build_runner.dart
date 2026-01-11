@@ -182,13 +182,17 @@ Future<void> _generateComapsData() async {
   // Set protobuf compatibility mode
   final env = Map<String, String>.from(Platform.environment);
   env['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python';
+  env['OMIM_PATH'] = comapsDir;
+  env['DATA_PATH'] = dataDir;
 
   // Generate drawing rules
   final generateDrulesScript = path.join(comapsDir, 'tools', 'unix', 'generate_drules.sh');
   if (await File(generateDrulesScript).exists()) {
     print('Generating drawing rules...');
+    // On Windows, use Git Bash (usually available in CI)
+    final bashCmd = Platform.isWindows ? 'bash' : 'bash';
     await runProcess(
-      'bash',
+      bashCmd,
       [generateDrulesScript],
       workingDirectory: comapsDir,
       environment: env,
