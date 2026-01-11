@@ -19,7 +19,7 @@ jobs:
   build-and-release-mac-platforms:
     name: Build iOS and macOS
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
-    if: false
+    if: true
     runs-on: macos-latest
     permissions:
       contents: write
@@ -453,7 +453,7 @@ jobs:
   build-and-release-android-platform:
     name: Build Android
     # Toggle: set to 'true' to run Android, 'false' to skip (saves cost)
-    if: false
+    if: true
     runs-on: macos-latest
     permissions:
       contents: write
@@ -1068,7 +1068,7 @@ jobs:
   build-and-release-linux-platform:
     name: Build Linux
     # Toggle: set to 'true' to run Linux, 'false' to skip (saves cost)
-    if: false
+    if: true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -1372,10 +1372,10 @@ jobs:
   release:
     name: Release
     needs: 
-      # - build-and-release-mac-platforms
+      - build-and-release-mac-platforms
       - build-and-release-windows-platform
-      # - build-and-release-android-platform
-      # - build-and-release-linux-platform
+      - build-and-release-android-platform
+      - build-and-release-linux-platform
     # Run even if some dependencies partially failed or were skipped
     if: always()
     runs-on: ubuntu-latest
