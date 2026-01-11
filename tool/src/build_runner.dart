@@ -185,85 +185,66 @@ Future<void> _generateComapsData() async {
   env['OMIM_PATH'] = comapsDir;
   env['DATA_PATH'] = dataDir;
 
-  // Generate drawing rules
-  final generateDrulesScript = path.join(comapsDir, 'tools', 'unix', 'generate_drules.sh');
-  if (await File(generateDrulesScript).exists()) {
-    print('Generating drawing rules...');
-    // On Windows, convert paths to Unix format for bash
-    final scriptPath = Platform.isWindows 
-        ? generateDrulesScript.replaceAll('\\', '/')
-        : generateDrulesScript;
-    final workingDir = Platform.isWindows
-        ? comapsDir.replaceAll('\\', '/')
-        : comapsDir;
-    // Convert environment paths to Unix format on Windows
-    final bashEnv = Map<String, String>.from(env);
-    if (Platform.isWindows) {
-      if (bashEnv.containsKey('OMIM_PATH')) {
-        bashEnv['OMIM_PATH'] = bashEnv['OMIM_PATH']!.replaceAll('\\', '/');
-      }
-      if (bashEnv.containsKey('DATA_PATH')) {
-        bashEnv['DATA_PATH'] = bashEnv['DATA_PATH']!.replaceAll('\\', '/');
-      }
+  if (Platform.isWindows) {
+    // On Windows, match the old PowerShell implementation:
+    // Only run generate_desktop_ui_strings.py directly (skip bash scripts)
+    final generateDesktopUIPython = path.join(comapsDir, 'tools', 'python', 'generate_desktop_ui_strings.py');
+    if (await File(generateDesktopUIPython).exists()) {
+      print('Generating desktop UI strings...');
+      await runProcess(
+        'python',
+        [generateDesktopUIPython],
+        workingDirectory: comapsDir,
+        environment: env,
+      );
+    } else {
+      print('Warning: generate_desktop_ui_strings.py not found at $generateDesktopUIPython');
     }
-    await runProcess(
-      'bash',
-      [scriptPath],
-      workingDirectory: workingDir,
-      environment: bashEnv,
-    );
-  }
-
-  // Generate categories
-  final generateCategoriesScript = path.join(comapsDir, 'tools', 'unix', 'generate_categories.sh');
-  if (await File(generateCategoriesScript).exists()) {
-    print('Generating categories...');
-    // On Windows, convert paths to Unix format for bash
-    final scriptPath = Platform.isWindows 
-        ? generateCategoriesScript.replaceAll('\\', '/')
-        : generateCategoriesScript;
-    final workingDir = Platform.isWindows
-        ? comapsDir.replaceAll('\\', '/')
-        : comapsDir;
-    // Convert environment paths to Unix format on Windows (for consistency)
-    final bashEnv = Map<String, String>.from(env);
-    if (Platform.isWindows) {
-      if (bashEnv.containsKey('OMIM_PATH')) {
-        bashEnv['OMIM_PATH'] = bashEnv['OMIM_PATH']!.replaceAll('\\', '/');
-      }
-      if (bashEnv.containsKey('DATA_PATH')) {
-        bashEnv['DATA_PATH'] = bashEnv['DATA_PATH']!.replaceAll('\\', '/');
-      }
-    }
-    await runProcess(
-      'bash',
-      [scriptPath],
-      workingDirectory: workingDir,
-      environment: bashEnv,
-    );
-  }
-
-  // Generate desktop UI strings
-  final generateDesktopUIScript = path.join(comapsDir, 'tools', 'unix', 'generate_desktop_ui_strings.sh');
-  if (await File(generateDesktopUIScript).exists()) {
-    print('Generating desktop UI strings...');
-    // On Windows, convert paths to Unix format for bash
-    final scriptPath = Platform.isWindows 
-        ? generateDesktopUIScript.replaceAll('\\', '/')
-        : generateDesktopUIScript;
-    final workingDir = Platform.isWindows
-        ? comapsDir.replaceAll('\\', '/')
-        : comapsDir;
-    try {
+    
+    // Note: On Windows, generate_drules.sh and generate_categories.sh are skipped
+    // These are typically generated during native builds or are provided in the SDK
+    print('Note: Skipping generate_drules.sh and generate_categories.sh on Windows (matches old PowerShell behavior)');
+  } else {
+    // On Unix systems, run all bash scripts
+    // Generate drawing rules
+    final generateDrulesScript = path.join(comapsDir, 'tools', 'unix', 'generate_drules.sh');
+    if (await File(generateDrulesScript).exists()) {
+      print('Generating drawing rules...');
       await runProcess(
         'bash',
-        [scriptPath],
-        workingDirectory: workingDir,
+        [generateDrulesScript],
+        workingDirectory: comapsDir,
         environment: env,
-        throwOnError: false,
       );
-    } catch (e) {
-      print('Warning: generate_desktop_ui_strings.sh had warnings (may be expected)');
+    }
+
+    // Generate categories
+    final generateCategoriesScript = path.join(comapsDir, 'tools', 'unix', 'generate_categories.sh');
+    if (await File(generateCategoriesScript).exists()) {
+      print('Generating categories...');
+      await runProcess(
+        'bash',
+        [generateCategoriesScript],
+        workingDirectory: comapsDir,
+        environment: env,
+      );
+    }
+
+    // Generate desktop UI strings
+    final generateDesktopUIScript = path.join(comapsDir, 'tools', 'unix', 'generate_desktop_ui_strings.sh');
+    if (await File(generateDesktopUIScript).exists()) {
+      print('Generating desktop UI strings...');
+      try {
+        await runProcess(
+          'bash',
+          [generateDesktopUIScript],
+          workingDirectory: comapsDir,
+          environment: env,
+          throwOnError: false,
+        );
+      } catch (e) {
+        print('Warning: generate_desktop_ui_strings.sh had warnings (may be expected)');
+      }
     }
   }
 
