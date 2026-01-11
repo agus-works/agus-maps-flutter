@@ -1,3 +1,30 @@
+## 0.1.15
+
+### Build System Improvements
+
+* **iOS XCFramework Generation Fix**: Fixed a critical issue in `tool/src/cmake_build.dart` where iOS XCFramework creation failed due to naming conflicts when merging static libraries from device and simulator builds. Both builds were creating library files with identical names (`libcomaps.a`), causing the second merge operation to overwrite the first. The fix creates separate temporary directories (`temp/iphoneos/` and `temp/iphonesimulator/`) for each architecture's merged library, allowing proper XCFramework creation with the correct library naming convention required by CocoaPods. The temporary directory is cleaned up after XCFramework creation.
+
+* **CoMaps Data Generation Enhancement**: Updated `tool/src/build_runner.dart` to properly set environment variables required by CoMaps data generation scripts:
+  - Added `OMIM_PATH` environment variable pointing to the CoMaps source directory
+  - Added `DATA_PATH` environment variable pointing to the target data output directory
+  - These variables are now passed to all data generation shell scripts (`generate_drules.sh`, `generate_categories.sh`, etc.)
+
+* **Cross-Platform Bash Support**: Improved bash compatibility in `tool/src/build_runner.dart` by standardizing bash command detection for Windows environments. The build tool now uses `bash` consistently on both macOS/Linux and Windows (assuming Git Bash is available in CI environments).
+
+### Technical Details
+
+* **iOS Library Merging**: The iOS XCFramework creation now uses separate temporary directories to avoid file naming conflicts:
+  - Device libraries are merged in `temp/iphoneos/libcomaps.a`
+  - Simulator libraries are merged in `temp/iphonesimulator/libcomaps.a`
+  - XCFramework is created from both directories
+  - Temporary files are cleaned up after creation
+
+* **Environment Variable Passing**: Data generation scripts now receive proper environment context through `OMIM_PATH` and `DATA_PATH`, enabling them to locate sources and write outputs correctly.
+
+### Migration
+
+No action required for consumers. These changes are internal build improvements that do not affect the plugin API or binary compatibility.
+
 ## 0.1.14
 
 ### Build System Overhaul
