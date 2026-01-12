@@ -2,15 +2,14 @@
 #Requires -Version 7.0
 
 # ============================================================================
-# build_all.ps1 - Orchestrate Full Build for Windows & Android on Windows
+# build_all.ps1 - Build All Platforms Using Dart Hooks
 # ============================================================================
 #
-# This script automates the entire build process for a local Windows environment:
-# 1. Bootstraps dependencies (CoMaps, Boost, vcpkg) with smart caching.
-# 2. Builds native C++ binaries for both Android and Windows.
-# 3. Downloads required map data assets.
-# 4. Deploys binaries to "prebuilt" locations.
-# 5. Builds the final Flutter applications (APK and EXE).
+# This script builds agus_maps_flutter for Windows and Android.
+#
+# It uses the Dart build hooks (tool/build.dart) which handle:
+# - Bootstrap (CoMaps clone, patches, Boost headers, data generation)
+# - Building native binaries (Android, Windows)
 #
 # Usage:
 #   .\scripts\build_all.ps1
@@ -23,62 +22,75 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 
-# Import common bootstrap logic
-Import-Module (Join-Path $scriptDir "BootstrapCommon.psm1") -Force
-
-# Logging helper locally (overrides module if needed, or reuses)
+# Logging helper
 function Write-LogHeader { param([string]$msg) Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
+function Write-LogStep { param([string]$msg) Write-Host "[STEP] $msg" -ForegroundColor Blue }
+function Write-LogSuccess { param([string]$msg) Write-Host "[SUCCESS] $msg" -ForegroundColor Green }
+function Write-LogError { param([string]$msg) Write-Host "[ERROR] $msg" -ForegroundColor Red }
+function Write-LogWarn { param([string]$msg) Write-Host "[WARN] $msg" -ForegroundColor Yellow }
 
-Write-LogHeader "STARTING FULL LOCAL BUILD"
-
-# ----------------------------------------------------------------------------
-# 1. BOOTSTRAP
-# ----------------------------------------------------------------------------
-# This handles:
-# - Caching (checking for .thirdparty.7z, extracting if found)
-# - Cloning CoMaps (if no cache)
-# - Patching
-# - Building Boost headers
-# - Generating data files
-# - Copying assets to example/assets
-Bootstrap-Full -RepoRoot $repoRoot -Platform all
+Write-LogHeader "BUILD ALL - Using Dart Hooks"
 
 # ----------------------------------------------------------------------------
-# 2. BUILD NATIVE BINARIES
+# Check Dependencies
 # ----------------------------------------------------------------------------
-Write-LogHeader "Building Native Binaries (Android)"
-& (Join-Path $scriptDir "build_binaries_android.ps1")
-if ($LASTEXITCODE -ne 0) { throw "Android binaries build failed" }
+Write-LogHeader "Checking Dependencies"
 
-Write-LogHeader "Building Native Binaries (Windows)"
-& (Join-Path $scriptDir "build_binaries_windows.ps1")
-if ($LASTEXITCODE -ne 0) { throw "Windows binaries build failed" }
+# Check Dart
+try {
+    $dartVersion = dart --version 2>&1 | Select-Object -First 1
+    Write-Host "Dart: $dartVersion"
+} catch {
+    Write-LogError "Dart is not installed."
+    Write-LogError "Install Dart: https://dart.dev/get-dart"
+    exit 1
+}
 
-# ----------------------------------------------------------------------------
-# 3. DEPLOY BINARIES
-# ----------------------------------------------------------------------------
-Write-LogHeader "Deploying Binaries to Prebuilt Folders"
+# Check Flutter
+try {
+    $flutterVersion = flutter --version 2>&1 | Select-Object -First 1
+    Write-Host "Flutter: $flutterVersion"
+} catch {
+    Write-LogError "Flutter is not installed."
+    Write-LogError "Install Flutter: https://docs.flutter.dev/get-started/install"
+    exit 1
+}
 
-# Android
-$androidPrebuilt = Join-Path $repoRoot "android\prebuilt"
-$androidBuildOut = Join-Path $repoRoot "build\agus-binaries-android"
-New-Item -ItemType Directory -Force -Path $androidPrebuilt | Out-Null
-Write-Host "Copying Android binaries..."
-Copy-Item -Path "$androidBuildOut\*" -Destination "$androidPrebuilt\" -Recurse -Force
-
-# Windows
-$windowsPrebuilt = Join-Path $repoRoot "windows\prebuilt\x64"
-$windowsBuildOut = Join-Path $repoRoot "build\agus-binaries-windows\x64"
-New-Item -ItemType Directory -Force -Path $windowsPrebuilt | Out-Null
-Write-Host "Copying Windows binaries..."
-Copy-Item -Path "$windowsBuildOut\*" -Destination "$windowsPrebuilt\" -Force
+Write-LogSuccess "Dependencies check passed"
 
 # ----------------------------------------------------------------------------
-# 4. DOWNLOAD MAP DATA
+# Setup Flutter
+# ----------------------------------------------------------------------------
+Write-LogHeader "Setting Up Flutter"
+
+Push-Location $repoRoot
+try {
+    Write-Host "Running flutter pub get..."
+    flutter pub get
+    if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed" }
+}
+finally {
+    Pop-Location
+}
+
+Push-Location (Join-Path $repoRoot "example")
+try {
+    Write-Host "Running flutter pub get in example..."
+    flutter pub get
+    if ($LASTEXITCODE -ne 0) { throw "flutter pub get in example failed" }
+}
+finally {
+    Pop-Location
+}
+
+Write-LogSuccess "Flutter dependencies installed"
+
+# ----------------------------------------------------------------------------
+# Download Map Data (optional, for example app)
 # ----------------------------------------------------------------------------
 Write-LogHeader "Checking/Downloading Map Data"
-# Logic adapted from devops.yml to fetch recent maps
-$mapDate = "241221" # December 21, 2024
+
+$mapDate = "251212" # Default snapshot
 $mapBaseUrl = "https://omaps.wfr.software/maps/$mapDate"
 $assetsDir = Join-Path $repoRoot "example\assets\maps"
 New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
@@ -89,40 +101,54 @@ foreach ($map in $maps) {
     $dest = Join-Path $assetsDir $map
     if (-not (Test-Path $dest)) {
         Write-Host "Downloading $map..."
-        $url = "$mapBaseUrl/$map"
-        Invoke-WebRequest -Uri $url -OutFile $dest
+        try {
+            $url = "$mapBaseUrl/$map"
+            Invoke-WebRequest -Uri $url -OutFile $dest -ErrorAction Stop
+        } catch {
+            Write-LogWarn "Failed to download $map"
+        }
     } else {
         Write-Host "$map already exists."
     }
 }
 
-# Verify ICU data (should have been handled by bootstrap, but good to check)
-if (-not (Test-Path (Join-Path $assetsDir "icudt75l.dat"))) {
-    Write-Warning "icudt75l.dat missing! Bootstrap might have failed to copy it."
-}
+Write-LogSuccess "Map data ready"
 
 # ----------------------------------------------------------------------------
-# 5. FLUTTER BUILD
+# Build Native Binaries (Dart Hooks)
 # ----------------------------------------------------------------------------
-Write-LogHeader "Building Flutter Apps"
+Write-LogHeader "Building Native Binaries (Dart Hooks)"
+
+# This handles: bootstrap, building binaries
+$env:AGUS_MAPS_BUILD_MODE = "contributor"
+
+Write-LogStep "Building Android and Windows binaries..."
+dart run tool/build.dart --build-binaries --platform android --platform windows
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Native binaries build failed"
+}
+
+Write-LogSuccess "Native binaries built"
+
+# ----------------------------------------------------------------------------
+# Build Flutter Apps
+# ----------------------------------------------------------------------------
+Write-LogHeader "Building Flutter Example Apps"
 
 Push-Location (Join-Path $repoRoot "example")
 try {
-    Write-Host "Running flutter pub get..."
-    flutter pub get
-    if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed" }
-
-    Write-Host "Building Windows Executable..."
-    flutter build windows --release
-    if ($LASTEXITCODE -ne 0) { throw "flutter build windows failed" }
-
-    Write-Host "Building Android APK..."
+    Write-LogStep "Building Android APK..."
     flutter build apk --release
     if ($LASTEXITCODE -ne 0) { throw "flutter build apk failed" }
 
+    Write-LogStep "Building Windows Executable..."
+    flutter build windows --release
+    if ($LASTEXITCODE -ne 0) { throw "flutter build windows failed" }
+
     Write-LogHeader "BUILD SUCCESSFUL"
-    Write-Host "Windows EXE: example\build\windows\x64\runner\Release\agus_maps_flutter_example.exe" -ForegroundColor Green
     Write-Host "Android APK: example\build\app\outputs\flutter-apk\app-release.apk" -ForegroundColor Green
+    Write-Host "Windows EXE: example\build\windows\x64\runner\Release\agus_maps_flutter_example.exe" -ForegroundColor Green
 }
 finally {
     Pop-Location

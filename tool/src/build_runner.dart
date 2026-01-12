@@ -7,7 +7,7 @@ import 'platform_detector.dart' show getRepoRoot, getComapsDir, getBuildDir, det
 import 'git_operations.dart' show cloneComaps, checkoutComapsTag, initSubmodules;
 import 'patch_applicator.dart' show applyPatches;
 import 'file_operations.dart' show ensureDir, copyPath;
-import 'process_runner.dart' show runProcess;
+import 'process_runner.dart' show runProcess, commandExists;
 import 'cmake_build.dart' show buildAndroidAbi, buildiOSXCFramework, buildMacOSXCFramework, buildWindowsLibrary, buildLinuxLibrary;
 
 /// Build runner configuration
@@ -64,10 +64,27 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
   await _copyDataFiles();
 
   // Step 5: Build native binaries (if requested)
+  bool builtIOS = false;
+  bool builtMacOS = false;
+  
   if (config.buildBinaries) {
     final platforms = config.platforms ?? _getDefaultPlatforms();
     for (final platform in platforms) {
       await _buildPlatform(platform);
+      
+      // Track iOS/macOS builds for Metal shaders and CocoaPods
+      if (platform == 'ios') builtIOS = true;
+      if (platform == 'macos') builtMacOS = true;
+      
+      // Setup CocoaPods after iOS/macOS builds
+      if (platform == 'ios' || platform == 'macos') {
+        await _setupCocoaPods(platform);
+      }
+    }
+    
+    // Build Metal shaders if iOS or macOS was built (macOS only)
+    if (Platform.isMacOS && (builtIOS || builtMacOS)) {
+      await _buildMetalShaders();
     }
   } else {
     print('');
@@ -482,6 +499,177 @@ Future<void> _buildLinux() async {
 
   if (await Directory(outputDir).exists()) {
     await copyPath(outputDir, prebuiltDir);
+  }
+}
+
+/// Build Metal shaders for iOS/macOS
+Future<void> _buildMetalShaders() async {
+  if (!Platform.isMacOS) {
+    print('Skipping Metal shaders (macOS/iOS only)');
+    return;
+  }
+
+  print('=== Build Metal Shaders ===');
+
+  final comapsDir = getComapsDir();
+  final repoRoot = getRepoRoot();
+  
+  // Find shader directory (try multiple locations)
+  var shadersDir = path.join(comapsDir, 'libs', 'shaders', 'Metal');
+  if (!await Directory(shadersDir).exists()) {
+    // Try alternative location: thirdparty/comaps/shaders/Metal
+    shadersDir = path.join(comapsDir, 'shaders', 'Metal');
+  }
+  
+  if (!await Directory(shadersDir).exists()) {
+    // Search recursively for shaders/Metal directory
+    await for (final entity in Directory(comapsDir).list(recursive: true)) {
+      if (entity is Directory && 
+          entity.path.contains('shaders') && 
+          entity.path.contains('Metal') &&
+          path.basename(entity.path) == 'Metal') {
+        shadersDir = entity.path;
+        break;
+      }
+    }
+  }
+  
+  // Try to find .metal files if directory still doesn't exist
+  if (!await Directory(shadersDir).exists()) {
+    await for (final entity in Directory(comapsDir).list(recursive: true)) {
+      if (entity is File && entity.path.endsWith('.metal')) {
+        shadersDir = path.dirname(entity.path);
+        break;
+      }
+    }
+  }
+
+  if (!await Directory(shadersDir).exists()) {
+    print('Warning: Metal shader directory not found, skipping Metal shader compilation');
+    print('The app may fall back to OpenGL rendering');
+    return;
+  }
+
+  final tempDir = path.join(getBuildDir(), 'metal_temp');
+  final outputLib = path.join(getBuildDir(), 'metal_shaders', 'shaders_metal.metallib');
+  await ensureDir(tempDir);
+  await ensureDir(path.dirname(outputLib));
+
+  print('Compiling Metal shaders from $shadersDir...');
+
+  // Find all .metal files
+  final metalFiles = <String>[];
+  await for (final entity in Directory(shadersDir).list(recursive: false)) {
+    if (entity is File && entity.path.endsWith('.metal')) {
+      metalFiles.add(entity.path);
+    }
+  }
+
+  if (metalFiles.isEmpty) {
+    print('Warning: No Metal shader files found, skipping Metal shader compilation');
+    return;
+  }
+
+  // Compile each .metal file to .air
+  final airFiles = <String>[];
+  for (final metalFile in metalFiles) {
+    final filename = path.basename(metalFile);
+    final name = path.basenameWithoutExtension(metalFile);
+    final airFile = path.join(tempDir, '$name.air');
+
+    try {
+      // Try with macosx SDK first (works for both macOS and iOS with Metal 2.0)
+      await runProcess(
+        'xcrun',
+        ['-sdk', 'macosx', 'metal', '-c', '-std=osx-metal2.0', '-I', shadersDir, '-o', airFile, metalFile],
+        throwOnError: false,
+      );
+      
+      if (await File(airFile).exists()) {
+        airFiles.add(airFile);
+        print('  Compiled: $filename');
+      }
+    } catch (e) {
+      print('Warning: Failed to compile $filename: $e');
+    }
+  }
+
+  if (airFiles.isEmpty) {
+    print('Warning: No Metal shaders compiled successfully');
+    return;
+  }
+
+  // Link .air files to .metallib
+  print('Linking ${airFiles.length} shaders...');
+  try {
+    await runProcess(
+      'xcrun',
+      ['-sdk', 'macosx', 'metallib', '-o', outputLib, ...airFiles],
+      throwOnError: false,
+    );
+
+    if (!await File(outputLib).exists()) {
+      print('Warning: Failed to link Metal library');
+      return;
+    }
+
+    print('Created: ${path.basename(outputLib)}');
+
+    // Copy to platform resource directories
+    final iosResources = path.join(repoRoot, 'ios', 'Resources');
+    final macosResources = path.join(repoRoot, 'macos', 'Resources');
+    
+    await ensureDir(iosResources);
+    await ensureDir(macosResources);
+    
+    final iosDest = path.join(iosResources, 'shaders_metal.metallib');
+    final macosDest = path.join(macosResources, 'shaders_metal.metallib');
+    
+    await File(outputLib).copy(iosDest);
+    await File(outputLib).copy(macosDest);
+    
+    print('Copied to ios/Resources/');
+    print('Copied to macos/Resources/');
+  } catch (e) {
+    print('Warning: Failed to link Metal library: $e');
+  }
+}
+
+/// Setup CocoaPods for iOS or macOS
+Future<void> _setupCocoaPods(String platform) async {
+  if (!Platform.isMacOS) {
+    print('Skipping CocoaPods setup (macOS/iOS only)');
+    return;
+  }
+
+  if (platform != 'ios' && platform != 'macos') {
+    return;
+  }
+
+  print('=== Setup CocoaPods ($platform) ===');
+
+  // Check if pod command exists
+  if (!await commandExists('pod')) {
+    print('Warning: CocoaPods not found, skipping pod install');
+    print('Install CocoaPods: sudo gem install cocoapods');
+    return;
+  }
+
+  final repoRoot = getRepoRoot();
+  final podDir = path.join(repoRoot, 'example', platform);
+
+  if (!await Directory(podDir).exists()) {
+    print('Warning: $platform example directory not found, skipping CocoaPods setup');
+    return;
+  }
+
+  try {
+    print('Running pod install in example/$platform...');
+    await runProcess('pod', ['install'], workingDirectory: podDir);
+    print('CocoaPods setup complete for $platform');
+  } catch (e) {
+    print('Warning: CocoaPods setup failed for $platform: $e');
+    // Don't fail the build if CocoaPods fails
   }
 }
 
