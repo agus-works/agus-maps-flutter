@@ -1,3 +1,77 @@
+## 0.1.14
+
+### Build System Overhaul
+
+* **Dart Build Tool Migration**: Replaced shell scripts (`.sh`, `.ps1`) with a unified Dart build tool (`tool/build.dart`) for all platforms. This provides better cross-platform compatibility, easier maintenance, and consistent behavior across macOS, Linux, and Windows.
+
+* **Dart Hooks Infrastructure**: Implemented Dart hooks system (`hook/build.dart`) to automatically download and install the SDK during `flutter pub get` for plugin consumers. This eliminates the manual download step for typical consumers.
+
+  - **Consumer Workflow**: The hook automatically downloads the SDK from GitHub Releases during `flutter pub get`
+  - **Contributor Workflow**: Contributors use `dart run tool/build.dart --build-binaries` to build from source
+  - **Fallback Support**: The `AGUS_MAPS_HOME` environment variable remains supported as a fallback
+
+* **Modular Build System**: Created `tool/src/` with modular Dart components:
+  - `build_runner.dart` - Main build orchestration
+  - `cmake_build.dart` - CMake build logic for all platforms
+  - `sdk_downloader.dart` - SDK download and installation
+  - `platform_detector.dart` - OS and platform detection
+  - `file_operations.dart` - Cross-platform file operations
+  - `process_runner.dart` - External process execution
+  - `git_operations.dart` - Git operations (clone, checkout, submodules)
+  - `patch_applicator.dart` - CoMaps patch application
+  - `archive_manager.dart` - Archive operations
+  - `config.dart` - Build configuration and constants
+
+### Bug Fixes
+
+* **iOS XCFramework Generation**: Fixed a critical issue where iOS XCFramework creation failed due to naming conflicts when merging static libraries from device and simulator builds. Both builds were creating `libcomaps.a` in the same directory, causing overwrites. The fix creates separate temporary directories (`temp/iphoneos/` and `temp/iphonesimulator/`) for each architecture's merged library.
+
+* **Windows Visual Studio Generator**: On Windows, the build tool now uses Visual Studio 17 2022 generator instead of Ninja to avoid GCC/MinGW-w64 compatibility issues with ICU compilation. ICU has known issues with newer GCC versions (e.g., 15.2.0), so using MSVC via Visual Studio generator is more reliable.
+
+* **Windows Multi-Config Builds**: Fixed handling of Visual Studio multi-configuration builds where `CMAKE_BUILD_TYPE` is ignored during configure and output DLLs are placed in `buildDir/Release/` or `buildDir/Debug/` subdirectories. The build tool now correctly uses the `--config` flag and searches appropriate output directories.
+
+* **Windows Path Handling**: Improved path handling in the `copyPath` function with proper normalization using `path.absolute()` and `path.normalize()`. Added error handling to skip files that can't be copied (symlinks, missing files) instead of failing the entire copy operation.
+
+* **Windows Data Generation**: The Dart build tool now only runs `generate_desktop_ui_strings.py` directly on Windows and skips bash scripts (`generate_drules.sh`, `generate_categories.sh`), matching the behavior of the original PowerShell implementation.
+
+* **Windows zlib1.dll Runtime Dependency**: Added CI step to copy `zlib1.dll` runtime dependency for Windows builds, ensuring the DLL is available at runtime.
+
+* **CoMaps Data Generation Environment**: Added `OMIM_PATH` and `DATA_PATH` environment variables to data generation scripts (`generate_drules.sh`, `generate_categories.sh`), which are required by CoMaps tools to locate sources and output directories correctly.
+
+### CI/CD Improvements
+
+* **Workflow Modernization**: Updated `.github/workflows/devops.yml` to use `dart run tool/build.dart` instead of shell scripts for:
+  - CoMaps bootstrap (`dart run tool/build.dart --no-cache`)
+  - Platform-specific native builds (`dart run tool/build.dart --build-binaries --platform <platform>`)
+
+* **MWM Download Steps**: Added explicit MWM file download steps to CI workflow for iOS, macOS, and Android example app builds. Downloads `World.mwm`, `WorldCoasts.mwm`, and `Gibraltar.mwm` from omaps.wfr.software mirror to ensure map assets are available for example apps.
+
+* **Symbol Texture Downloading**: Implemented automatic download of symbol textures from Organic Maps for various resolutions and themes (`.sdf` and `.png` files).
+
+* **CocoaPods Automation**: Improved Metal shader compilation handling for macOS/iOS builds, ensuring shaders are correctly processed and linked. Added CocoaPods setup automation after building native binaries.
+
+### Documentation
+
+* **Early-Stage Notice**: Added early-stage development notice to README to set appropriate expectations for users.
+
+* **Dart Hooks Documentation**: Added comprehensive `doc/DART-HOOKS.md` documenting the new build system architecture, migration from shell scripts, build mode detection, and troubleshooting.
+
+### Dependencies
+
+* **New Build Dependencies**: Added the following packages to support the Dart build system:
+  - `hooks: ^1.0.0` - Dart hooks API for build automation
+  - `archive: ^3.4.0` - Archive operations (ZIP extraction/creation)
+  - `yaml: ^3.1.2` - YAML parsing for pubspec.yaml
+  - `path: ^1.9.1` - Cross-platform path operations
+
+### Migration
+
+No action required for consumers upgrading from `0.1.13`. The Dart hooks system provides a smoother experience:
+
+- **First-time setup**: Simply run `flutter pub get` - the SDK will be downloaded automatically
+- **Existing `AGUS_MAPS_HOME` users**: Your existing setup continues to work; the environment variable takes precedence over auto-download
+- **Contributors**: Use `dart run tool/build.dart --build-binaries` instead of shell scripts
+
 ## 0.1.13
 
 ### Documentation
