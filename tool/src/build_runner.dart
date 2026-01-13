@@ -134,12 +134,45 @@ Future<void> _bootstrapComaps(String tag, {bool skipPatches = false}) async {
 Future<void> _buildBoostHeaders() async {
   final comapsDir = getComapsDir();
   final boostDir = path.join(comapsDir, '3party', 'boost');
-  final configFile = path.join(boostDir, 'boost', 'config.hpp');
+  
+  // Check for flat boost/ directory (created by b2 headers)
+  final flatConfigFile = path.join(boostDir, 'boost', 'config.hpp');
+  
+  // Check for modular structure (libs/config/include/boost/config.hpp)
+  // CoMaps CMake directly includes from modular paths, so we don't need b2 headers
+  final modularConfigFile = path.join(boostDir, 'libs', 'config', 'include', 'boost', 'config.hpp');
 
   print('=== Build Boost Headers ===');
 
-  if (await File(configFile).exists()) {
-    print('Boost headers already built');
+  // First, check if modular structure exists (preferred - no build needed)
+  if (await File(modularConfigFile).exists()) {
+    print('Boost modular headers found (libs/*/include structure)');
+    print('CMake will use modular include paths directly - no b2 headers needed');
+    
+    // Verify a few more essential modules exist
+    final essentialModules = ['regex', 'container', 'iterator', 'range'];
+    var allFound = true;
+    for (final module in essentialModules) {
+      final modulePath = path.join(boostDir, 'libs', module, 'include');
+      if (!await Directory(modulePath).exists()) {
+        print('Warning: Boost module "$module" not found at $modulePath');
+        allFound = false;
+      }
+    }
+    
+    if (allFound) {
+      print('All essential Boost modules verified');
+      print('');
+      return;
+    } else {
+      print('Some Boost modules missing, will try to build headers...');
+    }
+  }
+
+  // Check if flat structure already exists (from previous b2 headers run)
+  if (await File(flatConfigFile).exists()) {
+    print('Boost flat headers already built (boost/config.hpp exists)');
+    print('');
     return;
   }
 
@@ -147,31 +180,131 @@ Future<void> _buildBoostHeaders() async {
     throw Exception('Boost directory not found: $boostDir');
   }
 
-  // Build bootstrap.sh
-  print('Running bootstrap.sh...');
-  if (Platform.isWindows) {
-    // On Windows, try bootstrap.bat first
-    final bootstrapBat = path.join(boostDir, 'bootstrap.bat');
-    if (await File(bootstrapBat).exists()) {
-      await runProcess('bootstrap.bat', [], workingDirectory: boostDir);
+  // If we get here, we need to run b2 headers to create the flat structure
+  // This is a fallback path - normally the modular structure should be sufficient
+  print('Building flat Boost headers with b2...');
+  
+  final b2Exe = Platform.isWindows ? path.join(boostDir, 'b2.exe') : path.join(boostDir, 'b2');
+
+  // Check if b2 already exists (bootstrap already done)
+  final b2Exists = await File(b2Exe).exists();
+  
+  if (!b2Exists) {
+    // Need to run bootstrap first
+    print('Running bootstrap...');
+    
+    if (Platform.isWindows) {
+      // On Windows, check for available compilers first
+      final hasVsDevCmd = await _findVsDevCmd();
+      
+      final bootstrapBat = path.join(boostDir, 'bootstrap.bat');
+      if (await File(bootstrapBat).exists()) {
+        if (hasVsDevCmd != null) {
+          // Run through VS Developer Command Prompt
+          print('Using Visual Studio: $hasVsDevCmd');
+          try {
+            // Create a temporary batch file that calls VsDevCmd and then bootstrap
+            final tempBat = path.join(boostDir, '_bootstrap_with_vs.bat');
+            await File(tempBat).writeAsString('''
+@echo off
+call "${hasVsDevCmd}"
+cd /d "${boostDir}"
+call bootstrap.bat
+''');
+            await runProcess('cmd', ['/c', tempBat], workingDirectory: boostDir, verbose: true);
+            // Clean up temp file
+            try {
+              await File(tempBat).delete();
+            } catch (_) {}
+          } catch (e) {
+            // Fallback: try direct execution
+            print('VS Dev Cmd method failed, trying direct execution...');
+            await runProcess('cmd', ['/c', 'bootstrap.bat'], workingDirectory: boostDir, verbose: true);
+          }
+        } else {
+          // Try direct execution - let bootstrap.bat find the compiler
+          print('Running bootstrap.bat directly...');
+          try {
+            await runProcess('cmd', ['/c', 'bootstrap.bat'], workingDirectory: boostDir, verbose: true);
+          } catch (e) {
+            print('');
+            print('ERROR: Failed to build Boost b2 tool.');
+            print('');
+            print('This requires a C++ compiler. Please ensure one of the following:');
+            print('  1. Visual Studio 2019/2022 with "Desktop development with C++" workload');
+            print('  2. Run from "Developer Command Prompt for VS"');
+            print('  3. MinGW-w64 (gcc) in PATH');
+            print('');
+            print('After installing, restart your terminal and try again.');
+            rethrow;
+          }
+        }
+      } else {
+        // Try bash bootstrap.sh (Git Bash, WSL, MSYS2)
+        print('bootstrap.bat not found, trying bash bootstrap.sh...');
+        await runProcess('bash', ['bootstrap.sh'], workingDirectory: boostDir, verbose: true);
+      }
     } else {
-      // Try bash bootstrap.sh (Git Bash, WSL)
-      await runProcess('bash', ['bootstrap.sh'], workingDirectory: boostDir);
+      // Unix systems
+      await runProcess('bash', ['bootstrap.sh'], workingDirectory: boostDir, verbose: true);
     }
   } else {
-    await runProcess('bash', ['bootstrap.sh'], workingDirectory: boostDir);
+    print('b2 already exists, skipping bootstrap');
+  }
+
+  // Verify b2 exists after bootstrap
+  if (!await File(b2Exe).exists()) {
+    throw Exception('Bootstrap completed but b2 executable not found at: $b2Exe');
   }
 
   // Build headers with b2
   print('Building headers with b2...');
   if (Platform.isWindows) {
-    await runProcess('b2', ['headers'], workingDirectory: boostDir);
+    await runProcess('cmd', ['/c', 'b2.exe', 'headers'], workingDirectory: boostDir, verbose: true);
   } else {
-    await runProcess('./b2', ['headers'], workingDirectory: boostDir);
+    await runProcess('./b2', ['headers'], workingDirectory: boostDir, verbose: true);
+  }
+
+  // Verify headers were generated
+  if (!await File(flatConfigFile).exists()) {
+    throw Exception('b2 headers completed but config.hpp not found at: $flatConfigFile');
   }
 
   print('Boost headers built');
   print('');
+}
+
+/// Find Visual Studio Developer Command Prompt
+Future<String?> _findVsDevCmd() async {
+  if (!Platform.isWindows) return null;
+  
+  // Common VS installation paths
+  final programFiles = Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)';
+  final programFilesNormal = Platform.environment['ProgramFiles'] ?? r'C:\Program Files';
+  
+  final vsYears = ['2022', '2019', '2017'];
+  final vsEditions = ['Enterprise', 'Professional', 'Community', 'BuildTools'];
+  
+  for (final year in vsYears) {
+    for (final edition in vsEditions) {
+      // VS 2022 is typically in Program Files (not x86)
+      final basePath = year == '2022' ? programFilesNormal : programFiles;
+      final devCmdPath = path.join(
+        basePath,
+        'Microsoft Visual Studio',
+        year,
+        edition,
+        'Common7',
+        'Tools',
+        'VsDevCmd.bat',
+      );
+      if (await File(devCmdPath).exists()) {
+        return devCmdPath;
+      }
+    }
+  }
+  
+  return null;
 }
 
 /// Generate CoMaps data files

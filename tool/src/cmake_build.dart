@@ -6,6 +6,55 @@ import 'process_runner.dart' show runProcess, runProcessStreaming, commandExists
 import 'file_operations.dart' show ensureDir, copyPath, dirExists, fileExists;
 import 'platform_detector.dart' show getRepoRoot, getBuildDir, getComapsDir, getCpuCores, detectOS, OSType;
 import 'config.dart' show BuildConfig;
+import 'utils.dart' show compareVersions;
+
+// Cached CMake path
+String? _cmakePath;
+
+/// Get CMake executable path (may be in PATH or from Android SDK)
+String _getCMakePath() {
+  if (_cmakePath != null) return _cmakePath!;
+  
+  // Check if cmake is in PATH
+  final result = Process.runSync(Platform.isWindows ? 'where' : 'which', ['cmake'], runInShell: true);
+  if (result.exitCode == 0) {
+    _cmakePath = 'cmake';
+    return _cmakePath!;
+  }
+  
+  // On Windows, try to find cmake from Android SDK
+  if (Platform.isWindows) {
+    final androidHome = Platform.environment['ANDROID_HOME'] ??
+        Platform.environment['ANDROID_SDK_ROOT'] ??
+        path.join(Platform.environment['LOCALAPPDATA'] ?? '', 'Android', 'Sdk');
+    
+    if (androidHome.isNotEmpty && dirExists(androidHome)) {
+      final cmakeDir = path.join(androidHome, 'cmake');
+      if (dirExists(cmakeDir)) {
+        // Find newest CMake version
+        final cmakeDirectory = Directory(cmakeDir);
+        final cmakeVersions = cmakeDirectory
+            .listSync()
+            .whereType<Directory>()
+            .map((d) => path.basename(d.path))
+            .where((name) => RegExp(r'^\d+\.\d+').hasMatch(name))
+            .toList()
+          ..sort((a, b) => compareVersions(b, a)); // Sort descending
+        
+        if (cmakeVersions.isNotEmpty) {
+          final cmakeExe = path.join(cmakeDir, cmakeVersions.first, 'bin', 'cmake.exe');
+          if (fileExists(cmakeExe)) {
+            _cmakePath = cmakeExe;
+            print('Using CMake from Android SDK: $_cmakePath');
+            return _cmakePath!;
+          }
+        }
+      }
+    }
+  }
+  
+  throw Exception('CMake not found. Install CMake and add to PATH, or install via Android Studio SDK Manager.');
+}
 
 /// Build configuration for CMake
 class CMakeBuildConfig {
@@ -46,6 +95,8 @@ Future<void> buildWithCMake(CMakeBuildConfig config) async {
     cmakeArgs.addAll(['-D', '${entry.key}=${entry.value}']);
   }
 
+  final cmake = _getCMakePath();
+  
   print('Configuring CMake...');
   print('  Source: ${config.sourceDir}');
   print('  Build: ${config.buildDir}');
@@ -55,7 +106,7 @@ Future<void> buildWithCMake(CMakeBuildConfig config) async {
 
   // Configure
   await runProcessStreaming(
-    'cmake',
+    cmake,
     cmakeArgs,
     onStdout: (line) => stdout.write(line),
     onStderr: (line) => stderr.write(line),
@@ -89,7 +140,7 @@ Future<void> buildWithCMake(CMakeBuildConfig config) async {
   buildArgs.addAll(['--parallel', jobs.toString()]);
 
   await runProcessStreaming(
-    'cmake',
+    cmake,
     buildArgs,
     onStdout: (line) => stdout.write(line),
     onStderr: (line) => stderr.write(line),
@@ -385,9 +436,14 @@ Future<void> buildWindowsLibrary({
     }
   }
 
+  final repoRoot = getRepoRoot();
   final variables = <String, String>{
     'CMAKE_TOOLCHAIN_FILE': toolchainFile,
     'VCPKG_TARGET_TRIPLET': 'x64-windows',
+    // Use project-local vcpkg manifest and installed packages
+    // This ensures vcpkg uses vcpkg.json from repo root and installs to vcpkg_installed/
+    'VCPKG_MANIFEST_DIR': repoRoot,
+    'VCPKG_INSTALLED_DIR': path.join(repoRoot, 'vcpkg_installed'),
     'CMAKE_BUILD_TYPE': BuildConfig.buildType,
     // Disable ccache on Windows
     'CMAKE_C_COMPILER_LAUNCHER': '',
@@ -497,21 +553,61 @@ Future<void> _mergeStaticLibraries(List<String> libs, String output) async {
 
 /// Detect Android NDK path
 String _detectAndroidNDK() {
+  // Check environment variable first
+  final envNdkPath = Platform.environment['ANDROID_NDK_HOME'] ?? 
+      Platform.environment['ANDROID_NDK'];
+  if (envNdkPath != null && envNdkPath.isNotEmpty && dirExists(envNdkPath)) {
+    print('Using NDK from environment: $envNdkPath');
+    return envNdkPath;
+  }
+  
   final androidHome = Platform.environment['ANDROID_HOME'] ??
       Platform.environment['ANDROID_SDK_ROOT'] ??
       (Platform.isMacOS ? path.join(Platform.environment['HOME']!, 'Library', 'Android', 'sdk') : 
-       Platform.isLinux ? path.join(Platform.environment['HOME']!, 'Android', 'Sdk') : '');
+       Platform.isLinux ? path.join(Platform.environment['HOME']!, 'Android', 'Sdk') :
+       Platform.isWindows ? path.join(Platform.environment['LOCALAPPDATA'] ?? '', 'Android', 'Sdk') : '');
   
-  if (androidHome.isEmpty) {
-    throw Exception('ANDROID_HOME not set');
+  if (androidHome.isEmpty || !dirExists(androidHome)) {
+    throw Exception('ANDROID_HOME not set or not found. Set ANDROID_HOME or ANDROID_SDK_ROOT environment variable.');
   }
 
-  final ndkPath = path.join(androidHome, 'ndk', BuildConfig.ndkVersion);
-  if (!dirExists(ndkPath)) {
-    throw Exception('Android NDK not found at: $ndkPath');
+  final ndkDir = path.join(androidHome, 'ndk');
+  
+  // First try the configured version
+  final preferredNdk = path.join(ndkDir, BuildConfig.ndkVersion);
+  if (dirExists(preferredNdk)) {
+    return preferredNdk;
   }
 
-  return ndkPath;
+  // Auto-detect installed NDK versions
+  final ndkDirectory = Directory(ndkDir);
+  if (!ndkDirectory.existsSync()) {
+    throw Exception('Android NDK directory not found: $ndkDir\nInstall NDK via Android Studio SDK Manager.');
+  }
+
+  final installedNdks = ndkDirectory
+      .listSync()
+      .whereType<Directory>()
+      .map((d) => path.basename(d.path))
+      .where((name) => RegExp(r'^\d+\.\d+\.\d+$').hasMatch(name))
+      .toList()
+    ..sort((a, b) => compareVersions(b, a)); // Sort descending (newest first)
+
+  if (installedNdks.isEmpty) {
+    throw Exception('No Android NDK versions found in: $ndkDir\n'
+        'Install NDK via Android Studio SDK Manager.\n'
+        'Preferred version: ${BuildConfig.ndkVersion}');
+  }
+
+  // Use the newest available NDK
+  final selectedNdk = installedNdks.first;
+  final selectedPath = path.join(ndkDir, selectedNdk);
+  
+  if (selectedNdk != BuildConfig.ndkVersion) {
+    print('Note: Using NDK $selectedNdk (configured: ${BuildConfig.ndkVersion})');
+  }
+  
+  return selectedPath;
 }
 
 /// Detect vcpkg path

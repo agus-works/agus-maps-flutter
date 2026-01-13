@@ -9,10 +9,18 @@ Future<ProcessResult> runProcess(
   Map<String, String>? environment,
   String? workingDirectory,
   bool throwOnError = true,
+  bool verbose = false,
 }) async {
   final env = Map<String, String>.from(Platform.environment);
   if (environment != null) {
     env.addAll(environment);
+  }
+  
+  if (verbose) {
+    print('Running: $executable ${arguments.join(' ')}');
+    if (workingDirectory != null) {
+      print('  Working directory: $workingDirectory');
+    }
   }
   
   final result = await Process.run(
@@ -24,6 +32,17 @@ Future<ProcessResult> runProcess(
   );
   
   if (throwOnError && result.exitCode != 0) {
+    final stdoutStr = result.stdout?.toString().trim() ?? '';
+    final stderrStr = result.stderr?.toString().trim() ?? '';
+    
+    // Print captured output for debugging
+    if (stdoutStr.isNotEmpty) {
+      print('stdout: $stdoutStr');
+    }
+    if (stderrStr.isNotEmpty) {
+      print('stderr: $stderrStr');
+    }
+    
     throw ProcessException(
       executable,
       arguments,
