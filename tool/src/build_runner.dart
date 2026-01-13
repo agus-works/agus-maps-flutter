@@ -9,6 +9,7 @@ import 'patch_applicator.dart' show applyPatches;
 import 'file_operations.dart' show ensureDir, copyPath;
 import 'process_runner.dart' show runProcess, commandExists;
 import 'cmake_build.dart' show buildAndroidAbi, buildiOSXCFramework, buildMacOSXCFramework, buildWindowsLibrary, buildLinuxLibrary;
+import 'archive_manager.dart' show createTarGz, extractTarGz;
 
 /// Build runner configuration
 class BuildRunnerConfig {
@@ -52,7 +53,7 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
   print('');
 
   // Step 1: Bootstrap CoMaps
-  await _bootstrapComaps(tag, skipPatches: config.skipPatches);
+  await _bootstrapComaps(tag, skipPatches: config.skipPatches, noCache: config.noCache);
 
   // Step 2: Build Boost headers
   await _buildBoostHeaders();
@@ -96,29 +97,108 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
 }
 
 /// Bootstrap CoMaps (clone, checkout, submodules, patches)
-Future<void> _bootstrapComaps(String tag, {bool skipPatches = false}) async {
+/// 
+/// Implements local caching for faster iteration on patches:
+/// - Cache file: .thirdparty-{tag}.tar.gz (in repo root)
+/// - Cache is created AFTER clone, BEFORE patches
+/// - If thirdparty/ is deleted and cache exists, extract from cache
+/// - Use --no-cache to disable caching behavior
+Future<void> _bootstrapComaps(String tag, {bool skipPatches = false, bool noCache = false}) async {
+  final repoRoot = getRepoRoot();
+  final thirdpartyDir = path.join(repoRoot, 'thirdparty');
   final comapsDir = getComapsDir();
-
+  
+  // Sanitize tag for filename (replace slashes and special chars)
+  final safeTag = tag.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
+  final cacheFile = path.join(repoRoot, '.thirdparty-$safeTag.tar.gz');
+  
   print('=== Bootstrap CoMaps ===');
+  
+  // Show cache status
+  final cacheExists = await File(cacheFile).exists();
+  if (noCache) {
+    print('Cache: disabled (--no-cache)');
+  } else if (cacheExists) {
+    final cacheSize = await File(cacheFile).length();
+    final cacheSizeMB = (cacheSize / 1024 / 1024).toStringAsFixed(1);
+    print('Cache: found .thirdparty-$safeTag.tar.gz ($cacheSizeMB MB)');
+  } else {
+    print('Cache: not found (will create after fresh clone)');
+  }
+  
+  // Track if this was a fresh clone (for cache creation)
+  var freshClone = false;
+  var usedCache = false;
+  
+  // Try to restore from cache if thirdparty doesn't exist
+  if (!noCache && !await Directory(comapsDir).exists() && cacheExists) {
+    print('');
+    print('=== Restoring from Cache ===');
+    print('Extracting .thirdparty-$safeTag.tar.gz...');
+    final stopwatch = Stopwatch()..start();
+    
+    try {
+      await extractTarGz(cacheFile, repoRoot);
+      stopwatch.stop();
+      print('Extracted in ${stopwatch.elapsed.inSeconds} seconds');
+      usedCache = true;
+    } catch (e) {
+      print('Warning: Cache extraction failed: $e');
+      print('Falling back to git clone...');
+      // Clean up any partial extraction
+      if (await Directory(thirdpartyDir).exists()) {
+        await Directory(thirdpartyDir).delete(recursive: true);
+      }
+    }
+  }
 
-  // Check if already cloned
+  // Check if already cloned (either from cache or existing)
   if (await Directory(comapsDir).exists()) {
     final gitDir = Directory(path.join(comapsDir, '.git'));
     if (await gitDir.exists()) {
-      print('CoMaps repository already exists');
+      if (usedCache) {
+        print('CoMaps restored from cache');
+      } else {
+        print('CoMaps repository already exists');
+      }
       // Still checkout correct tag and update submodules
       await checkoutComapsTag(tag);
       await initSubmodules();
     } else {
       // Clone fresh
       await cloneComaps(tag);
+      freshClone = true;
     }
   } else {
     // Clone fresh
     await cloneComaps(tag);
+    freshClone = true;
+  }
+  
+  // Create cache after fresh clone (BEFORE patches)
+  // This allows iterating on patches without re-cloning
+  if (!noCache && freshClone && !usedCache) {
+    print('');
+    print('=== Creating Cache ===');
+    print('Compressing thirdparty to .thirdparty-$safeTag.tar.gz...');
+    print('This may take a few minutes (using fastest compression)...');
+    final stopwatch = Stopwatch()..start();
+    
+    try {
+      await createTarGz(thirdpartyDir, cacheFile);
+      stopwatch.stop();
+      
+      final cacheSize = await File(cacheFile).length();
+      final cacheSizeMB = (cacheSize / 1024 / 1024).toStringAsFixed(1);
+      print('Cache created: $cacheSizeMB MB in ${stopwatch.elapsed.inSeconds} seconds');
+      print('Tip: Delete thirdparty/ and re-run to use cache');
+    } catch (e) {
+      print('Warning: Failed to create cache: $e');
+      // Don't fail the build if cache creation fails
+    }
   }
 
-  // Apply patches
+  // Apply patches (always after cache operations)
   if (!skipPatches) {
     print('');
     print('=== Apply Patches ===');

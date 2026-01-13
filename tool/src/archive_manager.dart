@@ -71,6 +71,78 @@ Future<void> createTarBz2(String sourceDir, String archivePath) async {
   }
 }
 
+/// Create TAR.GZ archive with fastest compression (for local caching)
+/// Uses gzip -1 (fastest) to prioritize speed over compression ratio
+Future<void> createTarGz(String sourceDir, String archivePath) async {
+  final os = detectOS();
+  final sourceName = path.basename(sourceDir);
+  final sourceParent = path.dirname(sourceDir);
+  
+  if (os == OSType.windows) {
+    // Windows: use tar (available in Windows 10+) or 7z
+    if (await _commandExists('tar')) {
+      // Windows tar supports gzip natively
+      await runProcess(
+        'tar',
+        ['-czf', archivePath, '-C', sourceParent, sourceName],
+        throwOnError: true,
+      );
+    } else if (await _commandExists('7z')) {
+      // 7z two-step: create .tar then .gz
+      final tempTar = '$archivePath.tar';
+      await runProcess('7z', ['a', '-ttar', tempTar, path.join(sourceDir, '*')]);
+      await runProcess('7z', ['a', '-tgzip', '-mx=1', archivePath, tempTar]);
+      await File(tempTar).delete();
+    } else {
+      throw Exception('Neither tar nor 7z found. Cannot create TAR.GZ on Windows.');
+    }
+  } else {
+    // Unix: use tar with gzip, GZIP=-1 for fastest compression
+    await runProcess(
+      'tar',
+      ['-czf', archivePath, '-C', sourceParent, sourceName],
+      environment: {'GZIP': '-1'},
+      throwOnError: true,
+    );
+  }
+}
+
+/// Extract TAR.GZ archive (for local caching)
+Future<void> extractTarGz(String tarPath, String destDir) async {
+  final os = detectOS();
+  
+  // Ensure destination directory exists
+  final destDirectory = Directory(destDir);
+  if (!await destDirectory.exists()) {
+    await destDirectory.create(recursive: true);
+  }
+  
+  if (os == OSType.windows) {
+    // Windows: use tar (available in Windows 10+) or 7z
+    if (await _commandExists('tar')) {
+      await runProcess('tar', ['-xzf', tarPath, '-C', destDir], throwOnError: true);
+    } else if (await _commandExists('7z')) {
+      // 7z two-step extraction for .tar.gz
+      // First extract .gz to get .tar, then extract .tar
+      final tempDir = path.join(destDir, '.7z_temp');
+      await Directory(tempDir).create(recursive: true);
+      await runProcess('7z', ['x', tarPath, '-o$tempDir', '-y']);
+      // Find the extracted .tar file
+      final tarFile = await Directory(tempDir)
+          .list()
+          .where((e) => e.path.endsWith('.tar'))
+          .first;
+      await runProcess('7z', ['x', tarFile.path, '-o$destDir', '-y']);
+      await Directory(tempDir).delete(recursive: true);
+    } else {
+      throw Exception('Neither tar nor 7z found. Cannot extract TAR.GZ on Windows.');
+    }
+  } else {
+    // Unix: use tar
+    await runProcess('tar', ['-xzf', tarPath, '-C', destDir], throwOnError: true);
+  }
+}
+
 /// Create ZIP archive
 Future<void> createZip(String sourceDir, String zipPath) async {
   final archive = Archive();

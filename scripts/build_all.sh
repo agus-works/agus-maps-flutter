@@ -178,8 +178,9 @@ build_flutter_apps() {
     
     # Build iOS (if on macOS)
     if [[ "$(uname -s)" == "Darwin" ]]; then
-        log_step "Building iOS app (simulator)..."
-        flutter build ios --simulator --release || log_warn "iOS build failed"
+        log_step "Building iOS app (simulator, debug)..."
+        # Note: iOS simulator does not support release mode
+        flutter build ios --simulator --debug || log_warn "iOS build failed"
         
         log_step "Building macOS app..."
         flutter build macos --release || log_warn "macOS build failed"

@@ -37,6 +37,7 @@ thirdparty/comaps
 # Thirdparty cache archive (created by bootstrap scripts for faster iteration)
 .thirdparty.7z
 .thirdparty.tar.bz2
+.thirdparty.tar.gz
 
 # iOS vendored frameworks (downloaded during pod install)
 ios/Frameworks/
@@ -116,6 +117,7 @@ output.log
 
 # Thirdparty cache archives with version tags
 .thirdparty-*.tar.bz2
+.thirdparty-*.tar.gz
 
 # Project Generated/Downloaded Assets
 *.mwm
