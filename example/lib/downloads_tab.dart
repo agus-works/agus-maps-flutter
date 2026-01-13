@@ -1146,23 +1146,34 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
     if (isDownloaded) {
       final meta = widget.mwmStorage.getByRegion(region.name);
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: meta?.isBundled == true
-              ? Colors.blue.shade100
-              : Colors.green.shade100,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          meta?.isBundled == true ? 'bundled' : 'installed',
-          style: TextStyle(
-            fontSize: 10,
-            color: meta?.isBundled == true
-                ? Colors.blue.shade800
-                : Colors.green.shade800,
+      final isBundled = meta?.isBundled == true;
+      
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: isBundled ? Colors.blue.shade100 : Colors.green.shade100,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              isBundled ? 'bundled' : 'installed',
+              style: TextStyle(
+                fontSize: 10,
+                color: isBundled ? Colors.blue.shade800 : Colors.green.shade800,
+              ),
+            ),
           ),
-        ),
+          // Show delete button for non-bundled maps
+          if (!isBundled)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 20),
+              color: Colors.red.shade400,
+              onPressed: () => _confirmDeleteRegion(region),
+              tooltip: 'Delete map',
+            ),
+        ],
       );
     }
 
@@ -1177,6 +1188,95 @@ class _DownloadsTabState extends State<DownloadsTab> {
           ? 'Download'
           : 'Max $kMaxConcurrentDownloads concurrent downloads',
     );
+  }
+
+  /// Show confirmation dialog before deleting a region.
+  Future<void> _confirmDeleteRegion(MwmRegion region) async {
+    final meta = widget.mwmStorage.getByRegion(region.name);
+    final sizeMb = meta != null
+        ? (meta.fileSize / (1024 * 1024)).toStringAsFixed(1)
+        : region.sizeMB;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.delete_forever, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Delete Map'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Are you sure you want to delete "${region.displayName}"?'),
+            const SizedBox(height: 8),
+            Text(
+              'This will free up $sizeMb MB of storage.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'You can re-download it from the server at any time.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deleteRegion(region);
+    }
+  }
+
+  /// Delete a downloaded region.
+  Future<void> _deleteRegion(MwmRegion region) async {
+    debugPrint('[Downloads] Deleting ${region.name}...');
+    
+    final result = await widget.mwmStorage.deleteMap(region.name);
+    
+    if (result.success) {
+      // Update disk space
+      if (result.deletedBytes != null) {
+        _availableSpaceBytes += result.deletedBytes!;
+      }
+      
+      // Notify parent that maps changed
+      widget.onMapsChanged?.call();
+      
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Deleted ${region.displayName}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete: ${result.error}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
 

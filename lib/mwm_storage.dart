@@ -311,6 +311,111 @@ class MwmStorage {
     }
     return orphaned;
   }
+
+  /// Delete a downloaded map file and remove its metadata.
+  ///
+  /// This deletes both the MWM file on disk and the stored metadata.
+  /// Does NOT delete bundled files (isBundled=true).
+  ///
+  /// Returns [DeleteResult] with success status and any error message.
+  Future<DeleteResult> deleteMap(String regionName) async {
+    final metadata = getByRegion(regionName);
+    
+    if (metadata == null) {
+      return DeleteResult(
+        regionName: regionName,
+        success: false,
+        error: 'No metadata found for region: $regionName',
+      );
+    }
+
+    if (metadata.isBundled) {
+      return DeleteResult(
+        regionName: regionName,
+        success: false,
+        error: 'Cannot delete bundled maps. Re-install the app to remove.',
+      );
+    }
+
+    try {
+      final file = File(metadata.filePath);
+      
+      // Delete the file if it exists
+      if (await file.exists()) {
+        await file.delete();
+        debugPrint('[MwmStorage] Deleted file: ${metadata.filePath}');
+      }
+      
+      // Remove metadata
+      await remove(regionName);
+      debugPrint('[MwmStorage] Removed metadata for: $regionName');
+      
+      return DeleteResult(
+        regionName: regionName,
+        success: true,
+        deletedBytes: metadata.fileSize,
+      );
+    } catch (e) {
+      debugPrint('[MwmStorage] Error deleting $regionName: $e');
+      return DeleteResult(
+        regionName: regionName,
+        success: false,
+        error: e.toString(),
+      );
+    }
+  }
+
+  /// Delete multiple maps at once.
+  ///
+  /// Skips bundled maps. Returns results for each attempted deletion.
+  Future<List<DeleteResult>> deleteMaps(List<String> regionNames) async {
+    final results = <DeleteResult>[];
+    for (final name in regionNames) {
+      results.add(await deleteMap(name));
+    }
+    return results;
+  }
+
+  /// Delete all downloaded (non-bundled) maps.
+  ///
+  /// Returns list of results for each deletion.
+  Future<List<DeleteResult>> deleteAllDownloaded() async {
+    final downloaded = _cache.where((m) => !m.isBundled).toList();
+    return deleteMaps(downloaded.map((m) => m.regionName).toList());
+  }
+}
+
+/// Result of a map deletion operation.
+class DeleteResult {
+  /// Region name that was attempted to delete.
+  final String regionName;
+
+  /// Whether the deletion was successful.
+  final bool success;
+
+  /// Error message if deletion failed.
+  final String? error;
+
+  /// Bytes freed by deletion (if successful).
+  final int? deletedBytes;
+
+  const DeleteResult({
+    required this.regionName,
+    required this.success,
+    this.error,
+    this.deletedBytes,
+  });
+
+  @override
+  String toString() {
+    if (success) {
+      final mb = deletedBytes != null 
+          ? ' (${(deletedBytes! / (1024 * 1024)).toStringAsFixed(1)} MB freed)'
+          : '';
+      return 'DeleteResult($regionName: success$mb)';
+    }
+    return 'DeleteResult($regionName: failed - $error)';
+  }
 }
 
 /// Result of validating a single MWM file against its metadata.

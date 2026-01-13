@@ -658,10 +658,39 @@ See **[API.md](doc/API.md#future-api-candidates)** for detailed roadmap of plann
 
 ## Map Data
 
-Agus Maps uses MWM files from OpenStreetMap. You can download maps from:
-- [WebFreak's Organic Maps mirror](https://omaps.webfreak.org/)
-- [Organic Maps mirror by WFR Software](https://omaps.wfr.software/)
-- **In-app (Example)**: Use the example app's Downloads tab to browse and download regions
+Agus Maps uses MWM files from OpenStreetMap, hosted on the official CoMaps CDN servers.
+
+### CoMaps CDN Servers
+
+The CoMaps CDN provides MWM files with enhanced features not available in older Organic Maps mirrors:
+- Improved routing engine with conditional restrictions
+- More dense altitude contour lines
+- Additional POIs (EV charging stations, vending machines, etc.)
+- Enhanced map colors for light/dark modes
+- Better search functionality
+
+| Server | URL | Notes |
+|--------|-----|-------|
+| **CoMaps MapGen Finland** | `https://mapgen-fi-1.comaps.app/` | Primary (listed by metaserver) |
+| **CoMaps CDN US** | `https://cdn-us-2.comaps.tech/` | |
+| **CoMaps CDN Germany** | `https://comaps.firewall-gateway.de/` | |
+
+**URL Structure:** `<base>/maps/<version>/<file>`
+
+Example: `https://mapgen-fi-1.comaps.app/maps/260101/Gibraltar.mwm`
+
+> **Note:** The CoMaps metaserver at `https://cdn-us-1.comaps.app/servers` returns the currently active download servers.
+
+### Diagnostic Tool
+
+Run the mirror availability diagnostic tool to check server status:
+
+```bash
+dart run tool/check_mirrors.dart
+```
+
+### In-App Download
+**In-app (Example)**: Use the example app's Downloads tab to browse and download regions. The app automatically selects the fastest available CoMaps CDN server.
 
 The example app bundles a small Gibraltar map for testing.
 

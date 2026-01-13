@@ -2,31 +2,47 @@
 
 ## Overview
 
-Service to discover available MWM files from mirror sites, parse directory listings, and measure latency for mirror selection.
+Service to discover available MWM files from CoMaps CDN servers, probe for available snapshots, and measure latency for mirror selection.
 
-## Mirror Sites
+## CoMaps CDN Servers
 
-- **Primary**: `https://omaps.wfr.software/maps/`
-- **Secondary**: `https://omaps.webfreak.org/maps/`
+The official CoMaps CDN servers host MWM files with enhanced features:
+- Improved routing engine with conditional restrictions
+- More dense/detailed altitude contour lines
+- Additional Points of Interest (EV charging stations, vending machines, etc.)
+- Enhanced map colors for light/dark modes
+- Better search functionality
+
+| Server | URL | Notes |
+|--------|-----|-------|
+| **CoMaps MapGen Finland** | `https://mapgen-fi-1.comaps.app/` | Primary (listed by metaserver) |
+| **CoMaps CDN US** | `https://cdn-us-2.comaps.tech/` | |
+| **CoMaps CDN Germany** | `https://comaps.firewall-gateway.de/` | |
+
+### Metaserver
+
+The CoMaps metaserver at `https://cdn-us-1.comaps.app/servers` returns the currently active download servers used by the CoMaps app.
 
 ## URL Structure
 
+CoMaps CDN uses the following URL pattern:
+
 ```
-https://omaps.wfr.software/maps/
-├── 250608/                         ← Snapshot folder (YYMMDD)
-│   ├── Afghanistan.mwm
-│   ├── Gibraltar.mwm
-│   ├── Spain.mwm
-│   └── ...
-├── 250601/                         ← Older snapshot
-│   └── ...
-└── ...
+https://mapgen-fi-1.comaps.app/
+└── maps/
+    └── 260101/                         ← Snapshot folder (YYMMDD)
+        ├── Afghanistan.mwm
+        ├── Gibraltar.mwm
+        ├── Spain.mwm
+        └── ...
 ```
 
 Direct download URL example:
 ```
-https://omaps.wfr.software/maps/250608/Gibraltar.mwm
+https://mapgen-fi-1.comaps.app/maps/260101/Gibraltar.mwm
 ```
+
+> **Note:** CoMaps CDN servers do not provide directory listings. The service probes known snapshot versions to discover available data.
 
 ## Data Models
 
@@ -52,7 +68,7 @@ class Mirror {
 
 ```dart
 class Snapshot {
-  final String version;  // e.g., "250608"
+  final String version;  // e.g., "260101"
   final DateTime date;   // Parsed from version
   
   Snapshot({required this.version})
@@ -89,56 +105,12 @@ class MwmRegion {
 ### File: `lib/mirror_service.dart`
 
 ```dart
-import 'dart:async';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-
-class Mirror {
-  final String name;
-  final String baseUrl;
-  int? latencyMs;
-  bool isAvailable;
-  
-  Mirror({
-    required this.name,
-    required this.baseUrl,
-    this.latencyMs,
-    this.isAvailable = true,
-  });
-}
-
-class Snapshot {
-  final String version;
-  final DateTime date;
-  
-  Snapshot({required this.version})
-      : date = _parseDate(version);
-  
-  static DateTime _parseDate(String v) {
-    if (v.length != 6) throw FormatException('Invalid snapshot version: $v');
-    final year = 2000 + int.parse(v.substring(0, 2));
-    final month = int.parse(v.substring(2, 4));
-    final day = int.parse(v.substring(4, 6));
-    return DateTime(year, month, day);
-  }
-}
-
-class MwmRegion {
-  final String name;
-  final String fileName;
-  final int? sizeBytes;
-  
-  MwmRegion({
-    required this.name,
-    required this.fileName,
-    this.sizeBytes,
-  });
-}
-
 class MirrorService {
-  static const List<Mirror> defaultMirrors = [
-    Mirror(name: 'WFR Software', baseUrl: 'https://omaps.wfr.software/maps/'),
-    Mirror(name: 'WebFreak', baseUrl: 'https://omaps.webfreak.org/maps/'),
+  /// CoMaps CDN servers (official, verified working)
+  static final List<Mirror> defaultMirrors = [
+    Mirror(name: 'CoMaps MapGen Finland', baseUrl: 'https://mapgen-fi-1.comaps.app/'),
+    Mirror(name: 'CoMaps CDN US', baseUrl: 'https://cdn-us-2.comaps.tech/'),
+    Mirror(name: 'CoMaps CDN Germany', baseUrl: 'https://comaps.firewall-gateway.de/'),
   ];
   
   final http.Client _client;
@@ -147,6 +119,23 @@ class MirrorService {
   MirrorService({http.Client? client, List<Mirror>? customMirrors})
       : _client = client ?? http.Client(),
         mirrors = customMirrors ?? List.from(defaultMirrors);
+  
+  /// Generate candidate snapshot versions dynamically based on current date.
+  /// No hardcoded dates - versions are calculated from today going back 60 days.
+  static List<String> _generateCandidateVersions({int daysToProbe = 60}) {
+    final candidates = <String>[];
+    final now = DateTime.now();
+
+    for (int daysBack = 0; daysBack <= daysToProbe; daysBack++) {
+      final date = now.subtract(Duration(days: daysBack));
+      final yy = (date.year % 100).toString().padLeft(2, '0');
+      final mm = date.month.toString().padLeft(2, '0');
+      final dd = date.day.toString().padLeft(2, '0');
+      candidates.add('$yy$mm$dd');
+    }
+
+    return candidates;
+  }
   
   /// Measure latency to each mirror (HEAD request to base URL)
   Future<void> measureLatencies() async {
@@ -166,26 +155,23 @@ class MirrorService {
     }));
   }
   
-  /// Get list of available snapshots from a mirror
+  /// Get list of available snapshots from a mirror.
+  /// Uses dynamic date generation - no hardcoded dates.
   Future<List<Snapshot>> getSnapshots(Mirror mirror) async {
-    final uri = Uri.parse(mirror.baseUrl);
-    final response = await _client.get(uri);
-    
-    if (response.statusCode != 200) {
-      throw Exception('Failed to fetch snapshots: ${response.statusCode}');
-    }
-    
-    // Parse HTML directory listing
-    // Most servers return Apache-style directory listing
     final snapshots = <Snapshot>[];
-    final regex = RegExp(r'href="(\d{6})/"');
+    final candidates = _generateCandidateVersions();
     
-    for (final match in regex.allMatches(response.body)) {
-      final version = match.group(1)!;
+    for (final version in candidates) {
+      final testUrl = '${mirror.baseUrl}maps/$version/countries.txt';
       try {
-        snapshots.add(Snapshot(version: version));
+        final response = await _client.head(Uri.parse(testUrl))
+            .timeout(const Duration(seconds: 3));
+        if (response.statusCode == 200) {
+          snapshots.add(Snapshot(version: version));
+          break; // Found latest, stop probing
+        }
       } catch (e) {
-        // Skip invalid versions
+        // Skip unavailable snapshots
       }
     }
     
@@ -194,54 +180,13 @@ class MirrorService {
     return snapshots;
   }
   
-  /// Get list of available regions in a snapshot
-  Future<List<MwmRegion>> getRegions(Mirror mirror, Snapshot snapshot) async {
-    final uri = Uri.parse('${mirror.baseUrl}${snapshot.version}/');
-    final response = await _client.get(uri);
-    
-    if (response.statusCode != 200) {
-      throw Exception('Failed to fetch regions: ${response.statusCode}');
-    }
-    
-    // Parse HTML directory listing for .mwm files
-    final regions = <MwmRegion>[];
-    
-    // Pattern: href="Gibraltar.mwm" or href="Gibraltar.mwm">Gibraltar.mwm</a> 123M
-    final regex = RegExp(r'href="([^"]+\.mwm)"');
-    
-    for (final match in regex.allMatches(response.body)) {
-      final fileName = match.group(1)!;
-      final name = fileName.replaceAll('.mwm', '');
-      
-      // Try to extract size from the listing (varies by server)
-      int? size;
-      final sizeMatch = RegExp('$fileName[^0-9]*([0-9.]+)([KMG])')
-          .firstMatch(response.body);
-      if (sizeMatch != null) {
-        final num = double.parse(sizeMatch.group(1)!);
-        final unit = sizeMatch.group(2)!;
-        size = switch (unit) {
-          'K' => (num * 1024).toInt(),
-          'M' => (num * 1024 * 1024).toInt(),
-          'G' => (num * 1024 * 1024 * 1024).toInt(),
-          _ => null,
-        };
-      }
-      
-      regions.add(MwmRegion(name: name, fileName: fileName, sizeBytes: size));
-    }
-    
-    // Sort alphabetically
-    regions.sort((a, b) => a.name.compareTo(b.name));
-    return regions;
-  }
-  
   /// Build download URL for a region
+  /// URL pattern: <base>/maps/<version>/<file>
   String getDownloadUrl(Mirror mirror, Snapshot snapshot, MwmRegion region) {
-    return '${mirror.baseUrl}${snapshot.version}/${region.fileName}';
+    return '${mirror.baseUrl}maps/${snapshot.version}/${region.fileName}';
   }
   
-  /// Get file size via HEAD request (if not available from listing)
+  /// Get file size via HEAD request
   Future<int?> getFileSize(String url) async {
     try {
       final response = await _client.head(Uri.parse(url));
@@ -274,19 +219,31 @@ final activeMirror = mirrorService.mirrors
     .where((m) => m.isAvailable)
     .reduce((a, b) => (a.latencyMs ?? 999999) < (b.latencyMs ?? 999999) ? a : b);
 
-// 3. Get available snapshots
+// 3. Get available snapshots (probes known versions)
 final snapshots = await mirrorService.getSnapshots(activeMirror);
 print('Latest snapshot: ${snapshots.first.version}');
 
-// 4. Get regions in snapshot
-final regions = await mirrorService.getRegions(activeMirror, snapshots.first);
-print('Available regions: ${regions.length}');
-
-// 5. Get download URL
-final gibraltarRegion = regions.firstWhere((r) => r.name == 'Gibraltar');
+// 4. Get download URL
+final gibraltarRegion = MwmRegion(name: 'Gibraltar', fileName: 'Gibraltar.mwm');
 final url = mirrorService.getDownloadUrl(activeMirror, snapshots.first, gibraltarRegion);
 print('Download URL: $url');
+// Output: https://mapgen-fi-1.comaps.app/maps/260101/Gibraltar.mwm
 ```
+
+## Diagnostic Tool
+
+Run the mirror availability diagnostic tool:
+
+```bash
+dart run tool/check_mirrors.dart
+```
+
+This tool:
+1. Queries the CoMaps metaserver
+2. Tests each CoMaps CDN server for availability
+3. Probes known snapshot versions
+4. Attempts to download Gibraltar.mwm from each server
+5. Reports status, latency, and any errors
 
 ## Dependencies
 
@@ -298,13 +255,14 @@ dependencies:
 
 ## Error Handling
 
-- Network timeouts: 10 seconds for latency checks
+- Network timeouts: 10 seconds for latency checks, 5 seconds for snapshot probing
 - Parse errors: Skip invalid entries, don't fail entire operation
 - Unavailable mirrors: Mark as unavailable, don't throw
 
 ## Notes
 
-- Directory listing format may vary between servers (Apache vs nginx)
-- File sizes from listings are approximate (may need HEAD request for exact)
-- Consider caching snapshot/region lists to reduce network requests
+- CoMaps CDN servers do not provide directory listings
+- Snapshot discovery requires probing known versions
+- File sizes can be obtained via HEAD requests
+- Consider caching snapshot lists to reduce network requests
 - Future: Add retry logic with exponential backoff

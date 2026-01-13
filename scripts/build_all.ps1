@@ -28,6 +28,7 @@ function Write-LogStep { param([string]$msg) Write-Host "[STEP] $msg" -Foregroun
 function Write-LogSuccess { param([string]$msg) Write-Host "[SUCCESS] $msg" -ForegroundColor Green }
 function Write-LogError { param([string]$msg) Write-Host "[ERROR] $msg" -ForegroundColor Red }
 function Write-LogWarn { param([string]$msg) Write-Host "[WARN] $msg" -ForegroundColor Yellow }
+function Write-LogInfo { param([string]$msg) Write-Host "[INFO] $msg" -ForegroundColor White }
 
 Write-LogHeader "BUILD ALL - Using Dart Hooks"
 
@@ -86,30 +87,35 @@ finally {
 Write-LogSuccess "Flutter dependencies installed"
 
 # ----------------------------------------------------------------------------
-# Download Map Data (optional, for example app)
+# Download Map Data using Dart tool
 # ----------------------------------------------------------------------------
-Write-LogHeader "Checking/Downloading Map Data"
+Write-LogHeader "Downloading Map Data"
 
-$mapDate = "251212" # Default snapshot
-$mapBaseUrl = "https://omaps.wfr.software/maps/$mapDate"
 $assetsDir = Join-Path $repoRoot "example\assets\maps"
 New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
 
-$maps = @("World.mwm", "WorldCoasts.mwm", "Gibraltar.mwm")
-
-foreach ($map in $maps) {
-    $dest = Join-Path $assetsDir $map
-    if (-not (Test-Path $dest)) {
-        Write-Host "Downloading $map..."
-        try {
-            $url = "$mapBaseUrl/$map"
-            Invoke-WebRequest -Uri $url -OutFile $dest -ErrorAction Stop
-        } catch {
-            Write-LogWarn "Failed to download $map"
-        }
-    } else {
-        Write-Host "$map already exists."
+Write-LogStep "Running Dart map downloader..."
+Push-Location $repoRoot
+try {
+    dart run tool/map_downloader.dart `
+        --output-dir $assetsDir `
+        --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" `
+        --report (Join-Path $assetsDir "download_report.json") `
+        --verbose
+    if ($LASTEXITCODE -ne 0) { 
+        Write-LogWarn "Map downloader returned non-zero exit code"
     }
+}
+finally {
+    Pop-Location
+}
+
+# Copy ICU data if available
+$icuSource = Join-Path $repoRoot "thirdparty\comaps\data\icudt75l.dat"
+$icuDest = Join-Path $assetsDir "icudt75l.dat"
+if ((Test-Path $icuSource) -and -not (Test-Path $icuDest)) {
+    Copy-Item -Path $icuSource -Destination $icuDest
+    Write-LogInfo "Copied ICU data to assets/maps/"
 }
 
 Write-LogSuccess "Map data ready"

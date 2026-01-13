@@ -90,6 +90,9 @@ example/assets/maps/*.mwm
 # ICU data file - copied from CoMaps during bootstrap
 example/assets/maps/icudt75l.dat
 
+# Generated report files from map_downloader tool
+example/assets/maps/*_report.json
+
 # iOS Resources (copied during build)
 ios/Resources/
 

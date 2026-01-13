@@ -44,7 +44,7 @@
   - CoMaps bootstrap (`dart run tool/build.dart --no-cache`)
   - Platform-specific native builds (`dart run tool/build.dart --build-binaries --platform <platform>`)
 
-* **MWM Download Steps**: Added explicit MWM file download steps to CI workflow for iOS, macOS, and Android example app builds. Downloads `World.mwm`, `WorldCoasts.mwm`, and `Gibraltar.mwm` from omaps.wfr.software mirror to ensure map assets are available for example apps.
+* **MWM Download Steps**: Added explicit MWM file download steps to CI workflow for iOS, macOS, and Android example app builds. Downloads `World.mwm`, `WorldCoasts.mwm`, and `Gibraltar.mwm` from CoMaps CDN servers (with Organic Maps mirrors as fallback) to ensure map assets are available for example apps.
 
 * **Symbol Texture Downloading**: Implemented automatic download of symbol textures from Organic Maps for various resolutions and themes (`.sdf` and `.png` files).
 

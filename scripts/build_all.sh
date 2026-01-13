@@ -116,44 +116,31 @@ check_dependencies() {
 }
 
 # ============================================================================
-# Download MWM files (optional, for example app)
+# Download MWM files using Dart tool
 # ============================================================================
 
 download_base_mwms() {
     log_header "Downloading Base MWM Files"
     
     local maps_dir="$ROOT_DIR/example/assets/maps"
-    mkdir -p "$maps_dir"
     
-    # Mirror and snapshot
-    local mirror="https://omaps.wfr.software/maps/"
+    # Use the Dart map downloader tool
+    log_step "Running Dart map downloader..."
+    pushd "$ROOT_DIR" >/dev/null
+    dart run tool/map_downloader.dart \
+        --output-dir "$maps_dir" \
+        --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" \
+        --report "$maps_dir/download_report.json" \
+        --verbose
+    popd >/dev/null
     
-    # Fetch latest snapshot
-    local html
-    html=$(curl -sL "$mirror" 2>/dev/null || echo "")
-    local snapshot
-    snapshot=$(echo "$html" | grep -oE '[0-9]{6}' | sort -rn | head -1 || true)
-    
-    if [[ -z "$snapshot" ]]; then
-        log_warn "Could not determine latest snapshot, using default"
-        snapshot="251212"
+    # Copy ICU data if available
+    local icu_source="$ROOT_DIR/thirdparty/comaps/data/icudt75l.dat"
+    local icu_dest="$maps_dir/icudt75l.dat"
+    if [[ -f "$icu_source" ]] && [[ ! -f "$icu_dest" ]]; then
+        cp "$icu_source" "$icu_dest"
+        log_info "Copied ICU data to assets/maps/"
     fi
-    
-    log_info "Using snapshot: $snapshot"
-    
-    # Download essential MWMs
-    local mwms=("World" "WorldCoasts" "Gibraltar")
-    
-    for mwm in "${mwms[@]}"; do
-        local dest="$maps_dir/${mwm}.mwm"
-        if [[ ! -f "$dest" ]]; then
-            log_info "Downloading ${mwm}.mwm..."
-            mkdir -p "$(dirname "$dest")"
-            curl -fL "${mirror}${snapshot}/${mwm}.mwm" -o "$dest" 2>/dev/null || log_warn "Failed to download ${mwm}.mwm"
-        else
-            log_info "${mwm}.mwm already exists"
-        fi
-    done
     
     log_success "Base MWM files ready"
 }
@@ -298,7 +285,7 @@ main() {
     # Setup Flutter (early to fail fast)
     setup_flutter
     
-    # Download MWM files (optional, for example app)
+    # Download MWM files (uses Dart tool)
     download_base_mwms
     
     # Build native binaries using Dart hooks

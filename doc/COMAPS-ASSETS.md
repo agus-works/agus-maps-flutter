@@ -520,18 +520,43 @@ To bundle MWM files with your Flutter app:
 
 ### Downloading MWM Files
 
-The plugin includes a download manager for fetching maps at runtime:
+The plugin includes a download manager for fetching maps at runtime. The `MirrorService` supports both **CoMaps CDN servers** (recommended) and **Organic Maps mirrors** (legacy fallback):
+
+#### Available Mirror Servers
+
+| Type | Server | URL |
+|------|--------|-----|
+| **CoMaps CDN** | Finland | `https://cdn-fi-1.comaps.app/` |
+| **CoMaps CDN** | US | `https://cdn-us-2.comaps.tech/` |
+| **CoMaps CDN** | Germany | `https://comaps.firewall-gateway.de/` |
+| **CoMaps CDN** | Russia | `https://comaps-cdn.s3-website.cloud.ru/` |
+| **CoMaps CDN** | MapGen Finland | `https://mapgen-fi-1.comaps.app/` |
+| *Legacy* | WFR Software | `https://omaps.wfr.software/maps/` |
+| *Legacy* | WebFreak | `https://omaps.webfreak.org/maps/` |
+
+> **Note:** CoMaps CDN servers provide MWM files with enhanced features (improved routing, more POIs, better contour lines) since the April 2025 fork from Organic Maps.
 
 ```dart
 import 'package:agus_maps_flutter/mirror_service.dart';
 import 'package:agus_maps_flutter/mwm_storage.dart';
 
-// Get available mirrors
+// Create mirror service - includes both CoMaps and Organic Maps mirrors
 final mirrorService = MirrorService();
-final mirrors = await mirrorService.fetchMirrors();
+
+// Measure latencies to find fastest server
+await mirrorService.measureLatencies();
+final fastestMirror = mirrorService.getFastestMirror();
+
+// Get available snapshots
+final snapshots = await mirrorService.getSnapshots(fastestMirror!);
+final latestSnapshot = snapshots.first;
+
+// Get regions in snapshot
+final regions = await mirrorService.getRegions(fastestMirror, latestSnapshot);
 
 // Download a region
-final downloadUrl = '${mirrors.first.url}/250101/Philippines.mwm';
+final region = regions.firstWhere((r) => r.name == 'Philippines');
+final downloadUrl = mirrorService.getDownloadUrl(fastestMirror, latestSnapshot, region);
 // ... download file to Documents directory ...
 
 // Register the downloaded map
@@ -541,7 +566,7 @@ agus_maps_flutter.registerSingleMap('/path/to/Philippines.mwm');
 final storage = await MwmStorage.create();
 await storage.upsert(MwmMetadata(
   regionName: 'Philippines',
-  snapshotVersion: '250101',
+  snapshotVersion: latestSnapshot.version,
   fileSize: fileSize,
   downloadDate: DateTime.now(),
   filePath: downloadPath,
@@ -631,7 +656,7 @@ flutter build <platform>
 
 ### Scenario 1: Adding a New Bundled Map
 
-1. **Obtain the MWM file** from a CoMaps/Organic Maps mirror
+1. **Obtain the MWM file** from a CoMaps CDN server (recommended) or Organic Maps mirror
 2. **Place in assets:**
    ```bash
    cp NewRegion.mwm example/assets/maps/

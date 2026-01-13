@@ -324,26 +324,26 @@ jobs:
           ASSETS_DIR="example/assets/maps"
           mkdir -p "$ASSETS_DIR"
           
-          # Get latest snapshot from mirror
-          MIRROR="https://omaps.wfr.software/maps/"
-          SNAPSHOT=$(curl -sL "$MIRROR" | grep -oE 'href="\.?/?([0-9]{6})/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
-          echo "Using snapshot: $SNAPSHOT"
+          # Use Dart map downloader for cross-platform consistency
+          dart run tool/map_downloader.dart \
+            --output-dir "$ASSETS_DIR" \
+            --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" \
+            --report "$ASSETS_DIR/download_report.json" \
+            --verbose
           
-          # Download essential MWM files
-          FILES=("World.mwm" "WorldCoasts.mwm" "Gibraltar.mwm")
-          for FILE in "${FILES[@]}"; do
-            URL="${MIRROR}${SNAPSHOT}/${FILE}"
-            echo "Downloading: $URL"
-            curl -fL "$URL" -o "$ASSETS_DIR/$FILE"
-            ls -lh "$ASSETS_DIR/$FILE"
-          done
-          
-          # Copy ICU data if not already present
+          # Copy ICU data - fail if source is missing (critical for search)
           ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
           ICU_DEST="$ASSETS_DIR/icudt75l.dat"
-          if [ -f "$ICU_SOURCE" ] && [ ! -f "$ICU_DEST" ]; then
+          if [ ! -f "$ICU_SOURCE" ]; then
+            echo "ERROR: ICU data file not found: $ICU_SOURCE"
+            echo "This file is required for search/transliteration functionality."
+            exit 1
+          fi
+          if [ ! -f "$ICU_DEST" ]; then
             cp "$ICU_SOURCE" "$ICU_DEST"
             echo "Copied ICU data to assets/maps/"
+          else
+            echo "ICU data already present: $ICU_DEST"
           fi
           
           echo "=== Map Assets ==="
@@ -396,26 +396,26 @@ jobs:
           ASSETS_DIR="example/assets/maps"
           mkdir -p "$ASSETS_DIR"
           
-          # Get latest snapshot from mirror
-          MIRROR="https://omaps.wfr.software/maps/"
-          SNAPSHOT=$(curl -sL "$MIRROR" | grep -oE 'href="\.?/?([0-9]{6})/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
-          echo "Using snapshot: $SNAPSHOT"
+          # Use Dart map downloader for cross-platform consistency
+          dart run tool/map_downloader.dart \
+            --output-dir "$ASSETS_DIR" \
+            --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" \
+            --report "$ASSETS_DIR/download_report.json" \
+            --verbose
           
-          # Download essential MWM files
-          FILES=("World.mwm" "WorldCoasts.mwm" "Gibraltar.mwm")
-          for FILE in "${FILES[@]}"; do
-            URL="${MIRROR}${SNAPSHOT}/${FILE}"
-            echo "Downloading: $URL"
-            curl -fL "$URL" -o "$ASSETS_DIR/$FILE"
-            ls -lh "$ASSETS_DIR/$FILE"
-          done
-          
-          # Copy ICU data if not already present
+          # Copy ICU data - fail if source is missing (critical for search)
           ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
           ICU_DEST="$ASSETS_DIR/icudt75l.dat"
-          if [ -f "$ICU_SOURCE" ] && [ ! -f "$ICU_DEST" ]; then
+          if [ ! -f "$ICU_SOURCE" ]; then
+            echo "ERROR: ICU data file not found: $ICU_SOURCE"
+            echo "This file is required for search/transliteration functionality."
+            exit 1
+          fi
+          if [ ! -f "$ICU_DEST" ]; then
             cp "$ICU_SOURCE" "$ICU_DEST"
             echo "Copied ICU data to assets/maps/"
+          else
+            echo "ICU data already present: $ICU_DEST"
           fi
           
           echo "=== Map Assets ==="
@@ -700,26 +700,26 @@ jobs:
           ASSETS_DIR="example/assets/maps"
           mkdir -p "$ASSETS_DIR"
           
-          # Get latest snapshot from mirror
-          MIRROR="https://omaps.wfr.software/maps/"
-          SNAPSHOT=$(curl -sL "$MIRROR" | grep -oE 'href="\.?/?([0-9]{6})/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
-          echo "Using snapshot: $SNAPSHOT"
+          # Use Dart map downloader for cross-platform consistency
+          dart run tool/map_downloader.dart \
+            --output-dir "$ASSETS_DIR" \
+            --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" \
+            --report "$ASSETS_DIR/download_report.json" \
+            --verbose
           
-          # Download essential MWM files
-          FILES=("World.mwm" "WorldCoasts.mwm" "Gibraltar.mwm")
-          for FILE in "${FILES[@]}"; do
-            URL="${MIRROR}${SNAPSHOT}/${FILE}"
-            echo "Downloading: $URL"
-            curl -fL "$URL" -o "$ASSETS_DIR/$FILE"
-            ls -lh "$ASSETS_DIR/$FILE"
-          done
-          
-          # Copy ICU data if not already present
+          # Copy ICU data - fail if source is missing (critical for search)
           ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
           ICU_DEST="$ASSETS_DIR/icudt75l.dat"
-          if [ -f "$ICU_SOURCE" ] && [ ! -f "$ICU_DEST" ]; then
+          if [ ! -f "$ICU_SOURCE" ]; then
+            echo "ERROR: ICU data file not found: $ICU_SOURCE"
+            echo "This file is required for search/transliteration functionality."
+            exit 1
+          fi
+          if [ ! -f "$ICU_DEST" ]; then
             cp "$ICU_SOURCE" "$ICU_DEST"
             echo "Copied ICU data to assets/maps/"
+          else
+            echo "ICU data already present: $ICU_DEST"
           fi
           
           echo "=== Map Assets ==="
@@ -1011,30 +1011,26 @@ jobs:
           $assetsDir = "example\assets\maps"
           New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
           
-          $mirror = "https://omaps.wfr.software/maps/"
-          $html = Invoke-WebRequest -Uri $mirror -UseBasicParsing
-          $snapshots = [regex]::Matches($html.Content, 'href="\.?/?([0-9]{6})/"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Descending
-          $snapshot = $snapshots[0]
-          Write-Host "Using snapshot: $snapshot"
+          # Use Dart map downloader for cross-platform consistency
+          dart run tool/map_downloader.dart `
+            --output-dir $assetsDir `
+            --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" `
+            --report (Join-Path $assetsDir "download_report.json") `
+            --verbose
           
-          $files = @("World.mwm", "WorldCoasts.mwm", "Gibraltar.mwm")
-          
-          foreach ($file in $files) {
-            $url = "${mirror}${snapshot}/${file}"
-            $output = Join-Path $assetsDir $file
-            Write-Host "Downloading: $url"
-            Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing
-            Write-Host "  -> $output ($('{0:N2}' -f ((Get-Item $output).Length / 1MB)) MB)"
-          }
-          
+          # Copy ICU data - fail if source is missing (critical for search)
           $icuSource = "thirdparty\comaps\data\icudt75l.dat"
           $icuDest = Join-Path $assetsDir "icudt75l.dat"
-          if (Test-Path $icuSource) {
+          if (-not (Test-Path $icuSource)) {
+            Write-Error "ICU data file not found: $icuSource"
+            Write-Error "This file is required for search/transliteration functionality."
+            exit 1
+          }
+          if (-not (Test-Path $icuDest)) {
             Copy-Item -Path $icuSource -Destination $icuDest
             Write-Host "Copied ICU data: $icuDest"
           } else {
-            Write-Error "ICU data file not found: $icuSource"
-            exit 1
+            Write-Host "ICU data already present: $icuDest"
           }
           
           Get-ChildItem -Path $assetsDir
@@ -1290,26 +1286,26 @@ jobs:
           ASSETS_DIR="example/assets/maps"
           mkdir -p "$ASSETS_DIR"
           
-          # Get latest snapshot from mirror
-          MIRROR="https://omaps.wfr.software/maps/"
-          SNAPSHOT=$(curl -sL "$MIRROR" | grep -oE 'href="\.?/?([0-9]{6})/"' | grep -oE '[0-9]{6}' | sort -r | head -1)
-          echo "Using snapshot: $SNAPSHOT"
+          # Use Dart map downloader for cross-platform consistency
+          dart run tool/map_downloader.dart \
+            --output-dir "$ASSETS_DIR" \
+            --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" \
+            --report "$ASSETS_DIR/download_report.json" \
+            --verbose
           
-          # Download essential MWM files
-          FILES=("World.mwm" "WorldCoasts.mwm" "Gibraltar.mwm")
-          for FILE in "${FILES[@]}"; do
-            URL="${MIRROR}${SNAPSHOT}/${FILE}"
-            echo "Downloading: $URL"
-            curl -fL "$URL" -o "$ASSETS_DIR/$FILE"
-            ls -lh "$ASSETS_DIR/$FILE"
-          done
-          
-          # Copy ICU data if not already present
+          # Copy ICU data - fail if source is missing (critical for search)
           ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
           ICU_DEST="$ASSETS_DIR/icudt75l.dat"
-          if [ -f "$ICU_SOURCE" ] && [ ! -f "$ICU_DEST" ]; then
+          if [ ! -f "$ICU_SOURCE" ]; then
+            echo "ERROR: ICU data file not found: $ICU_SOURCE"
+            echo "This file is required for search/transliteration functionality."
+            exit 1
+          fi
+          if [ ! -f "$ICU_DEST" ]; then
             cp "$ICU_SOURCE" "$ICU_DEST"
             echo "Copied ICU data to assets/maps/"
+          else
+            echo "ICU data already present: $ICU_DEST"
           fi
           
           echo "=== Map Assets ==="

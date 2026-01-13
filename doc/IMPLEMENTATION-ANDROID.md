@@ -206,7 +206,7 @@ Environment variables:
 The example app declares and ships:
 - `example/assets/maps/Gibraltar.mwm`
 
-Data source: `https://omaps.webfreak.org/maps/251021/`
+Data source: CoMaps CDN servers (e.g., `https://cdn-fi-1.comaps.app/`) or Organic Maps mirrors (e.g., `https://omaps.webfreak.org/maps/`) as fallback.
 
 Android build config sets `.mwm` as **noCompress** so packaging does not compress the file (this reduces CPU overhead during extraction and avoids surprises).
 
