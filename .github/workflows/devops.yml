@@ -2,6 +2,8 @@ name: Build and Release
 
 on:
   push:
+    branches:
+      - '**'
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+' # tag-pattern on pub.dev: 'v{{version}}'
 
@@ -1372,8 +1374,8 @@ jobs:
       - build-and-release-windows-platform
       - build-and-release-android-platform
       - build-and-release-linux-platform
-    # Run even if some dependencies partially failed or were skipped
-    if: always()
+    # Run even if some dependencies partially failed or were skipped, but only on tags
+    if: always() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
