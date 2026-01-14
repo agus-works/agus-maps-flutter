@@ -312,6 +312,14 @@ jobs:
           cp -r build/agus-binaries-ios/CoMaps.xcframework ios/Frameworks/
           ls -la ios/Frameworks/
 
+      - name: Hide CoMaps Source (Force Pre-built Usage)
+        run: |
+          # Temporarily move thirdparty directory to prevent Xcode from trying
+          # to compile CoMaps source files through Flutter's plugin symlinks
+          echo "Moving thirdparty directory to prevent source compilation..."
+          mv thirdparty thirdparty.backup
+          echo "✓ thirdparty directory hidden for iOS build"
+
       - name: Precache iOS
         run: flutter precache --ios
 
@@ -385,6 +393,24 @@ jobs:
           cp -r build/agus-binaries-macos/CoMaps.xcframework macos/Frameworks/
           ls -la macos/Frameworks/
 
+      - name: Restore CoMaps Source
+        run: |
+          # Restore thirdparty directory if it was backed up during iOS build
+          if [ -d "thirdparty.backup" ]; then
+            echo "Restoring thirdparty directory from iOS build..."
+            rm -rf thirdparty 2>/dev/null || true
+            mv thirdparty.backup thirdparty
+            echo "✓ thirdparty directory restored"
+          fi
+
+      - name: Hide CoMaps Source (Force Pre-built Usage)
+        run: |
+          # Temporarily move thirdparty directory to prevent Xcode from trying
+          # to compile CoMaps source files through Flutter's plugin symlinks
+          echo "Moving thirdparty directory to prevent source compilation..."
+          mv thirdparty thirdparty.backup
+          echo "✓ thirdparty directory hidden for macOS build"
+
       - name: Precache macOS
         run: flutter precache --macos
 
@@ -447,6 +473,17 @@ jobs:
         with:
           name: agus-maps-macos
           path: artifacts/agus-maps-macos.app.zip
+
+      - name: Restore CoMaps Source (Cleanup)
+        if: always()
+        run: |
+          # Final cleanup: restore thirdparty directory if it was backed up
+          if [ -d "thirdparty.backup" ]; then
+            echo "Restoring thirdparty directory..."
+            rm -rf thirdparty 2>/dev/null || true
+            mv thirdparty.backup thirdparty
+            echo "✓ thirdparty directory restored"
+          fi
 
   # ==========================================================================
   # macOS Job: Builds Android (separate job due to disk space constraints)
