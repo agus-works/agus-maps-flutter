@@ -312,14 +312,6 @@ jobs:
           cp -r build/agus-binaries-ios/CoMaps.xcframework ios/Frameworks/
           ls -la ios/Frameworks/
 
-      - name: Hide CoMaps Source (Force Pre-built Usage)
-        run: |
-          # Temporarily move thirdparty directory to prevent Xcode from trying
-          # to compile CoMaps source files through Flutter's plugin symlinks
-          echo "Moving thirdparty directory to prevent source compilation..."
-          mv thirdparty thirdparty.backup
-          echo "✓ thirdparty directory hidden for iOS build"
-
       - name: Precache iOS
         run: flutter precache --ios
 
@@ -358,6 +350,14 @@ jobs:
           
           echo "=== Map Assets ==="
           ls -lh "$ASSETS_DIR/"
+
+      - name: Hide CoMaps Source (Force Pre-built Usage)
+        run: |
+          # Temporarily move thirdparty directory to prevent Xcode from trying
+          # to compile CoMaps source files through Flutter's plugin symlinks
+          echo "Moving thirdparty directory to prevent source compilation..."
+          mv thirdparty thirdparty.backup
+          echo "✓ thirdparty directory hidden for iOS build"
 
       - name: Install iOS CocoaPods Dependencies
         run: |
@@ -403,14 +403,6 @@ jobs:
             echo "✓ thirdparty directory restored"
           fi
 
-      - name: Hide CoMaps Source (Force Pre-built Usage)
-        run: |
-          # Temporarily move thirdparty directory to prevent Xcode from trying
-          # to compile CoMaps source files through Flutter's plugin symlinks
-          echo "Moving thirdparty directory to prevent source compilation..."
-          mv thirdparty thirdparty.backup
-          echo "✓ thirdparty directory hidden for macOS build"
-
       - name: Precache macOS
         run: flutter precache --macos
 
@@ -448,6 +440,14 @@ jobs:
           
           echo "=== Map Assets ==="
           ls -lh "$ASSETS_DIR/"
+
+      - name: Hide CoMaps Source (Force Pre-built Usage)
+        run: |
+          # Temporarily move thirdparty directory to prevent Xcode from trying
+          # to compile CoMaps source files through Flutter's plugin symlinks
+          echo "Moving thirdparty directory to prevent source compilation..."
+          mv thirdparty thirdparty.backup
+          echo "✓ thirdparty directory hidden for macOS build"
 
       - name: Install macOS CocoaPods Dependencies
         run: |
