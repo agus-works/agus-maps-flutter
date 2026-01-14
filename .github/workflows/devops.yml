@@ -365,7 +365,8 @@ jobs:
           # against the pre-built XCFramework
           echo "Extracting CoMaps headers for plugin compilation..."
           mkdir -p thirdparty/comaps
-          tar -xzf build/agus-headers.tar.gz -C thirdparty/comaps
+          # Tarball root is comaps/, strip it so headers live at thirdparty/comaps/
+          tar -xzf build/agus-headers.tar.gz -C thirdparty/comaps --strip-components=1
           echo "✓ Headers extracted to thirdparty/comaps/"
           ls -la thirdparty/comaps/ | head -10
 
@@ -465,7 +466,8 @@ jobs:
           # against the pre-built XCFramework
           echo "Extracting CoMaps headers for plugin compilation..."
           mkdir -p thirdparty/comaps
-          tar -xzf build/agus-headers.tar.gz -C thirdparty/comaps
+          # Tarball root is comaps/, strip it so headers live at thirdparty/comaps/
+          tar -xzf build/agus-headers.tar.gz -C thirdparty/comaps --strip-components=1
           echo "✓ Headers extracted to thirdparty/comaps/"
           ls -la thirdparty/comaps/ | head -10
 
