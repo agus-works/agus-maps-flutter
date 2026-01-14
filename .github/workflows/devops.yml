@@ -910,10 +910,35 @@ jobs:
 
       - name: Setup vcpkg
         run: |
+          $freshClone = $false
           if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
             git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
             C:\vcpkg\bootstrap-vcpkg.bat
+            $freshClone = $true
           }
+          
+          # Ensure vcpkg repo has the baseline commit (required for manifest mode)
+          # This applies to both fresh clones and cached repos
+          Push-Location C:\vcpkg
+          $baseline = (Get-Content "$env:GITHUB_WORKSPACE\vcpkg.json" | ConvertFrom-Json).'builtin-baseline'
+          if ($baseline) {
+            # Check if baseline commit exists locally
+            $hasCommit = git cat-file -t $baseline 2>$null
+            if (-not $hasCommit) {
+              Write-Host "Baseline commit $baseline not found locally, fetching..."
+              # Unshallow if needed, then fetch to ensure commit is available
+              $isShallow = Test-Path ".git/shallow"
+              if ($isShallow) {
+                git fetch --unshallow origin 2>$null || git fetch origin
+              } else {
+                git fetch origin
+              }
+            } else {
+              Write-Host "Baseline commit $baseline already available"
+            }
+          }
+          Pop-Location
+          
           C:\vcpkg\vcpkg.exe install zlib:x64-windows --classic
           echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
         shell: pwsh
