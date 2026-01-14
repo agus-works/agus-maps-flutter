@@ -167,6 +167,27 @@ jobs:
           AGUS_MAPS_BUILD_MODE: contributor
         run: dart run tool/build.dart --no-cache
 
+      - name: Ensure Boost Flat Headers
+        run: |
+          BOOST_DIR="thirdparty/comaps/3party/boost"
+          if [ ! -d "$BOOST_DIR" ]; then
+            echo "ERROR: Boost directory not found: $BOOST_DIR"
+            exit 1
+          fi
+          
+          # CoMaps build uses modular headers, but iOS plugin needs flat boost/
+          if [ ! -f "$BOOST_DIR/boost/regex.hpp" ] || [ ! -f "$BOOST_DIR/boost/config.hpp" ]; then
+            echo "Generating Boost flat headers (b2 headers)..."
+            cd "$BOOST_DIR"
+            if [ ! -f "./b2" ]; then
+              ./bootstrap.sh
+            fi
+            ./b2 headers
+            cd - >/dev/null
+          else
+            echo "Boost flat headers already present"
+          fi
+
       # ======================================================================
       # Bundle Headers (for caching/release)
       # ======================================================================
