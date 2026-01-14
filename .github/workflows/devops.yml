@@ -359,6 +359,16 @@ jobs:
           mv thirdparty thirdparty.backup
           echo "✓ thirdparty directory hidden for iOS build"
 
+      - name: Extract CoMaps Headers for Plugin Build
+        run: |
+          # Extract bundled headers so plugin wrapper code can compile
+          # against the pre-built XCFramework
+          echo "Extracting CoMaps headers for plugin compilation..."
+          mkdir -p thirdparty/comaps
+          tar -xzf build/agus-headers.tar.gz -C thirdparty/comaps
+          echo "✓ Headers extracted to thirdparty/comaps/"
+          ls -la thirdparty/comaps/ | head -10
+
       - name: Install iOS CocoaPods Dependencies
         run: |
           cd example/ios
@@ -448,6 +458,16 @@ jobs:
           echo "Moving thirdparty directory to prevent source compilation..."
           mv thirdparty thirdparty.backup
           echo "✓ thirdparty directory hidden for macOS build"
+
+      - name: Extract CoMaps Headers for Plugin Build
+        run: |
+          # Extract bundled headers so plugin wrapper code can compile
+          # against the pre-built XCFramework
+          echo "Extracting CoMaps headers for plugin compilation..."
+          mkdir -p thirdparty/comaps
+          tar -xzf build/agus-headers.tar.gz -C thirdparty/comaps
+          echo "✓ Headers extracted to thirdparty/comaps/"
+          ls -la thirdparty/comaps/ | head -10
 
       - name: Install macOS CocoaPods Dependencies
         run: |
