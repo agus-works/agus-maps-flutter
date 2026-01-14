@@ -279,8 +279,126 @@ class MirrorService {
     return bytes;
   }
 
+  /// Discover all mirrors and their availability at runtime.
+  ///
+  /// This is optimized for runtime use - it only probes each mirror
+  /// for the first available snapshot (starting from today and going back).
+  /// This avoids excessive network requests while still determining
+  /// which mirrors are operational.
+  ///
+  /// Returns a list of [MirrorDiscoveryResult] with status for each mirror.
+  Future<List<MirrorDiscoveryResult>> discoverMirrors() async {
+    // Generate candidate snapshots starting from today
+    final candidates = generateCandidateVersions(daysToProbe: 30);
+    final results = <MirrorDiscoveryResult>[];
+
+    // Probe all mirrors in parallel for efficiency
+    await Future.wait(
+      mirrors.map((mirror) async {
+        String? latestSnapshot;
+        String? error;
+        final stopwatch = Stopwatch()..start();
+
+        try {
+          // First check base URL accessibility
+          final response = await _client
+              .head(Uri.parse(mirror.baseUrl))
+              .timeout(const Duration(seconds: 5));
+          stopwatch.stop();
+
+          final isAccessible = response.statusCode == 200 ||
+              response.statusCode == 301 ||
+              response.statusCode == 302;
+
+          mirror.latencyMs = stopwatch.elapsedMilliseconds;
+          mirror.isAvailable = isAccessible;
+
+          if (isAccessible) {
+            // Find the first available snapshot (newest first)
+            // Only check a few candidates to minimize requests
+            for (final version in candidates.take(14)) {
+              final testUrl = utils.MirrorService.buildDownloadUrl(
+                mirror.baseUrl, version, 'countries.txt');
+              try {
+                final snapResponse = await _client
+                    .head(Uri.parse(testUrl))
+                    .timeout(const Duration(seconds: 2));
+                if (snapResponse.statusCode == 200) {
+                  latestSnapshot = version;
+                  break;
+                }
+              } catch (_) {
+                // Continue to next snapshot
+              }
+            }
+
+            if (latestSnapshot == null) {
+              error = 'No snapshots available';
+              mirror.isAvailable = false;
+            }
+          } else {
+            error = 'Server not accessible (HTTP ${response.statusCode})';
+          }
+        } catch (e) {
+          stopwatch.stop();
+          mirror.latencyMs = null;
+          mirror.isAvailable = false;
+          error = 'Connection failed: ${e.toString().split(':').first}';
+        }
+
+        results.add(MirrorDiscoveryResult(
+          mirror: mirror,
+          latestSnapshot: latestSnapshot != null
+              ? utils.Snapshot(version: latestSnapshot)
+              : null,
+          error: error,
+        ));
+      }),
+    );
+
+    // Sort by: available first, then by latency
+    results.sort((a, b) {
+      if (a.isOperational && !b.isOperational) return -1;
+      if (!a.isOperational && b.isOperational) return 1;
+      final latencyA = a.mirror.latencyMs ?? 999999;
+      final latencyB = b.mirror.latencyMs ?? 999999;
+      return latencyA.compareTo(latencyB);
+    });
+
+    return results;
+  }
+
   /// Dispose of the HTTP client.
   void dispose() {
     _client.close();
   }
+}
+
+/// Result of runtime mirror discovery.
+///
+/// Contains the mirror, its latest available snapshot, and any error.
+class MirrorDiscoveryResult {
+  final Mirror mirror;
+  final utils.Snapshot? latestSnapshot;
+  final String? error;
+
+  MirrorDiscoveryResult({
+    required this.mirror,
+    this.latestSnapshot,
+    this.error,
+  });
+
+  /// Whether this mirror is operational (accessible with a valid snapshot)
+  bool get isOperational => mirror.isAvailable && latestSnapshot != null;
+
+  /// Human-readable status string
+  String get statusText {
+    if (isOperational) {
+      return '${latestSnapshot!.formattedDate} • ${mirror.latencyMs}ms';
+    }
+    return error ?? 'Unavailable';
+  }
+
+  @override
+  String toString() => 'MirrorDiscoveryResult(${mirror.name}, $statusText)';
 }

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:agus_maps_flutter/mirror_service.dart';
@@ -28,9 +27,8 @@ enum LoadingStep {
   checkingCache,
   loadingFromCache,
   validatingCache,
-  measuringLatencies,
+  discoveringMirrors,
   selectingMirror,
-  loadingSnapshots,
   loadingRegions,
   done,
 }
@@ -42,9 +40,8 @@ extension LoadingStepMessage on LoadingStep {
       LoadingStep.checkingCache => 'Checking local cache...',
       LoadingStep.loadingFromCache => 'Loading from cache...',
       LoadingStep.validatingCache => 'Validating cached data...',
-      LoadingStep.measuringLatencies => 'Measuring mirror latencies...',
+      LoadingStep.discoveringMirrors => 'Discovering available mirrors...',
       LoadingStep.selectingMirror => 'Selecting fastest mirror...',
-      LoadingStep.loadingSnapshots => 'Loading available snapshots...',
       LoadingStep.loadingRegions => 'Loading regions...',
       LoadingStep.done => 'Done!',
     };
@@ -86,9 +83,11 @@ class _DownloadsTabState extends State<DownloadsTab> {
   final MirrorService _mirrorService = MirrorService();
   final DownloadsCacheService _cacheService = DownloadsCacheService();
 
-  Mirror? _selectedMirror;
-  Snapshot? _selectedSnapshot;
-  List<Snapshot> _snapshots = [];
+  // Mirror discovery results - contains all mirrors with their status
+  List<MirrorDiscoveryResult> _discoveredMirrors = [];
+  
+  // Currently selected mirror and snapshot
+  MirrorDiscoveryResult? _selectedMirrorResult;
   List<MwmRegion> _regions = [];
 
   bool _isLoading = false;
@@ -117,6 +116,9 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
   // Track if data came from cache (for UI feedback)
   bool _loadedFromCache = false;
+  
+  // UI state for mirror selector
+  bool _showMirrorSelector = false;
 
   @override
   void initState() {
@@ -232,10 +234,13 @@ class _DownloadsTabState extends State<DownloadsTab> {
             if (!isValid) {
               debugPrint('[Downloads] Cache invalid, will refresh from server');
             } else {
-              // Use cached data
-              _selectedMirror = cached.mirror;
-              _selectedSnapshot = cached.snapshot;
-              _snapshots = [cached.snapshot];
+              // Use cached data - create a discovery result for the cached mirror
+              final cachedMirror = cached.mirror;
+              _selectedMirrorResult = MirrorDiscoveryResult(
+                mirror: cachedMirror,
+                latestSnapshot: cached.snapshot,
+              );
+              _discoveredMirrors = [_selectedMirrorResult!];
               _regions = cached.regions;
               _filteredRegions = List.from(_regions);
               _loadedFromCache = true;
@@ -254,15 +259,18 @@ class _DownloadsTabState extends State<DownloadsTab> {
                 '[Downloads] Loaded ${_regions.length} regions from cache',
               );
 
-              // Optionally refresh snapshots in background
-              _refreshSnapshotsInBackground();
+              // Discover mirrors in background to update availability
+              _discoverMirrorsInBackground();
               return;
             }
           } else {
             // No internet, use cache anyway
-            _selectedMirror = cached.mirror;
-            _selectedSnapshot = cached.snapshot;
-            _snapshots = [cached.snapshot];
+            final cachedMirror = cached.mirror;
+            _selectedMirrorResult = MirrorDiscoveryResult(
+              mirror: cachedMirror,
+              latestSnapshot: cached.snapshot,
+            );
+            _discoveredMirrors = [_selectedMirrorResult!];
             _regions = cached.regions;
             _filteredRegions = List.from(_regions);
             _loadedFromCache = true;
@@ -288,49 +296,40 @@ class _DownloadsTabState extends State<DownloadsTab> {
         );
       }
 
-      // Measure mirror latencies
-      _setLoadingStep(LoadingStep.measuringLatencies);
-      debugPrint('[Downloads] Measuring mirror latencies...');
-      await _mirrorService.measureLatencies();
+      // Discover all mirrors and their availability
+      _setLoadingStep(LoadingStep.discoveringMirrors);
+      debugPrint('[Downloads] Discovering available mirrors...');
+      _discoveredMirrors = await _mirrorService.discoverMirrors();
+      
+      final operationalMirrors = _discoveredMirrors.where((m) => m.isOperational).toList();
+      debugPrint('[Downloads] Found ${operationalMirrors.length}/${_discoveredMirrors.length} operational mirrors');
+      
+      for (final result in _discoveredMirrors) {
+        debugPrint('[Downloads]   ${result.mirror.name}: ${result.statusText}');
+      }
 
       // Select fastest available mirror
       _setLoadingStep(LoadingStep.selectingMirror);
-      _selectedMirror = _mirrorService.getFastestMirror();
-      debugPrint('[Downloads] Selected mirror: $_selectedMirror');
-
-      if (_selectedMirror == null) {
+      if (operationalMirrors.isEmpty) {
         throw Exception(
           'No mirrors available. All mirror servers may be down.',
         );
       }
-
-      // Load snapshots
-      _setLoadingStep(LoadingStep.loadingSnapshots);
-      debugPrint(
-        '[Downloads] Loading snapshots from ${_selectedMirror!.baseUrl}...',
-      );
-      _snapshots = await _mirrorService.getSnapshots(_selectedMirror!);
-      debugPrint('[Downloads] Found ${_snapshots.length} snapshots');
-
-      if (_snapshots.isEmpty) {
-        throw Exception('No map versions available from mirror.');
-      }
-
-      _selectedSnapshot = _snapshots.first;
+      
+      _selectedMirrorResult = operationalMirrors.first;
+      debugPrint('[Downloads] Selected mirror: ${_selectedMirrorResult!.mirror.name}');
 
       // Load regions
       _setLoadingStep(LoadingStep.loadingRegions);
       await _loadRegions();
 
       // Save to cache
-      if (_regions.isNotEmpty &&
-          _selectedMirror != null &&
-          _selectedSnapshot != null) {
+      if (_regions.isNotEmpty && _selectedMirrorResult != null) {
         await _cacheService.saveCache(
           CachedDownloadsData(
-            mirrorName: _selectedMirror!.name,
-            mirrorBaseUrl: _selectedMirror!.baseUrl,
-            snapshotVersion: _selectedSnapshot!.version,
+            mirrorName: _selectedMirrorResult!.mirror.name,
+            mirrorBaseUrl: _selectedMirrorResult!.mirror.baseUrl,
+            snapshotVersion: _selectedMirrorResult!.latestSnapshot!.version,
             regions: _regions,
             cachedAt: DateTime.now(),
           ),
@@ -364,36 +363,37 @@ class _DownloadsTabState extends State<DownloadsTab> {
     debugPrint('[Downloads] ${step.message}');
   }
 
-  /// Refresh snapshots list in background without blocking UI.
-  Future<void> _refreshSnapshotsInBackground() async {
-    if (_selectedMirror == null || !_hasInternet) return;
+  /// Discover mirrors in background to update availability display.
+  Future<void> _discoverMirrorsInBackground() async {
+    if (!_hasInternet) return;
 
     try {
-      final snapshots = await _mirrorService.getSnapshots(_selectedMirror!);
-      if (mounted && snapshots.isNotEmpty) {
+      final results = await _mirrorService.discoverMirrors();
+      if (mounted && results.isNotEmpty) {
         setState(() {
-          _snapshots = snapshots;
+          _discoveredMirrors = results;
         });
         debugPrint(
-          '[Downloads] Background refresh found ${snapshots.length} snapshots',
+          '[Downloads] Background discovery found ${results.where((m) => m.isOperational).length} operational mirrors',
         );
       }
     } catch (e) {
-      debugPrint('[Downloads] Background refresh failed: $e');
+      debugPrint('[Downloads] Background mirror discovery failed: $e');
     }
   }
 
   Future<void> _loadRegions() async {
-    if (_selectedMirror == null || _selectedSnapshot == null) return;
+    if (_selectedMirrorResult == null || _selectedMirrorResult!.latestSnapshot == null) return;
 
     setState(() => _isLoading = true);
     try {
+      final snapshot = _selectedMirrorResult!.latestSnapshot!;
       debugPrint(
-        '[Downloads] Loading regions for snapshot ${_selectedSnapshot!.version}...',
+        '[Downloads] Loading regions for snapshot ${snapshot.version}...',
       );
       _regions = await _mirrorService.getRegions(
-        _selectedMirror!,
-        _selectedSnapshot!,
+        _selectedMirrorResult!.mirror,
+        snapshot,
       );
       _filteredRegions = List.from(_regions);
       _applySearch(); // Re-apply any existing search
@@ -404,9 +404,9 @@ class _DownloadsTabState extends State<DownloadsTab> {
       if (_regions.isNotEmpty) {
         await _cacheService.saveCache(
           CachedDownloadsData(
-            mirrorName: _selectedMirror!.name,
-            mirrorBaseUrl: _selectedMirror!.baseUrl,
-            snapshotVersion: _selectedSnapshot!.version,
+            mirrorName: _selectedMirrorResult!.mirror.name,
+            mirrorBaseUrl: _selectedMirrorResult!.mirror.baseUrl,
+            snapshotVersion: snapshot.version,
             regions: _regions,
             cachedAt: DateTime.now(),
           ),
@@ -421,6 +421,22 @@ class _DownloadsTabState extends State<DownloadsTab> {
         setState(() => _isLoading = false);
       }
     }
+  }
+  
+  /// Switch to a different mirror and reload regions.
+  Future<void> _switchMirror(MirrorDiscoveryResult newMirror) async {
+    if (!newMirror.isOperational) {
+      _showError('Mirror "${newMirror.mirror.name}" is not available: ${newMirror.error}');
+      return;
+    }
+    
+    setState(() {
+      _selectedMirrorResult = newMirror;
+      _showMirrorSelector = false;
+    });
+    
+    debugPrint('[Downloads] Switching to mirror: ${newMirror.mirror.name}');
+    await _loadRegions();
   }
 
   Future<void> _updateDiskSpace() async {
@@ -459,7 +475,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
   /// Start downloading a region.
   Future<void> _downloadRegion(MwmRegion region) async {
-    if (_selectedMirror == null || _selectedSnapshot == null) return;
+    if (_selectedMirrorResult == null || _selectedMirrorResult!.latestSnapshot == null) return;
 
     // Check concurrent download limit
     if (!_canStartDownload) {
@@ -471,14 +487,15 @@ class _DownloadsTabState extends State<DownloadsTab> {
     }
 
     final url = _mirrorService.getDownloadUrl(
-      _selectedMirror!,
-      _selectedSnapshot!,
+      _selectedMirrorResult!.mirror,
+      _selectedMirrorResult!.latestSnapshot!,
       region,
     );
 
-    // Get file size
-    int fileSize =
-        region.sizeBytes ?? await _mirrorService.getFileSize(url) ?? 0;
+    // Get file size (use region metadata, fallback to HEAD request if 0)
+    int fileSize = region.sizeBytes > 0
+        ? region.sizeBytes
+        : (await _mirrorService.getFileSize(url) ?? 0);
 
     // Check disk space
     final remainingAfter = _availableSpaceBytes - fileSize;
@@ -519,8 +536,11 @@ class _DownloadsTabState extends State<DownloadsTab> {
     });
 
     try {
+      // Use the same directory as bundled maps: Documents/agus_maps_flutter/maps/
       final dir = await getApplicationDocumentsDirectory();
-      final filePath = '${dir.path}/${region.fileName}';
+      final mapsDir = Directory('${dir.path}/agus_maps_flutter/maps');
+      await mapsDir.create(recursive: true);
+      final filePath = '${mapsDir.path}/${region.fileName}';
       final tempPath = '$filePath.download'; // Temp file to prevent corrupted .mwm on crash
       final tempFile = File(tempPath);
       final finalFile = File(filePath);
@@ -546,10 +566,11 @@ class _DownloadsTabState extends State<DownloadsTab> {
       await tempFile.rename(filePath);
 
       // Save metadata
+      final snapshot = _selectedMirrorResult!.latestSnapshot!;
       await widget.mwmStorage.upsert(
         MwmMetadata(
           regionName: region.name,
-          snapshotVersion: _selectedSnapshot!.version,
+          snapshotVersion: snapshot.version,
           fileSize: bytesWritten,
           downloadDate: DateTime.now(),
           filePath: filePath,
@@ -558,7 +579,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
       );
 
       // Register with map engine
-      final version = int.tryParse(_selectedSnapshot!.version);
+      final version = int.tryParse(snapshot.version);
       final result = version != null
           ? agus.registerSingleMapWithVersion(filePath, version)
           : agus.registerSingleMap(filePath);
@@ -750,6 +771,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
     final downloadedCount = widget.mwmStorage.getAll().length;
     final availableGb = _availableSpaceBytes / (1024 * 1024 * 1024);
     final activeCount = _activeDownloads.length;
+    final operationalMirrorCount = _discoveredMirrors.where((m) => m.isOperational).length;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -814,7 +836,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
               IconButton(
                 icon: const Icon(Icons.refresh, size: 20),
                 onPressed: () => _init(forceRefresh: true),
-                tooltip: 'Force refresh',
+                tooltip: 'Refresh mirrors & regions',
               ),
             ],
           ),
@@ -862,49 +884,210 @@ class _DownloadsTabState extends State<DownloadsTab> {
                     ? Colors.orange
                     : Colors.grey,
               ),
+              const SizedBox(width: 8),
+              _buildStatusChip(
+                Icons.dns,
+                '$operationalMirrorCount/${_discoveredMirrors.length} mirrors',
+                operationalMirrorCount > 0 ? Colors.blue : Colors.red,
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          // Mirror/Snapshot selector (compact)
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButton<Snapshot>(
-                  value: _selectedSnapshot,
-                  isExpanded: true,
-                  underline: const SizedBox(),
-                  style: Theme.of(context).textTheme.bodySmall,
-                  items: _snapshots.map((s) {
-                    return DropdownMenuItem(
-                      value: s,
-                      child: Text('${s.version} (${s.formattedDate})'),
-                    );
-                  }).toList(),
-                  onChanged: (s) {
-                    setState(() => _selectedSnapshot = s);
-                    _loadRegions();
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _selectedMirror?.name ?? 'No mirror',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-              ),
-              if (_selectedMirror?.latencyMs != null)
-                Text(
-                  ' (${_selectedMirror!.latencyMs}ms)',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                ),
-            ],
-          ),
+          // Mirror selector (expandable)
+          _buildMirrorSelector(),
         ],
       ),
     );
+  }
+  
+  Widget _buildMirrorSelector() {
+    final selectedMirror = _selectedMirrorResult;
+    final snapshot = selectedMirror?.latestSnapshot;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Selected mirror display (tappable to expand)
+        InkWell(
+          onTap: () => setState(() => _showMirrorSelector = !_showMirrorSelector),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Theme.of(context).dividerColor,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  selectedMirror?.isOperational == true 
+                      ? Icons.check_circle 
+                      : Icons.error,
+                  size: 16,
+                  color: selectedMirror?.isOperational == true 
+                      ? Colors.green 
+                      : Colors.red,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedMirror?.mirror.name ?? 'No mirror selected',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (snapshot != null)
+                        Text(
+                          'Version ${snapshot.version} • ${snapshot.formattedDate}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (selectedMirror?.mirror.latencyMs != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${selectedMirror!.mirror.latencyMs}ms',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.green.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                Icon(
+                  _showMirrorSelector 
+                      ? Icons.keyboard_arrow_up 
+                      : Icons.keyboard_arrow_down,
+                  size: 20,
+                  color: Colors.grey,
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Expandable mirror list
+        if (_showMirrorSelector) ...[
+          const SizedBox(height: 4),
+          Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Theme.of(context).dividerColor),
+            ),
+            child: Column(
+              children: _discoveredMirrors.map((result) {
+                final isSelected = result.mirror.baseUrl == selectedMirror?.mirror.baseUrl;
+                return InkWell(
+                  onTap: result.isOperational 
+                      ? () => _switchMirror(result)
+                      : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected 
+                          ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+                          : null,
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Theme.of(context).dividerColor.withOpacity(0.5),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          result.isOperational 
+                              ? Icons.check_circle 
+                              : Icons.cancel,
+                          size: 16,
+                          color: result.isOperational 
+                              ? Colors.green 
+                              : Colors.red.shade300,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                result.mirror.name,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                  color: result.isOperational 
+                                      ? null 
+                                      : Colors.grey,
+                                ),
+                              ),
+                              Text(
+                                result.statusText,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: result.isOperational 
+                                      ? Colors.grey.shade600
+                                      : Colors.red.shade300,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (result.mirror.latencyMs != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _getLatencyColor(result.mirror.latencyMs!).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${result.mirror.latencyMs}ms',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: _getLatencyColor(result.mirror.latencyMs!),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        if (isSelected) ...[
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.check,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+  
+  Color _getLatencyColor(int latencyMs) {
+    if (latencyMs < 200) return Colors.green;
+    if (latencyMs < 500) return Colors.orange;
+    return Colors.red;
   }
 
   Widget _buildStatusChip(IconData icon, String label, Color color) {

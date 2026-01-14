@@ -340,14 +340,24 @@ class _MyAppState extends State<MyApp> {
   Future<void> _cleanupPartialDownloads() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final files = dir.listSync();
       int cleanedCount = 0;
 
-      for (final entity in files) {
-        if (entity is File && entity.path.endsWith('.mwm.download')) {
-          _log('Removing partial download: ${entity.path}');
-          await entity.delete();
-          cleanedCount++;
+      // Check both the root documents and the maps subdirectory
+      final dirsToCheck = [
+        dir,
+        Directory('${dir.path}/agus_maps_flutter/maps'),
+      ];
+
+      for (final checkDir in dirsToCheck) {
+        if (!checkDir.existsSync()) continue;
+        
+        final files = checkDir.listSync();
+        for (final entity in files) {
+          if (entity is File && entity.path.endsWith('.mwm.download')) {
+            _log('Removing partial download: ${entity.path}');
+            await entity.delete();
+            cleanedCount++;
+          }
         }
       }
 
