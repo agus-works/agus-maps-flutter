@@ -437,13 +437,14 @@ Future<void> buildWindowsLibrary({
   }
 
   final repoRoot = getRepoRoot();
+  final vcpkgInstalledDir = path.join(repoRoot, 'vcpkg_installed');
   final variables = <String, String>{
     'CMAKE_TOOLCHAIN_FILE': toolchainFile,
     'VCPKG_TARGET_TRIPLET': 'x64-windows',
     // Use project-local vcpkg manifest and installed packages
     // This ensures vcpkg uses vcpkg.json from repo root and installs to vcpkg_installed/
     'VCPKG_MANIFEST_DIR': repoRoot,
-    'VCPKG_INSTALLED_DIR': path.join(repoRoot, 'vcpkg_installed'),
+    'VCPKG_INSTALLED_DIR': vcpkgInstalledDir,
     'CMAKE_BUILD_TYPE': BuildConfig.buildType,
     // Disable ccache on Windows
     'CMAKE_C_COMPILER_LAUNCHER': '',
@@ -468,15 +469,46 @@ Future<void> buildWindowsLibrary({
     path.join(buildDir, dllName), // Ninja/single-config: buildDir/
   ];
 
+  var dllCopied = false;
   for (final dllPath in dllPaths) {
     if (fileExists(dllPath)) {
       await copyPath(dllPath, path.join(outputDir, dllName));
       print('Copied DLL to $outputDir');
-      return;
+      dllCopied = true;
+      break;
     }
   }
 
-  throw Exception('Build output not found: $dllName');
+  if (!dllCopied) {
+    throw Exception('Build output not found: $dllName');
+  }
+
+  // Copy zlib1.dll runtime dependency from vcpkg
+  // This DLL is required at runtime by agus_maps_flutter.dll
+  final zlibDllPaths = [
+    // Manifest mode: vcpkg_installed/x64-windows/bin/zlib1.dll
+    path.join(vcpkgInstalledDir, 'x64-windows', 'bin', 'zlib1.dll'),
+    // Classic mode: vcpkg/installed/x64-windows/bin/zlib1.dll
+    path.join(vcpkg, 'installed', 'x64-windows', 'bin', 'zlib1.dll'),
+  ];
+
+  var zlibCopied = false;
+  for (final zlibPath in zlibDllPaths) {
+    if (fileExists(zlibPath)) {
+      await copyPath(zlibPath, path.join(outputDir, 'zlib1.dll'));
+      print('Copied zlib1.dll to $outputDir');
+      zlibCopied = true;
+      break;
+    }
+  }
+
+  if (!zlibCopied) {
+    print('Warning: zlib1.dll not found - app may fail at runtime');
+    print('Searched locations:');
+    for (final p in zlibDllPaths) {
+      print('  - $p');
+    }
+  }
 }
 
 /// Build Linux native library
