@@ -1,4 +1,4 @@
-> Early-stage project. Latest stable release is **v0.1.13**; everything after v0.1.13 is experimental while we migrate sh/ps1 build and release scripts to Dart hooks where compatible.
+> Early-stage project. Latest stable release is **v0.1.15**; everything after v0.1.15 is experimental while we migrate sh/ps1 build and release scripts to Dart hooks where compatible.
 
 <p align="center">
   <img src="https://github.com/agus-works/agus-maps-flutter/raw/main/logo.png" width="120" alt="Agus Maps Logo">

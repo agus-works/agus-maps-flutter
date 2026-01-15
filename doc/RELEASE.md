@@ -617,13 +617,13 @@ sudo apt-get install build-essential cmake ninja-build clang \
 
 The build scripts support intelligent caching of the CoMaps source tree:
 
-- First build: Downloads and patches CoMaps (~2-3 GB), creates `.thirdparty-<tag>.tar.bz2` cache
+- First build: Downloads and patches CoMaps (~2-3 GB), creates `.thirdparty-<tag>.tar.gz` cache
 - Subsequent builds: Extracts from cache (much faster)
 - Cache is tagged with CoMaps version to ensure correctness
 
 To force a fresh build, delete the cache file:
 ```bash
-rm .thirdparty-*.tar.bz2
+rm .thirdparty-*.tar.gz
 rm -rf thirdparty/
 ```
 

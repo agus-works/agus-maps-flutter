@@ -1,3 +1,43 @@
+## 0.1.15
+
+### Map Mirrors & Downloads
+
+* **CoMaps CDN discovery**: `MirrorService` now targets CoMaps CDN servers and probes snapshots via `countries.txt` (no directory listings), with a new `discoverMirrors()` that reports availability and latency.
+
+* **Shared mirror utilities**: Added `lib/src/mirror_utils.dart` to parse `countries.txt` JSON, model regions/snapshots, and share mirror discovery logic between runtime and tools.
+
+* **Map downloader tooling**: New `tool/map_downloader.dart` (mirror discovery, snapshot probing, JSON reports, list modes) and `tool/check_mirrors.dart` diagnostics for metaserver and CDN health checks.
+
+### Example App
+
+* **Mirror selector UI**: Downloads tab now surfaces mirror status/latency, allows switching mirrors, and refreshes mirror discovery in the background.
+
+* **Download paths & cleanup**: Downloads now store maps under `Documents/agus_maps_flutter/maps`; cache validation probes `countries.txt`, and startup cleanup checks both root and maps directories for partial downloads.
+
+* **Map deletion flow**: Added per-map delete actions for non-bundled downloads, backed by new `MwmStorage.deleteMap()` APIs and UI confirmation.
+
+### Build System & CI
+
+* **Thirdparty caching**: Build runner can cache `thirdparty/` into `.thirdparty-<tag>.tar.gz` and restore it on bootstrap; tar.gz create/extract support added to the archive manager.
+
+* **Boost headers handling**: Build tooling now prefers Boost modular headers and falls back to `b2 headers` when needed; CI verifies flat headers for plugin compilation.
+
+* **CI asset downloads**: CI and build scripts now use the Dart map downloader for consistent asset retrieval (with optional JSON reports) and validate/copy ICU data.
+
+* **iOS/macOS source hiding**: CI temporarily hides CoMaps source during iOS/macOS example builds and extracts bundled headers for plugin compilation, then restores sources post-build.
+
+* **Windows vcpkg baseline**: Added `builtin-baseline` to `vcpkg.json` and CI ensures the baseline commit is available in the cached vcpkg clone.
+
+### Build Tooling
+
+* **CMake/NDK detection**: CMake discovery now prefers SDK-installed CMake on Windows; Android NDK detection honors `ANDROID_NDK_HOME` and falls back to the newest installed version with clearer errors.
+
+* **Process diagnostics**: Process runner adds verbose command logging and prints captured stdout/stderr on failures.
+
+### Documentation
+
+* **CoMaps CDN guidance**: README and mirror service docs now describe CoMaps CDN servers, metaserver discovery, and updated download examples.
+
 ## 0.1.14
 
 ### Build System Overhaul
