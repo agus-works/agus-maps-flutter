@@ -248,6 +248,24 @@ If zero-copy is not working or the renderer falls back to CPU copy, use these lo
 - `Interop FBO incomplete` ⇒ Driver does not support the interop FBO path. CPU copy will be used.
 - `WGL Interop: Failed to open device/register object` ⇒ WGL interop failed to bind D3D11 device/texture. Check extension logs and ensure you are not using a prebuilt DLL that lacks the latest changes.
 
+### Diagnostics Overlay (Windows)
+
+Windows builds can render a small overlay in the **upper-right corner** of the map texture to surface renderer/transfer diagnostics. The overlay is rendered by OpenGL into the shared texture (GPU path), so it appears in both zero-copy and CPU-fallback modes.
+
+**Default lines:**
+- `Renderer: OpenGL (WGL)`
+- `Transfer: Zero-copy (WGL_NV_DX_interop)` **or** `Transfer: CPU copy (glReadPixels)`
+- `Keyed mutex: On/Off`
+
+**Disable overlay:**
+- Set `AGUS_MAPS_WIN_OVERLAY=0` (default is enabled).
+
+**Custom lines (native):**
+Developers can append lines from native code using:
+- `AgusWglContextFactory::SetOverlayCustomLines(std::vector<std::string> lines)`
+
+The overlay is intended for diagnostics during development and can be safely disabled in production.
+
 **Status:** Untested, theoretically feasible
 
 ARM64 Windows (Snapdragon X, Apple Silicon via Parallels) could work with modifications:

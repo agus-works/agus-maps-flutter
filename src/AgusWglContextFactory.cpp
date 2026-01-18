@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <string>
+#include <algorithm>
 
 // OpenGL Extension constants and types for FBO (not in Windows gl.h)
 #ifndef GL_FRAMEBUFFER
@@ -158,6 +159,15 @@ bool ShouldEnableKeyedMutex()
   return std::strcmp(env, "1") == 0 || std::strcmp(env, "true") == 0 || std::strcmp(env, "TRUE") == 0;
 }
 
+bool ShouldEnableOverlay()
+{
+  const char * env = std::getenv("AGUS_MAPS_WIN_OVERLAY");
+  if (!env)
+    return true;
+
+  return !(std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0 || std::strcmp(env, "FALSE") == 0);
+}
+
 LRESULT CALLBACK HiddenWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
   return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -196,6 +206,8 @@ AgusWglContextFactory::AgusWglContextFactory(int width, int height)
   , m_height(height)
 {
   LOG(LINFO, ("Creating WGL context factory:", width, "x", height));
+
+  m_overlayEnabled = ShouldEnableOverlay();
   
   // Initialize rendered size to match initial dimensions
   m_renderedWidth.store(width);
@@ -240,7 +252,18 @@ AgusWglContextFactory::~AgusWglContextFactory()
       glDeleteTextures(1, &m_renderTexture);
     if (m_depthBuffer)
       glDeleteRenderbuffers(1, &m_depthBuffer);
+    if (m_overlayFontBase)
+    {
+      glDeleteLists(m_overlayFontBase, 96);
+      m_overlayFontBase = 0;
+    }
     wglMakeCurrent(nullptr, nullptr);
+  }
+
+  if (m_overlayFont)
+  {
+    DeleteObject(m_overlayFont);
+    m_overlayFont = nullptr;
   }
 
   CleanupWGL();
@@ -745,6 +768,184 @@ void AgusWglContextFactory::CleanupD3D11()
   m_d3dDevice.Reset();
 }
 
+void AgusWglContextFactory::SetOverlayCustomLines(std::vector<std::string> lines)
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_overlayCustomLines = std::move(lines);
+}
+
+bool AgusWglContextFactory::EnsureOverlayFont()
+{
+  if (!m_overlayEnabled)
+    return false;
+  if (m_overlayInitialized)
+    return true;
+  if (!m_hdc)
+    return false;
+
+  HFONT font = CreateFontA(
+      -m_overlayFontHeight,
+      0, 0, 0,
+      FW_NORMAL,
+      FALSE,
+      FALSE,
+      FALSE,
+      DEFAULT_CHARSET,
+      OUT_DEFAULT_PRECIS,
+      CLIP_DEFAULT_PRECIS,
+      ANTIALIASED_QUALITY,
+      FF_DONTCARE,
+      "Segoe UI");
+  if (!font)
+  {
+    LOG(LWARNING, ("Overlay: Failed to create font"));
+    return false;
+  }
+
+  HGDIOBJ oldFont = SelectObject(m_hdc, font);
+  GLuint base = glGenLists(96);
+  if (base == 0)
+  {
+    SelectObject(m_hdc, oldFont);
+    DeleteObject(font);
+    LOG(LWARNING, ("Overlay: Failed to allocate font display lists"));
+    return false;
+  }
+
+  if (!wglUseFontBitmapsA(m_hdc, 32, 96, base))
+  {
+    SelectObject(m_hdc, oldFont);
+    glDeleteLists(base, 96);
+    DeleteObject(font);
+    LOG(LWARNING, ("Overlay: wglUseFontBitmapsA failed"));
+    return false;
+  }
+
+  SelectObject(m_hdc, oldFont);
+
+  m_overlayFont = font;
+  m_overlayFontBase = base;
+  m_overlayInitialized = true;
+  return true;
+}
+
+int AgusWglContextFactory::MeasureOverlayTextWidth(std::string const & text) const
+{
+  if (!m_hdc || !m_overlayFont)
+    return static_cast<int>(text.size()) * 8;
+
+  HGDIOBJ oldFont = SelectObject(m_hdc, m_overlayFont);
+  SIZE size = {};
+  BOOL ok = GetTextExtentPoint32A(m_hdc, text.c_str(), static_cast<int>(text.size()), &size);
+  SelectObject(m_hdc, oldFont);
+  if (!ok)
+    return static_cast<int>(text.size()) * 8;
+
+  return static_cast<int>(size.cx);
+}
+
+std::vector<std::string> AgusWglContextFactory::BuildOverlayLines(bool useInterop) const
+{
+  std::vector<std::string> lines;
+  lines.emplace_back("Renderer: OpenGL (WGL)");
+  if (useInterop)
+    lines.emplace_back("Transfer: Zero-copy (WGL_NV_DX_interop)");
+  else
+    lines.emplace_back("Transfer: CPU copy (glReadPixels)");
+
+  lines.emplace_back(std::string("Keyed mutex: ") + (m_keyedMutex ? "On" : "Off"));
+
+  for (auto const & line : m_overlayCustomLines)
+    lines.push_back(line);
+
+  return lines;
+}
+
+void AgusWglContextFactory::DrawOverlayText(GLuint targetFbo, int width, int height,
+                                           std::vector<std::string> const & lines)
+{
+  if (!m_overlayEnabled || lines.empty())
+    return;
+  if (!EnsureOverlayFont())
+    return;
+
+  GLint prevViewport[4] = {};
+  glGetIntegerv(GL_VIEWPORT, prevViewport);
+
+  GLint prevMatrixMode = 0;
+  glGetIntegerv(GL_MATRIX_MODE, &prevMatrixMode);
+
+  GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
+  GLboolean scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+  GLboolean blendEnabled = glIsEnabled(GL_BLEND);
+
+  GLint prevFbo = 0;
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
+
+  glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
+  glViewport(0, 0, width, height);
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_SCISSOR_TEST);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+  glMatrixMode(GL_PROJECTION);
+  glPushMatrix();
+  glLoadIdentity();
+  glOrtho(0, width, 0, height, -1, 1);
+  glMatrixMode(GL_MODELVIEW);
+  glPushMatrix();
+  glLoadIdentity();
+
+  int maxWidth = 0;
+  for (auto const & line : lines)
+    maxWidth = std::max(maxWidth, MeasureOverlayTextWidth(line));
+
+  int lineSpacing = m_overlayFontHeight + 2;
+  int totalHeight = static_cast<int>(lines.size()) * lineSpacing + m_overlayPadding * 2;
+
+  int right = width - m_overlayPadding;
+  int left = right - maxWidth - m_overlayPadding * 2;
+  int top = height - m_overlayPadding;
+  int bottom = top - totalHeight;
+
+  glColor4f(0.0f, 0.0f, 0.0f, 0.55f);
+  glBegin(GL_QUADS);
+  glVertex2i(left, bottom);
+  glVertex2i(right, bottom);
+  glVertex2i(right, top);
+  glVertex2i(left, top);
+  glEnd();
+
+  glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+  glListBase(m_overlayFontBase - 32);
+
+  int y = top - m_overlayPadding - m_overlayFontHeight;
+  for (auto const & line : lines)
+  {
+    int lineWidth = MeasureOverlayTextWidth(line);
+    int x = right - m_overlayPadding - lineWidth;
+    glRasterPos2i(x, y);
+    glCallLists(static_cast<GLsizei>(line.size()), GL_UNSIGNED_BYTE, line.c_str());
+    y -= lineSpacing;
+  }
+
+  glPopMatrix();
+  glMatrixMode(GL_PROJECTION);
+  glPopMatrix();
+  glMatrixMode(prevMatrixMode);
+
+  if (!blendEnabled)
+    glDisable(GL_BLEND);
+  if (depthEnabled)
+    glEnable(GL_DEPTH_TEST);
+  if (scissorEnabled)
+    glEnable(GL_SCISSOR_TEST);
+
+  glBindFramebuffer(GL_FRAMEBUFFER, prevFbo);
+  glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+}
+
 dp::GraphicsContext * AgusWglContextFactory::GetDrawContext()
 {
   if (!m_drawContext)
@@ -951,6 +1152,8 @@ void AgusWglContextFactory::CopyToSharedTexture()
                             0, readHeight, readWidth, 0,
                             GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
+          DrawOverlayText(m_interopFramebuffer, readWidth, readHeight, BuildOverlayLines(true));
+
           // Unlock GL Interop Object
           m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
         }
@@ -975,6 +1178,8 @@ void AgusWglContextFactory::CopyToSharedTexture()
       if (fboStatus != GL_FRAMEBUFFER_COMPLETE) {
           LOG(LERROR, ("FBO incomplete:", fboStatus));
       }
+
+        DrawOverlayText(fboToRead, readWidth, readHeight, BuildOverlayLines(false));
       
       glFinish();
 
