@@ -16,6 +16,24 @@
 #include <atomic>
 #include <mutex>
 
+// WGL_NV_DX_interop definitions
+#ifndef WGL_NV_DX_interop
+#define WGL_NV_DX_interop 1
+#define WGL_ACCESS_READ_ONLY_NV           0x0000
+#define WGL_ACCESS_READ_WRITE_NV          0x0001
+#define WGL_ACCESS_WRITE_DISCARD_NV       0x0002
+
+typedef BOOL (WINAPI * PFNWGLDXSETRESOURCESHAREHANDLENVPROC) (void *dxObject, HANDLE shareHandle);
+typedef HANDLE (WINAPI * PFNWGLDXOPENDEVICENVPROC) (void *dxDevice);
+typedef BOOL (WINAPI * PFNWGLDXCLOSEDEVICENVPROC) (HANDLE hDevice);
+typedef HANDLE (WINAPI * PFNWGLDXREGISTEROBJECTNVPROC) (HANDLE hDevice, void *dxObject, GLuint name, GLenum type, GLenum access);
+typedef BOOL (WINAPI * PFNWGLDXUNREGISTEROBJECTNVPROC) (HANDLE hDevice, HANDLE hObject);
+typedef BOOL (WINAPI * PFNWGLDXLOCKOBJECTSNVPROC) (HANDLE hDevice, GLint count, HANDLE *hObjects);
+typedef BOOL (WINAPI * PFNWGLDXUNLOCKOBJECTSNVPROC) (HANDLE hDevice, GLint count, HANDLE *hObjects);
+#endif
+
+
+
 namespace agus
 {
 
@@ -103,6 +121,23 @@ private:
   Microsoft::WRL::ComPtr<ID3D11Texture2D> m_sharedTexture;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> m_stagingTexture;
   HANDLE m_sharedHandle = nullptr;
+  Microsoft::WRL::ComPtr<IDXGIKeyedMutex> m_keyedMutex;
+  bool m_useKeyedMutex = false;
+
+  // WGL Interop
+  HANDLE m_interopDevice = nullptr;
+  HANDLE m_interopObject = nullptr;
+  GLuint m_interopTexture = 0;
+  GLuint m_interopFramebuffer = 0;
+
+  // Function pointers for WGL_NV_DX_interop
+  // Function pointers for WGL_NV_DX_interop
+  PFNWGLDXOPENDEVICENVPROC m_wglDXOpenDeviceNV = nullptr;
+  PFNWGLDXCLOSEDEVICENVPROC m_wglDXCloseDeviceNV = nullptr;
+  PFNWGLDXREGISTEROBJECTNVPROC m_wglDXRegisterObjectNV = nullptr;
+  PFNWGLDXUNREGISTEROBJECTNVPROC m_wglDXUnregisterObjectNV = nullptr;
+  PFNWGLDXLOCKOBJECTSNVPROC m_wglDXLockObjectsNV = nullptr;
+  PFNWGLDXUNLOCKOBJECTSNVPROC m_wglDXUnlockObjectsNV = nullptr;
 
   // Graphics contexts
   std::unique_ptr<dp::GraphicsContext> m_drawContext;
