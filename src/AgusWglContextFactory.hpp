@@ -157,6 +157,10 @@ private:
   // State
   int m_width = 0;
   int m_height = 0;
+
+  // OpenGL renderer/vendor strings (for adapter matching/logging)
+  std::string m_glRenderer;
+  std::string m_glVendor;
   
   // Track the size at which the most recent frame was ACTUALLY rendered.
   // This is critical for resize handling: when SetSurfaceSize() is called,
