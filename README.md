@@ -531,7 +531,7 @@ See the [example app](example/) for a complete working demo showing all plugin f
 | **Widget Integration** | ✅ Native | ✅ Native | ⚠️ PlatformView | ⚠️ PlatformView |
 | **Platforms** | Android, iOS, macOS, Windows, Linux | All | Android, iOS | Android, iOS |
 
-*\*Zero-copy on iOS, macOS, Android. Windows and Linux use optimized CPU-mediated transfer.*
+*\*Zero-copy on iOS, macOS, Android. Windows uses WGL_NV_DX_interop when available (otherwise CPU copy). Linux uses CPU-mediated transfer.*
 
 ### Platform Support
 
@@ -540,10 +540,10 @@ See the [example app](example/) for a complete working demo showing all plugin f
 | **iOS** | arm64, x86_64 (sim) | Metal | ✅ Yes (IOSurface) |
 | **macOS** | arm64, x86_64 | Metal | ✅ Yes (IOSurface) |
 | **Android** | arm64-v8a, armeabi-v7a, x86_64 | OpenGL ES | ✅ Yes (SurfaceTexture) |
-| **Windows** | x86_64 only | OpenGL + D3D11 | ❌ No (CPU-mediated) |
+| **Windows** | x86_64 only | OpenGL + D3D11 | ⚠️ Conditional (WGL_NV_DX_interop or CPU copy) |
 | **Linux** | x86_64 | EGL + OpenGL ES 3.0 | ❌ No (CPU-mediated) |
 
-> **Windows/Linux Note:** ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware. Both Windows and Linux use CPU-mediated pixel copy via `glReadPixels()` (~2-5ms per frame latency). Linux uses `FlPixelBufferTexture` - zero-copy texture sharing isn't available because Flutter's Linux embedder doesn't support direct GL texture sharing. See [Linux Implementation](doc/IMPLEMENTATION-LINUX.md) for details. Contributions welcome!
+> **Windows/Linux Note:** ARM64 Windows (Snapdragon X, etc.) is not currently supported due to lack of testing hardware. Windows uses WGL_NV_DX_interop for zero-copy when supported by the driver; otherwise it falls back to CPU-mediated `glReadPixels()` (~2-5ms per frame). Linux uses `FlPixelBufferTexture` - zero-copy texture sharing isn't available because Flutter's Linux embedder doesn't support direct GL texture sharing. See [Linux Implementation](doc/IMPLEMENTATION-LINUX.md) for details. Contributions welcome!
 
 ### Pros ✅
 
@@ -558,7 +558,7 @@ See the [example app](example/) for a complete working demo showing all plugin f
 
 - **Limited styling** — Uses Organic Maps' cartographic style (not customizable yet)
 - **No real-time traffic** — Offline-first design means no live data
-- **Windows not zero-copy** — Windows uses CPU-mediated frame transfer (still performant, ~60fps)
+- **Windows zero-copy (conditional)** — Uses WGL_NV_DX_interop when available; otherwise falls back to CPU copy
 - **Windows x86_64 only** — ARM64 Windows not yet supported
 - **MWM format required** — Must use pre-generated map files (not arbitrary tile servers)
 - **Early stage** — Search and routing APIs not yet exposed
@@ -602,7 +602,7 @@ flowchart TB
 
 ### Windows Architecture (x86_64)
 
-Windows uses a different architecture due to OpenGL/D3D11 interop limitations:
+Windows prefers zero-copy via WGL_NV_DX_interop. The diagram below shows the **fallback CPU path** used when interop is unavailable:
 
 ```mermaid
 flowchart TB
@@ -617,7 +617,20 @@ flowchart TB
 
 > **Performance:** Still achieves 60fps on modern hardware with ~30-40MB RAM for the rendering pipeline.
 
-> **Note:** While Windows is not true zero-copy, the map data itself (MWM files) still uses memory-mapping. The CPU-mediated transfer only affects the frame display, not the map data loading.
+> **Note:** The map data itself (MWM files) still uses memory-mapping. The CPU-mediated transfer only affects frame display and is used only when WGL_NV_DX_interop is unavailable.
+
+### Windows Diagnostics Overlay (Native)
+
+Windows builds include a small, native overlay rendered by OpenGL into the map texture (upper-right corner) to show the active renderer and transfer path:
+
+- `Renderer: OpenGL (WGL)`
+- `Transfer: Zero-copy (WGL_NV_DX_interop)` **or** `Transfer: CPU copy (glReadPixels)`
+- `Keyed mutex: On/Off`
+
+Disable the overlay by setting:
+- `AGUS_MAPS_WIN_OVERLAY=0`
+
+Developers can add custom overlay lines by calling `AgusWglContextFactory::SetOverlayCustomLines()` in the native layer.
 
 ## Documentation
 

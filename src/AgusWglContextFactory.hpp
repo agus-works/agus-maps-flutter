@@ -15,6 +15,8 @@
 #include <functional>
 #include <atomic>
 #include <mutex>
+#include <string>
+#include <vector>
 
 // WGL_NV_DX_interop definitions
 #ifndef WGL_NV_DX_interop
@@ -89,6 +91,10 @@ public:
   // Copy rendered content to shared texture
   void CopyToSharedTexture();
 
+  // Diagnostics overlay (Windows-only)
+  void SetOverlayEnabled(bool enabled) { m_overlayEnabled = enabled; }
+  void SetOverlayCustomLines(std::vector<std::string> lines);
+
   // Accessor for framebuffer ID (used by AgusWglContext)
   GLuint GetFramebufferID() const { return m_framebuffer; }
 
@@ -98,6 +104,11 @@ private:
   bool CreateSharedTexture(int width, int height);
   void CleanupWGL();
   void CleanupD3D11();
+
+  bool EnsureOverlayFont();
+  void DrawOverlayText(GLuint targetFbo, int width, int height, std::vector<std::string> const & lines);
+  std::vector<std::string> BuildOverlayLines(bool useInterop) const;
+  int MeasureOverlayTextWidth(std::string const & text) const;
 
   // WGL context
   HWND m_hiddenWindow = nullptr;
@@ -162,6 +173,15 @@ private:
   std::function<void()> m_frameCallback;
   std::function<void()> m_keepAliveCallback;  // Called to keep render loop active
   std::mutex m_mutex;
+
+  // Diagnostics overlay state
+  bool m_overlayEnabled = true;
+  bool m_overlayInitialized = false;
+  GLuint m_overlayFontBase = 0;
+  HFONT m_overlayFont = nullptr;
+  int m_overlayFontHeight = 12;
+  int m_overlayPadding = 6;
+  std::vector<std::string> m_overlayCustomLines;
 };
 
 /**
