@@ -218,11 +218,33 @@ flutter run -d windows
 - **Root Cause:** Cleanup logic called the *global* WGL symbols directly instead of the dynamically loaded function pointers.
 - **Resolution:** Updated cleanup paths to call `m_wglDXUnregisterObjectNV` / `m_wglDXCloseDeviceNV` only after verifying the function pointers are loaded. This removes the direct symbol dependency and aligns with the dynamic `wglGetProcAddress` loading strategy.
 
-#### 7. Windows Build Failure: `wchar_t` Logging in `LOG()`
+#### 7. Windows Build Failure: `GL_CLAMP_TO_EDGE` Undefined
+- **Issue:** MSVC failed with:
+  - `error C2065: 'GL_CLAMP_TO_EDGE': undeclared identifier`
+- **Root Cause:** Legacy Windows OpenGL headers (`GL/gl.h`) do not define `GL_CLAMP_TO_EDGE`.
+- **Resolution:** Added a local fallback define in `AgusWglContextFactory.cpp`:
+  - `#ifndef GL_CLAMP_TO_EDGE` → `#define GL_CLAMP_TO_EDGE 0x812F`
+
+#### 8. Windows Build Failure: `wchar_t` Logging in `LOG()`
 - **Issue:** Build failed with:
   - `error C2280: std::operator<< ... wchar_t: attempting to reference a deleted function`
 - **Root Cause:** The DXGI adapter description is a wide string (`wchar_t[]`) and cannot be streamed into the narrow `LOG()` path.
 - **Resolution:** Convert the adapter name to UTF-8 before logging. This keeps diagnostics intact without breaking MSVC's stream constraints.
+
+#### 9. Zero-Copy Disabled: `wglDXRegisterObjectNV` Failed
+- **Symptom:** Overlay shows `Transfer: CPU copy (glReadPixels)` and logs show:
+  - `WGL Interop: Failed to register object` with a Windows error code.
+- **Root Cause:** The D3D11 device was created on a different GPU adapter than the OpenGL context. WGL interop requires both to be on the same adapter.
+- **Resolution:** Match the D3D11 adapter to the OpenGL renderer string via DXGI enumeration before creating the device. If a match is found, create the device with `D3D_DRIVER_TYPE_UNKNOWN` on that adapter. This increases interop success on multi‑GPU systems.
+- **New Logs:**
+  - `OpenGL renderer: ...`
+  - `D3D adapter matched OpenGL renderer: ...`
+  - `WGL Interop: Failed to register object. GetLastError: ... GL error: ... format: ... bindFlags: ... miscFlags: ...`
+
+#### 10. CPU Fallback Colors Inverted
+- **Symptom:** Map colors appear inverted when CPU copy fallback is active.
+- **Root Cause:** The fallback path copied `GL_RGBA` pixels directly into the D3D texture without channel swizzle. D3D expects `BGRA`.
+- **Resolution:** Swizzle RGBA → BGRA during the CPU copy loop and clear the staging buffer first when sizes differ. This fixes color inversion in CPU fallback mode.
 
 ### Zero-Copy Diagnostics (Windows)
 
@@ -243,6 +265,22 @@ If zero-copy is not working or the renderer falls back to CPU copy, use these lo
 - `WGL Interop: Registered D3D texture as GL texture ...`
 - `WGL Interop: Interop FBO complete - Zero-Copy enabled`
 - `CopyToSharedTexture: useInterop: 1 interopFbo: ... keyedMutex: No`
+
+**Root Cause Checklist (when zero-copy fails):**
+1. **Ensure source build is used** (no prebuilt DLL):
+  - Remove [windows/prebuilt/x64/agus_maps_flutter.dll](windows/prebuilt/x64/agus_maps_flutter.dll) and rebuild.
+2. **Confirm WGL interop availability:**
+  - `WGL_NV_DX_interop: false` → driver/GL context does not expose the extension. Zero‑copy will not work on that machine.
+3. **Confirm adapter match:**
+  - `OpenGL renderer:` and `D3D adapter:` should describe the same GPU family.
+  - If not, set the Windows Graphics Settings “High performance” GPU for the app, then rebuild.
+4. **Check registration failure details:**
+  - `WGL Interop: Failed to register object. GetLastError: ... GL error: ...`
+  - Common causes: adapter mismatch, unsupported shared-handle flags, or missing WGL interop support in the driver.
+5. **Confirm fallback path:**
+  - If `CopyToSharedTexture: useInterop: 0` appears, interop was not enabled or was disabled after FBO validation.
+6. **If colors are wrong in CPU fallback:**
+  - Confirm log shows CPU copy and expect RGBA→BGRA swizzle in the fallback path.
 
 **If you see fallback:**
 - `Interop FBO incomplete` ⇒ Driver does not support the interop FBO path. CPU copy will be used.

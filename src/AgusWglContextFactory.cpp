@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <string>
 #include <algorithm>
+#include <cctype>
 
 // OpenGL Extension constants and types for FBO (not in Windows gl.h)
 #ifndef GL_FRAMEBUFFER
@@ -42,6 +43,11 @@
 // GL_BGRA_EXT for reading pixels in BGRA format (needed for D3D11 texture)
 #ifndef GL_BGRA_EXT
 #define GL_BGRA_EXT                       0x80E1
+#endif
+
+// GL_CLAMP_TO_EDGE is not defined in legacy Windows GL headers
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE                  0x812F
 #endif
 
 // WGL extension query function types
@@ -166,6 +172,14 @@ bool ShouldEnableOverlay()
     return true;
 
   return !(std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0 || std::strcmp(env, "FALSE") == 0);
+}
+
+static std::string ToLower(std::string value)
+{
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
 }
 
 LRESULT CALLBACK HiddenWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -403,6 +417,16 @@ bool AgusWglContextFactory::InitializeWGL()
   // Initialize GL functions
   GLFunctions::Init(dp::ApiVersion::OpenGLES3);
 
+  if (const GLubyte * renderer = glGetString(GL_RENDERER))
+    m_glRenderer = reinterpret_cast<const char *>(renderer);
+  if (const GLubyte * vendor = glGetString(GL_VENDOR))
+    m_glVendor = reinterpret_cast<const char *>(vendor);
+
+  if (!m_glRenderer.empty())
+    LOG(LINFO, ("OpenGL renderer:", m_glRenderer));
+  if (!m_glVendor.empty())
+    LOG(LINFO, ("OpenGL vendor:", m_glVendor));
+
   // Create framebuffer
   glGenFramebuffers(1, &m_framebuffer);
   glGenTextures(1, &m_renderTexture);
@@ -467,18 +491,68 @@ bool AgusWglContextFactory::InitializeD3D11()
   };
 
   D3D_FEATURE_LEVEL featureLevel;
-  HRESULT hr = D3D11CreateDevice(
-    nullptr,
-    D3D_DRIVER_TYPE_HARDWARE,
-    nullptr,
-    createFlags,
-    featureLevels,
-    ARRAYSIZE(featureLevels),
-    D3D11_SDK_VERSION,
-    &m_d3dDevice,
-    &featureLevel,
-    &m_d3dContext
-  );
+  HRESULT hr = E_FAIL;
+
+  Microsoft::WRL::ComPtr<IDXGIAdapter> preferredAdapter;
+  if (!m_glRenderer.empty())
+  {
+    Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+    if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) && factory)
+    {
+      std::string rendererLower = ToLower(m_glRenderer);
+      for (UINT index = 0; ; ++index)
+      {
+        Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+        if (factory->EnumAdapters(index, &adapter) == DXGI_ERROR_NOT_FOUND)
+          break;
+        DXGI_ADAPTER_DESC desc = {};
+        if (FAILED(adapter->GetDesc(&desc)))
+          continue;
+
+        std::string adapterName = WideToUtf8(desc.Description);
+        std::string adapterLower = ToLower(adapterName);
+        if (rendererLower.find(adapterLower) != std::string::npos ||
+            adapterLower.find(rendererLower) != std::string::npos)
+        {
+          preferredAdapter = adapter;
+          LOG(LINFO, ("D3D adapter matched OpenGL renderer:", adapterName));
+          break;
+        }
+      }
+    }
+  }
+
+  if (preferredAdapter)
+  {
+    hr = D3D11CreateDevice(
+      preferredAdapter.Get(),
+      D3D_DRIVER_TYPE_UNKNOWN,
+      nullptr,
+      createFlags,
+      featureLevels,
+      ARRAYSIZE(featureLevels),
+      D3D11_SDK_VERSION,
+      &m_d3dDevice,
+      &featureLevel,
+      &m_d3dContext
+    );
+  }
+
+  if (FAILED(hr))
+  {
+    hr = D3D11CreateDevice(
+      nullptr,
+      D3D_DRIVER_TYPE_HARDWARE,
+      nullptr,
+      createFlags,
+      featureLevels,
+      ARRAYSIZE(featureLevels),
+      D3D11_SDK_VERSION,
+      &m_d3dDevice,
+      &featureLevel,
+      &m_d3dContext
+    );
+  }
 
   if (FAILED(hr))
   {
@@ -629,9 +703,15 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
       {
           // Create GL Texture to Alias D3D Texture
           glGenTextures(1, &m_interopTexture);
+          glBindTexture(GL_TEXTURE_2D, m_interopTexture);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+          glBindTexture(GL_TEXTURE_2D, 0);
           
           // Register D3D Texture as GL Object
-          m_interopObject = m_wglDXRegisterObjectNV(m_interopDevice, m_sharedTexture.Get(), m_interopTexture, GL_TEXTURE_2D, WGL_ACCESS_WRITE_DISCARD_NV);
+          m_interopObject = m_wglDXRegisterObjectNV(m_interopDevice, m_sharedTexture.Get(), m_interopTexture, GL_TEXTURE_2D, WGL_ACCESS_READ_WRITE_NV);
           
           if (m_interopObject)
           {
@@ -681,7 +761,13 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
           }
           else
           {
-               LOG(LERROR, ("WGL Interop: Failed to register object:", GetLastError()));
+               DWORD err = GetLastError();
+               GLenum glErr = glGetError();
+               LOG(LERROR, ("WGL Interop: Failed to register object. GetLastError:", err,
+                            "GL error:", glErr,
+                            "format:", sharedDesc.Format,
+                            "bindFlags:", sharedDesc.BindFlags,
+                            "miscFlags:", sharedDesc.MiscFlags));
                if (m_wglDXCloseDeviceNV)
                  m_wglDXCloseDeviceNV(m_interopDevice);
                else
@@ -1193,16 +1279,24 @@ void AgusWglContextFactory::CopyToSharedTexture()
       if (SUCCEEDED(hr))
       {
         uint8_t * dst = static_cast<uint8_t *>(mapped.pData);
-        if (readWidth == m_width && readHeight == m_height) {
-             // Standard loop
-             for (int y = 0; y < readHeight; ++y) {
-                 const uint8_t* srcRow = pixels.data() + ((readHeight - 1 - y) * readWidth * 4);
-                 uint8_t* dstRow = dst + (y * mapped.RowPitch);
-                 // Swizzle RGBA -> BGRA
-                 // ... (Detailed swizzle code omitted for brevity as we prioritize ZeroCopy)
-                 // Keeping it simple for fallback: memcpy (colors might be wrong RGBA/BGRA)
-                 memcpy(dstRow, srcRow, readWidth * 4); 
-             }
+
+        // Clear the staging buffer to avoid stale pixels when sizes differ
+        std::memset(dst, 0, static_cast<size_t>(mapped.RowPitch) * m_height);
+
+        for (int y = 0; y < readHeight; ++y)
+        {
+          const uint8_t * srcRow = pixels.data() + ((readHeight - 1 - y) * readWidth * 4);
+          uint8_t * dstRow = dst + (y * mapped.RowPitch);
+          for (int x = 0; x < readWidth; ++x)
+          {
+            const uint8_t * src = srcRow + (x * 4);
+            uint8_t * out = dstRow + (x * 4);
+            // Swizzle RGBA -> BGRA
+            out[0] = src[2];
+            out[1] = src[1];
+            out[2] = src[0];
+            out[3] = src[3];
+          }
         }
         m_d3dContext->Unmap(m_stagingTexture.Get(), 0);
         
