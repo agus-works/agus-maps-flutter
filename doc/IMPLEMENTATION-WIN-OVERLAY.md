@@ -28,12 +28,19 @@ The transfer line reflects the actual path taken in the frame copy stage:
 
 ## How It Renders
 
-The overlay is drawn by OpenGL into the map texture after the frame blit or before the CPU readback.
+The overlay is drawn by OpenGL into the map render FBO before the frame blit or before the CPU readback.
 
-- Zero-copy path: Drawn into the interop FBO that wraps the D3D11 shared texture.
+- Zero-copy path: Drawn into the source render FBO, then included in the Y-flip blit into the interop FBO.
 - CPU path: Drawn into the readback FBO before glReadPixels.
 
 This means the overlay appears inside the map content itself and does not require any Flutter-side UI changes.
+
+### Coordinate Orientation
+
+The zero-copy path **flips Y** during the blit to match the D3D texture orientation. Because the overlay is drawn into the source render FBO before the blit, it uses the standard OpenGL **bottom-left origin** in both paths, and the blit flip corrects it for D3D.
+
+Implementation details:
+- Both paths use the standard bottom-left projection: `glOrtho(0, w, 0, h, -1, 1)`.
 
 ## Enable/Disable
 
@@ -81,5 +88,9 @@ If the overlay does not appear:
 - Ensure AGUS_MAPS_WIN_OVERLAY is not set to 0.
 - Verify the OpenGL context is created successfully.
 - Confirm frames are being copied (the overlay renders during CopyToSharedTexture()).
+
+If the overlay appears mirrored or in the wrong corner:
+- Ensure you are on the **zero-copy** path and the overlay is using the **top-left origin** projection.
+- If you are on the CPU path, the standard bottom-left OpenGL origin is expected.
 
 If you need additional diagnostics, add custom lines with SetOverlayCustomLines and log them in your render loop.

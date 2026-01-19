@@ -106,7 +106,7 @@ private:
   void CleanupD3D11();
 
   bool EnsureOverlayFont();
-  void DrawOverlayText(GLuint targetFbo, int width, int height, std::vector<std::string> const & lines);
+  void DrawOverlayText(GLuint targetFbo, int width, int height, std::vector<std::string> const & lines, bool originTopLeft);
   std::vector<std::string> BuildOverlayLines(bool useInterop) const;
   int MeasureOverlayTextWidth(std::string const & text) const;
 
@@ -139,6 +139,7 @@ private:
   HANDLE m_interopDevice = nullptr;
   HANDLE m_interopObject = nullptr;
   GLuint m_interopTexture = 0;
+  GLuint m_interopRenderbuffer = 0;
   GLuint m_interopFramebuffer = 0;
 
   // Function pointers for WGL_NV_DX_interop

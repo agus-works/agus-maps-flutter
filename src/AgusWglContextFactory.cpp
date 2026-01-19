@@ -50,6 +50,29 @@
 #define GL_CLAMP_TO_EDGE                  0x812F
 #endif
 
+static const char * FramebufferStatusToString(GLenum status)
+{
+  switch (status)
+  {
+  case GL_FRAMEBUFFER_COMPLETE:
+    return "GL_FRAMEBUFFER_COMPLETE";
+  case 0x8CD6:  // GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT
+    return "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
+  case 0x8CD7:  // GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT
+    return "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
+  case 0x8CDB:  // GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER
+    return "GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER";
+  case 0x8CDC:  // GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER
+    return "GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER";
+  case 0x8CDD:  // GL_FRAMEBUFFER_UNSUPPORTED
+    return "GL_FRAMEBUFFER_UNSUPPORTED";
+  case 0x8D56:  // GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE
+    return "GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
+  default:
+    return "GL_FRAMEBUFFER_INCOMPLETE_UNKNOWN";
+  }
+}
+
 // WGL extension query function types
 typedef const char * (WINAPI * PFNWGLGETEXTENSIONSSTRINGARBPROC)(HDC hdc);
 typedef const char * (WINAPI * PFNWGLGETEXTENSIONSSTRINGEXTPROC)(void);
@@ -266,6 +289,11 @@ AgusWglContextFactory::~AgusWglContextFactory()
       glDeleteTextures(1, &m_renderTexture);
     if (m_depthBuffer)
       glDeleteRenderbuffers(1, &m_depthBuffer);
+    if (m_interopRenderbuffer)
+    {
+      glDeleteRenderbuffers(1, &m_interopRenderbuffer);
+      m_interopRenderbuffer = 0;
+    }
     if (m_overlayFontBase)
     {
       glDeleteLists(m_overlayFontBase, 96);
@@ -582,6 +610,19 @@ bool AgusWglContextFactory::InitializeD3D11()
 
 bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
 {
+  // Ensure a valid GL context is current for interop registration.
+  HGLRC prevContext = wglGetCurrentContext();
+  HDC prevDC = wglGetCurrentDC();
+  bool madeCurrent = false;
+  if (prevContext != m_drawGlrc || prevDC != m_hdc)
+  {
+    madeCurrent = wglMakeCurrent(m_hdc, m_drawGlrc) == TRUE;
+    if (!madeCurrent)
+    {
+      LOG(LERROR, ("CreateSharedTexture: Failed to make GL context current:", GetLastError()));
+      return false;
+    }
+  }
   // Cleanup existing interop
   if (m_interopDevice)
   {
@@ -605,6 +646,11 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
       glDeleteFramebuffers(1, &m_interopFramebuffer);
       m_interopFramebuffer = 0;
   }
+    if (m_interopRenderbuffer)
+    {
+      glDeleteRenderbuffers(1, &m_interopRenderbuffer);
+      m_interopRenderbuffer = 0;
+    }
   
   if (m_interopTexture)
   {
@@ -695,90 +741,162 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
   //
   // WGL Interop setup:
   // WGL Interop setup:
+  bool hasInteropFns = m_wglDXOpenDeviceNV && m_wglDXCloseDeviceNV && m_wglDXRegisterObjectNV &&
+                       m_wglDXUnregisterObjectNV && m_wglDXLockObjectsNV && m_wglDXUnlockObjectsNV;
+  if (!hasInteropFns)
+  {
+    LOG(LWARNING, ("WGL Interop: required function pointers missing; zero-copy disabled"));
+  }
+
   if (m_wglDXOpenDeviceNV)
   {
       // Open Device
       m_interopDevice = m_wglDXOpenDeviceNV(m_d3dDevice.Get());
       if (m_interopDevice)
       {
-          // Create GL Texture to Alias D3D Texture
-          glGenTextures(1, &m_interopTexture);
-          glBindTexture(GL_TEXTURE_2D, m_interopTexture);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-          glBindTexture(GL_TEXTURE_2D, 0);
-          
-          // Register D3D Texture as GL Object
-          m_interopObject = m_wglDXRegisterObjectNV(m_interopDevice, m_sharedTexture.Get(), m_interopTexture, GL_TEXTURE_2D, WGL_ACCESS_READ_WRITE_NV);
-          
-          if (m_interopObject)
+          auto cleanupInterop = [&]() {
+            if (m_interopFramebuffer)
+            {
+              glDeleteFramebuffers(1, &m_interopFramebuffer);
+              m_interopFramebuffer = 0;
+            }
+            if (m_interopRenderbuffer)
+            {
+              glDeleteRenderbuffers(1, &m_interopRenderbuffer);
+              m_interopRenderbuffer = 0;
+            }
+            if (m_interopTexture)
+            {
+              glDeleteTextures(1, &m_interopTexture);
+              m_interopTexture = 0;
+            }
+            if (m_wglDXUnregisterObjectNV && m_interopDevice && m_interopObject)
+            {
+              m_wglDXUnregisterObjectNV(m_interopDevice, m_interopObject);
+              m_interopObject = nullptr;
+            }
+          };
+
+          auto tryTextureInterop = [&]() -> bool {
+            glGenTextures(1, &m_interopTexture);
+            glBindTexture(GL_TEXTURE_2D, m_interopTexture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            m_interopObject = m_wglDXRegisterObjectNV(m_interopDevice, m_sharedTexture.Get(),
+                                                      m_interopTexture, GL_TEXTURE_2D, WGL_ACCESS_READ_WRITE_NV);
+            if (!m_interopObject)
+              return false;
+
+            LOG(LINFO, ("WGL Interop: Registered D3D texture as GL texture", m_interopTexture));
+
+            if (!m_wglDXLockObjectsNV(m_interopDevice, 1, &m_interopObject))
+            {
+              LOG(LWARNING, ("WGL Interop: wglDXLockObjectsNV failed during FBO setup"));
+              return false;
+            }
+
+            glGenFramebuffers(1, &m_interopFramebuffer);
+            glBindFramebuffer(GL_FRAMEBUFFER, m_interopFramebuffer);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_interopTexture, 0);
+
+            // Explicitly set draw/read buffers for user FBOs
+            GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0 };
+            glDrawBuffers(1, drawBuffers);
+            glReadBuffer(GL_COLOR_ATTACHMENT0);
+
+            GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status != GL_FRAMEBUFFER_COMPLETE)
+            {
+              LOG(LWARNING, ("WGL Interop: Interop FBO incomplete (status:", status,
+                             FramebufferStatusToString(status), ") - trying renderbuffer path"));
+              glBindFramebuffer(GL_FRAMEBUFFER, 0);
+              m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
+              return false;
+            }
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
+            LOG(LINFO, ("WGL Interop: Interop FBO complete - Zero-Copy enabled"));
+            return true;
+          };
+
+          auto tryRenderbufferInterop = [&]() -> bool {
+            glGenRenderbuffers(1, &m_interopRenderbuffer);
+            glBindRenderbuffer(GL_RENDERBUFFER, m_interopRenderbuffer);
+            glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+            m_interopObject = m_wglDXRegisterObjectNV(m_interopDevice, m_sharedTexture.Get(),
+                                                      m_interopRenderbuffer, GL_RENDERBUFFER, WGL_ACCESS_READ_WRITE_NV);
+            if (!m_interopObject)
+              return false;
+
+            LOG(LINFO, ("WGL Interop: Registered D3D texture as GL renderbuffer", m_interopRenderbuffer));
+
+            if (!m_wglDXLockObjectsNV(m_interopDevice, 1, &m_interopObject))
+            {
+              LOG(LWARNING, ("WGL Interop: wglDXLockObjectsNV failed during renderbuffer FBO setup"));
+              return false;
+            }
+
+            glGenFramebuffers(1, &m_interopFramebuffer);
+            glBindFramebuffer(GL_FRAMEBUFFER, m_interopFramebuffer);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, m_interopRenderbuffer);
+
+            // Explicitly set draw/read buffers for user FBOs
+            GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0 };
+            glDrawBuffers(1, drawBuffers);
+            glReadBuffer(GL_COLOR_ATTACHMENT0);
+
+            GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status != GL_FRAMEBUFFER_COMPLETE)
+            {
+              LOG(LWARNING, ("WGL Interop: Renderbuffer FBO incomplete (status:", status,
+                             FramebufferStatusToString(status), ") - falling back to CPU copy"));
+              glBindFramebuffer(GL_FRAMEBUFFER, 0);
+              m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
+              return false;
+            }
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
+            LOG(LINFO, ("WGL Interop: Renderbuffer FBO complete - Zero-Copy enabled"));
+            return true;
+          };
+
+          bool interopOk = tryTextureInterop();
+          if (!interopOk)
           {
-               LOG(LINFO, ("WGL Interop: Registered D3D texture as GL texture", m_interopTexture));
-               
-               // Create FBO for Blitting
-               glGenFramebuffers(1, &m_interopFramebuffer);
-               glBindFramebuffer(GL_FRAMEBUFFER, m_interopFramebuffer);
-               glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_interopTexture, 0);
-               
-               GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-               if (status != GL_FRAMEBUFFER_COMPLETE)
-               {
-                   LOG(LWARNING, ("WGL Interop: Interop FBO incomplete (status:", status, ") - falling back to CPU copy"));
-                   
-                   // Clean up Interop resources
-                   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-                   glDeleteFramebuffers(1, &m_interopFramebuffer);
-                   m_interopFramebuffer = 0;
-                   
-                   if (m_wglDXUnregisterObjectNV && m_interopDevice && m_interopObject)
-                   {
-                       m_wglDXUnregisterObjectNV(m_interopDevice, m_interopObject);
-                       m_interopObject = nullptr;
-                   }
-                   
-                   glDeleteTextures(1, &m_interopTexture);
-                   m_interopTexture = 0;
-                   
-                   if (m_wglDXCloseDeviceNV)
-                     m_wglDXCloseDeviceNV(m_interopDevice);
-                   else
-                     LOG(LWARNING, ("WGL interop cleanup: wglDXCloseDeviceNV missing"));
-                   m_interopDevice = nullptr;
-                   
-                   // CRITICAL: If we are not using WGL Interop, we should ideally NOT use Keyed Mutex
-                   // because the CPU copy path using Staging Texture might not behave well with it 
-                   // (standard Map/Unmap vs CopyResource sync).
-                   // However, for now, we will try to use the KeyedMutex-enabled texture 
-                   // with manual Acquire/Release in CopyToSharedTexture even for the CPU path.
-               }
-               else
-               {
-                   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-                   LOG(LINFO, ("WGL Interop: Interop FBO complete - Zero-Copy enabled"));
-               }
+            cleanupInterop();
+            interopOk = tryRenderbufferInterop();
           }
-          else
+
+          if (!interopOk)
           {
-               DWORD err = GetLastError();
-               GLenum glErr = glGetError();
-               LOG(LERROR, ("WGL Interop: Failed to register object. GetLastError:", err,
-                            "GL error:", glErr,
-                            "format:", sharedDesc.Format,
-                            "bindFlags:", sharedDesc.BindFlags,
-                            "miscFlags:", sharedDesc.MiscFlags));
-               if (m_wglDXCloseDeviceNV)
-                 m_wglDXCloseDeviceNV(m_interopDevice);
-               else
-                 LOG(LWARNING, ("WGL interop cleanup: wglDXCloseDeviceNV missing"));
-               m_interopDevice = nullptr;
+            cleanupInterop();
+            if (m_wglDXCloseDeviceNV)
+              m_wglDXCloseDeviceNV(m_interopDevice);
+            else
+              LOG(LWARNING, ("WGL interop cleanup: wglDXCloseDeviceNV missing"));
+            m_interopDevice = nullptr;
           }
       }
       else
       {
            LOG(LERROR, ("WGL Interop: Failed to open device:", GetLastError()));
       }
+  }
+
+  // Restore previous GL context
+  if (madeCurrent)
+  {
+    if (prevContext != nullptr)
+      wglMakeCurrent(prevDC, prevContext);
+    else
+      wglMakeCurrent(nullptr, nullptr);
   }
 
   // Create staging texture as fallback (always created to support fallback switch at runtime if needed)
@@ -948,7 +1066,7 @@ std::vector<std::string> AgusWglContextFactory::BuildOverlayLines(bool useIntero
 }
 
 void AgusWglContextFactory::DrawOverlayText(GLuint targetFbo, int width, int height,
-                                           std::vector<std::string> const & lines)
+                                           std::vector<std::string> const & lines, bool originTopLeft)
 {
   if (!m_overlayEnabled || lines.empty())
     return;
@@ -978,7 +1096,10 @@ void AgusWglContextFactory::DrawOverlayText(GLuint targetFbo, int width, int hei
   glMatrixMode(GL_PROJECTION);
   glPushMatrix();
   glLoadIdentity();
-  glOrtho(0, width, 0, height, -1, 1);
+  if (originTopLeft)
+    glOrtho(0, width, height, 0, -1, 1);
+  else
+    glOrtho(0, width, 0, height, -1, 1);
   glMatrixMode(GL_MODELVIEW);
   glPushMatrix();
   glLoadIdentity();
@@ -992,8 +1113,8 @@ void AgusWglContextFactory::DrawOverlayText(GLuint targetFbo, int width, int hei
 
   int right = width - m_overlayPadding;
   int left = right - maxWidth - m_overlayPadding * 2;
-  int top = height - m_overlayPadding;
-  int bottom = top - totalHeight;
+  int top = originTopLeft ? m_overlayPadding : (height - m_overlayPadding);
+  int bottom = originTopLeft ? (top + totalHeight) : (top - totalHeight);
 
   glColor4f(0.0f, 0.0f, 0.0f, 0.55f);
   glBegin(GL_QUADS);
@@ -1006,14 +1127,16 @@ void AgusWglContextFactory::DrawOverlayText(GLuint targetFbo, int width, int hei
   glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
   glListBase(m_overlayFontBase - 32);
 
-  int y = top - m_overlayPadding - m_overlayFontHeight;
+  int y = originTopLeft
+              ? (top + m_overlayPadding + m_overlayFontHeight)
+              : (top - m_overlayPadding - m_overlayFontHeight);
   for (auto const & line : lines)
   {
     int lineWidth = MeasureOverlayTextWidth(line);
     int x = right - m_overlayPadding - lineWidth;
     glRasterPos2i(x, y);
     glCallLists(static_cast<GLsizei>(line.size()), GL_UNSIGNED_BYTE, line.c_str());
-    y -= lineSpacing;
+    y += originTopLeft ? lineSpacing : -lineSpacing;
   }
 
   glPopMatrix();
@@ -1156,13 +1279,23 @@ void AgusWglContextFactory::CopyToSharedTexture()
   std::lock_guard<std::mutex> lock(m_mutex);
 
   // If we have interop object, use Zero-Copy path
-  bool useInterop = (m_interopObject != nullptr && m_interopFramebuffer != 0 && m_interopDevice != nullptr);
+  bool hasInteropFns = m_wglDXLockObjectsNV && m_wglDXUnlockObjectsNV;
+  bool useInterop = (m_interopObject != nullptr && m_interopFramebuffer != 0 &&
+                     m_interopDevice != nullptr && hasInteropFns);
 
   if (s_frameCount % kLogEveryNFrames == 0)
   {
     LOG(LINFO, ("CopyToSharedTexture: useInterop:", useInterop,
                 "interopFbo:", m_interopFramebuffer,
                 "keyedMutex:", (m_keyedMutex ? "Yes" : "No")));
+    if (!useInterop)
+    {
+      LOG(LINFO, ("CopyToSharedTexture: interop disabled reasons:",
+                  "device:", m_interopDevice != nullptr,
+                  "object:", m_interopObject != nullptr,
+                  "fbo:", m_interopFramebuffer != 0,
+                  "lockFns:", hasInteropFns));
+    }
   }
 
   if (!useInterop && (!m_stagingTexture || !m_sharedTexture))
@@ -1229,6 +1362,8 @@ void AgusWglContextFactory::CopyToSharedTexture()
         // Lock GL Interop Object
         if (m_wglDXLockObjectsNV(m_interopDevice, 1, &m_interopObject))
         {
+          DrawOverlayText(fboToRead, readWidth, readHeight, BuildOverlayLines(true), false);
+
           // Blit from Render FBO to Interop FBO
           glBindFramebuffer(GL_READ_FRAMEBUFFER, fboToRead);
           glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_interopFramebuffer);
@@ -1237,8 +1372,6 @@ void AgusWglContextFactory::CopyToSharedTexture()
           glBlitFramebuffer(0, 0, readWidth, readHeight,
                             0, readHeight, readWidth, 0,
                             GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
-          DrawOverlayText(m_interopFramebuffer, readWidth, readHeight, BuildOverlayLines(true));
 
           // Unlock GL Interop Object
           m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
@@ -1265,7 +1398,7 @@ void AgusWglContextFactory::CopyToSharedTexture()
           LOG(LERROR, ("FBO incomplete:", fboStatus));
       }
 
-        DrawOverlayText(fboToRead, readWidth, readHeight, BuildOverlayLines(false));
+        DrawOverlayText(fboToRead, readWidth, readHeight, BuildOverlayLines(false), false);
       
       glFinish();
 
