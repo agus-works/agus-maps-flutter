@@ -1,3 +1,23 @@
+## 0.1.16
+
+### Windows Rendering
+
+* **Zero-copy pipeline**: Implemented WGL_NV_DX_interop with DXGI shared handles for GPU-only frame transfer (CPU fallback retained). Includes adapter matching, interop FBO setup, renderbuffer fallback, draw/read buffer setup, and RGBA→BGRA swizzle in the CPU path.
+
+* **Diagnostics overlay**: Added native OpenGL overlay for runtime visibility of renderer/transfer path and keyed mutex state, with environment toggle and custom lines API.
+
+* **Active frame notifications**: CoMaps render loop now calls the active-frame callback when a frame is rendered, ensuring Flutter is notified of live frames.
+
+### Build System
+
+* **Windows runtime dependencies**: Build tooling now copies `zlib1.dll` from vcpkg into the output directory and improves vcpkg manifest path handling.
+
+* **Clean build helper**: Added `clean-build.ps1` to simplify Windows clean builds.
+
+### Documentation
+
+* **Windows architecture updates**: Added/expanded Windows implementation docs for zero-copy rendering, overlay diagnostics, and render loop behavior.
+
 ## 0.1.15
 
 ### Map Mirrors & Downloads
