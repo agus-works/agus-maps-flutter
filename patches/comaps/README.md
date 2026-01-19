@@ -733,7 +733,7 @@ Shader compilers may optimize out unused attributes. The original assert crashes
 - Cannot use shaders with optimized attributes
 
 
-### 0041-libs-drape_frontend-frontend_renderer-cpp.patch
+### 0043-libs-drape_frontend-frontend_renderer-cpp.patch
 
 **File Modified:** `libs/drape_frontend/frontend_renderer.cpp`
 
