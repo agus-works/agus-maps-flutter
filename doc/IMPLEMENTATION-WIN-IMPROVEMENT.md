@@ -225,6 +225,25 @@ variant\_desc.type \= kFlutterDesktopGpuSurfaceTypeDxgiSharedHandle;
 
 This logic directly satisfies the user's request: Efficient (hardware accelerated), Zero-Copy (shared handle), and No CPU Mediation (direct driver-level access).
 
+## **6.5 Repository-Specific Fixes (Implemented)**
+
+The following fixes were required in the current repo to make the theoretical pipeline above work reliably on Windows:
+
+1. **GL context must be current during interop registration.** WGL interop registration can fail with `GL_INVALID_OPERATION` if the OpenGL context is not current on the calling thread. The interop registration now explicitly makes the GL context current for the `wglDXRegisterObjectNV` sequence.
+
+2. **GL_CLAMP_TO_EDGE must be defined on Windows builds.** Some Windows OpenGL headers do not expose `GL_CLAMP_TO_EDGE`, which caused compilation failures. The constant is now defined when missing.
+
+3. **Interop FBO completeness required extra setup.** The interop-backed FBO initially reported `GL_FRAMEBUFFER_UNSUPPORTED`. Fixes required:
+	- A **renderbuffer fallback** path to isolate texture compatibility issues.
+	- Explicit `glDrawBuffers` and `glReadBuffer` setup on the interop FBO.
+	- Locking the interop object **before** FBO attachment and status checks, then unlocking afterward.
+
+4. **CPU fallback required RGBA→BGRA swizzle.** The Flutter texture expects BGRA; the CPU copy path now converts from OpenGL RGBA to BGRA to avoid inverted colors.
+
+5. **Adapter matching is mandatory on multi-GPU systems.** The D3D11 device is forced to match the adapter used by Flutter (via DXGI LUID matching against the active OpenGL renderer). This prevents implicit cross-GPU copies and interop failures.
+
+6. **Overlay orientation differs by path.** The zero-copy path uses a top-left origin (to match the shared-handle texture orientation after the Y flip in the copy), while the CPU path uses bottom-left. The overlay rendering now selects the correct origin per path to avoid mirrored/bottom-right text.
+
 ## **7\. Future Considerations and Risks**
 
 ### **7.1 The Vulkan Horizon**

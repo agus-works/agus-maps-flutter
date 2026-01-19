@@ -241,7 +241,35 @@ flutter run -d windows
   - `D3D adapter matched OpenGL renderer: ...`
   - `WGL Interop: Failed to register object. GetLastError: ... GL error: ... format: ... bindFlags: ... miscFlags: ...`
 
-#### 10. CPU Fallback Colors Inverted
+#### 10. Zero-Copy Disabled: `wglDXRegisterObjectNV` Failed (No Current GL Context)
+- **Symptom:** `WGL Interop: Failed to register object` with `GL error: 1282` (GL_INVALID_OPERATION) and `interop disabled reasons: device: 0 object: 0 fbo: 0` even when WGL interop functions are available and adapters match.
+- **Root Cause:** `CreateSharedTexture()` performed GL texture creation + interop registration without making the WGL draw context current. `wglDXRegisterObjectNV` requires a current OpenGL context.
+- **Resolution:** Ensure `m_drawGlrc` is current during interop registration, then restore the previous context. This removes the GL_INVALID_OPERATION error and allows the interop object/FBO to be created.
+
+#### 11. Zero-Copy Disabled: Interop FBO Unsupported (`GL_FRAMEBUFFER_UNSUPPORTED`)
+- **Symptom:** Logs show:
+  - `WGL Interop: Registered D3D texture as GL texture ...`
+  - `WGL Interop: Interop FBO incomplete (status: 36061 GL_FRAMEBUFFER_UNSUPPORTED)`
+- **Root Cause:** Some drivers reject FBO attachment for an interop texture object even when WGL interop is available. This typically means the driver only supports renderbuffer attachment for the shared D3D texture.
+- **Resolution:** If the texture-based interop FBO is unsupported, register the shared texture as a **GL_RENDERBUFFER** instead and attach via `glFramebufferRenderbuffer`. This provides a compatible zero‑copy path on drivers that disallow `GL_TEXTURE_2D` FBO attachments for interop.
+- **New Logs:**
+  - `WGL Interop: Interop FBO incomplete (status: ... GL_FRAMEBUFFER_UNSUPPORTED) - trying renderbuffer path`
+  - `WGL Interop: Registered D3D texture as GL renderbuffer ...`
+  - `WGL Interop: Renderbuffer FBO complete - Zero-Copy enabled`
+
+#### 12. Zero-Copy Disabled: Interop FBO Incomplete Due to Draw/Read Buffers
+- **Symptom:** `GL_FRAMEBUFFER_UNSUPPORTED` or `GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER` after registering the interop object.
+- **Root Cause:** Some drivers require explicit `glDrawBuffers` / `glReadBuffer` setup on user FBOs; leaving them at default can mark the FBO incomplete.
+- **Resolution:** Explicitly set draw/read buffers after attaching the interop texture/renderbuffer:
+  - `glDrawBuffers(1, {GL_COLOR_ATTACHMENT0});`
+  - `glReadBuffer(GL_COLOR_ATTACHMENT0);`
+
+#### 13. Zero-Copy Disabled: Interop FBO Incomplete Until Object Lock
+- **Symptom:** `GL_FRAMEBUFFER_UNSUPPORTED` persists even after explicit draw/read buffer setup.
+- **Root Cause:** Some drivers require the interop object to be locked via `wglDXLockObjectsNV` before the FBO attachment is considered renderable.
+- **Resolution:** Lock the interop object before FBO setup and status checks, then unlock immediately after.
+
+#### 12. CPU Fallback Colors Inverted
 - **Symptom:** Map colors appear inverted when CPU copy fallback is active.
 - **Root Cause:** The fallback path copied `GL_RGBA` pixels directly into the D3D texture without channel swizzle. D3D expects `BGRA`.
 - **Resolution:** Swizzle RGBA → BGRA during the CPU copy loop and clear the staging buffer first when sizes differ. This fixes color inversion in CPU fallback mode.
@@ -265,6 +293,7 @@ If zero-copy is not working or the renderer falls back to CPU copy, use these lo
 - `WGL Interop: Registered D3D texture as GL texture ...`
 - `WGL Interop: Interop FBO complete - Zero-Copy enabled`
 - `CopyToSharedTexture: useInterop: 1 interopFbo: ... keyedMutex: No`
+- `CopyToSharedTexture: interop disabled reasons: device: ... object: ... fbo: ... lockFns: ...`
 
 **Root Cause Checklist (when zero-copy fails):**
 1. **Ensure source build is used** (no prebuilt DLL):
@@ -279,6 +308,7 @@ If zero-copy is not working or the renderer falls back to CPU copy, use these lo
   - Common causes: adapter mismatch, unsupported shared-handle flags, or missing WGL interop support in the driver.
 5. **Confirm fallback path:**
   - If `CopyToSharedTexture: useInterop: 0` appears, interop was not enabled or was disabled after FBO validation.
+  - Use `CopyToSharedTexture: interop disabled reasons: ...` to see which required objects/functions are missing.
 6. **If colors are wrong in CPU fallback:**
   - Confirm log shows CPU copy and expect RGBA→BGRA swizzle in the fallback path.
 
@@ -294,6 +324,10 @@ Windows builds can render a small overlay in the **upper-right corner** of the m
 - `Renderer: OpenGL (WGL)`
 - `Transfer: Zero-copy (WGL_NV_DX_interop)` **or** `Transfer: CPU copy (glReadPixels)`
 - `Keyed mutex: On/Off`
+
+**Overlay orientation (zero-copy path):**
+- The interop blit flips Y to match D3D texture orientation. The overlay must therefore render with a **top‑left origin** when drawn into the interop FBO.
+- The CPU path keeps the standard OpenGL bottom‑left origin.
 
 **Disable overlay:**
 - Set `AGUS_MAPS_WIN_OVERLAY=0` (default is enabled).
