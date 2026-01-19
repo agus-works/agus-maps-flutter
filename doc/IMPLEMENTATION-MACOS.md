@@ -395,6 +395,47 @@ build-release:
 
 ## Known Issues & Considerations
 
+### Quit Hang on macOS ✅ RESOLVED
+
+**Problem:** When quitting the macOS app (Cmd+Q), macOS produced a hang report. The main thread
+was blocked waiting on a render thread, and the render thread was blocked inside Metal presentation.
+The root cause was the macOS offscreen render path calling the base `MetalBaseContext::Present()`
+with a **fake `CAMetalDrawable`**. The base implementation uses `presentDrawable` and
+`waitUntilCompleted`, which can block indefinitely when the drawable is not backed by a real
+`CAMetalLayer`. This manifested most reliably during shutdown when threads were tearing down.
+
+**Solution:** Align macOS offscreen presentation with the iOS offscreen path:
+
+1. **Do not force `Present()` from `EndRendering()`**. DrapeEngine performs multiple render passes
+  per frame; forcing `Present()` inside `EndRendering()` can trigger extra commits and
+  block on internal Metal synchronization during shutdown.
+2. **Override `Present()` to skip `presentDrawable`** and avoid blocking waits. Instead:
+  - Request the frame drawable to keep MetalBaseContext state consistent.
+  - Attach a completion handler to the command buffer to notify Flutter *after* GPU completion.
+  - Commit the command buffer and only wait until scheduled (non-blocking relative to GPU finish).
+
+**Files Updated:**
+- [macos/Classes/AgusMetalContextFactory.mm](macos/Classes/AgusMetalContextFactory.mm)
+
+**Why This Is Correct:** For offscreen rendering into a CVPixelBuffer/IOSurface, the correct
+presentation model is **command buffer commit + completion handler**, not drawable presentation.
+This prevents lock inversions during shutdown and keeps frame notifications consistent with
+fully-rendered frames.
+
+#### Follow-up: Shutdown Abort in `AgusMetalContextFactory` ✅ RESOLVED
+
+**Problem:** After fixing the quit hang, a crash remained on Cmd+Q with
+`abort()` originating from `AgusMetalContextFactory::~AgusMetalContextFactory()`.
+This happened during static destruction when the mutex guarding the global
+drawable/texture state was already torn down, causing a `std::system_error`
+to escape the destructor and terminate the process.
+
+**Solution:** Make the mutex heap-allocated (never destroyed) and use
+defensive locking in the destructor to prevent exceptions during teardown.
+
+**Files Updated:**
+- [macos/Classes/AgusMetalContextFactory.mm](macos/Classes/AgusMetalContextFactory.mm)
+
 ### Window Resizing ✅ RESOLVED
 
 Unlike iOS, macOS windows can be freely resized by users. This required special handling across two fixes:
