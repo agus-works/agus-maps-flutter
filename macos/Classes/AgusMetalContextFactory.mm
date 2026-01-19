@@ -158,8 +158,9 @@ extern "C" void agus_notify_frame_ready(void);
 static AgusMetalDrawable* g_currentDrawable = nil;
 // Static texture pointer that the drawable getter lambda references (allows updates)
 static id<MTLTexture> g_currentRenderTexture = nil;
-// Mutex for thread-safe texture swapping during resize
-static std::mutex g_textureMutex;
+// Mutex for thread-safe texture swapping during resize.
+// Use a heap-allocated mutex to avoid static destruction order issues during app termination.
+static std::mutex * g_textureMutex = new std::mutex();
 
 namespace
 {
@@ -173,7 +174,7 @@ public:
         : dp::metal::MetalBaseContext(device, screenSize, []() -> id<CAMetalDrawable> {
             // Return our fake drawable wrapping the current texture
             // Use mutex to ensure thread-safe access during resize
-            std::lock_guard<std::mutex> lock(g_textureMutex);
+            std::lock_guard<std::mutex> lock(*g_textureMutex);
             if (!g_currentDrawable || g_currentDrawable.texture != g_currentRenderTexture) {
                 g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:g_currentRenderTexture];
             }
@@ -182,7 +183,7 @@ public:
         , m_renderTexture(renderTexture)
     {
         // Initialize the global texture pointer with mutex protection
-        std::lock_guard<std::mutex> lock(g_textureMutex);
+        std::lock_guard<std::mutex> lock(*g_textureMutex);
         g_currentRenderTexture = renderTexture;
         g_currentDrawable = [[AgusMetalDrawable alloc] initWithTexture:renderTexture];
         LOG(LINFO, ("DrawMetalContext created:", screenSize.x, "x", screenSize.y));
@@ -193,7 +194,7 @@ public:
         // Use mutex to safely swap textures during resize
         // This prevents the render thread from using a deallocated texture
         {
-            std::lock_guard<std::mutex> lock(g_textureMutex);
+            std::lock_guard<std::mutex> lock(*g_textureMutex);
             m_renderTexture = texture;
             // Update the global texture pointer so the drawable getter lambda uses the new texture
             g_currentRenderTexture = texture;
@@ -256,16 +257,6 @@ public:
         
         // Increment active render cycle count - this should be decremented by Present()
         m_activeRenderCycles++;
-        
-        // WORKAROUND: For frames after the first one (RenderEmptyFrame), 
-        // the CoMaps render loop seems to get stuck and not call Present().
-        // Force a Present() call after every EndRendering() to ensure the frame is committed.
-        // The first frame (RenderEmptyFrame) will get Present() called twice but that's OK.
-        if (endCount >= 1) {
-            LOG(LINFO, ("DrawMetalContext::EndRendering() WORKAROUND: Forcing Present() after EndRendering",
-                        "endCount:", endCount));
-            Present();
-        }
     }
     
     /// Override Present() - also notifies Flutter for initial frames
@@ -285,23 +276,70 @@ public:
         if (m_activeRenderCycles > 0)
             m_activeRenderCycles--;
         
-        LOG(LINFO, ("DrawMetalContext::Present() ENTER, count:", presentCount, 
+        LOG(LINFO, ("DrawMetalContext::Present() ENTER, count:", presentCount,
                     "lastEndRendering:", m_lastEndRenderingCount,
                     "activeRenderCycles:", m_activeRenderCycles));
-        
-        // Call base class Present() to do the actual Metal rendering
-        dp::metal::MetalBaseContext::Present();
-        
-        LOG(LINFO, ("DrawMetalContext::Present() after base Present, count:", presentCount));
-        
-        // For the first few frames after DrapeEngine creation, always notify Flutter
-        // This handles the case where initial tiles are being loaded but isActiveFrame
-        // might not be true yet. After initial frames, we rely on df::SetActiveFrameCallback.
-        if (m_initialFrameCount > 0) {
-            m_initialFrameCount--;
-            agus_notify_frame_ready();
+
+        // WORKAROUND for macOS: We're rendering to an offscreen CVPixelBuffer-backed texture,
+        // NOT to a CAMetalLayer/screen. The base MetalBaseContext::Present() does:
+        // 1. presentDrawable - schedules drawable for screen presentation (can BLOCK)
+        // 2. commit - commits the command buffer
+        // 3. waitUntilCompleted - waits for GPU (also blocks)
+        //
+        // For offscreen rendering, we:
+        // 1. SKIP presentDrawable
+        // 2. Add a completion handler to notify Flutter when GPU is DONE
+        // 3. Commit the command buffer (non-blocking)
+
+        // Request the frame drawable to ensure the base class state is consistent
+        RequestFrameDrawable();
+
+        // Check if we have a command buffer
+        if (!m_frameCommandBuffer) {
+            if (presentCount <= 10 || presentCount % 60 == 0) {
+                NSLog(@"[AgusMapsFlutter] Present() WARNING: No command buffer at count=%d", presentCount);
+            }
+            m_frameDrawable = nil;
+
+            // Still notify Flutter for initial frames
+            if (m_initialFrameCount > 0) {
+                m_initialFrameCount--;
+                agus_notify_frame_ready();
+            }
+            return;
         }
-        
+
+        // DO NOT call presentDrawable - it blocks with a fake drawable.
+        // [m_frameCommandBuffer presentDrawable:m_frameDrawable]; // SKIP THIS!
+
+        // Capture count for completion handler
+        int currentCount = presentCount;
+        bool notifyFlutter = (m_initialFrameCount > 0);
+        if (notifyFlutter) {
+            m_initialFrameCount--;
+        }
+
+        // Notify Flutter only after the GPU finishes the full command buffer.
+        bool shouldNotify = (notifyFlutter || currentCount <= 120);
+        if (shouldNotify) {
+            id<MTLCommandBuffer> completionBuffer = m_frameCommandBuffer;
+            [completionBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    agus_notify_frame_ready();
+                });
+            }];
+        }
+
+        // Commit the command buffer - this starts GPU execution
+        [m_frameCommandBuffer commit];
+
+        // Wait until scheduled so the IOSurface is queued before we clear it.
+        [m_frameCommandBuffer waitUntilScheduled];
+
+        // Clear for next frame (after waiting, so we don't nil before GPU uses it)
+        m_frameDrawable = nil;
+        m_frameCommandBuffer = nil;
+
         LOG(LINFO, ("DrawMetalContext::Present() EXIT, count:", presentCount));
     }
     
@@ -394,9 +432,23 @@ AgusMetalContextFactory::~AgusMetalContextFactory()
     
     // Clear global state with mutex protection
     {
-        std::lock_guard<std::mutex> lock(g_textureMutex);
-        g_currentRenderTexture = nil;
-        g_currentDrawable = nil;
+        // Be defensive during termination: mutex destruction order can be undefined.
+        // Avoid throwing from the destructor by guarding against lock errors.
+        if (g_textureMutex) {
+            try {
+                g_textureMutex->lock();
+                g_currentRenderTexture = nil;
+                g_currentDrawable = nil;
+                g_textureMutex->unlock();
+            } catch (...) {
+                // Fall back to best-effort cleanup without locking.
+                g_currentRenderTexture = nil;
+                g_currentDrawable = nil;
+            }
+        } else {
+            g_currentRenderTexture = nil;
+            g_currentDrawable = nil;
+        }
     }
     
     if (m_textureCache)
