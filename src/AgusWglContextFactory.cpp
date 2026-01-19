@@ -129,32 +129,6 @@ static bool LoadFBOExtensions()
          glRenderbufferStorage && glFramebufferRenderbuffer && glDrawBuffers;
 }
 
-static void LogWglExtensions(HDC hdc)
-{
-  auto wglGetExtensionsStringARB = reinterpret_cast<PFNWGLGETEXTENSIONSSTRINGARBPROC>(
-      wglGetProcAddress("wglGetExtensionsStringARB"));
-  auto wglGetExtensionsStringEXT = reinterpret_cast<PFNWGLGETEXTENSIONSSTRINGEXTPROC>(
-      wglGetProcAddress("wglGetExtensionsStringEXT"));
-
-  const char * extensions = nullptr;
-  if (wglGetExtensionsStringARB)
-    extensions = wglGetExtensionsStringARB(hdc);
-  if (!extensions && wglGetExtensionsStringEXT)
-    extensions = wglGetExtensionsStringEXT();
-
-  if (!extensions)
-  {
-    LOG(LWARNING, ("Unable to query WGL extensions string"));
-    return;
-  }
-
-  size_t length = std::strlen(extensions);
-  bool hasInterop = std::strstr(extensions, "WGL_NV_DX_interop") != nullptr;
-  bool hasInterop2 = std::strstr(extensions, "WGL_NV_DX_interop2") != nullptr;
-
-  LOG(LINFO, ("WGL extensions length:", static_cast<uint32_t>(length)));
-  LOG(LINFO, ("WGL_NV_DX_interop:", hasInterop, "WGL_NV_DX_interop2:", hasInterop2));
-}
 
 static std::string WideToUtf8(const wchar_t * input)
 {
@@ -242,8 +216,6 @@ AgusWglContextFactory::AgusWglContextFactory(int width, int height)
   : m_width(width)
   , m_height(height)
 {
-  LOG(LINFO, ("Creating WGL context factory:", width, "x", height));
-
   m_overlayEnabled = ShouldEnableOverlay();
   
   // Initialize rendered size to match initial dimensions
@@ -271,7 +243,6 @@ AgusWglContextFactory::AgusWglContextFactory(int width, int height)
     return;
   }
 
-  LOG(LINFO, ("WGL context factory created successfully"));
 }
 
 AgusWglContextFactory::~AgusWglContextFactory()
@@ -405,14 +376,11 @@ bool AgusWglContextFactory::InitializeWGL()
   // Share resources between contexts
   if (!wglShareLists(m_drawGlrc, m_uploadGlrc))
   {
-    LOG(LWARNING, ("Failed to share GL lists between contexts:", GetLastError()));
     // Continue anyway, resource sharing may still work
   }
 
   // Create framebuffer for offscreen rendering
   wglMakeCurrent(m_hdc, m_drawGlrc);
-
-  LogWglExtensions(m_hdc);
 
   // Load FBO extensions (must be done after context is current)
   if (!LoadFBOExtensions())
@@ -430,18 +398,6 @@ bool AgusWglContextFactory::InitializeWGL()
   m_wglDXLockObjectsNV = (PFNWGLDXLOCKOBJECTSNVPROC)wglGetProcAddress("wglDXLockObjectsNV");
   m_wglDXUnlockObjectsNV = (PFNWGLDXUNLOCKOBJECTSNVPROC)wglGetProcAddress("wglDXUnlockObjectsNV");
 
-    bool hasInteropFns = m_wglDXOpenDeviceNV && m_wglDXCloseDeviceNV &&
-               m_wglDXRegisterObjectNV && m_wglDXUnregisterObjectNV &&
-               m_wglDXLockObjectsNV && m_wglDXUnlockObjectsNV;
-    LOG(hasInteropFns ? LINFO : LWARNING,
-      ("WGL_NV_DX_interop function availability",
-       "open:", m_wglDXOpenDeviceNV != nullptr,
-       "close:", m_wglDXCloseDeviceNV != nullptr,
-       "register:", m_wglDXRegisterObjectNV != nullptr,
-       "unregister:", m_wglDXUnregisterObjectNV != nullptr,
-       "lock:", m_wglDXLockObjectsNV != nullptr,
-       "unlock:", m_wglDXUnlockObjectsNV != nullptr));
-
   // Initialize GL functions
   GLFunctions::Init(dp::ApiVersion::OpenGLES3);
 
@@ -450,10 +406,6 @@ bool AgusWglContextFactory::InitializeWGL()
   if (const GLubyte * vendor = glGetString(GL_VENDOR))
     m_glVendor = reinterpret_cast<const char *>(vendor);
 
-  if (!m_glRenderer.empty())
-    LOG(LINFO, ("OpenGL renderer:", m_glRenderer));
-  if (!m_glVendor.empty())
-    LOG(LINFO, ("OpenGL vendor:", m_glVendor));
 
   // Create framebuffer
   glGenFramebuffers(1, &m_framebuffer);
@@ -495,12 +447,10 @@ bool AgusWglContextFactory::InitializeWGL()
   // is not set, it defaults to (0,0,0,0) which clips all rendering!
   glViewport(0, 0, m_width, m_height);
   glScissor(0, 0, m_width, m_height);
-  LOG(LINFO, ("Initialized viewport/scissor to:", m_width, m_height));
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   wglMakeCurrent(nullptr, nullptr);
 
-  LOG(LINFO, ("WGL initialized successfully"));
   return true;
 }
 
@@ -543,7 +493,6 @@ bool AgusWglContextFactory::InitializeD3D11()
             adapterLower.find(rendererLower) != std::string::npos)
         {
           preferredAdapter = adapter;
-          LOG(LINFO, ("D3D adapter matched OpenGL renderer:", adapterName));
           break;
         }
       }
@@ -588,23 +537,6 @@ bool AgusWglContextFactory::InitializeD3D11()
     return false;
   }
 
-  Microsoft::WRL::ComPtr<IDXGIDevice> dxgiDevice;
-  if (SUCCEEDED(m_d3dDevice.As(&dxgiDevice)))
-  {
-    Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
-    if (SUCCEEDED(dxgiDevice->GetAdapter(&adapter)) && adapter)
-    {
-      DXGI_ADAPTER_DESC desc = {};
-      if (SUCCEEDED(adapter->GetDesc(&desc)))
-      {
-        std::string adapterName = WideToUtf8(desc.Description);
-        LOG(LINFO, ("D3D adapter:", adapterName,
-                    "LUID:", desc.AdapterLuid.HighPart, ":", desc.AdapterLuid.LowPart));
-      }
-    }
-  }
-
-  LOG(LINFO, ("D3D11 device created, feature level:", featureLevel));
   return true;
 }
 
@@ -630,14 +562,10 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
     {
       if (m_wglDXUnregisterObjectNV)
         m_wglDXUnregisterObjectNV(m_interopDevice, m_interopObject);
-      else
-        LOG(LWARNING, ("WGL interop cleanup: wglDXUnregisterObjectNV missing"));
       m_interopObject = nullptr;
     }
     if (m_wglDXCloseDeviceNV)
       m_wglDXCloseDeviceNV(m_interopDevice);
-    else
-      LOG(LWARNING, ("WGL interop cleanup: wglDXCloseDeviceNV missing"));
     m_interopDevice = nullptr;
   }
   
@@ -722,10 +650,6 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
     }
   }
 
-  if (m_useKeyedMutex)
-  {
-    LOG(LINFO, ("KeyedMutex enabled via AGUS_MAPS_WIN_KEYED_MUTEX=1; ensure Flutter consumer syncs with AcquireSync(1)/ReleaseSync(0)."));
-  }
   //
   // PROMPT CHECK: "Consumer (Flutter): The Flutter engine (or the plugin's D3D side) calls AcquireSync(0)... It waits for the key to be 0".
   // Note: "or the plugin's D3D side". The plugin C++ code *hands* the texture to Flutter. Flutter compositor uses it.
@@ -741,13 +665,6 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
   //
   // WGL Interop setup:
   // WGL Interop setup:
-  bool hasInteropFns = m_wglDXOpenDeviceNV && m_wglDXCloseDeviceNV && m_wglDXRegisterObjectNV &&
-                       m_wglDXUnregisterObjectNV && m_wglDXLockObjectsNV && m_wglDXUnlockObjectsNV;
-  if (!hasInteropFns)
-  {
-    LOG(LWARNING, ("WGL Interop: required function pointers missing; zero-copy disabled"));
-  }
-
   if (m_wglDXOpenDeviceNV)
   {
       // Open Device
@@ -791,11 +708,8 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             if (!m_interopObject)
               return false;
 
-            LOG(LINFO, ("WGL Interop: Registered D3D texture as GL texture", m_interopTexture));
-
             if (!m_wglDXLockObjectsNV(m_interopDevice, 1, &m_interopObject))
             {
-              LOG(LWARNING, ("WGL Interop: wglDXLockObjectsNV failed during FBO setup"));
               return false;
             }
 
@@ -811,8 +725,6 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE)
             {
-              LOG(LWARNING, ("WGL Interop: Interop FBO incomplete (status:", status,
-                             FramebufferStatusToString(status), ") - trying renderbuffer path"));
               glBindFramebuffer(GL_FRAMEBUFFER, 0);
               m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
               return false;
@@ -820,7 +732,6 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
-            LOG(LINFO, ("WGL Interop: Interop FBO complete - Zero-Copy enabled"));
             return true;
           };
 
@@ -834,11 +745,8 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             if (!m_interopObject)
               return false;
 
-            LOG(LINFO, ("WGL Interop: Registered D3D texture as GL renderbuffer", m_interopRenderbuffer));
-
             if (!m_wglDXLockObjectsNV(m_interopDevice, 1, &m_interopObject))
             {
-              LOG(LWARNING, ("WGL Interop: wglDXLockObjectsNV failed during renderbuffer FBO setup"));
               return false;
             }
 
@@ -854,8 +762,6 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE)
             {
-              LOG(LWARNING, ("WGL Interop: Renderbuffer FBO incomplete (status:", status,
-                             FramebufferStatusToString(status), ") - falling back to CPU copy"));
               glBindFramebuffer(GL_FRAMEBUFFER, 0);
               m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
               return false;
@@ -863,7 +769,6 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
-            LOG(LINFO, ("WGL Interop: Renderbuffer FBO complete - Zero-Copy enabled"));
             return true;
           };
 
@@ -879,8 +784,6 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             cleanupInterop();
             if (m_wglDXCloseDeviceNV)
               m_wglDXCloseDeviceNV(m_interopDevice);
-            else
-              LOG(LWARNING, ("WGL interop cleanup: wglDXCloseDeviceNV missing"));
             m_interopDevice = nullptr;
           }
       }
@@ -922,12 +825,6 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
   m_width = width;
   m_height = height;
 
-  LOG(LINFO, ("Shared texture created:", width, "x", height, "handle:", m_sharedHandle,
-              "KeyedMutex:", (m_useKeyedMutex ? "Yes" : "No")));
-  if (!m_useKeyedMutex)
-  {
-    LOG(LINFO, ("KeyedMutex disabled (default). Using WGL_NV_DX_interop lock/unlock for sync."));
-  }
   return true;
 }
 
@@ -1002,7 +899,6 @@ bool AgusWglContextFactory::EnsureOverlayFont()
       "Segoe UI");
   if (!font)
   {
-    LOG(LWARNING, ("Overlay: Failed to create font"));
     return false;
   }
 
@@ -1012,7 +908,6 @@ bool AgusWglContextFactory::EnsureOverlayFont()
   {
     SelectObject(m_hdc, oldFont);
     DeleteObject(font);
-    LOG(LWARNING, ("Overlay: Failed to allocate font display lists"));
     return false;
   }
 
@@ -1021,7 +916,6 @@ bool AgusWglContextFactory::EnsureOverlayFont()
     SelectObject(m_hdc, oldFont);
     glDeleteLists(base, 96);
     DeleteObject(font);
-    LOG(LWARNING, ("Overlay: wglUseFontBitmapsA failed"));
     return false;
   }
 
@@ -1180,8 +1074,6 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
   if (m_width == width && m_height == height)
     return;
 
-  LOG(LINFO, ("Resizing surface:", width, "x", height));
-
   // Save current context to restore after
   HGLRC prevContext = wglGetCurrentContext();
   HDC prevDC = wglGetCurrentDC();
@@ -1226,17 +1118,12 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
   {
     LOG(LERROR, ("Framebuffer incomplete after resize:", status, "width:", width, "height:", height));
   }
-  else
-  {
-    LOG(LINFO, ("Framebuffer verified complete after resize:", width, "x", height));
-  }
 
   // Set viewport and scissor for the new size while FBO is bound
   // NOTE: These state changes apply to the current context. When rendering happens,
   // CoMaps will call SetViewport() which sets both viewport and scissor.
   glViewport(0, 0, width, height);
   glScissor(0, 0, width, height);
-  LOG(LINFO, ("Updated viewport/scissor on resize to:", width, height));
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -1270,10 +1157,6 @@ void AgusWglContextFactory::RequestActiveFrame()
     m_keepAliveCallback();
 }
 
-// Static counter for frame logging (limit spam)
-static int s_frameCount = 0;
-static const int kLogEveryNFrames = 60;  // Log once per second at 60fps
-
 void AgusWglContextFactory::CopyToSharedTexture()
 {
   std::lock_guard<std::mutex> lock(m_mutex);
@@ -1283,25 +1166,8 @@ void AgusWglContextFactory::CopyToSharedTexture()
   bool useInterop = (m_interopObject != nullptr && m_interopFramebuffer != 0 &&
                      m_interopDevice != nullptr && hasInteropFns);
 
-  if (s_frameCount % kLogEveryNFrames == 0)
-  {
-    LOG(LINFO, ("CopyToSharedTexture: useInterop:", useInterop,
-                "interopFbo:", m_interopFramebuffer,
-                "keyedMutex:", (m_keyedMutex ? "Yes" : "No")));
-    if (!useInterop)
-    {
-      LOG(LINFO, ("CopyToSharedTexture: interop disabled reasons:",
-                  "device:", m_interopDevice != nullptr,
-                  "object:", m_interopObject != nullptr,
-                  "fbo:", m_interopFramebuffer != 0,
-                  "lockFns:", hasInteropFns));
-    }
-  }
-
   if (!useInterop && (!m_stagingTexture || !m_sharedTexture))
   {
-    if (s_frameCount % kLogEveryNFrames == 0)
-      LOG(LWARNING, ("CopyToSharedTexture: resources missing, useInterop:", useInterop));
     return;
   }
 
@@ -1347,8 +1213,6 @@ void AgusWglContextFactory::CopyToSharedTexture()
         if (hr == WAIT_TIMEOUT)
         {
           locked = false;
-          if (s_frameCount % kLogEveryNFrames == 0)
-            LOG(LWARNING, ("CopyToSharedTexture: AcquireSync timeout (keyed mutex)"));
         }
         else if (FAILED(hr))
         {
@@ -1440,8 +1304,6 @@ void AgusWglContextFactory::CopyToSharedTexture()
       }
   }
 
-  s_frameCount++;
-
   // Restore previous context state
   if (!wasOurContext)
   {
@@ -1532,10 +1394,6 @@ void AgusWglContext::DoneCurrent()
   wglMakeCurrent(nullptr, nullptr);
 }
 
-// Static counter for SetFramebuffer logging (limit spam)
-static int s_setFramebufferLogCount = 0;
-static const int kSetFramebufferLogEveryN = 120;  // Log twice per second at 60fps
-
 void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
 {
   // CRITICAL: When framebuffer is nullptr, CoMaps expects the "default" framebuffer
@@ -1545,8 +1403,6 @@ void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
   if (framebuffer)
   {
     framebuffer->Bind();
-    if (s_setFramebufferLogCount % kSetFramebufferLogEveryN == 0)
-      LOG(LINFO, ("SetFramebuffer: Binding provided FBO (postprocess pass)"));
 
     if (m_isDraw && m_factory)
     {
@@ -1560,8 +1416,6 @@ void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
     // Bind our offscreen FBO as the "default" framebuffer
     GLuint fbo = m_factory->m_framebuffer;
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    if (s_setFramebufferLogCount % kSetFramebufferLogEveryN == 0)
-      LOG(LINFO, ("SetFramebuffer(nullptr): Bound offscreen FBO", fbo, "isDraw:", m_isDraw));
 
     m_factory->m_lastBoundFramebuffer.store(fbo);
   }
@@ -1569,10 +1423,7 @@ void AgusWglContext::SetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
   {
     // Not a draw context or no factory - bind FBO 0
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    if (s_setFramebufferLogCount % kSetFramebufferLogEveryN == 0)
-      LOG(LINFO, ("SetFramebuffer(nullptr): Upload context, binding FBO 0"));
   }
-  s_setFramebufferLogCount++;
 }
 
 void AgusWglContext::ForgetFramebuffer(ref_ptr<dp::BaseFramebuffer> framebuffer)
@@ -1626,14 +1477,7 @@ void AgusWglContext::Init(dp::ApiVersion apiVersion)
     int h = m_factory->m_height;
     glViewport(0, 0, w, h);
     glScissor(0, 0, w, h);
-    LOG(LINFO, ("AgusWglContext::Init - set viewport/scissor to:", w, "x", h));
   }
-  
-  // Log current scissor box to verify
-  GLint scissorBox[4];
-  glGetIntegerv(GL_SCISSOR_BOX, scissorBox);
-  LOG(LINFO, ("AgusWglContext::Init completed, scissor box:", 
-              scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]));
 }
 
 std::string AgusWglContext::GetRendererName() const
@@ -1680,28 +1524,11 @@ std::string AgusWglContext::GetRendererVersion() const
 
 void AgusWglContext::SetClearColor(dp::Color const & color)
 {
-  // Log clear color periodically
-  static int s_clearColorLogCount = 0;
-  if (s_clearColorLogCount++ % 60 == 0)
-  {
-    LOG(LINFO, ("SetClearColor RGBA:", (int)(color.GetRedF() * 255), 
-                (int)(color.GetGreenF() * 255), (int)(color.GetBlueF() * 255), 
-                (int)(color.GetAlphaF() * 255)));
-  }
   glClearColor(color.GetRedF(), color.GetGreenF(), color.GetBlueF(), color.GetAlphaF());
 }
 
 void AgusWglContext::Clear(uint32_t clearBits, uint32_t storeBits)
 {
-  // Log which FBO we're clearing - helps diagnose rendering issues
-  static int s_clearLogCount = 0;
-  if (s_clearLogCount++ % 60 == 0)
-  {
-    GLint boundFBO = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &boundFBO);
-    LOG(LINFO, ("Clear: FBO", boundFBO, "bits", clearBits, "store", storeBits));
-  }
-  
   GLbitfield mask = 0;
   if (clearBits & dp::ClearBits::ColorBit)
     mask |= GL_COLOR_BUFFER_BIT;
@@ -1724,7 +1551,6 @@ void AgusWglContext::Resize(uint32_t w, uint32_t h)
   // GL resource recreation (render texture, depth buffer, D3D11 shared texture).
   if (m_factory)
   {
-    LOG(LINFO, ("AgusWglContext::Resize:", w, "x", h, "isDraw:", m_isDraw));
     m_factory->SetSurfaceSize(static_cast<int>(w), static_cast<int>(h));
   }
 }
