@@ -602,11 +602,23 @@ flowchart TB
 
 ### Windows Architecture (x86_64)
 
-Windows prefers zero-copy via WGL_NV_DX_interop. The diagram below shows the **fallback CPU path** used when interop is unavailable:
+Windows prefers zero-copy via **WGL_NV_DX_interop**. This allows direct GPU-to-GPU memory sharing between OpenGL (CoMaps) and DirectX 11 (Flutter).
 
+**Primary Zero-Copy Pipeline:**
 ```mermaid
 flowchart TB
-    subgraph pipeline["Windows Rendering Pipeline"]
+    subgraph ZeroCopy["Zero-Copy Path (Primary)"]
+        direction TB
+        W1["CoMaps (OpenGL)"] -->|"glBlitFramebuffer<br>(GPU Copy)"| W2["Interop Texture<br>(WGL_NV_DX_interop)"]
+        W2 -.->|"Shared VRAM"| W3["D3D11 Shared Texture"]
+        W3 -->|"DXGI Handle"| W4["Flutter Engine"]
+    end
+```
+
+**Fallback CPU Pipeline** (used if interop is unavailable):
+```mermaid
+flowchart TB
+    subgraph pipeline["Fallback Path"]
         direction TB
         W1["CoMaps<br/>(OpenGL via WGL)"] 
         W1 -->|"glReadPixels<br/>(GPU→CPU, ~2-5ms)"| W2["CPU Buffer<br/>(RGBA→BGRA + Y-flip)"]

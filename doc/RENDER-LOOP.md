@@ -10,7 +10,7 @@ This document provides a detailed analysis of the render loop implementations fo
 | **iOS** | Metal | ✅ **Yes** | `CVPixelBuffer` (IOSurface) backed `MTLTexture` |
 | **macOS** | Metal | ✅ **Yes** | `CVPixelBuffer` (IOSurface) backed `MTLTexture` |
 | **Android** | OpenGLES | ✅ **Yes** | `SurfaceTexture` / `Surface` (EGL Window Surface) |
-| **Windows** | OpenGL -> D3D11 | ❌ **No (CPU Mediated)** | `glReadPixels` -> CPU -> D3D11 Staging -> Shared Texture |
+| **Windows** | OpenGL -> D3D11 | ✅ **Yes (Conditional)** | `WGL_NV_DX_interop` (Zero-copy) or `glReadPixels` (Fallback) |
 | **Linux** | OpenGLES | ❌ **No (CPU Mediated)** | `CopyToPixelBuffer` -> CPU -> `FlPixelBufferTexture` (GTK) |
 
 
@@ -364,12 +364,12 @@ static void notifyFlutterFrameReady() {
 ✅ **Yes** - standard Android EGL/SurfaceTexture pipeline.
 
 
-## 4. Windows Implementation (CPU Mediated)
+## 4. Windows Implementation (Zero-Copy)
 
 ### Overview
-Windows requires **CPU mediation** because CoMaps renders using OpenGL (WGL), while Flutter Windows expects a DirectX 11 (D3D11) shared texture. There is no direct GPU interop between these two APIs on Windows without vendor-specific extensions.
+Windows uses a **hybrid architecture** that prefers a **Zero-Copy** path using the `WGL_NV_DX_interop` extension. This allows the OpenGL-based CoMaps engine to render directly into a shared Direct3D 11 texture that Flutter consumes. If the extension is unavailable (e.g., on some Intel integrated graphics or outdated drivers), it automatically falls back to a CPU-mediated copy.
 
-### Architecture Diagram
+### Architecture Diagram (Zero-Copy)
 ```mermaid
 flowchart TD
     subgraph FlutterWindows ["Flutter Windows (Main Thread)"]
@@ -379,204 +379,115 @@ flowchart TD
         GpuSurface -.-> DxgiHandle
     end
 
-    SharedMemory([DXGI Shared Memory])
+    SharedMemory([VRAM Shared Resource])
 
-    subgraph D3D11Shared ["D3D11 Shared Texture (GPU Memory)"]
-        Formats[DXGI_FORMAT_B8G8R8A8_UNORM]
-    end
-
-    subgraph D3D11Staging ["D3D11 Staging Texture (CPU-accessible GPU memory)"]
-        StagingConfig[D3D11_USAGE_STAGING<br/>D3D11_CPU_ACCESS_WRITE]
-    end
-
-    subgraph SystemMemory ["System Memory Buffer (CPU RAM)"]
-        PixelBuffer[std::vector uint8_t pixels]
-    end
-
-    subgraph OpenGLFBO ["OpenGL Framebuffer Object (GPU Memory)"]
-        ColorAttachment[GL_TEXTURE_2D Color]
-        DepthAttachment[GL_RENDERBUFFER_24_STENCIL8]
-        CoMapsRenderer[CoMaps DrapeEngine Render]
+    subgraph Interop ["OpenGL / Direct3D Interop"]
+        D3DTexture["D3D11 Shared Texture<br>(D3D11_RESOURCE_MISC_SHARED)"]
+        InteropObj["OpenGL Interop Object<br>(WGL_NV_DX_interop)"]
+        WGLBridge["wglDXRegisterObjectNV"]
         
-        CoMapsRenderer --> ColorAttachment
+        WGLBridge -->|Links| D3DTexture
+        WGLBridge -->|Links| InteropObj
     end
 
-    OpenGLFBO -->|glReadPixels| SystemMemory
-    SystemMemory -->|Map -> memcpy -> Unmap| D3D11Staging
-    D3D11Staging -->|CopyResource| D3D11Shared
-    D3D11Shared --> SharedMemory
+    subgraph OpenGLRender ["OpenGL Rendering (CoMaps)"]
+        RenderFBO[Render FBO]
+        Blit[glBlitFramebuffer]
+        InteropFBO[Interop FBO]
+        
+        RenderFBO -->|Draw| Blit
+        Blit -->|Copy (GPU only)| InteropFBO
+        InteropFBO -.->|Backed by| InteropObj
+    end
+
+    InteropObj -.->|Direct VRAM Access| D3DTexture
+    D3DTexture --> SharedMemory
     SharedMemory --> DxgiHandle
 ```
 
-### Detailed Pipeline Breakdown
+### Detailed Pipeline Breakdown (Zero-Copy Path)
 
-#### Step 1: OpenGL Offscreen FBO Creation
-**File:** [`src/AgusWglContextFactory.cpp:278-338`](https://github.com/bangonkali/agus-maps-flutter/blob/main/src/AgusWglContextFactory.cpp#L278-L338)
+#### Step 1: D3D11 Shared Texture Creation
+**File:** [`src/AgusWglContextFactory.cpp`](https://github.com/bangonkali/agus-maps-flutter/blob/main/src/AgusWglContextFactory.cpp)
 
+The native plugin creates a D3D11 texture that serves as the bridge.
 ```cpp
-bool AgusWglContextFactory::InitializeWGL() {
-    // Create framebuffer
-    glGenFramebuffers(1, &m_framebuffer);
-    glGenTextures(1, &m_renderTexture);
-    glGenRenderbuffers(1, &m_depthBuffer);
-    
-    // Setup render texture
-    glBindTexture(GL_TEXTURE_2D, m_renderTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_width, m_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    
-    // Setup depth buffer
-    glBindRenderbuffer(GL_RENDERBUFFER, m_depthBuffer);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, m_width, m_height);
-    
-    // Attach to framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_renderTexture, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthBuffer);
-    
-    glDrawBuffers(1, (GLenum[]){ GL_COLOR_ATTACHMENT0 });
-}
+D3D11_TEXTURE2D_DESC sharedDesc = {};
+sharedDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+sharedDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED; // or SHARED_KEYEDMUTEX
+// ...
+m_d3dDevice->CreateTexture2D(&sharedDesc, nullptr, &m_sharedTexture);
 ```
 
-#### Step 2: GPU → CPU Copy (glReadPixels)
-**File:** [`src/AgusWglContextFactory.cpp:609-698`](https://github.com/bangonkali/agus-maps-flutter/blob/main/src/AgusWglContextFactory.cpp#L609-L698)
+#### Step 2: WGL Interop Registration
+**File:** [`src/AgusWglContextFactory.cpp`](https://github.com/bangonkali/agus-maps-flutter/blob/main/src/AgusWglContextFactory.cpp)
+
+The shared D3D11 texture is registered with the OpenGL context.
+```cpp
+m_interopDevice = m_wglDXOpenDeviceNV(m_d3dDevice.Get());
+m_interopObject = m_wglDXRegisterObjectNV(m_interopDevice, m_sharedTexture.Get(), 
+                                          m_interopTexture, GL_TEXTURE_2D, 
+                                          WGL_ACCESS_READ_WRITE_NV);
+```
+
+#### Step 3: GPU-to-GPU Copy (glBlitFramebuffer)
+**File:** [`src/AgusWglContextFactory.cpp`](https://github.com/bangonkali/agus-maps-flutter/blob/main/src/AgusWglContextFactory.cpp)
+
+Instead of reading pixels to CPU, we use `glBlitFramebuffer` to copy from the CoMaps render buffer to the Interop buffer (which is backed by the D3D texture).
 
 ```cpp
 void AgusWglContextFactory::CopyToSharedTexture() {
-    // Bind the FBO that CoMaps rendered to
-    glBindFramebuffer(GL_FRAMEBUFFER, m_framebuffer);
-    
-    // Query actual rendered dimensions from viewport
-    GLint viewport[4];
-    glGetIntegerv(GL_VIEWPORT, viewport);
-    int readWidth = viewport[2];
-    int readHeight = viewport[3];
-    
-    // CRITICAL: Ensure all OpenGL commands are complete
-    glFinish();
-    
-    // GPU → CPU copy (THIS IS THE BOTTLENECK)
-    std::vector<uint8_t> pixels(readWidth * readHeight * 4);
-    glReadPixels(0, 0, readWidth, readHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-    // ...
-}
-```
-
-**Performance Impact:**
-- `glReadPixels` is a **synchronous** operation that blocks until the GPU finishes all rendering.
-- On a 1920x1080 buffer: 1920 * 1080 * 4 = ~8.3MB transferred from GPU VRAM → System RAM.
-- Typical overhead: **2-5ms** on modern GPUs (AMD RX 6600, NVIDIA RTX 3060).
-
-#### Step 3: CPU → GPU Copy (D3D11 Staging)
-**File:** [`src/AgusWglContextFactory.cpp:793-866`](https://github.com/bangonkali/agus-maps-flutter/blob/main/src/AgusWglContextFactory.cpp#L793-L866)
-
-```cpp
-void AgusWglContextFactory::CopyToSharedTexture() {
-    // ... after glReadPixels ...
-    
-    // Map D3D11 staging texture for CPU write access
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    HRESULT hr = m_d3dContext->Map(m_stagingTexture.Get(), 0, D3D11_MAP_WRITE, 0, &mapped);
-    
-    if (SUCCEEDED(hr)) {
-        uint8_t * dst = static_cast<uint8_t *>(mapped.pData);
+    if (useInterop) {
+        // Lock object (driver synchronization)
+        m_wglDXLockObjectsNV(m_interopDevice, 1, &m_interopObject);
         
-        // Y-flip and RGBA → BGRA conversion
-        for (int y = 0; y < m_height; ++y) {
-            int srcY = m_height - 1 - y;  // OpenGL is bottom-up, D3D11 is top-down
-            const uint8_t * srcRow = pixels.data() + srcY * m_width * 4;
-            uint8_t * dstRow = dst + y * mapped.RowPitch;
-            
-            for (int x = 0; x < m_width; ++x) {
-                dstRow[x * 4 + 0] = srcRow[x * 4 + 2];  // B ← R
-                dstRow[x * 4 + 1] = srcRow[x * 4 + 1];  // G ← G
-                dstRow[x * 4 + 2] = srcRow[x * 4 + 0];  // R ← B
-                dstRow[x * 4 + 3] = srcRow[x * 4 + 3];  // A ← A
-            }
-        }
-        
-        m_d3dContext->Unmap(m_stagingTexture.Get(), 0);
-        
-        // Staging → Shared Texture (GPU-side copy)
-        m_d3dContext->CopyResource(m_sharedTexture.Get(), m_stagingTexture.Get());
-        m_d3dContext->Flush();  // Ensure completion before Flutter reads
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, fboToRead);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_interopFramebuffer);
+
+        // Blit with Y-Flip (OpenGL [0,0] is bottom-left, D3D is top-left)
+        glBlitFramebuffer(0, 0, readWidth, readHeight,
+                          0, readHeight, readWidth, 0,
+                          GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+        m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
     }
 }
 ```
 
 **Performance Impact:**
-- `memcpy`-equivalent loop: **1-2ms** for 1080p.
-- `CopyResource`: **0.5-1ms** (GPU-side copy).
-- Total CPU-mediation overhead: **~4-8ms per frame**.
+- **Zero CPU data copy.**
+- **Latency:** < 0.5ms (GPU copy commands only).
+- **Synchronization:** Handled by `wglDXLockObjectsNV` (driver level) or Keyed Mutexes if enabled.
 
-#### Step 4: Flutter GPU Surface Descriptor
-**File:** [`windows/agus_maps_flutter_plugin.cpp:584-639`](https://github.com/bangonkali/agus-maps-flutter/blob/main/windows/agus_maps_flutter_plugin.cpp#L584-L639)
+### Fallback Implementation (CPU Mediated)
 
-```cpp
-texture_ = std::make_unique<flutter::TextureVariant>(
-    flutter::GpuSurfaceTexture(
-        kFlutterDesktopGpuSurfaceTypeDxgiSharedHandle,
-        [this](size_t w, size_t h) -> const FlutterDesktopGpuSurfaceDescriptor* {
-            void* currentHandle = g_fnGetSharedTextureHandle();  // DXGI handle
-            
-            this->gpu_surface_desc_.struct_size = sizeof(FlutterDesktopGpuSurfaceDescriptor);
-            this->gpu_surface_desc_.handle = currentHandle;
-            this->gpu_surface_desc_.width = this->surface_width_;
-            this->gpu_surface_desc_.height = this->surface_height_;
-            this->gpu_surface_desc_.format = kFlutterDesktopPixelFormatBGRA8888;
-            
-            return &this->gpu_surface_desc_;
-        }
-    )
-);
+If `WGL_NV_DX_interop` initialization fails, the system transparently downgrades to the CPU-copy path.
+
+#### Architecture Diagram (Fallback)
+```mermaid
+flowchart TD
+    subgraph Pipeline ["Fallback Pipeline"]
+        GL[OpenGL FBO]
+        CPU[CPU Buffer]
+        Staging[D3D11 Staging Texture]
+        Shared[D3D11 Shared Texture]
+        
+        GL -->|glReadPixels (Slow)| CPU
+        CPU -->|memcpy + Swizzle| Staging
+        Staging -->|CopyResource| Shared
+    end
 ```
 
-### Why CPU Mediation Exists
-1. **OpenGL vs DirectX:** CoMaps uses OpenGL; Flutter Windows uses DirectX 11.
-2. **No Standard Interop:** Cross-API texture sharing requires extensions like `WGL_NV_DX_interop`, which are:
-   - Vendor-specific (NVIDIA/AMD)
-   - Unreliable on Intel integrated GPUs
-   - Require complex synchronization (`IDXGIKeyedMutex`)
+#### Fallback Steps
+1. **glReadPixels**: Reads RGBA pixels from FBO to `std::vector<uint8_t>`.
+2. **Swizzle & Flip**: CPU loop converts RGBA (GL) to BGRA (D3D) and flips the Y-axis.
+3. **Map/Unmap**: Copies modified bytes to a D3D11 Staging Texture.
+4. **CopyResource**: Moves data from Staging to Default Shared Texture.
 
-### How to Remove CPU Mediation
+**Performance Impact:**
+- **Overhead:** ~2-8ms (depends on resolution and PCIe bandwidth).
+- **CPU Usage:** Higher due to memory copy.
 
-#### Option 1: ANGLE Backend
-**Difficulty:** Medium | **Performance Gain:** ~6-10ms per frame
-
-Use ANGLE (Almost Native Graphics Layer Engine) to translate OpenGL ES to DirectX 11:
-- Compile CoMaps with ANGLE instead of native WGL.
-- ANGLE renders directly to a D3D11 texture.
-- Share this texture with Flutter via DXGI handle (zero-copy).
-
-**Trade-offs:**
-- Requires recompiling CoMaps with different rendering backend.
-- ANGLE has ~5-10% overhead compared to native OpenGL drivers.
-
-#### Option 2: WGL_NV_DX_interop Extension
-**Difficulty:** Hard | **Performance Gain:** ~4-8ms per frame
-
-Use the `WGL_NV_DX_interop` extension to bind a D3D11 texture to an OpenGL texture:
-```cpp
-HANDLE d3dTexture = ...;  // D3D11 shared texture
-GLuint glTexture;
-glGenTextures(1, &glTexture);
-HANDLE glHandle = wglDXOpenDeviceNV(d3dDevice);
-HANDLE glObject = wglDXRegisterObjectNV(glHandle, d3dTexture, glTexture, GL_TEXTURE_2D, WGL_ACCESS_WRITE_DISCARD_NV);
-
-// Render to glTexture (which is actually the D3D11 texture)
-wglDXLockObjectsNV(glHandle, 1, &glObject);
-// ... OpenGL rendering ...
-wglDXUnlockObjectsNV(glHandle, 1, &glObject);
-```
-
-**Trade-offs:**
-- Only supported on NVIDIA and AMD discrete GPUs.
-- Unreliable on Intel integrated GPUs (70% of Windows devices).
-- Requires complex synchronization logic.
-
-### Performance Characteristics
-- **CPU-mediated copy overhead:** ~4-8ms per frame (1080p).
-- **Typical frame time:** ~16-24ms on mid-range hardware (RTX 3060, AMD RX 6600).
-- **Memory bandwidth:** ~500-700 MB/s for 60fps at 1080p.
 
 
 ## 5. Linux Implementation (CPU Mediated)
@@ -740,10 +651,10 @@ glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, eglImage);
 
 | Feature | iOS | macOS | Android | Windows | Linux |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Zero-Copy** | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Rendering API** | Metal | Metal | OpenGL ES | OpenGL | OpenGL ES |
-| **Texture Sharing** | IOSurface | IOSurface | SurfaceTexture | DXGI Handle | CPU Buffer |
-| **CPU Copy Overhead** | 0ms | 0ms | 0ms | 4-8ms | 3-7ms |
+| **Zero-Copy** | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Rendering API** | Metal | Metal | OpenGL ES | WGL/D3D11 | OpenGL ES |
+| **Texture Sharing** | IOSurface | IOSurface | SurfaceTexture | DXGI/NV_DX_Interop | CPU Buffer |
+| **CPU Copy Overhead** | 0ms | 0ms | 0ms | 0ms* | 3-7ms |
 | **Typical Frame Time (1080p)** | 8-16ms | 8-16ms | 10-20ms | 16-24ms | 12-18ms |
 | **Future Optimization** | N/A | N/A | N/A | ANGLE / WGL_NV_DX_interop | FlTextureGL / DMABUF |
 

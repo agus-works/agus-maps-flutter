@@ -1,5 +1,11 @@
 # **Architectural Analysis and Optimization Strategy: Implementing Zero-Copy Memory Pipelines for Agus Maps on Windows**
 
+> [!NOTE]
+> **Status: IMPLEMENTED (January 2026)**
+> The architecture proposed in this document—specifically Phase 1, 2, and 3 using `WGL_NV_DX_interop`—has been successfully implemented.
+> See [doc/IMPLEMENTATION-WIN.md](IMPLEMENTATION-WIN.md) for the live documentation and [doc/RENDER-LOOP.md](RENDER-LOOP.md) for the current architecture diagrams.
+> This document is preserved as a historical reference of the design process.
+
 ## **Executive Summary**
 
 The proliferation of high-fidelity, cross-platform applications has necessitated a fundamental reevaluation of how rendering pipelines are architected, particularly when bridging disparate graphics technologies on desktop operating systems. This report provides an exhaustive technical analysis of the feasibility and implementation strategy for introducing an efficient, zero-copy memory rendering pipeline with no CPU mediation for the agus-maps-flutter repository on the Windows platform. The core objective is to bypass the traditional, latency-inducing bottlenecks associated with texture transport between the OpenGL-based CoMaps engine and the Direct3D 11-based Flutter Windows engine.
