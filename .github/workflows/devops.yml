@@ -21,7 +21,7 @@ jobs:
   build-and-release-mac-platforms:
     name: Build iOS and macOS
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
-    if: true
+    if: false
     runs-on: macos-latest
     permissions:
       contents: write
@@ -535,7 +535,7 @@ jobs:
   build-and-release-android-platform:
     name: Build Android
     # Toggle: set to 'true' to run Android, 'false' to skip (saves cost)
-    if: true
+    if: false
     runs-on: macos-latest
     permissions:
       contents: write
@@ -855,315 +855,336 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      # ======================================================================
-      # CoMaps Source Cache (Azure Blob Storage)
-      # ======================================================================
-      - name: Check CoMaps Cache
-        id: comaps-cache
-        run: |
-          # Parse Azure SAS URL into base URL and token
-          $azUrl = "${{ secrets.AZ_URL }}"
-          $baseUrl = $azUrl -replace '\?.*$', ''
-          $sasToken = $azUrl -replace '^[^?]*\?', ''
-          $cacheFile = "agus/agus-comaps-win-${{ env.COMAPS_TAG }}.zip"
-          $cacheUrl = "${baseUrl}/${cacheFile}?${sasToken}"
-          
-          Write-Host "Checking for cache: ${baseUrl}/${cacheFile}"
-          try {
-            $response = Invoke-WebRequest -Uri $cacheUrl -Method Head -UseBasicParsing -ErrorAction Stop
-            Write-Host "✓ Cache found!"
-            "cache-hit=true" >> $env:GITHUB_OUTPUT
-          } catch {
-            Write-Host "✗ Cache not found, will clone from git"
-            "cache-hit=false" >> $env:GITHUB_OUTPUT
-          }
-          "cache-url=$cacheUrl" >> $env:GITHUB_OUTPUT
+      - name: Check Python Path
+        id: python-path
         shell: pwsh
-
-      - name: Download CoMaps from Cache
-        if: steps.comaps-cache.outputs.cache-hit == 'true'
         run: |
-          Write-Host "Downloading CoMaps from Azure Blob Storage cache..."
-          New-Item -ItemType Directory -Force -Path thirdparty\comaps | Out-Null
-          $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
-          $tempZip = "$env:TEMP\comaps-cache.zip"
-          
-          Invoke-WebRequest -Uri $cacheUrl -OutFile $tempZip -UseBasicParsing
-          Expand-Archive -Path $tempZip -DestinationPath thirdparty\comaps -Force
-          Remove-Item $tempZip
-          
-          Write-Host "=== Verifying Cache Extraction ==="
-          $items = Get-ChildItem -Path thirdparty\comaps -Force
-          Write-Host "Found $($items.Count) items in thirdparty\comaps"
-          $items | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.Name)" }
-          
-          if (-not (Test-Path "thirdparty\comaps\.git")) {
-             Write-Error "CRITICAL: .git directory not found in thirdparty\comaps!"
-             exit 1
-          }
-          
-          Push-Location thirdparty\comaps
-          try {
-             $head = git rev-parse HEAD
-             Write-Host "Current HEAD: $head"
-             Write-Host "Expected Tag: ${{ env.COMAPS_TAG }}"
-          }
-          catch {
-             Write-Error "Failed to verify git status"
-          }
-          finally {
-             Pop-Location
-          }
-          
-          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
-          Write-Host "✓ CoMaps restored from cache (${size} GB)"
-        shell: pwsh
-
-      - name: Clone CoMaps (Cache Miss)
-        id: clone-comaps
-        if: steps.comaps-cache.outputs.cache-hit != 'true'
-        run: |
-          Write-Host "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
-          New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
-          git clone https://github.com/comaps/comaps.git thirdparty/comaps
-          Push-Location thirdparty/comaps
-          git fetch --tags --prune
-          git checkout --detach ${{ env.COMAPS_TAG }}
-          git submodule update --init --recursive
-          Pop-Location
-          
-          $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
-          Write-Host "✓ Clone complete (${size} GB)"
-          "cloned=true" >> $env:GITHUB_OUTPUT
-        shell: pwsh
-
-      - name: Upload CoMaps to Cache
-        if: steps.clone-comaps.outputs.cloned == 'true'
-        run: |
-          Write-Host "Uploading pristine CoMaps to Azure Blob Storage cache..."
-          
-          if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
-            Write-Error "7z not found!"
+          $pythonCmd = Get-Command python -ErrorAction Stop
+          Write-Host "Python command: $($pythonCmd.Source)"
+          if (-not (Test-Path $pythonCmd.Source)) {
+            Write-Error "python.exe not found at: $($pythonCmd.Source)"
             exit 1
           }
-          if (-not (Get-Command azcopy -ErrorAction SilentlyContinue)) {
-            Write-Error "azcopy not found!"
-            exit 1
-          }
-          
-          $tempZip = "$env:TEMP\comaps-cache.zip"
-          Write-Host "Compressing with 7zip (fast mode)..."
-          & 7z a -tzip -mx=1 -mmt=on $tempZip .\thirdparty\comaps\* | Out-Null
-          
-          $cacheSize = "{0:N2}" -f ((Get-Item $tempZip).Length / 1MB)
-          Write-Host "Cache archive size: ${cacheSize} MB"
-          
-          $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
-          Write-Host "Uploading with azcopy (chunked transfer)..."
-          azcopy copy $tempZip $cacheUrl --blob-type BlockBlob --overwrite=true
-          
-          Remove-Item $tempZip
-          Write-Host "✓ Cache uploaded successfully (${cacheSize} MB)"
-        shell: pwsh
+          "python-path=$($pythonCmd.Source)" >> $env:GITHUB_OUTPUT
 
-      - name: Setup CMake
-        uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: latest
-
-      - name: Verify CMake Installation
-        run: |
-          Write-Host "CMake version:"
-          cmake --version
-          Write-Host "Ninja version:"
-          ninja --version
-        shell: pwsh
-
-      - name: Cache vcpkg
-        uses: actions/cache@v4
-        with:
-          path: C:\vcpkg
-          key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}
-          restore-keys: |
-            vcpkg-windows-
-
-      - name: Setup vcpkg
-        run: |
-          $freshClone = $false
-          if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
-            git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-            C:\vcpkg\bootstrap-vcpkg.bat
-            $freshClone = $true
-          }
-          
-          # Ensure vcpkg repo has the baseline commit (required for manifest mode)
-          # This applies to both fresh clones and cached repos
-          Push-Location C:\vcpkg
-          $baseline = (Get-Content "$env:GITHUB_WORKSPACE\vcpkg.json" | ConvertFrom-Json).'builtin-baseline'
-          if ($baseline) {
-            # Check if baseline commit exists locally
-            $hasCommit = git cat-file -t $baseline 2>$null
-            if (-not $hasCommit) {
-              Write-Host "Baseline commit $baseline not found locally, fetching..."
-              # Unshallow if needed, then fetch to ensure commit is available
-              $isShallow = Test-Path ".git/shallow"
-              if ($isShallow) {
-                git fetch --unshallow origin 2>$null || git fetch origin
-              } else {
-                git fetch origin
-              }
-            } else {
-              Write-Host "Baseline commit $baseline already available"
-            }
-          }
-          Pop-Location
-          
-          C:\vcpkg\vcpkg.exe install zlib:x64-windows --classic
-          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
-
-      # ======================================================================
-      # Get Flutter Dependencies (for Dart build tool)
-      # ======================================================================
-      - name: Get Flutter Dependencies
-        run: flutter pub get
-
-      # ======================================================================
-      # Bootstrap CoMaps
-      # ======================================================================
-      - name: Bootstrap CoMaps
-        env:
-          COMAPS_TAG: ${{ env.COMAPS_TAG }}
-          AGUS_MAPS_BUILD_MODE: contributor
-        run: |
-          dart run tool/build.dart --no-cache
-        shell: pwsh
-
-      # ======================================================================
-      # Build Windows Native Libraries
-      # ======================================================================
-      - name: Build Windows Native Libraries
-        env:
-          COMAPS_TAG: ${{ env.COMAPS_TAG }}
-          VCPKG_ROOT: C:\vcpkg
-          AGUS_MAPS_BUILD_MODE: contributor
-        run: |
-          # Remove Strawberry Perl from PATH to prevent ccache conflicts
-          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
-          dart run tool/build.dart --build-binaries --platform windows
-          Get-ChildItem -Path build\agus-binaries-windows\ -Recurse
-        shell: pwsh
-
-      - name: Copy zlib1.dll Runtime Dependency
+      - name: Create python3.exe by copy
         shell: pwsh
         run: |
-          # zlib1.dll is a runtime dependency required by agus_maps_flutter.dll
-          $zlibSrc = "C:\vcpkg\installed\x64-windows\bin\zlib1.dll"
-          $zlibDest = "build\agus-binaries-windows\x64\zlib1.dll"
+          $pythonPath = "${{ steps.python-path.outputs.python-path }}"
+          $pythonDir = Split-Path -Path $pythonPath -Parent
+          $python3Path = Join-Path $pythonDir "python3.exe"
+          Copy-Item -Path $pythonPath -Destination $python3Path -Force
+          Write-Host "Created: $python3Path"
+
+      # # ======================================================================
+      # # CoMaps Source Cache (Azure Blob Storage)
+      # # ======================================================================
+      # - name: Check CoMaps Cache
+      #   id: comaps-cache
+      #   run: |
+      #     # Parse Azure SAS URL into base URL and token
+      #     $azUrl = "${{ secrets.AZ_URL }}"
+      #     $baseUrl = $azUrl -replace '\?.*$', ''
+      #     $sasToken = $azUrl -replace '^[^?]*\?', ''
+      #     $cacheFile = "agus/agus-comaps-win-${{ env.COMAPS_TAG }}.zip"
+      #     $cacheUrl = "${baseUrl}/${cacheFile}?${sasToken}"
           
-          if (Test-Path $zlibSrc) {
-            Copy-Item -Path $zlibSrc -Destination $zlibDest -Force
-            $size = [math]::Round((Get-Item $zlibDest).Length / 1KB, 2)
-            Write-Host "✓ Copied zlib1.dll (${size}KB)"
-          } else {
-            Write-Error "zlib1.dll not found at: $zlibSrc"
-            exit 1
-          }
+      #     Write-Host "Checking for cache: ${baseUrl}/${cacheFile}"
+      #     try {
+      #       $response = Invoke-WebRequest -Uri $cacheUrl -Method Head -UseBasicParsing -ErrorAction Stop
+      #       Write-Host "✓ Cache found!"
+      #       "cache-hit=true" >> $env:GITHUB_OUTPUT
+      #     } catch {
+      #       Write-Host "✗ Cache not found, will clone from git"
+      #       "cache-hit=false" >> $env:GITHUB_OUTPUT
+      #     }
+      #     "cache-url=$cacheUrl" >> $env:GITHUB_OUTPUT
+      #   shell: pwsh
+
+      # - name: Download CoMaps from Cache
+      #   if: steps.comaps-cache.outputs.cache-hit == 'true'
+      #   run: |
+      #     Write-Host "Downloading CoMaps from Azure Blob Storage cache..."
+      #     New-Item -ItemType Directory -Force -Path thirdparty\comaps | Out-Null
+      #     $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
+      #     $tempZip = "$env:TEMP\comaps-cache.zip"
           
-          Write-Host "=== Windows Binaries ==="
-          Get-ChildItem -Path build\agus-binaries-windows\x64\
-
-      - name: Create Windows Binaries Archive
-        shell: pwsh
-        run: |
-          # Create archive with content at root (no wrapper folder)
-          # This ensures windows/prebuilt/x64/ structure in unified package
-          Push-Location build\agus-binaries-windows
-          Remove-Item -Path ..\agus-binaries-windows.zip -Force -ErrorAction SilentlyContinue
-          Compress-Archive -Path .\* -DestinationPath ..\agus-binaries-windows.zip -Force
-          Pop-Location
-          Get-Item build\agus-binaries-windows.zip | Format-Table Name, @{N='Size';E={"{0:N2} MB" -f ($_.Length / 1MB)}}
-
-      - name: Upload Windows Binaries Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-binaries-windows
-          path: build/agus-binaries-windows.zip
-
-      # ======================================================================
-      # Build Windows Example App
-      # ======================================================================
-      - name: Setup Windows Pre-built DLLs
-        run: |
-          New-Item -ItemType Directory -Force -Path windows\prebuilt\x64
-          Copy-Item -Path build\agus-binaries-windows\x64\* -Destination windows\prebuilt\x64\ -Force
-          Get-ChildItem -Path windows\prebuilt\ -Recurse
-        shell: pwsh
-
-      - name: Get Flutter Dependencies
-        run: |
-          flutter pub get
-          cd example
-          flutter pub get
-
-      - name: Download Base MWM Files
-        run: |
-          $assetsDir = "example\assets\maps"
-          New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
+      #     Invoke-WebRequest -Uri $cacheUrl -OutFile $tempZip -UseBasicParsing
+      #     Expand-Archive -Path $tempZip -DestinationPath thirdparty\comaps -Force
+      #     Remove-Item $tempZip
           
-          # Use Dart map downloader for cross-platform consistency
-          dart run tool/map_downloader.dart `
-            --output-dir $assetsDir `
-            --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" `
-            --report (Join-Path $assetsDir "download_report.json") `
-            --verbose
+      #     Write-Host "=== Verifying Cache Extraction ==="
+      #     $items = Get-ChildItem -Path thirdparty\comaps -Force
+      #     Write-Host "Found $($items.Count) items in thirdparty\comaps"
+      #     $items | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.Name)" }
           
-          # Copy ICU data - fail if source is missing (critical for search)
-          $icuSource = "thirdparty\comaps\data\icudt75l.dat"
-          $icuDest = Join-Path $assetsDir "icudt75l.dat"
-          if (-not (Test-Path $icuSource)) {
-            Write-Error "ICU data file not found: $icuSource"
-            Write-Error "This file is required for search/transliteration functionality."
-            exit 1
-          }
-          if (-not (Test-Path $icuDest)) {
-            Copy-Item -Path $icuSource -Destination $icuDest
-            Write-Host "Copied ICU data: $icuDest"
-          } else {
-            Write-Host "ICU data already present: $icuDest"
-          }
+      #     if (-not (Test-Path "thirdparty\comaps\.git")) {
+      #        Write-Error "CRITICAL: .git directory not found in thirdparty\comaps!"
+      #        exit 1
+      #     }
           
-          Get-ChildItem -Path $assetsDir
-        shell: pwsh
+      #     Push-Location thirdparty\comaps
+      #     try {
+      #        $head = git rev-parse HEAD
+      #        Write-Host "Current HEAD: $head"
+      #        Write-Host "Expected Tag: ${{ env.COMAPS_TAG }}"
+      #     }
+      #     catch {
+      #        Write-Error "Failed to verify git status"
+      #     }
+      #     finally {
+      #        Pop-Location
+      #     }
+          
+      #     $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
+      #     Write-Host "✓ CoMaps restored from cache (${size} GB)"
+      #   shell: pwsh
 
-      - name: Build Windows Release App
-        run: |
-          cd example
-          flutter build windows --release `
-            --build-name=1.0.0 `
-            --build-number=${{ github.run_number }}
-        shell: pwsh
+      # - name: Clone CoMaps (Cache Miss)
+      #   id: clone-comaps
+      #   if: steps.comaps-cache.outputs.cache-hit != 'true'
+      #   run: |
+      #     Write-Host "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
+      #     New-Item -ItemType Directory -Force -Path thirdparty | Out-Null
+      #     git clone https://github.com/comaps/comaps.git thirdparty/comaps
+      #     Push-Location thirdparty/comaps
+      #     git fetch --tags --prune
+      #     git checkout --detach ${{ env.COMAPS_TAG }}
+      #     git submodule update --init --recursive
+      #     Pop-Location
+          
+      #     $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
+      #     Write-Host "✓ Clone complete (${size} GB)"
+      #     "cloned=true" >> $env:GITHUB_OUTPUT
+      #   shell: pwsh
 
-      - name: Prepare Windows Artifacts
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts
-          $releasePath = "example\build\windows\x64\runner\Release"
-          Compress-Archive -Path "$releasePath\*" -DestinationPath "artifacts\agus-maps-windows.zip" -Force
-          Get-ChildItem -Path artifacts\
-        shell: pwsh
+      # - name: Upload CoMaps to Cache
+      #   if: steps.clone-comaps.outputs.cloned == 'true'
+      #   run: |
+      #     Write-Host "Uploading pristine CoMaps to Azure Blob Storage cache..."
+          
+      #     if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
+      #       Write-Error "7z not found!"
+      #       exit 1
+      #     }
+      #     if (-not (Get-Command azcopy -ErrorAction SilentlyContinue)) {
+      #       Write-Error "azcopy not found!"
+      #       exit 1
+      #     }
+          
+      #     $tempZip = "$env:TEMP\comaps-cache.zip"
+      #     Write-Host "Compressing with 7zip (fast mode)..."
+      #     & 7z a -tzip -mx=1 -mmt=on $tempZip .\thirdparty\comaps\* | Out-Null
+          
+      #     $cacheSize = "{0:N2}" -f ((Get-Item $tempZip).Length / 1MB)
+      #     Write-Host "Cache archive size: ${cacheSize} MB"
+          
+      #     $cacheUrl = "${{ steps.comaps-cache.outputs.cache-url }}"
+      #     Write-Host "Uploading with azcopy (chunked transfer)..."
+      #     azcopy copy $tempZip $cacheUrl --blob-type BlockBlob --overwrite=true
+          
+      #     Remove-Item $tempZip
+      #     Write-Host "✓ Cache uploaded successfully (${cacheSize} MB)"
+      #   shell: pwsh
 
-      - name: Upload Windows App Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: agus-maps-windows
-          path: artifacts/agus-maps-windows.zip
+      # - name: Setup CMake
+      #   uses: lukka/get-cmake@latest
+      #   with:
+      #     cmakeVersion: ${{ env.CMAKE_VERSION }}
+      #     ninjaVersion: latest
+
+      # - name: Verify CMake Installation
+      #   run: |
+      #     Write-Host "CMake version:"
+      #     cmake --version
+      #     Write-Host "Ninja version:"
+      #     ninja --version
+      #   shell: pwsh
+
+      # - name: Cache vcpkg
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: C:\vcpkg
+      #     key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}
+      #     restore-keys: |
+      #       vcpkg-windows-
+
+      # - name: Setup vcpkg
+      #   run: |
+      #     $freshClone = $false
+      #     if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
+      #       git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+      #       C:\vcpkg\bootstrap-vcpkg.bat
+      #       $freshClone = $true
+      #     }
+          
+      #     # Ensure vcpkg repo has the baseline commit (required for manifest mode)
+      #     # This applies to both fresh clones and cached repos
+      #     Push-Location C:\vcpkg
+      #     $baseline = (Get-Content "$env:GITHUB_WORKSPACE\vcpkg.json" | ConvertFrom-Json).'builtin-baseline'
+      #     if ($baseline) {
+      #       # Check if baseline commit exists locally
+      #       $hasCommit = git cat-file -t $baseline 2>$null
+      #       if (-not $hasCommit) {
+      #         Write-Host "Baseline commit $baseline not found locally, fetching..."
+      #         # Unshallow if needed, then fetch to ensure commit is available
+      #         $isShallow = Test-Path ".git/shallow"
+      #         if ($isShallow) {
+      #           git fetch --unshallow origin 2>$null || git fetch origin
+      #         } else {
+      #           git fetch origin
+      #         }
+      #       } else {
+      #         Write-Host "Baseline commit $baseline already available"
+      #       }
+      #     }
+      #     Pop-Location
+          
+      #     C:\vcpkg\vcpkg.exe install zlib:x64-windows --classic
+      #     echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+      #   shell: pwsh
+
+      # - name: Setup Flutter
+      #   uses: subosito/flutter-action@v2
+      #   with:
+      #     flutter-version: ${{ env.FLUTTER_VERSION }}
+      #     cache: true
+
+      # # ======================================================================
+      # # Get Flutter Dependencies (for Dart build tool)
+      # # ======================================================================
+      # - name: Get Flutter Dependencies
+      #   run: flutter pub get
+
+      # # ======================================================================
+      # # Bootstrap CoMaps
+      # # ======================================================================
+      # - name: Bootstrap CoMaps
+      #   env:
+      #     COMAPS_TAG: ${{ env.COMAPS_TAG }}
+      #     AGUS_MAPS_BUILD_MODE: contributor
+      #   run: |
+      #     dart run tool/build.dart --no-cache
+      #   shell: pwsh
+
+      # # ======================================================================
+      # # Build Windows Native Libraries
+      # # ======================================================================
+      # - name: Build Windows Native Libraries
+      #   env:
+      #     COMAPS_TAG: ${{ env.COMAPS_TAG }}
+      #     VCPKG_ROOT: C:\vcpkg
+      #     AGUS_MAPS_BUILD_MODE: contributor
+      #   run: |
+      #     # Remove Strawberry Perl from PATH to prevent ccache conflicts
+      #     $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
+      #     dart run tool/build.dart --build-binaries --platform windows
+      #     Get-ChildItem -Path build\agus-binaries-windows\ -Recurse
+      #   shell: pwsh
+
+      # - name: Copy zlib1.dll Runtime Dependency
+      #   shell: pwsh
+      #   run: |
+      #     # zlib1.dll is a runtime dependency required by agus_maps_flutter.dll
+      #     $zlibSrc = "C:\vcpkg\installed\x64-windows\bin\zlib1.dll"
+      #     $zlibDest = "build\agus-binaries-windows\x64\zlib1.dll"
+          
+      #     if (Test-Path $zlibSrc) {
+      #       Copy-Item -Path $zlibSrc -Destination $zlibDest -Force
+      #       $size = [math]::Round((Get-Item $zlibDest).Length / 1KB, 2)
+      #       Write-Host "✓ Copied zlib1.dll (${size}KB)"
+      #     } else {
+      #       Write-Error "zlib1.dll not found at: $zlibSrc"
+      #       exit 1
+      #     }
+          
+      #     Write-Host "=== Windows Binaries ==="
+      #     Get-ChildItem -Path build\agus-binaries-windows\x64\
+
+      # - name: Create Windows Binaries Archive
+      #   shell: pwsh
+      #   run: |
+      #     # Create archive with content at root (no wrapper folder)
+      #     # This ensures windows/prebuilt/x64/ structure in unified package
+      #     Push-Location build\agus-binaries-windows
+      #     Remove-Item -Path ..\agus-binaries-windows.zip -Force -ErrorAction SilentlyContinue
+      #     Compress-Archive -Path .\* -DestinationPath ..\agus-binaries-windows.zip -Force
+      #     Pop-Location
+      #     Get-Item build\agus-binaries-windows.zip | Format-Table Name, @{N='Size';E={"{0:N2} MB" -f ($_.Length / 1MB)}}
+
+      # - name: Upload Windows Binaries Artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: agus-binaries-windows
+      #     path: build/agus-binaries-windows.zip
+
+      # # ======================================================================
+      # # Build Windows Example App
+      # # ======================================================================
+      # - name: Setup Windows Pre-built DLLs
+      #   run: |
+      #     New-Item -ItemType Directory -Force -Path windows\prebuilt\x64
+      #     Copy-Item -Path build\agus-binaries-windows\x64\* -Destination windows\prebuilt\x64\ -Force
+      #     Get-ChildItem -Path windows\prebuilt\ -Recurse
+      #   shell: pwsh
+
+      # - name: Get Flutter Dependencies
+      #   run: |
+      #     flutter pub get
+      #     cd example
+      #     flutter pub get
+
+      # - name: Download Base MWM Files
+      #   run: |
+      #     $assetsDir = "example\assets\maps"
+      #     New-Item -ItemType Directory -Force -Path $assetsDir | Out-Null
+          
+      #     # Use Dart map downloader for cross-platform consistency
+      #     dart run tool/map_downloader.dart `
+      #       --output-dir $assetsDir `
+      #       --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" `
+      #       --report (Join-Path $assetsDir "download_report.json") `
+      #       --verbose
+          
+      #     # Copy ICU data - fail if source is missing (critical for search)
+      #     $icuSource = "thirdparty\comaps\data\icudt75l.dat"
+      #     $icuDest = Join-Path $assetsDir "icudt75l.dat"
+      #     if (-not (Test-Path $icuSource)) {
+      #       Write-Error "ICU data file not found: $icuSource"
+      #       Write-Error "This file is required for search/transliteration functionality."
+      #       exit 1
+      #     }
+      #     if (-not (Test-Path $icuDest)) {
+      #       Copy-Item -Path $icuSource -Destination $icuDest
+      #       Write-Host "Copied ICU data: $icuDest"
+      #     } else {
+      #       Write-Host "ICU data already present: $icuDest"
+      #     }
+          
+      #     Get-ChildItem -Path $assetsDir
+      #   shell: pwsh
+
+      # - name: Build Windows Release App
+      #   run: |
+      #     cd example
+      #     flutter build windows --release `
+      #       --build-name=1.0.0 `
+      #       --build-number=${{ github.run_number }}
+      #   shell: pwsh
+
+      # - name: Prepare Windows Artifacts
+      #   run: |
+      #     New-Item -ItemType Directory -Force -Path artifacts
+      #     $releasePath = "example\build\windows\x64\runner\Release"
+      #     Compress-Archive -Path "$releasePath\*" -DestinationPath "artifacts\agus-maps-windows.zip" -Force
+      #     Get-ChildItem -Path artifacts\
+      #   shell: pwsh
+
+      # - name: Upload Windows App Artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: agus-maps-windows
+      #     path: artifacts/agus-maps-windows.zip
 
   # ==========================================================================
   # Linux Job: Builds Linux only
@@ -1171,7 +1192,7 @@ jobs:
   build-and-release-linux-platform:
     name: Build Linux
     # Toggle: set to 'true' to run Linux, 'false' to skip (saves cost)
-    if: true
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -1475,10 +1496,10 @@ jobs:
   release:
     name: Release
     needs: 
-      - build-and-release-mac-platforms
       - build-and-release-windows-platform
-      - build-and-release-android-platform
-      - build-and-release-linux-platform
+      # - build-and-release-mac-platforms
+      # - build-and-release-android-platform
+      # - build-and-release-linux-platform
     # Run even if some dependencies partially failed or were skipped, but only on tags
     if: always() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
