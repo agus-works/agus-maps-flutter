@@ -1315,5 +1315,24 @@ The following patches have overlapping functionality and could be consolidated:
 - The drape (rendering) library cannot be compiled for Apple platforms
 
 
+### 0069-tools-kothic-libkomwm-windows-multiprocessing.patch
+
+**File Modified:** `tools/kothic/src/libkomwm.py`
+
+**Category:** Windows Data Generation / Multiprocessing
+
+**Purpose:** Disables multiprocessing during drules generation (Windows-safe default).
+
+**What it does:**
+- Sets `MULTIPROCESSING = False` in `tools/kothic/src/libkomwm.py`
+
+**Why it's needed:**
+CoMaps `generate_drules.sh` invokes Python tooling that calls `set_start_method('fork')` when multiprocessing is enabled. Windows Python does not support `fork`, which causes a `ValueError` and stops data generation when running via Git Bash. Disabling multiprocessing avoids the unsupported `fork` path.
+
+**Without this patch:**
+- `generate_drules.sh` fails on Windows with `ValueError: cannot find context for 'fork'`
+- Data files like `classificator.txt`/`categories.txt` are not generated, causing runtime crashes
+
+
 .\scripts\apply_comaps_patches.ps1
 ```
