@@ -207,7 +207,31 @@ Future<void> _bootstrapComaps(String tag, {bool skipPatches = false, bool noCach
     print('Skipping patches (--skip-patches)');
   }
 
+  // Fallback: ensure Windows multiprocessing is disabled for libkomwm.py
+  if (Platform.isWindows) {
+    await _disableLibkomwmMultiprocessingOnWindows(comapsDir);
+  }
+
   print('');
+}
+
+Future<void> _disableLibkomwmMultiprocessingOnWindows(String comapsDir) async {
+  final targetPath = path.join(comapsDir, 'tools', 'kothic', 'src', 'libkomwm.py');
+  final file = File(targetPath);
+  if (!await file.exists()) {
+    return;
+  }
+
+  final content = await file.readAsString();
+  if (content.contains('MULTIPROCESSING = False')) {
+    return;
+  }
+
+  final updated = content.replaceFirst('MULTIPROCESSING = True', 'MULTIPROCESSING = False');
+  if (updated != content) {
+    await file.writeAsString(updated);
+    print('Applied Windows fallback: MULTIPROCESSING = False in tools/kothic/src/libkomwm.py');
+  }
 }
 
 /// Build Boost headers
@@ -414,28 +438,20 @@ Future<void> _generateComapsData() async {
   env['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python';
   env['OMIM_PATH'] = comapsDir;
   env['DATA_PATH'] = dataDir;
+  env['PYTHONUTF8'] = '1';
+  env['PYTHONIOENCODING'] = 'utf-8';
 
-  if (Platform.isWindows) {
-    // On Windows, match the old PowerShell implementation:
-    // Only run generate_desktop_ui_strings.py directly (skip bash scripts)
-    final generateDesktopUIPython = path.join(comapsDir, 'tools', 'python', 'generate_desktop_ui_strings.py');
-    if (await File(generateDesktopUIPython).exists()) {
-      print('Generating desktop UI strings...');
-      await runProcess(
-        'python',
-        [generateDesktopUIPython],
-        workingDirectory: comapsDir,
-        environment: env,
-      );
-    } else {
-      print('Warning: generate_desktop_ui_strings.py not found at $generateDesktopUIPython');
+  String toBashPath(String windowsPath) {
+    var p = windowsPath.replaceAll('\\', '/');
+    if (RegExp(r'^[A-Za-z]:/').hasMatch(p)) {
+      final drive = p.substring(0, 1).toLowerCase();
+      p = '/$drive${p.substring(2)}';
     }
-    
-    // Note: On Windows, generate_drules.sh and generate_categories.sh are skipped
-    // These are typically generated during native builds or are provided in the SDK
-    print('Note: Skipping generate_drules.sh and generate_categories.sh on Windows (matches old PowerShell behavior)');
-  } else {
-    // On Unix systems, run all bash scripts
+    return p;
+  }
+
+  @Deprecated('Deprecated: developers should provide python3 (e.g., cp python python3) in PATH on Windows.')
+  Future<void> runUnixDataScripts() async {
     // Generate drawing rules
     final generateDrulesScript = path.join(comapsDir, 'tools', 'unix', 'generate_drules.sh');
     if (await File(generateDrulesScript).exists()) {
@@ -476,6 +492,35 @@ Future<void> _generateComapsData() async {
         print('Warning: generate_desktop_ui_strings.sh had warnings (may be expected)');
       }
     }
+  }
+
+  if (Platform.isWindows) {
+    if (await commandExists('bash')) {
+      print('Bash detected on Windows; running Unix data generation scripts...');
+      await runUnixDataScripts();
+    } else {
+      // On Windows without bash, match the old PowerShell implementation:
+      // Only run generate_desktop_ui_strings.py directly (skip bash scripts)
+      final generateDesktopUIPython = path.join(comapsDir, 'tools', 'python', 'generate_desktop_ui_strings.py');
+      if (await File(generateDesktopUIPython).exists()) {
+        print('Generating desktop UI strings...');
+        await runProcess(
+          'python',
+          [generateDesktopUIPython],
+          workingDirectory: comapsDir,
+          environment: env,
+        );
+      } else {
+        print('Warning: generate_desktop_ui_strings.py not found at $generateDesktopUIPython');
+      }
+
+      // Note: On Windows, generate_drules.sh and generate_categories.sh are skipped
+      // These are typically generated during native builds or are provided in the SDK
+      print('Note: Skipping generate_drules.sh and generate_categories.sh on Windows (bash not found)');
+    }
+  } else {
+    // On Unix systems, run all bash scripts
+    await runUnixDataScripts();
   }
 
   // Download symbol textures from Organic Maps
