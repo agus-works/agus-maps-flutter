@@ -951,6 +951,8 @@ jobs:
           git fetch --tags --prune
           git checkout --detach ${{ env.COMAPS_TAG }}
           git submodule update --init --recursive
+          git lfs pull --recursive
+
           Pop-Location
 
           $size = "{0:N2}" -f ((Get-ChildItem -Path thirdparty\comaps -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB)
