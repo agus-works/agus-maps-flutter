@@ -113,13 +113,20 @@ check_flutter() {
 }
 
 check_python_protobuf() {
-    if ! command -v python3 &>/dev/null; then
+    local python_cmd=""
+    if command -v python3 &>/dev/null; then
+        python_cmd="python3"
+    elif command -v python &>/dev/null; then
+        python_cmd="python"
+    elif command -v py &>/dev/null; then
+        python_cmd="py -3"
+    else
         log_error "Python 3 is not installed."
         log_error "Install Python 3 to run CoMaps build tools (protobuf required)."
         exit 1
     fi
 
-    if ! python3 -c "import google.protobuf" &>/dev/null; then
+    if ! $python_cmd -c "import google.protobuf" &>/dev/null; then
         log_error "Python 'protobuf' module is not installed."
         case "$(uname -s)" in
             Darwin)
@@ -129,7 +136,7 @@ check_python_protobuf() {
                 log_error "Install: sudo apt-get install -y python3-protobuf (or python3 -m pip install --user protobuf)"
                 ;;
             MINGW*|MSYS*|CYGWIN*)
-                log_error "Install: py -3 -m pip install --user protobuf"
+                log_error "Install: python -m pip install --user protobuf (or py -3 -m pip install --user protobuf)"
                 ;;
             *)
                 log_error "Install: python3 -m pip install --user protobuf"
