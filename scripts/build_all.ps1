@@ -57,6 +57,28 @@ try {
     exit 1
 }
 
+# Check Python + protobuf
+$pythonCmd = $null
+if (Get-Command python -ErrorAction SilentlyContinue) {
+    $pythonCmd = 'python'
+} elseif (Get-Command py -ErrorAction SilentlyContinue) {
+    $pythonCmd = 'py -3'
+}
+
+if (-not $pythonCmd) {
+    Write-LogError "Python 3 is not installed."
+    Write-LogError "Install Python 3 to run CoMaps build tools (protobuf required)."
+    exit 1
+}
+
+try {
+    & $pythonCmd -c "import google.protobuf" | Out-Null
+} catch {
+    Write-LogError "Python 'protobuf' module is not installed."
+    Write-LogError "Install: py -3 -m pip install --user protobuf"
+    exit 1
+}
+
 Write-LogSuccess "Dependencies check passed"
 
 # ----------------------------------------------------------------------------
