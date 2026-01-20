@@ -874,6 +874,7 @@ jobs:
           $pythonDir = Split-Path -Path $pythonPath -Parent
           $python3Path = Join-Path $pythonDir "python3.exe"
           # Copy-Item -Path $pythonPath -Destination $python3Path -Force
+          dir $pythonDir
           Write-Host "Created: $python3Path"
 
       # # ======================================================================
