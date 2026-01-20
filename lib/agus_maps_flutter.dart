@@ -359,12 +359,22 @@ class _AgusMapState extends State<AgusMap> {
     _devicePixelRatio = pixelRatio;
 
     // Convert logical pixels to physical pixels for crisp rendering
-    final physicalWidth = (logicalSize.width * pixelRatio).toInt();
-    final physicalHeight = (logicalSize.height * pixelRatio).toInt();
+    final physicalWidth = Platform.isWindows
+      ? (logicalSize.width * pixelRatio).round()
+      : (logicalSize.width * pixelRatio).toInt();
+    final physicalHeight = Platform.isWindows
+      ? (logicalSize.height * pixelRatio).round()
+      : (logicalSize.height * pixelRatio).toInt();
 
     debugPrint(
       '[AgusMap] Creating surface: ${logicalSize.width.toInt()}x${logicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical (ratio: $pixelRatio)',
     );
+    if (Platform.isWindows) {
+      debugPrint(
+        '[AgusMap] Windows DPR diagnostic: logical=${logicalSize.width.toStringAsFixed(2)}x${logicalSize.height.toStringAsFixed(2)} '
+        'dpr=${pixelRatio.toStringAsFixed(3)} physical=${physicalWidth}x$physicalHeight',
+      );
+    }
 
     final textureId = await createMapSurface(
       width: physicalWidth,
@@ -396,14 +406,24 @@ class _AgusMapState extends State<AgusMap> {
     _devicePixelRatio = pixelRatio;
 
     // Convert logical pixels to physical pixels
-    final physicalWidth = (newLogicalSize.width * pixelRatio).toInt();
-    final physicalHeight = (newLogicalSize.height * pixelRatio).toInt();
+    final physicalWidth = Platform.isWindows
+      ? (newLogicalSize.width * pixelRatio).round()
+      : (newLogicalSize.width * pixelRatio).toInt();
+    final physicalHeight = Platform.isWindows
+      ? (newLogicalSize.height * pixelRatio).round()
+      : (newLogicalSize.height * pixelRatio).toInt();
 
     if (physicalWidth <= 0 || physicalHeight <= 0) return;
 
     debugPrint(
       '[AgusMap] Resizing: ${newLogicalSize.width.toInt()}x${newLogicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical',
     );
+    if (Platform.isWindows) {
+      debugPrint(
+        '[AgusMap] Windows DPR diagnostic (resize): logical=${newLogicalSize.width.toStringAsFixed(2)}x${newLogicalSize.height.toStringAsFixed(2)} '
+        'dpr=${pixelRatio.toStringAsFixed(3)} physical=${physicalWidth}x$physicalHeight',
+      );
+    }
 
     await resizeMapSurface(physicalWidth, physicalHeight);
 
@@ -533,7 +553,11 @@ class _AgusMapState extends State<AgusMap> {
           child: SizedBox(
             width: size.width,
             height: size.height,
-            child: Texture(textureId: _textureId!),
+            child: Texture(
+              textureId: _textureId!,
+              filterQuality:
+                  Platform.isWindows ? FilterQuality.none : FilterQuality.low,
+            ),
           ),
         );
       },

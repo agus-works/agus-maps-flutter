@@ -603,10 +603,19 @@ void AgusMapsFlutterPlugin::HandleCreateMapSurface(
                     static int sampleCount = 0;
                     if (sampleCount % 60 == 0) {
                         char dbg[256];
-                        snprintf(dbg, sizeof(dbg), 
+                        snprintf(dbg, sizeof(dbg),
                             "[AgusMapsFlutter] GpuSurfaceTexture callback: requested=%zux%zu, surface=%dx%d, handle=%p\n",
                             w, h, this->surface_width_, this->surface_height_, currentHandle);
                         OutputDebugStringA(dbg);
+
+                        if (w != static_cast<size_t>(this->surface_width_) ||
+                            h != static_cast<size_t>(this->surface_height_)) {
+                            char mismatch[256];
+                            snprintf(mismatch, sizeof(mismatch),
+                                "[AgusMapsFlutter] WARNING: Flutter requested size differs from surface (requested=%zux%zu, surface=%dx%d)\n",
+                                w, h, this->surface_width_, this->surface_height_);
+                            OutputDebugStringA(mismatch);
+                        }
                     }
                     sampleCount++;
                     
