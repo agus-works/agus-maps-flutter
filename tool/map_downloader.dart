@@ -137,6 +137,7 @@ class DownloadResult {
   final String fileName;
   final String url;
   final bool success;
+  final bool cached;
   final int? bytesDownloaded;
   final Duration? duration;
   final String? error;
@@ -146,6 +147,7 @@ class DownloadResult {
     required this.fileName,
     required this.url,
     required this.success,
+    required this.cached,
     this.bytesDownloaded,
     this.duration,
     this.error,
@@ -156,6 +158,7 @@ class DownloadResult {
     'fileName': fileName,
     'url': url,
     'success': success,
+    'cached': cached,
     'bytesDownloaded': bytesDownloaded,
     'sizeMB': bytesDownloaded != null
         ? (bytesDownloaded! / (1024 * 1024)).toStringAsFixed(2)
@@ -187,6 +190,7 @@ Future<void> main(List<String> args) async {
         abbr: 's', help: 'Use specific snapshot version (YYMMDD)')
     ..addOption('mirror', abbr: 'm', help: 'Use specific mirror URL')
     ..addFlag('verbose', abbr: 'v', negatable: false, help: 'Enable verbose output')
+    ..addFlag('force', negatable: false, help: 'Force re-download even if file exists')
     ..addFlag('help', abbr: 'h', negatable: false, help: 'Show help message');
 
   ArgResults options;
@@ -306,6 +310,7 @@ Future<void> main(List<String> args) async {
     print('  Output directory: ${outputDir.path}');
 
     final downloads = <DownloadResult>[];
+    final forceDownload = options['force'] as bool;
 
     for (final fileName in fileList) {
       final url = MirrorService.buildDownloadUrl(mirrorBaseUrl, snapshot, fileName);
@@ -313,6 +318,21 @@ Future<void> main(List<String> args) async {
 
       print('\n  ${Colors.blue('→')} $fileName');
       if (verbose) print('    URL: $url');
+
+      if (!forceDownload && await destFile.exists()) {
+        final cachedSize = await destFile.length();
+        print('    ${Colors.green('✓')} Using cached file (${(cachedSize / (1024 * 1024)).toStringAsFixed(2)} MB)');
+        downloads.add(DownloadResult(
+          fileName: fileName,
+          url: url,
+          success: true,
+          cached: true,
+          bytesDownloaded: cachedSize,
+          duration: Duration.zero,
+          localPath: destFile.path,
+        ));
+        continue;
+      }
 
       final downloadStart = DateTime.now();
 
@@ -349,6 +369,7 @@ Future<void> main(List<String> args) async {
         fileName: fileName,
         url: url,
         success: success,
+        cached: false,
         bytesDownloaded: actualSize,
         duration: downloadDuration,
         localPath: success ? destFile.path : null,
@@ -366,7 +387,9 @@ Future<void> main(List<String> args) async {
       print('  ${Colors.red('✗')} Failed: $failed');
     }
 
-    final totalBytes = downloads.fold<int>(0, (sum, d) => sum + (d.bytesDownloaded ?? 0));
+    final totalBytes = downloads
+      .where((d) => !d.cached)
+      .fold<int>(0, (sum, d) => sum + (d.bytesDownloaded ?? 0));
     print('  Total downloaded: ${(totalBytes / (1024 * 1024)).toStringAsFixed(2)} MB');
 
     // Generate report if requested
