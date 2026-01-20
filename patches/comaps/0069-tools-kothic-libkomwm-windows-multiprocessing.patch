@@ -1,0 +1,12 @@
+diff --git a/tools/kothic/src/libkomwm.py b/tools/kothic/src/libkomwm.py
+index 1234567..abcdefg 100644
+--- a/tools/kothic/src/libkomwm.py
++++ b/tools/kothic/src/libkomwm.py
+@@ -12,7 +12,7 @@
+ 
+ PROFILE = False
+-MULTIPROCESSING = True
++MULTIPROCESSING = False
+ 
+ # Priority values defined in *.prio.txt files are adjusted
+ # to fit into the following "priorities ranges":
