@@ -697,8 +697,8 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
           auto tryTextureInterop = [&]() -> bool {
             glGenTextures(1, &m_interopTexture);
             glBindTexture(GL_TEXTURE_2D, m_interopTexture);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             glBindTexture(GL_TEXTURE_2D, 0);
@@ -950,6 +950,16 @@ std::vector<std::string> AgusWglContextFactory::BuildOverlayLines(bool useIntero
     lines.emplace_back("Transfer: Zero-copy (WGL_NV_DX_interop)");
   else
     lines.emplace_back("Transfer: CPU copy (glReadPixels)");
+
+  const int renderedWidth = m_renderedWidth.load();
+  const int renderedHeight = m_renderedHeight.load();
+  lines.emplace_back("Surface: " + std::to_string(m_width) + "x" + std::to_string(m_height));
+  lines.emplace_back("Rendered: " + std::to_string(renderedWidth) + "x" + std::to_string(renderedHeight));
+  if (renderedWidth > 0 && renderedHeight > 0 &&
+      (renderedWidth != m_width || renderedHeight != m_height))
+  {
+    lines.emplace_back("Size mismatch: YES");
+  }
 
   lines.emplace_back(std::string("Keyed mutex: ") + (m_keyedMutex ? "On" : "Off"));
 
