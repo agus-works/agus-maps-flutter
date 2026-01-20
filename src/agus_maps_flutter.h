@@ -114,6 +114,9 @@ FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height,
 // Called when the surface size changes
 FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int32_t height);
 
+// Called when the display scale (DPI) changes at runtime
+FFI_PLUGIN_EXPORT void agus_native_set_visual_scale(float density);
+
 // Called when the surface is destroyed
 FFI_PLUGIN_EXPORT void agus_native_on_surface_destroyed(void);
 

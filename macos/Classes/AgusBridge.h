@@ -38,6 +38,9 @@ void agus_native_resize_surface(
     int32_t height
 );
 
+/// Update visual scale without resizing the surface
+void agus_native_set_visual_scale(float density);
+
 /// Called when Swift destroys the surface
 void agus_native_on_surface_destroyed(void);
 

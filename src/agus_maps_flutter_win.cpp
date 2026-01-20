@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <mutex>
 #include <sstream>
+#include <cmath>
 
 // CoMaps Framework includes
 #include "base/file_name_utils.hpp"
@@ -718,20 +719,39 @@ FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int32_t height
     g_surfaceWidth = width;
     g_surfaceHeight = height;
     
-    // First update the OpenGL context factory with new dimensions
-    if (g_wglFactory) {
-        g_wglFactory->SetSurfaceSize(width, height);
-        LOG(LINFO, ("agus_native_on_size_changed: WGL surface updated to", width, "x", height));
-    }
-    
-    // CRITICAL: Notify DrapeEngine of the new viewport size
-    // This makes DrapeEngine render to the full new size, not the old one
+    // IMPORTANT: Avoid calling SetSurfaceSize() from this thread because the
+    // WGL draw context is owned by the render thread. wglMakeCurrent will fail
+    // if the context is current on another thread.
+    // Instead, rely on Framework::OnSize() which triggers FrontendRenderer::OnResize()
+    // on the render thread, and that path calls AgusWglContext::Resize() safely.
     if (g_framework && g_drapeEngineCreated) {
         g_framework->OnSize(width, height);
         LOG(LINFO, ("agus_native_on_size_changed: Framework::OnSize called for", width, "x", height));
+    } else if (g_wglFactory) {
+        // Fallback for early calls before the framework is ready.
+        g_wglFactory->SetSurfaceSize(width, height);
+        LOG(LINFO, ("agus_native_on_size_changed: WGL surface updated to", width, "x", height));
     } else {
-        LOG(LWARNING, ("agus_native_on_size_changed: Cannot call Framework::OnSize - framework:", 
-                       (g_framework != nullptr), "drapeEngineCreated:", g_drapeEngineCreated));
+        LOG(LWARNING, ("agus_native_on_size_changed: Cannot resize - framework:",
+                       (g_framework != nullptr), "drapeEngineCreated:", g_drapeEngineCreated,
+                       "wglFactory:", (g_wglFactory != nullptr)));
+    }
+}
+
+/// Called when the display scale (density/DPI) changes at runtime
+FFI_PLUGIN_EXPORT void agus_native_set_visual_scale(float density) {
+    if (std::fabs(density - g_density) < 0.001f) {
+        return;
+    }
+    g_density = density;
+
+    if (g_framework && g_drapeEngineCreated) {
+        // Update visual scale without forcing render context teardown.
+        df::VisualParams::Instance().SetVisualScale(static_cast<double>(density));
+        g_framework->InvalidateRendering();
+        LOG(LINFO, ("agus_native_set_visual_scale: Updated visual scale to", density));
+    } else {
+        LOG(LWARNING, ("agus_native_set_visual_scale: Framework not ready - stored density:", density));
     }
 }
 

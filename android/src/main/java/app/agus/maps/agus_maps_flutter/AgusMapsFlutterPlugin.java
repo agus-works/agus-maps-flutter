@@ -124,6 +124,11 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
         // Get requested size from Flutter (in logical pixels)
         Integer width = call.argument("width");
         Integer height = call.argument("height");
+        Double densityArg = call.argument("density");
+
+        if (densityArg != null && densityArg > 0) {
+            density = densityArg.floatValue();
+        }
         
         // Use screen size as default if not specified
         if (width == null || height == null || width <= 0 || height <= 0) {
@@ -165,12 +170,16 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     } else if (call.method.equals("resizeMapSurface")) {
         Integer width = call.argument("width");
         Integer height = call.argument("height");
+        Double density = call.argument("density");
         
         if (width != null && height != null && width > 0 && height > 0 && surfaceProducer != null) {
             surfaceWidth = width;
             surfaceHeight = height;
             surfaceProducer.setSize(width, height);
             nativeOnSizeChanged(width, height);
+            if (density != null && density > 0) {
+                nativeSetVisualScale(density.floatValue());
+            }
             result.success(true);
         } else {
             result.error("INVALID_STATE", "Surface not created or invalid size", null);
@@ -184,6 +193,7 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   private native void nativeOnSurfaceChanged(long textureId, Surface surface, int width, int height, float density);
   private native void nativeOnSurfaceDestroyed();
   private native void nativeOnSizeChanged(int width, int height);
+    private native void nativeSetVisualScale(float density);
   private native void nativeInitFrameCallback();
   private native void nativeCleanupFrameCallback();
 

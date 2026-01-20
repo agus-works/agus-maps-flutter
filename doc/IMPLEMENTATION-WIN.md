@@ -1596,6 +1596,35 @@ endif()
      ```
    - **Reference:** CoMaps' `OGLContext::SetViewport()` in `drape/oglcontext.cpp:175-178`.
 
+14. **Resize spam logs: `SetSurfaceSize: wglMakeCurrent failed`:**
+   - **Symptom:** During window resize at high DPI, logs show repeated `SetSurfaceSize: wglMakeCurrent failed` and the map appears soft or fails to update crispness during resizing.
+   - **Root cause:** `SetSurfaceSize()` was called directly from the Flutter method channel thread inside `agus_native_on_size_changed()`. The WGL draw context is owned by the render thread, so `wglMakeCurrent(m_hdc, m_drawGlrc)` fails when the context is current on another thread.
+   - **Fix:** Route resize through the render thread by only calling `Framework::OnSize()` (which triggers `FrontendRenderer::OnResize()` → `AgusWglContext::Resize()`), and avoid direct `SetSurfaceSize()` from the FFI resize handler except as an early fallback before the framework is ready:
+     ```cpp
+     // In agus_native_on_size_changed()
+     if (g_framework && g_drapeEngineCreated) {
+       g_framework->OnSize(width, height);  // Render thread will call Resize()
+     } else if (g_wglFactory) {
+       g_wglFactory->SetSurfaceSize(width, height);  // Early fallback
+     }
+     ```
+   - **Result:** Prevents `wglMakeCurrent` failures and ensures resize happens on the thread that owns the OpenGL context.
+
+15. **Runtime DPI changes not reflected (e.g., switching to 200%/300% while app is running):**
+   - **Symptom:** Windows display scaling changes while the app is running, but map text/labels do not scale accordingly.
+   - **Root cause:** Resize events only updated width/height; the native visual scale was set once at surface creation and never updated. `VisualParams` remained at the old DPI, so glyph sizes and resources stayed at the previous scale.
+   - **Fix:** Pass `density` in `resizeMapSurface` and update the native visual scale without tearing down the render context (direct `VisualParams` update):
+     ```cpp
+     // In HandleResizeMapSurface (plugin)
+     g_fnOnSizeChanged(width, height);
+     g_fnSetVisualScale(density);
+
+     // In native (agus_native_set_visual_scale)
+     df::VisualParams::Instance().SetVisualScale(density);
+     g_framework->InvalidateRendering();
+     ```
+   - **Result:** Changing Windows display scaling at runtime updates map text/line sharpness and resource selection.
+
 **Debugging:**
 - Enable frame logging in `AgusWglContextFactory::CopyToSharedTexture()` to see `hasContent` status
 - Check if "Frame N size: WxH hasContent: true uniqueColors: N" appears in logs

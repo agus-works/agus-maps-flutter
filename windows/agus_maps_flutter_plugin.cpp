@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <cmath>
 
 namespace fs = std::filesystem;
 
@@ -30,6 +31,7 @@ namespace agus_maps_flutter {
 
 typedef void (*FnAgusNativeCreateSurface)(int32_t width, int32_t height, float density);
 typedef void (*FnAgusNativeOnSizeChanged)(int32_t width, int32_t height);
+typedef void (*FnAgusNativeSetVisualScale)(float density);
 typedef void (*FnAgusNativeOnSurfaceDestroyed)(void);
 typedef void* (*FnAgusGetSharedTextureHandle)(void);
 typedef void* (*FnAgusGetD3D11Device)(void);
@@ -41,6 +43,7 @@ typedef void (*FnAgusSetFrameReadyCallback)(void (*callback)(void));
 static HMODULE g_ffiLibrary = nullptr;
 static FnAgusNativeCreateSurface g_fnCreateSurface = nullptr;
 static FnAgusNativeOnSizeChanged g_fnOnSizeChanged = nullptr;
+static FnAgusNativeSetVisualScale g_fnSetVisualScale = nullptr;
 static FnAgusNativeOnSurfaceDestroyed g_fnOnSurfaceDestroyed = nullptr;
 static FnAgusGetSharedTextureHandle g_fnGetSharedTextureHandle = nullptr;
 static FnAgusGetD3D11Device g_fnGetD3D11Device = nullptr;
@@ -87,6 +90,7 @@ static bool LoadFfiLibrary() {
     // Get function pointers
     g_fnCreateSurface = (FnAgusNativeCreateSurface)GetProcAddress(g_ffiLibrary, "agus_native_create_surface");
     g_fnOnSizeChanged = (FnAgusNativeOnSizeChanged)GetProcAddress(g_ffiLibrary, "agus_native_on_size_changed");
+    g_fnSetVisualScale = (FnAgusNativeSetVisualScale)GetProcAddress(g_ffiLibrary, "agus_native_set_visual_scale");
     g_fnOnSurfaceDestroyed = (FnAgusNativeOnSurfaceDestroyed)GetProcAddress(g_ffiLibrary, "agus_native_on_surface_destroyed");
     g_fnGetSharedTextureHandle = (FnAgusGetSharedTextureHandle)GetProcAddress(g_ffiLibrary, "agus_get_shared_texture_handle");
     g_fnGetD3D11Device = (FnAgusGetD3D11Device)GetProcAddress(g_ffiLibrary, "agus_get_d3d11_device");
@@ -96,8 +100,8 @@ static bool LoadFfiLibrary() {
     
     char msg[512];
     snprintf(msg, sizeof(msg), 
-             "[AgusMapsFlutter] FFI functions: create=%p, size=%p, destroy=%p, handle=%p, device=%p, tex=%p, render=%p, callback=%p\n",
-             g_fnCreateSurface, g_fnOnSizeChanged, g_fnOnSurfaceDestroyed, 
+             "[AgusMapsFlutter] FFI functions: create=%p, size=%p, scale=%p, destroy=%p, handle=%p, device=%p, tex=%p, render=%p, callback=%p\n",
+             g_fnCreateSurface, g_fnOnSizeChanged, g_fnSetVisualScale, g_fnOnSurfaceDestroyed, 
              g_fnGetSharedTextureHandle, g_fnGetD3D11Device, g_fnGetD3D11Texture,
              g_fnRenderFrame, g_fnSetFrameReadyCallback);
     OutputDebugStringA(msg);
@@ -222,6 +226,7 @@ private:
     std::unique_ptr<flutter::TextureVariant> texture_;
     int32_t surface_width_ = 0;
     int32_t surface_height_ = 0;
+    double last_density_ = 0.0;
     
     // GPU surface descriptor - member to avoid static variable issues
     FlutterDesktopGpuSurfaceDescriptor gpu_surface_desc_ = {};
@@ -579,6 +584,7 @@ void AgusMapsFlutterPlugin::HandleCreateMapSurface(
     // Store surface dimensions
     surface_width_ = width;
     surface_height_ = height;
+    last_density_ = density;
     
     // Create Flutter texture using GPU surface descriptor
     if (sharedHandle && texture_registrar_) {
@@ -666,6 +672,7 @@ void AgusMapsFlutterPlugin::HandleResizeMapSurface(
     
     int32_t width = surface_width_;
     int32_t height = surface_height_;
+    double density = 0.0;
     
     auto width_it = arguments->find(flutter::EncodableValue("width"));
     if (width_it != arguments->end()) {
@@ -684,8 +691,19 @@ void AgusMapsFlutterPlugin::HandleResizeMapSurface(
             height = static_cast<int32_t>(*dblVal);
         }
     }
+
+    auto density_it = arguments->find(flutter::EncodableValue("density"));
+    if (density_it != arguments->end()) {
+        if (auto* dblVal = std::get_if<double>(&density_it->second)) {
+            density = *dblVal;
+        }
+    }
     
-    std::fprintf(stderr, "[AgusMapsFlutter] Resizing surface to %dx%d\n", width, height);
+    if (density > 0.0) {
+        std::fprintf(stderr, "[AgusMapsFlutter] Resizing surface to %dx%d (density=%.2f)\n", width, height, density);
+    } else {
+        std::fprintf(stderr, "[AgusMapsFlutter] Resizing surface to %dx%d\n", width, height);
+    }
     std::fflush(stderr);
     
     // Update stored dimensions
@@ -697,6 +715,15 @@ void AgusMapsFlutterPlugin::HandleResizeMapSurface(
         std::fprintf(stderr, "[AgusMapsFlutter] Calling g_fnOnSizeChanged(%d, %d)\n", width, height);
         std::fflush(stderr);
         g_fnOnSizeChanged(width, height);
+
+        if (density > 0.0 && g_fnSetVisualScale) {
+            if (std::fabs(density - last_density_) > 0.001) {
+                std::fprintf(stderr, "[AgusMapsFlutter] Calling g_fnSetVisualScale(%.2f)\n", density);
+                std::fflush(stderr);
+                g_fnSetVisualScale(static_cast<float>(density));
+                last_density_ = density;
+            }
+        }
         
         // CRITICAL: Notify Flutter that the texture has been updated after resize
         // This ensures Flutter samples the new texture with updated dimensions

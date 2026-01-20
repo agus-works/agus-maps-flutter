@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 import 'package:agus_maps_flutter/mwm_storage.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'about_tab.dart';
 import 'downloads_tab.dart';
 import 'settings_tab.dart';
@@ -68,6 +69,7 @@ class _MyAppState extends State<MyApp> {
   String _debug = '';
   bool _dataReady = false;
   int _currentTabIndex = 0; // Start on Map tab
+  double _mapScale = 1.0;
 
   int? _bundledMwmVersion;
 
@@ -89,7 +91,42 @@ class _MyAppState extends State<MyApp> {
     // platform channels may not be ready during initState().
     SchedulerBinding.instance.addPostFrameCallback((_) {
       _initData();
+      _loadSettings();
     });
+  }
+
+  static const String _prefsKeyMapScale = 'map_scale_multiplier';
+
+  Future<void> _loadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final scale = prefs.getDouble(_prefsKeyMapScale) ?? 1.0;
+      if (!mounted) return;
+      setState(() {
+        _mapScale = scale;
+      });
+    } catch (e) {
+      _log('Warning: Failed to load settings: $e');
+    }
+  }
+
+  Future<void> _updateMapScale(double value) async {
+    final clamped = value.clamp(0.25, 3.0).toDouble();
+    if (clamped == _mapScale) return;
+    setState(() {
+      _mapScale = clamped;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_prefsKeyMapScale, clamped);
+    } catch (e) {
+      _log('Warning: Failed to save map scale: $e');
+    }
+  }
+
+  void _resetMapScale() {
+    _updateMapScale(1.0);
   }
 
   Future<void> _initData() async {
@@ -395,7 +432,11 @@ class _MyAppState extends State<MyApp> {
               _buildMapTab(),
               _buildFavoritesTab(),
               _buildDownloadsTab(),
-              const SettingsTab(),
+              SettingsTab(
+                mapScale: _mapScale,
+                onMapScaleChanged: _updateMapScale,
+                onResetMapScale: _resetMapScale,
+              ),
               const AboutTab(),
             ],
           ),
@@ -475,6 +516,7 @@ class _MyAppState extends State<MyApp> {
       onMapReady: _onMapReady,
       controller: _mapController,
       isVisible: _currentTabIndex == 0, // Only resize when map tab is active
+      userScale: _mapScale,
     );
   }
 

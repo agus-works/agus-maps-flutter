@@ -295,6 +295,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     private func handleCreateMapSurface(call: FlutterMethodCall, result: @escaping FlutterResult) {
         let args = call.arguments as? [String: Any]
+
+        if let densityArg = args?["density"] as? Double, densityArg > 0 {
+            density = CGFloat(densityArg)
+        }
         
         // Get requested size or use screen size
         var width = args?["width"] as? Int ?? 0
@@ -302,8 +306,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         
         if width <= 0 || height <= 0 {
             let screenSize = UIScreen.main.bounds.size
-            width = Int(screenSize.width * density)
-            height = Int(screenSize.height * density)
+            let screenScale = UIScreen.main.scale
+            width = Int(screenSize.width * screenScale)
+            height = Int(screenSize.height * screenScale)
         }
         
         surfaceWidth = width
@@ -341,6 +346,22 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
               let height = args["height"] as? Int,
               width > 0, height > 0 else {
             result(FlutterError(code: "INVALID_ARGUMENT", message: "Valid width and height required", details: nil))
+            return
+        }
+
+        let sizeUnchanged = width == surfaceWidth && height == surfaceHeight
+
+        if let densityArg = args["density"] as? Double {
+            let newDensity = CGFloat(densityArg)
+            if newDensity > 0 && abs(newDensity - density) > .ulpOfOne {
+                density = newDensity
+                nativeSetVisualScale(density: Float(newDensity))
+                NSLog("[AgusMapsFlutter] Updated visual scale: %.2f", newDensity)
+            }
+        }
+
+        if sizeUnchanged {
+            result(true)
             return
         }
         
@@ -515,6 +536,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
 
     private func nativeUpdateSurface(pixelBuffer: CVPixelBuffer, width: Int32, height: Int32) {
         agus_native_update_surface(pixelBuffer, width, height)
+    }
+
+    private func nativeSetVisualScale(density: Float) {
+        agus_native_set_visual_scale(density)
     }
     
     // MARK: - Helpers

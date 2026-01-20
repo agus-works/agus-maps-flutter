@@ -352,6 +352,28 @@ Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeOnSizeChanged
     }
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeSetVisualScale(
+    JNIEnv* env, jobject thiz, jfloat density) {
+    if (density <= 0) {
+        __android_log_print(ANDROID_LOG_WARN, "AgusMapsFlutterNative",
+            "nativeSetVisualScale: invalid density %.2f", density);
+        return;
+    }
+
+    g_density = density;
+
+    if (g_framework && g_drapeEngineCreated) {
+        df::VisualParams::Instance().SetVisualScale(static_cast<double>(density));
+        g_framework->InvalidateRendering();
+        __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative",
+            "nativeSetVisualScale: Updated visual scale to %.2f", density);
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, "AgusMapsFlutterNative",
+            "nativeSetVisualScale: Framework not ready, stored density %.2f", density);
+    }
+}
+
 FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
      __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "comaps_set_view: lat=%f, lon=%f, zoom=%d", lat, lon, zoom);
      if (g_framework) {
