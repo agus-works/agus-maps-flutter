@@ -108,10 +108,38 @@ check_flutter() {
     yes | flutter doctor --android-licenses 2>/dev/null || true
 }
 
+check_python_protobuf() {
+    if ! command -v python3 &>/dev/null; then
+        log_error "Python 3 is not installed."
+        log_error "Install Python 3 to run CoMaps build tools (protobuf required)."
+        exit 1
+    fi
+
+    if ! python3 -c "import google.protobuf" &>/dev/null; then
+        log_error "Python 'protobuf' module is not installed."
+        case "$(uname -s)" in
+            Darwin)
+                log_error "Install: python3 -m pip install --user protobuf"
+                ;;
+            Linux)
+                log_error "Install: sudo apt-get install -y python3-protobuf (or python3 -m pip install --user protobuf)"
+                ;;
+            MINGW*|MSYS*|CYGWIN*)
+                log_error "Install: py -3 -m pip install --user protobuf"
+                ;;
+            *)
+                log_error "Install: python3 -m pip install --user protobuf"
+                ;;
+        esac
+        exit 1
+    fi
+}
+
 check_dependencies() {
     log_header "Checking Dependencies"
     check_dart
     check_flutter
+    check_python_protobuf
     log_success "Dependencies check passed"
 }
 
