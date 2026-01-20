@@ -237,10 +237,13 @@ Future<int> createMapSurface({int? width, int? height, double? density}) async {
 }
 
 /// Resize the map surface to new dimensions.
-Future<void> resizeMapSurface(int width, int height) async {
+///
+/// [density] is optional; on Windows it updates visual scale when display DPI changes.
+Future<void> resizeMapSurface(int width, int height, {double? density}) async {
   await _channel.invokeMethod('resizeMapSurface', {
     'width': width,
     'height': height,
+    if (density != null) 'density': density,
   });
 }
 
@@ -307,6 +310,11 @@ class AgusMap extends StatefulWidget {
   /// The resize will be applied when the map becomes visible again.
   final bool isVisible;
 
+  /// User-defined scale multiplier for labels/icons.
+  ///
+  /// This does not change zoom; it adjusts visual scale only.
+  final double userScale;
+
   const AgusMap({
     super.key,
     this.initialLat,
@@ -315,6 +323,7 @@ class AgusMap extends StatefulWidget {
     this.onMapReady,
     this.controller,
     this.isVisible = true,
+    this.userScale = 1.0,
   });
 
   @override
@@ -326,10 +335,12 @@ class _AgusMapState extends State<AgusMap> {
   Size? _currentSize; // Logical size
   bool _surfaceCreated = false;
   double _devicePixelRatio = 1.0;
+  double _userScale = 1.0;
 
   // Track pending resize to apply when becoming visible
   Size? _pendingResizeSize;
   double? _pendingResizePixelRatio;
+  double? _pendingResizeUserScale;
 
   @override
   void initState() {
@@ -345,18 +356,28 @@ class _AgusMapState extends State<AgusMap> {
       if (_pendingResizeSize != null && _pendingResizePixelRatio != null) {
         debugPrint('[AgusMap] Applying deferred resize on visibility change');
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _handleResize(_pendingResizeSize!, _pendingResizePixelRatio!);
+          _handleResize(
+            _pendingResizeSize!,
+            _pendingResizePixelRatio!,
+            _pendingResizeUserScale ?? widget.userScale,
+          );
           _pendingResizeSize = null;
           _pendingResizePixelRatio = null;
+          _pendingResizeUserScale = null;
         });
       }
     }
   }
 
-  Future<void> _createSurface(Size logicalSize, double pixelRatio) async {
+  Future<void> _createSurface(
+    Size logicalSize,
+    double pixelRatio,
+    double userScale,
+  ) async {
     if (_surfaceCreated) return;
     _surfaceCreated = true;
     _devicePixelRatio = pixelRatio;
+    _userScale = userScale;
 
     // Convert logical pixels to physical pixels for crisp rendering
     final physicalWidth = Platform.isWindows
@@ -366,20 +387,21 @@ class _AgusMapState extends State<AgusMap> {
       ? (logicalSize.height * pixelRatio).round()
       : (logicalSize.height * pixelRatio).toInt();
 
+    final visualScale = pixelRatio * userScale;
     debugPrint(
-      '[AgusMap] Creating surface: ${logicalSize.width.toInt()}x${logicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical (ratio: $pixelRatio)',
+      '[AgusMap] Creating surface: ${logicalSize.width.toInt()}x${logicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical (ratio: $pixelRatio, userScale: ${userScale.toStringAsFixed(2)}, visual: ${visualScale.toStringAsFixed(3)})',
     );
     if (Platform.isWindows) {
       debugPrint(
         '[AgusMap] Windows DPR diagnostic: logical=${logicalSize.width.toStringAsFixed(2)}x${logicalSize.height.toStringAsFixed(2)} '
-        'dpr=${pixelRatio.toStringAsFixed(3)} physical=${physicalWidth}x$physicalHeight',
+        'dpr=${pixelRatio.toStringAsFixed(3)} userScale=${userScale.toStringAsFixed(2)} physical=${physicalWidth}x$physicalHeight',
       );
     }
 
     final textureId = await createMapSurface(
       width: physicalWidth,
       height: physicalHeight,
-      density: pixelRatio,
+      density: visualScale,
     );
 
     if (!mounted) return;
@@ -397,13 +419,20 @@ class _AgusMapState extends State<AgusMap> {
     widget.onMapReady?.call();
   }
 
-  Future<void> _handleResize(Size newLogicalSize, double pixelRatio) async {
-    if (_currentSize == newLogicalSize && _devicePixelRatio == pixelRatio) {
+  Future<void> _handleResize(
+    Size newLogicalSize,
+    double pixelRatio,
+    double userScale,
+  ) async {
+    if (_currentSize == newLogicalSize &&
+        _devicePixelRatio == pixelRatio &&
+        _userScale == userScale) {
       return;
     }
     if (_textureId == null) return;
 
     _devicePixelRatio = pixelRatio;
+    _userScale = userScale;
 
     // Convert logical pixels to physical pixels
     final physicalWidth = Platform.isWindows
@@ -415,17 +444,18 @@ class _AgusMapState extends State<AgusMap> {
 
     if (physicalWidth <= 0 || physicalHeight <= 0) return;
 
+    final visualScale = pixelRatio * userScale;
     debugPrint(
-      '[AgusMap] Resizing: ${newLogicalSize.width.toInt()}x${newLogicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical',
+      '[AgusMap] Resizing: ${newLogicalSize.width.toInt()}x${newLogicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical (ratio: $pixelRatio, userScale: ${userScale.toStringAsFixed(2)}, visual: ${visualScale.toStringAsFixed(3)})',
     );
     if (Platform.isWindows) {
       debugPrint(
         '[AgusMap] Windows DPR diagnostic (resize): logical=${newLogicalSize.width.toStringAsFixed(2)}x${newLogicalSize.height.toStringAsFixed(2)} '
-        'dpr=${pixelRatio.toStringAsFixed(3)} physical=${physicalWidth}x$physicalHeight',
+        'dpr=${pixelRatio.toStringAsFixed(3)} userScale=${userScale.toStringAsFixed(2)} physical=${physicalWidth}x$physicalHeight',
       );
     }
 
-    await resizeMapSurface(physicalWidth, physicalHeight);
+    await resizeMapSurface(physicalWidth, physicalHeight, density: visualScale);
 
     if (mounted) {
       setState(() {
@@ -515,28 +545,32 @@ class _AgusMapState extends State<AgusMap> {
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
         final pixelRatio = MediaQuery.of(context).devicePixelRatio;
+        final userScale = widget.userScale;
 
         // Create surface on first layout (only if visible)
         if (!_surfaceCreated && size.width > 0 && size.height > 0) {
           if (widget.isVisible) {
             // Use post-frame callback to avoid calling during build
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _createSurface(size, pixelRatio);
+              _createSurface(size, pixelRatio, userScale);
             });
           }
         } else if (_surfaceCreated &&
-            (_currentSize != size || _devicePixelRatio != pixelRatio)) {
+            (_currentSize != size ||
+                _devicePixelRatio != pixelRatio ||
+                _userScale != userScale)) {
           // Handle resize or pixel ratio change
           if (widget.isVisible) {
             // Apply resize immediately when visible
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _handleResize(size, pixelRatio);
+              _handleResize(size, pixelRatio, userScale);
             });
           } else {
             // Defer resize until visible to avoid unnecessary memory allocations
             // (e.g., keyboard open/close causing CVPixelBuffer recreation on iOS)
             _pendingResizeSize = size;
             _pendingResizePixelRatio = pixelRatio;
+            _pendingResizeUserScale = userScale;
           }
         }
 

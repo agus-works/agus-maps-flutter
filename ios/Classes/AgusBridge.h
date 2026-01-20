@@ -36,6 +36,9 @@ void agus_native_on_surface_destroyed(void);
 /// Update the render target pixel buffer after a resize
 void agus_native_update_surface(CVPixelBufferRef pixelBuffer, int32_t width, int32_t height);
 
+/// Update visual scale without resizing the surface
+void agus_native_set_visual_scale(float density);
+
 /// Frame ready callback type
 typedef void (*AgusFrameReadyCallback)(void);
 

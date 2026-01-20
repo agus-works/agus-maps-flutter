@@ -515,6 +515,24 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int
     }
 }
 
+/// Update visual scale without resizing surface
+extern "C" FFI_PLUGIN_EXPORT void agus_native_set_visual_scale(float density) {
+    if (density <= 0) {
+        NSLog(@"[AgusMapsFlutter] agus_native_set_visual_scale: invalid density %.2f", density);
+        return;
+    }
+
+    g_density = density;
+
+    if (g_framework && g_drapeEngineCreated) {
+        df::VisualParams::Instance().SetVisualScale(static_cast<double>(density));
+        g_framework->InvalidateRendering();
+        NSLog(@"[AgusMapsFlutter] agus_native_set_visual_scale: Updated visual scale to %.2f", density);
+    } else {
+        NSLog(@"[AgusMapsFlutter] agus_native_set_visual_scale: Framework not ready, stored density %.2f", density);
+    }
+}
+
 /// Called when Swift recreates the CVPixelBuffer on resize
 extern "C" FFI_PLUGIN_EXPORT void agus_native_update_surface(
     CVPixelBufferRef pixelBuffer,

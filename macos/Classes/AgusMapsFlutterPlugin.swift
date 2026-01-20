@@ -67,6 +67,7 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     private var pendingResizeWorkItem: DispatchWorkItem?
     private var lastResizeWidth: Int = 0
     private var lastResizeHeight: Int = 0
+    private var lastResizeDensity: CGFloat = 0
     private static let resizeDebounceInterval: TimeInterval = 0.05  // 50ms debounce
     
     // MARK: - FlutterPlugin Registration
@@ -303,6 +304,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     private func handleCreateMapSurface(call: FlutterMethodCall, result: @escaping FlutterResult) {
         let args = call.arguments as? [String: Any]
+
+        if let densityArg = args?["density"] as? Double, densityArg > 0 {
+            density = CGFloat(densityArg)
+        }
         
         // Get requested size or use screen size
         var width = args?["width"] as? Int ?? 0
@@ -312,8 +317,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
             // Use main screen size as default
             if let screen = NSScreen.main {
                 let screenSize = screen.frame.size
-                width = Int(screenSize.width * density)
-                height = Int(screenSize.height * density)
+                let screenScale = screen.backingScaleFactor
+                width = Int(screenSize.width * screenScale)
+                height = Int(screenSize.height * screenScale)
             } else {
                 width = 1920
                 height = 1080
@@ -357,6 +363,12 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
             result(FlutterError(code: "INVALID_ARGUMENT", message: "Valid width and height required", details: nil))
             return
         }
+
+        if let densityArg = args["density"] as? Double, densityArg > 0 {
+            lastResizeDensity = CGFloat(densityArg)
+        } else {
+            lastResizeDensity = density
+        }
         
         // Store requested dimensions
         lastResizeWidth = width
@@ -380,6 +392,13 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     /// Actually perform the resize after debouncing
     private func performResize(width: Int, height: Int) {
+        let targetDensity = lastResizeDensity > 0 ? lastResizeDensity : density
+        if abs(targetDensity - density) > .ulpOfOne {
+            density = targetDensity
+            nativeSetVisualScale(density: Float(targetDensity))
+            NSLog("[AgusMapsFlutter] Updated visual scale: %.2f", targetDensity)
+        }
+
         // Skip if size hasn't actually changed
         guard width != surfaceWidth || height != surfaceHeight else {
             NSLog("[AgusMapsFlutter] Resize skipped - size unchanged: %dx%d", width, height)
@@ -625,6 +644,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     /// Resize surface with new pixel buffer (properly updates Metal texture)
     private func nativeResizeSurface(pixelBuffer: CVPixelBuffer, width: Int32, height: Int32) {
         agus_native_resize_surface(pixelBuffer, width, height)
+    }
+
+    private func nativeSetVisualScale(density: Float) {
+        agus_native_set_visual_scale(density)
     }
     
     private func nativeOnSurfaceDestroyed() {

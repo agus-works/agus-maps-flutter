@@ -4,6 +4,8 @@
 #include "platform/secure_storage.hpp"
 #include "platform/get_text_by_id.hpp"
 #include "platform/constants.hpp"
+#include "platform/measurement_utils.hpp"
+#include "platform/settings.hpp"
 #include "coding/file_reader.hpp"
 #include "base/file_name_utils.hpp"
 #include "base/logging.hpp"
@@ -117,6 +119,13 @@ std::string Platform::DeviceName() const { return "AgusMap"; }
 std::string Platform::DeviceModel() const { return "Android"; }
 std::string Platform::Version() const { return "1.0.0"; }
 int32_t Platform::IntVersion() const { return 100; }
+void Platform::SetupMeasurementSystem() const
+{
+  auto units = measurement_utils::Units::Metric;
+  if (settings::Get(settings::kMeasurementUnits, units))
+    return;
+  settings::Set(settings::kMeasurementUnits, units);
+}
 
 // C++ linkage - Android threading stubs (not using JVM)
 __attribute__((visibility("default"))) void AndroidThreadAttachToJVM() {}

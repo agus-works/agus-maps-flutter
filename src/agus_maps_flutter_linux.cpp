@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <cerrno>
+#include <cmath>
 #include <mutex>
 #include <boost/regex.hpp>
 
@@ -637,6 +638,28 @@ FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int32_t height
         g_framework->OnSize(width, height);
         g_framework->InvalidateRendering();
         std::fprintf(stderr, "[AgusMapsFlutter] Framework::OnSize called for %dx%d\n", width, height);
+    }
+}
+
+/// Update visual scale without resizing surface
+FFI_PLUGIN_EXPORT void agus_native_set_visual_scale(float density) {
+    if (density <= 0) {
+        std::fprintf(stderr, "[AgusMapsFlutter] agus_native_set_visual_scale: invalid density %.2f\n", density);
+        return;
+    }
+
+    if (std::fabs(g_density - density) < 0.0001f) {
+        return;
+    }
+
+    g_density = density;
+
+    if (g_framework && g_drapeEngineCreated) {
+        df::VisualParams::Instance().SetVisualScale(static_cast<double>(density));
+        g_framework->InvalidateRendering();
+        std::fprintf(stderr, "[AgusMapsFlutter] agus_native_set_visual_scale: Updated visual scale to %.2f\n", density);
+    } else {
+        std::fprintf(stderr, "[AgusMapsFlutter] agus_native_set_visual_scale: Framework not ready, stored density %.2f\n", density);
     }
 }
 

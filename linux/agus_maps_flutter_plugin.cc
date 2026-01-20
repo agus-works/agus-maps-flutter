@@ -22,6 +22,7 @@ namespace fs = std::filesystem;
 extern "C" {
   int64_t agus_native_create_surface(int32_t width, int32_t height, float density);
   void agus_native_on_size_changed(int32_t width, int32_t height);
+  void agus_native_set_visual_scale(float density);
   void agus_native_on_surface_destroyed(void);
   uint32_t agus_get_texture_id(void);
   int32_t agus_get_rendered_width(void);
@@ -436,11 +437,14 @@ static void agus_maps_flutter_plugin_handle_method_call(
   } else if (strcmp(method, "resizeMapSurface") == 0) {
     FlValue* width_value = fl_value_lookup_string(args, "width");
     FlValue* height_value = fl_value_lookup_string(args, "height");
+    FlValue* density_value = fl_value_lookup_string(args, "density");
     
     int32_t width = (width_value && fl_value_get_type(width_value) == FL_VALUE_TYPE_INT)
                     ? static_cast<int32_t>(fl_value_get_int(width_value)) : 0;
     int32_t height = (height_value && fl_value_get_type(height_value) == FL_VALUE_TYPE_INT)
                      ? static_cast<int32_t>(fl_value_get_int(height_value)) : 0;
+    float density = (density_value && fl_value_get_type(density_value) == FL_VALUE_TYPE_FLOAT)
+                    ? static_cast<float>(fl_value_get_float(density_value)) : 0.0f;
     
     std::fprintf(stderr, "[AgusMapsFlutter] resizeMapSurface: %dx%d\n", width, height);
     
@@ -452,6 +456,9 @@ static void agus_maps_flutter_plugin_handle_method_call(
       
       // Resize native surface
       agus_native_on_size_changed(width, height);
+      if (density > 0) {
+        agus_native_set_visual_scale(density);
+      }
     }
     
     g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
