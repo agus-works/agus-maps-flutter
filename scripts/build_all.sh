@@ -114,17 +114,34 @@ check_flutter() {
 
 check_python_protobuf() {
     local python_cmd=""
-    if command -v python3 &>/dev/null; then
-        python_cmd="python3"
-    elif command -v python &>/dev/null; then
-        python_cmd="python"
-    elif command -v py &>/dev/null; then
-        python_cmd="py -3"
-    else
-        log_error "Python 3 is not installed."
-        log_error "Install Python 3 to run CoMaps build tools (protobuf required)."
-        exit 1
-    fi
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            if command -v python &>/dev/null; then
+                python_cmd="python"
+            elif command -v py &>/dev/null; then
+                python_cmd="py -3"
+            elif command -v python3 &>/dev/null; then
+                python_cmd="python3"
+            else
+                log_error "Python 3 is not installed."
+                log_error "Install Python 3 to run CoMaps build tools (protobuf required)."
+                exit 1
+            fi
+            ;;
+        *)
+            if command -v python3 &>/dev/null; then
+                python_cmd="python3"
+            elif command -v python &>/dev/null; then
+                python_cmd="python"
+            elif command -v py &>/dev/null; then
+                python_cmd="py -3"
+            else
+                log_error "Python 3 is not installed."
+                log_error "Install Python 3 to run CoMaps build tools (protobuf required)."
+                exit 1
+            fi
+            ;;
+    esac
 
     if ! $python_cmd -c "import google.protobuf" &>/dev/null; then
         log_error "Python 'protobuf' module is not installed."
