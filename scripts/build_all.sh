@@ -76,6 +76,10 @@ check_platform() {
             log_info "Platform: Linux"
             log_info "Architecture: $(uname -m)"
             ;;
+        MINGW*|MSYS*|CYGWIN*)
+            log_info "Platform: Windows (Git Bash)"
+            log_info "Architecture: $(uname -m)"
+            ;;
         *)
             log_error "Unsupported platform: $(uname -s)"
             exit 1
@@ -251,6 +255,9 @@ print_banner() {
         Linux)
             echo "Targets: Android, Linux"
             ;;
+        MINGW*|MSYS*|CYGWIN*)
+            echo "Targets: Android"
+            ;;
         *)
             echo "Targets: Android (and platform-specific if supported)"
             ;;
@@ -277,6 +284,9 @@ print_summary() {
             echo "  - Android: android/prebuilt/"
             echo "  - Linux:   linux/prebuilt/"
             ;;
+        MINGW*|MSYS*|CYGWIN*)
+            echo "  - Android: android/prebuilt/"
+            ;;
         *)
             echo "  - Android: android/prebuilt/"
             ;;
@@ -292,6 +302,9 @@ print_summary() {
             ;;
         Linux)
             echo "  - Linux:   example/build/linux/x64/release/bundle/"
+            ;;
+        MINGW*|MSYS*|CYGWIN*)
+            :
             ;;
     esac
     echo ""
