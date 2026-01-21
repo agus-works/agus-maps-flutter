@@ -19,7 +19,7 @@ dependencies:
   # For Dart hooks (build orchestration)
   hooks: ^1.0.0
   # For archive operations (compress/extract)
-  archive: ^3.4.0
+  archive: ^4.0.7
   # For YAML parsing (pubspec.yaml)
   yaml: ^3.1.2
   # For path operations (cross-platform)
@@ -27,10 +27,10 @@ dependencies:
 
 dev_dependencies:
   args: ^2.5.0
-  ffigen: ^13.0.0
+  ffigen: ^20.1.1
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

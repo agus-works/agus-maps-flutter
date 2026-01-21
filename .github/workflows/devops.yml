@@ -9,7 +9,7 @@ on:
 
 env:
   COMAPS_TAG: v2026.01.08-11
-  FLUTTER_VERSION: "3.38.5"
+  FLUTTER_VERSION: "3.38.7"
   NDK_VERSION: "27.3.13750724"
   CMAKE_VERSION: "4.2.1"
   BUILD_TYPE: Release
@@ -21,7 +21,7 @@ jobs:
   build-and-release-mac-platforms:
     name: Build iOS and macOS
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
-    if: false
+    if: true
     runs-on: macos-latest
     permissions:
       contents: write
@@ -533,7 +533,7 @@ jobs:
   build-and-release-android-platform:
     name: Build Android
     # Toggle: set to 'true' to run Android, 'false' to skip (saves cost)
-    if: false
+    if: true
     runs-on: macos-latest
     permissions:
       contents: write
@@ -1176,7 +1176,7 @@ jobs:
   build-and-release-linux-platform:
     name: Build Linux
     # Toggle: set to 'true' to run Linux, 'false' to skip (saves cost)
-    if: false
+    if: true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -1483,9 +1483,9 @@ jobs:
     name: Release
     needs:
       - build-and-release-windows-platform
-      # - build-and-release-mac-platforms
-      # - build-and-release-android-platform
-      # - build-and-release-linux-platform
+      - build-and-release-mac-platforms
+      - build-and-release-android-platform
+      - build-and-release-linux-platform
     # Run even if some dependencies partially failed or were skipped, but only on tags
     if: always() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
