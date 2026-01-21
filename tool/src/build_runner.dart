@@ -450,7 +450,6 @@ Future<void> _generateComapsData() async {
     return p;
   }
 
-  @Deprecated('Deprecated: developers should provide python3 (e.g., cp python python3) in PATH on Windows.')
   Future<void> runUnixDataScripts() async {
     // Generate drawing rules
     final generateDrulesScript = path.join(comapsDir, 'tools', 'unix', 'generate_drules.sh');
@@ -495,29 +494,15 @@ Future<void> _generateComapsData() async {
   }
 
   if (Platform.isWindows) {
-    if (await commandExists('bash')) {
-      print('Bash detected on Windows; running Unix data generation scripts...');
-      await runUnixDataScripts();
+    final gitBashPath = r'C:\Program Files\Git\bin\bash.exe';
+    if (await File(gitBashPath).exists()) {
+      final gitBashDir = path.dirname(gitBashPath);
+      env['PATH'] = '$gitBashDir;${env['PATH'] ?? ''}';
+      print('Bash detected on Windows; using Git Bash at $gitBashPath');
     } else {
-      // On Windows without bash, match the old PowerShell implementation:
-      // Only run generate_desktop_ui_strings.py directly (skip bash scripts)
-      final generateDesktopUIPython = path.join(comapsDir, 'tools', 'python', 'generate_desktop_ui_strings.py');
-      if (await File(generateDesktopUIPython).exists()) {
-        print('Generating desktop UI strings...');
-        await runProcess(
-          'python',
-          [generateDesktopUIPython],
-          workingDirectory: comapsDir,
-          environment: env,
-        );
-      } else {
-        print('Warning: generate_desktop_ui_strings.py not found at $generateDesktopUIPython');
-      }
-
-      // Note: On Windows, generate_drules.sh and generate_categories.sh are skipped
-      // These are typically generated during native builds or are provided in the SDK
-      print('Note: Skipping generate_drules.sh and generate_categories.sh on Windows (bash not found)');
+      print('Bash detected on Windows; running Unix data generation scripts...');
     }
+    await runUnixDataScripts();
   } else {
     // On Unix systems, run all bash scripts
     await runUnixDataScripts();
