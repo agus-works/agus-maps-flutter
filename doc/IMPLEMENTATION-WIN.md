@@ -11,6 +11,16 @@
 **Architecture:** x86_64 only (ARM64 untested)  
 **CoMaps Tools:** ✅ Skipped via `SKIP_TOOLS` CMake option (dev_sandbox, generator, tools not needed for Flutter plugin)
 
+## IMPORTANT: Windows Extracted Asset Location (User Home)
+
+When you run the Windows example exe, assets are **extracted into the user’s Documents folder**, not next to the executable.
+
+**Exact locations (relative to the user home directory):**
+- `Documents\agus_maps_flutter\maps\` → extracted `.mwm` map files
+- `Documents\agus_maps_flutter\` → extracted CoMaps data files (styles, symbols, classificator, etc.)
+
+If you delete these folders (or the marker file `Documents\agus_maps_flutter\.comaps_data_extracted`), the next app run will re-extract from bundled `flutter_assets`.
+
 ## Cross-Platform Rendering Comparison
 
 This section compares the rendering architecture across all supported platforms.
