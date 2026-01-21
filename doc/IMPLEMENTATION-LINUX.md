@@ -975,7 +975,7 @@ sudo usermod -aG render $USER
 
 ### 2026-01-06 (Session 3: CI/CD)
 
-- **Added**: `scripts/build_binaries_linux.sh` build script for Linux native libraries
+- **Added**: `dart run tool/build.dart --build-binaries --platform linux` to build Linux native libraries
   - Builds `libagus_maps_flutter.so` for x86_64 architecture
   - Validates prerequisites (CMake, Ninja, development packages)
   - Creates `build/agus-binaries-linux.zip` artifact

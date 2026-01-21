@@ -17,7 +17,7 @@ Debug mode enables hot reload, step-through debugging, and verbose logging for b
 ```bash
 # 1. Bootstrap all dependencies (first time only)
 #    This prepares iOS, macOS, and Android targets
-./scripts/bootstrap.sh
+dart run tool/build.dart --no-cache
 
 # 2. Install CocoaPods dependencies
 cd example/ios
@@ -43,7 +43,7 @@ Release mode produces an optimized build suitable for production use and accurat
 
 ```bash
 # 1. Bootstrap all dependencies (first time only)
-./scripts/bootstrap.sh
+dart run tool/build.dart --no-cache
 
 # 2. Build and run in release mode
 cd example
@@ -308,7 +308,7 @@ The active frame callback leverages CoMaps' existing efficiency:
 
 #### Patch File
 
-All CoMaps modifications are captured in `patches/comaps/0012-active-frame-callback.patch`, which is automatically applied by `./scripts/apply_comaps_patches.sh`.
+All CoMaps modifications are captured in `patches/comaps/0012-active-frame-callback.patch`, which is automatically applied by `tool/build.dart` during bootstrap.
 
 
 ## XCFramework Distribution
@@ -319,7 +319,7 @@ The CoMaps static libraries are pre-built into a universal XCFramework and publi
 
 ```bash
 # Build XCFramework locally (for development)
-./scripts/build_ios_xcframework.sh
+dart run tool/build.dart --build-binaries --platform ios
 
 # Output: ios/Frameworks/CoMaps.xcframework
 #   ├── ios-arm64/                    (device)
@@ -394,13 +394,14 @@ my_app/
 External consumers don't have access to `thirdparty/comaps/` (it's git-ignored and not published). The unified package includes:
 | `agus-maps-android.apk` | ~80MB | Universal Android APK |
 
-### Scripts
+### Build Tools
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/bundle_ios_headers.sh` | Bundles headers from `thirdparty/comaps/` into tarball |
-| `scripts/download_ios_xcframework.sh` | Downloads XCFramework + headers (dual-mode) |
-| `scripts/build_ios_xcframework.sh` | Builds XCFramework from source |
+| Tool | Purpose |
+|------|---------|
+| `tool/build.dart` | Bootstrap CoMaps, apply patches, and build iOS XCFrameworks |
+| `scripts/build_all.sh` | Optional macOS wrapper around `tool/build.dart` |
+| `scripts/build_all.ps1` | Optional Windows wrapper around `tool/build.dart` |
+| `scripts/bundle_headers.sh` | Bundle shared headers artifact for CI/release packaging |
 
 
 ## File Structure
@@ -425,12 +426,9 @@ ios/
 
 ```
 scripts/
-├── bootstrap_ios.sh                 # Main iOS setup script
-├── build_ios_xcframework.sh         # Build CoMaps XCFramework
-├── download_ios_xcframework.sh      # Download pre-built XCFramework
-├── fetch_comaps.sh                  # Clone/update CoMaps source
-├── apply_comaps_patches.sh          # Apply local patches
-└── copy_comaps_data.sh              # Copy data files to example
+├── build_all.sh                     # macOS/Linux wrapper for tool/build.dart
+├── build_all.ps1                    # Windows wrapper for tool/build.dart
+└── bundle_headers.sh                # Bundle shared headers artifact
 ```
 
 ### Example App (example/ios/)
@@ -570,7 +568,7 @@ Builds the CoMaps XCFramework and publishes to GitHub Releases:
 1. Clone repo + fetch CoMaps source
 2. Apply patches
 3. Build Boost headers
-4. Run `build_ios_xcframework.sh` (CMake → libtool → xcodebuild -create-xcframework)
+4. Run `dart run tool/build.dart --build-binaries --platform ios` (CMake → libtool → xcodebuild -create-xcframework)
 5. Zip and upload `CoMaps.xcframework.zip` to release
 
 ### build-ios
@@ -592,9 +590,9 @@ Builds the Flutter example app for iOS simulator:
 ### Completed
 
 #### Build Infrastructure
-- [x] Create XCFramework build script (`scripts/build_ios_xcframework.sh`)
-- [x] Create XCFramework download script (`scripts/download_ios_xcframework.sh`)
-- [x] Create iOS bootstrap script (`scripts/bootstrap_ios.sh`)
+- [x] Support XCFramework builds via `tool/build.dart`
+- [x] Support unified SDK downloads via Dart hooks
+- [x] Consolidate bootstrap steps in `tool/build.dart`
 - [x] Update `.gitignore` for `ios/Frameworks/`
 - [x] Update podspec for vendored framework
 - [x] Add Bitrise iOS workflows (`build-ios-xcframework`, `build-ios`)
@@ -1039,7 +1037,7 @@ Render Thread                    Main Thread
 After modifying CoMaps source files, rebuild the XCFramework:
 
 ```bash
-./scripts/build_ios_xcframework.sh
+dart run tool/build.dart --build-binaries --platform ios
 ```
 
 This compiles the new `active_frame_callback.cpp` into `libcomaps.a` and packages it into `ios/Frameworks/CoMaps.xcframework`.

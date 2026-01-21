@@ -823,8 +823,8 @@ The Windows plugin already supported the `density` parameter (defaulting to 1.0)
 
 - Flutter SDK 3.24+ installed
 - Visual Studio 2022 with C++ Desktop development workload  
-- vcpkg (will be installed automatically by bootstrap script)
-- PowerShell 7+ (for bootstrap script)
+- vcpkg (installed automatically by the Dart build tool)
+- PowerShell 7+ (recommended for Windows development)
 - Windows 10 or later (x86_64 only)
 - ~5GB disk space for CoMaps build artifacts
 
@@ -839,7 +839,7 @@ The Windows plugin already supported the `density` parameter (defaulting to 1.0)
 #   - Builds Boost headers
 #   - Copies CoMaps data into example assets
 #   - Installs vcpkg and dependencies
-.\scripts\bootstrap.ps1
+dart run tool/build.dart --no-cache
 ```
 
 ### Debug Mode
@@ -1380,9 +1380,9 @@ if (PLATFORM_DESKTOP AND NOT SKIP_TOOLS)
 endif()
 ```
 
-If you see these errors, ensure you've applied all patches:
+If you see these errors, rerun the Dart bootstrap to reapply patches:
 ```powershell
-.\scripts\apply_comaps_patches.ps1
+dart run tool/build.dart --no-cache
 ```
 
 ### "Could NOT find ZLIB (missing: ZLIB_LIBRARY ZLIB_INCLUDE_DIR)"
@@ -1718,9 +1718,9 @@ set_target_properties(jansson PROPERTIES
    UNITY_BUILD OFF)
 ```
 
-If you see these errors, ensure all patches are applied:
+If you see these errors, ensure all patches are applied by re-running:
 ```powershell
-.\scripts\apply_comaps_patches.ps1
+dart run tool/build.dart --no-cache
 ```
 
 Then clean and rebuild:

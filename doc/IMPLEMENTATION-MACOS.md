@@ -17,7 +17,7 @@ Debug mode enables hot reload, step-through debugging, and verbose logging for b
 ```bash
 # 1. Bootstrap all dependencies (first time only)
 #    This prepares macOS, iOS, and Android targets
-./scripts/bootstrap.sh
+dart run tool/build.dart --no-cache
 
 # 2. Install CocoaPods dependencies
 cd example/macos
@@ -43,7 +43,7 @@ Release mode produces an optimized build suitable for production use and accurat
 
 ```bash
 # 1. Bootstrap all dependencies (first time only)
-./scripts/bootstrap.sh
+dart run tool/build.dart --no-cache
 
 # 2. Build and run in release mode
 cd example
@@ -157,7 +157,7 @@ The CoMaps static libraries are pre-built into a universal XCFramework and publi
 
 ```bash
 # Build XCFramework locally (for development)
-./scripts/build_binaries_macos.sh
+dart run tool/build.dart --build-binaries --platform macos
 
 # Output: build/agus-binaries-macos/CoMaps.xcframework
 #   ├── macos-arm64_x86_64/    (universal binary)
@@ -264,16 +264,16 @@ Update `macos/agus_maps_flutter.podspec`:
 - Add vendored framework and resource bundles
 - Add documentation comments explaining manual binary setup
 
-### Step 6: Create Build Script
+### Step 6: Build via Dart Tool
 
-Create `scripts/build_binaries_macos.sh`:
+Use `tool/build.dart` to build macOS binaries:
 - Build for `arm64` (Apple Silicon) and `x86_64` (Intel)
 - Create universal binary with `lipo`
 - Package as XCFramework
 
-### Step 7: Create Bootstrap Script
+### Step 7: Bootstrap via Dart Tool
 
-Create `scripts/bootstrap_macos.sh`:
+Use `dart run tool/build.dart --no-cache` to:
 - Fetch CoMaps source
 - Apply patches
 - Build Boost headers
@@ -338,7 +338,7 @@ build-macos-native:
     - Fetch CoMaps Source
     - Apply CoMaps Patches
     - Build Boost Headers
-    - Build macOS Native Libraries (build_binaries_macos.sh)
+    - Build macOS Native Libraries (dart run tool/build.dart --build-binaries --platform macos)
     - Prepare macOS Binaries Artifact
     - deploy-to-bitrise-io
 ```
@@ -390,7 +390,7 @@ build-release:
 - [x] Rapid window resize is stable (no brownish/incomplete blocks)
 - [ ] Map renders at 60fps with minimal CPU usage
 - [ ] Release build is under 150MB
-- [ ] Bootstrap script works on fresh checkout
+- [ ] Dart bootstrap works on fresh checkout
 
 
 ## Known Issues & Considerations

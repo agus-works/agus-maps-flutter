@@ -88,7 +88,7 @@ The build tool is organized into modular components in `tool/src/`:
 
 ## Scripts Replaced by Dart Implementation
 
-The following shell scripts have been replaced by the Dart build tool and are **candidates for deletion**:
+The following legacy scripts were removed and replaced by the Dart build tool:
 
 ### Bootstrap Scripts (Replaced)
 
@@ -98,10 +98,6 @@ The following shell scripts have been replaced by the Dart build tool and are **
 | `scripts/bootstrap.ps1` | `dart run tool/build.dart --no-cache` | Windows version of bootstrap |
 | `scripts/bootstrap_common.sh` | `tool/src/build_runner.dart` | Logic moved to Dart modules |
 | `scripts/BootstrapCommon.psm1` | `tool/src/build_runner.dart` | PowerShell module logic moved to Dart |
-
-**Migration**:
-- **Old**: `./scripts/bootstrap.sh --no-cache`
-- **New**: `dart run tool/build.dart --no-cache`
 
 ### Platform Build Scripts (Replaced)
 
@@ -114,69 +110,23 @@ The following shell scripts have been replaced by the Dart build tool and are **
 | `scripts/build_binaries_windows.ps1` | `dart run tool/build.dart --build-binaries --platform windows` | Windows DLL build |
 | `scripts/build_binaries_linux.sh` | `dart run tool/build.dart --build-binaries --platform linux` | Linux shared library build |
 
-**Migration**:
-- **Old**: `./scripts/build_binaries_android.sh`
-- **New**: `dart run tool/build.dart --build-binaries --platform android`
+## Optional Wrapper Scripts (Still Present)
 
-### Build All Scripts (Replaced)
+The following wrappers remain in the repository for convenience:
 
-| Script | Replaced By | Notes |
-|--------|-------------|-------|
-| `scripts/build_all.sh` | `dart run tool/build.dart --build-binaries` | Build all platforms from macOS |
-| `scripts/build_all.ps1` | `dart run tool/build.dart --build-binaries` | Build all platforms from Windows |
-
-**Migration**:
-- **Old**: `./scripts/build_all.sh`
-- **New**: `dart run tool/build.dart --build-binaries`
-
-## Scripts Still in Use (Not Replaced)
-
-The following scripts are **still needed** and should **NOT be deleted**:
-
-### Patch Management Scripts (Keep)
-
-- `scripts/apply_comaps_patches.sh` / `scripts/apply_comaps_patches.ps1`
-  - **Status**: Used internally by Dart tool (`tool/src/patch_applicator.dart`)
-  - **Reason**: Patch application logic - can be migrated later but currently invoked by Dart
-
-- `scripts/validate_patches.sh` / `scripts/validate_patches.ps1`
-  - **Status**: Independent utility for patch validation
-  - **Reason**: Developer tool for validating patch files, not part of build flow
-
-- `scripts/regenerate_patches.sh` / `scripts/regenerate_patches.ps1`
-  - **Status**: Independent utility for patch generation
-  - **Reason**: Developer tool for generating patches, not part of build flow
-
-### Utility Scripts (Keep for Now)
+- `scripts/build_all.sh` / `scripts/build_all.ps1`
+  - **Status**: Thin wrappers around `tool/build.dart` for local builds
+  - **Recommended**: Use `dart run tool/build.dart --build-binaries` directly when scripting
 
 - `scripts/bundle_headers.sh`
   - **Status**: Still used in CI/CD workflows
   - **Reason**: Utility script for packaging headers separately
-  - **Future**: Can be migrated to Dart later, but not critical for v0.1.14
-
-- `scripts/download_base_mwms.sh`
-  - **Status**: May be integrated into Dart tool or kept as utility
-  - **Reason**: Downloads base MWM files for example app
-  - **Note**: Currently integrated into bootstrap process in Dart tool
 
 ## CI/CD Migration
 
 The GitHub Actions workflow (`.github/workflows/devops.yml`) has been updated to use the Dart build tool:
 
 ### Changes Made
-
-**Before**:
-```yaml
-- name: Bootstrap CoMaps
-  run: |
-    chmod +x scripts/bootstrap.sh
-    ./scripts/bootstrap.sh --no-cache
-
-- name: Build iOS XCFramework
-  run: |
-    chmod +x scripts/build_binaries_ios.sh
-    ./scripts/build_binaries_ios.sh
-```
 
 **After**:
 ```yaml
@@ -243,8 +193,8 @@ For contributors migrating from shell scripts to Dart build tool:
 
 - [ ] Install Dart SDK (if not already installed)
 - [ ] Run `flutter pub get` to install build dependencies
-- [ ] Replace `./scripts/bootstrap.sh` with `dart run tool/build.dart --no-cache`
-- [ ] Replace `./scripts/build_binaries_*.sh` with `dart run tool/build.dart --build-binaries --platform <platform>`
+- [ ] Use `dart run tool/build.dart --no-cache` for bootstrap
+- [ ] Use `dart run tool/build.dart --build-binaries --platform <platform>` for native builds
 - [ ] Update CI/CD workflows (already done in v0.1.14)
 - [ ] Update documentation references to shell scripts
 
@@ -253,7 +203,7 @@ For contributors migrating from shell scripts to Dart build tool:
 Potential improvements for future versions:
 
 1. **Bundle Headers Migration**: Migrate `bundle_headers.sh` to Dart tool
-2. **MWM Download Integration**: Fully integrate `download_base_mwms.sh` into Dart tool
+2. **MWM Download Integration**: Keep base MWM downloads fully handled by the Dart tool
 3. **Patch Management**: Consider migrating patch validation/regeneration to Dart
 4. **Incremental Builds**: Add support for incremental builds in Dart tool
 5. **Build Caching**: Implement more sophisticated caching in Dart tool
