@@ -8,22 +8,28 @@ This directory contains patch files (`*.patch`) that are applied to the CoMaps c
 Some patches target files within git submodules (e.g., `3party/gflags/CMakeLists.txt`). 
 For these patches to apply correctly, **ALL submodules must be fully initialized**.
 
-The bootstrap and fetch scripts ensure this by using:
+The Dart build tool (`tool/build.dart`) ensures this by running:
 ```bash
 git submodule update --init --recursive
 ```
 
+It also performs `git lfs pull` (including nested submodules) during bootstrap to ensure large files are present.
+
 **Do NOT use `--depth 1`** with submodule initialization as it may cause patches to fail.
 
 ### Patch Application Behavior
-The patch application scripts (`apply_comaps_patches.sh` / `apply_comaps_patches.ps1`) will:
+Patch application is handled by the Dart build tool (`tool/build.dart`), which will:
 1. Reset the CoMaps working tree to HEAD
 2. Reset all submodules to their recorded commits
 3. Apply patches in sorted order (0001, 0002, etc.)
-4. **Skip patches** whose target files don't exist (e.g., if a submodule wasn't initialized)
+4. **Skip patches** already applied
 5. Continue on non-fatal failures and report a summary
 
-This means patches for uninitialized submodules won't cause the entire process to fail.
+If you need to bypass patching for debugging, run:
+
+```bash
+dart run tool/build.dart --skip-patches
+```
 
 
 ## Patch Catalog
@@ -1018,8 +1024,8 @@ Unity builds combine many source files, exceeding MSVC's default object section 
        localization_dummy.cpp
        network_policy_dummy.cpp
        secure_storage_dummy.cpp
-     )
-   ```
+      )
+    ```
    - Used when building for Flutter Android where platform implementation is external
    - Skips JNI-based `platform_android.cpp` which requires APK/JVM access
    - External code (`agus_platform.cpp`) provides `Platform::GetReader()` etc.
@@ -1334,5 +1340,3 @@ CoMaps `generate_drules.sh` invokes Python tooling that calls `set_start_method(
 - Data files like `classificator.txt`/`categories.txt` are not generated, causing runtime crashes
 
 
-.\scripts\apply_comaps_patches.ps1
-```
