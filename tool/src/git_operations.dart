@@ -62,9 +62,8 @@ Future<void> initSubmodules({String? comapsDir}) async {
     throw Exception('CoMaps directory does not exist: $dir');
   }
   
-  print('Initializing submodules...');
-  
   // Fix Codeberg URLs in .gitmodules if needed (use GitHub mirrors)
+  print('Git submodules mirror replacements');
   final gitmodulesFile = File(path.join(dir, '.gitmodules'));
   if (await gitmodulesFile.exists()) {
     var content = await gitmodulesFile.readAsString();
