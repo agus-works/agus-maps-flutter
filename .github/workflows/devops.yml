@@ -855,30 +855,9 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Check Python Path
-        id: python-path
+      - name: Install Python Protobuf
         shell: pwsh
-        run: |
-          $pythonCmd = Get-Command python -ErrorAction Stop
-          Write-Host "Python command: $($pythonCmd.Source)"
-          if (-not (Test-Path $pythonCmd.Source)) {
-            Write-Error "python.exe not found at: $($pythonCmd.Source)"
-            exit 1
-          }
-          "python-path=$($pythonCmd.Source)" >> $env:GITHUB_OUTPUT
-
-      - name: Create python3.exe by copy
-        shell: pwsh
-        run: |
-          $pythonPath = "${{ steps.python-path.outputs.python-path }}"
-          $pythonDir = Split-Path -Path $pythonPath -Parent
-          $python3Path = Join-Path $pythonDir "python3.exe"
-          # Copy-Item -Path $pythonPath -Destination $python3Path -Force
-          dir $pythonDir
-          Write-Host "Created: $python3Path"
-          python3 --version
-          python --version
-          pip install protobuf
+        run: pip install protobuf
 
       # ======================================================================
       # CoMaps Source Cache (Azure Blob Storage)
