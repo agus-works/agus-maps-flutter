@@ -31,7 +31,7 @@ The CoMaps rendering engine requires several categories of static data files to 
 │                                                                         │
 │  1. SOURCE (thirdparty/comaps/data/)                                    │
 │     │                                                                   │
-│     ▼ scripts/copy_comaps_data.sh                                       │
+│     ▼ tool/build.dart (asset copy step)                                 │
 │                                                                         │
 │  2. FLUTTER ASSETS (example/assets/comaps_data/)                        │
 │     │                                                                   │
@@ -141,14 +141,9 @@ All CoMaps assets originate from the `thirdparty/comaps/data/` directory, which 
 
 ### Fetching CoMaps Source
 
-**macOS/Linux:**
+**All platforms:**
 ```bash
-./scripts/fetch_comaps.sh
-```
-
-**Windows (PowerShell 7+):**
-```powershell
-.\scripts\fetch_comaps.ps1
+dart run tool/build.dart --no-cache
 ```
 
 This will:
@@ -173,16 +168,10 @@ ls thirdparty/comaps/data/
 
 Before building the example app, you must populate the Flutter assets directory.
 
-### Running the Copy Script
+### Populate Assets with Dart Build Tool
 
-**macOS/Linux:**
 ```bash
-./scripts/copy_comaps_data.sh
-```
-
-**Windows (PowerShell 7+):**
-```powershell
-.\scripts\copy_comaps_data.ps1
+dart run tool/build.dart --no-cache
 ```
 
 ### What the Script Does
@@ -609,7 +598,7 @@ flutter:
 **Cause:** CoMaps data files not extracted or path incorrect.
 
 **Solution:**
-1. Run `./scripts/copy_comaps_data.sh` before building
+1. Run `dart run tool/build.dart --no-cache` before building
 2. Verify `example/assets/comaps_data/` contains files
 3. Check `pubspec.yaml` declares all asset directories
 4. Ensure `extractDataFiles()` returns valid path
@@ -641,11 +630,8 @@ flutter:
 
 **Solution:**
 ```bash
-# First, fetch CoMaps source
-./scripts/fetch_comaps.sh
-
-# Then, copy data files
-./scripts/copy_comaps_data.sh
+# Bootstrap CoMaps and copy data files
+dart run tool/build.dart --no-cache
 
 # Now build
 flutter build <platform>
@@ -681,13 +667,9 @@ When a new CoMaps version is released:
    ```bash
    export COMAPS_TAG="v2025.12.20-1"
    ```
-2. **Re-fetch source:**
+2. **Re-fetch source and data:**
    ```bash
-   ./scripts/fetch_comaps.sh
-   ```
-3. **Re-copy data:**
-   ```bash
-   ./scripts/copy_comaps_data.sh
+   dart run tool/build.dart --no-cache
    ```
 4. **Rebuild the app:**
    ```bash

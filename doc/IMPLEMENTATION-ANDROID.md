@@ -17,7 +17,7 @@ Debug mode enables hot reload, step-through debugging, and verbose logging for b
 ```bash
 # 1. Bootstrap all dependencies (first time only)
 #    This prepares Android, iOS, and macOS targets
-./scripts/bootstrap.sh
+dart run tool/build.dart --no-cache
 
 # 2. Run in debug mode
 cd example
@@ -31,7 +31,7 @@ adb logcat -s AgusMapsFlutterNative:D CoMaps:D AgusGuiThread:D
 ```powershell
 # 1. Bootstrap all dependencies (first time only)
 #    This prepares Android and Windows targets
-.\scripts\bootstrap.ps1
+dart run tool/build.dart --no-cache
 
 # 2. Run in debug mode
 cd example
@@ -54,7 +54,7 @@ Release mode produces an optimized build suitable for production use and accurat
 **macOS:**
 ```bash
 # 1. Bootstrap all dependencies (first time only)
-./scripts/bootstrap.sh
+dart run tool/build.dart --no-cache
 
 # 2. Build and run in release mode
 cd example
@@ -68,7 +68,7 @@ adb install build/app/outputs/flutter-apk/app-release.apk
 **Windows PowerShell:**
 ```powershell
 # 1. Bootstrap all dependencies (first time only)
-.\scripts\bootstrap.ps1
+dart run tool/build.dart --no-cache
 
 # 2. Build and run in release mode
 cd example
@@ -173,7 +173,8 @@ Those come after we have a repeatable dependency + data workflow and a stable FF
 
 ## Repository Conventions
 - `thirdparty/` contains checked-out external dependencies (e.g., CoMaps engine sources).
-- `scripts/` contains all automation that populates `thirdparty/` and applies any patches.
+- `tool/build.dart` contains the cross-platform automation that populates `thirdparty/` and applies patches.
+- `scripts/` only contains thin wrappers (build_all.*) and utility helpers.
 - `patches/comaps/` contains optional patch files that are applied to the CoMaps checkout **only if required**.
 
 ## Dependency Setup
@@ -187,15 +188,10 @@ We pin and fetch the CoMaps repo into `thirdparty/comaps`.
 
 Commands:
 
-**Linux/macOS:**
-- `./scripts/bootstrap_android.sh`
-  - Clones/updates CoMaps to `thirdparty/comaps` at the desired tag.
-  - Applies any patches from `patches/comaps/*.patch`.
-
-**Windows PowerShell:**
-- `.\scripts\bootstrap_android.ps1`
-  - Clones/updates CoMaps to `thirdparty/comaps` at the desired tag.
-  - Applies any patches from `patches/comaps/*.patch`.
+**All platforms:**
+- `dart run tool/build.dart --no-cache`
+    - Clones/updates CoMaps to `thirdparty/comaps` at the desired tag.
+    - Applies any patches from `patches/comaps/*.patch`.
 
 Environment variables:
 - `COMAPS_TAG` (optional): overrides the tag/commit checked out.
@@ -275,8 +271,8 @@ We have successfully resolved all build blockers and the app now runs on device 
     -   Added `extractDataFiles()` method to recursively extract CoMaps data assets.
     -   Data files are extracted from `assets/comaps_data/` to app's files directory.
     
-5.  **Data File Bundling** ([scripts/copy_comaps_data.sh](../scripts/copy_comaps_data.sh)):
-    -   Script to copy essential CoMaps data files to example app assets.
+5.  **Data File Bundling** (handled by `dart run tool/build.dart --no-cache` during bootstrap):
+    -   Build tool copies essential CoMaps data files to example app assets.
     -   Files include: classificator.txt, types.txt, categories.txt, drules, etc.
     
 6.  **Java/Rendering** ([android/.../AgusMapsFlutterPlugin.java](../android/src/main/java/app/agus/maps/agus_maps_flutter/AgusMapsFlutterPlugin.java)):

@@ -36,6 +36,8 @@
 
 * **CoMaps tag refresh**: Updated docs and scripts to `COMAPS_TAG` v2026.01.08-11.
 
+* **Docs cleanup**: Updated documentation to replace removed shell/PowerShell script references with `tool/build.dart` usage.
+
 ### Maintenance
 
 * **Example lockfiles**: Removed `path_provider_foundation` from iOS/macOS example Podfile locks.

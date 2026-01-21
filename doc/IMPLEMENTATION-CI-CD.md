@@ -69,7 +69,7 @@ graph TD
 
 ### Phase 1: Headers Workflow
 
-#### Step 1.1: Rename `bundle_ios_headers.sh` → `bundle_headers.sh`
+#### Step 1.1: Legacy rename `bundle_ios_headers.sh` → `bundle_headers.sh`
 
 - Make script platform-agnostic
 - Change output path from `ios/CoMaps-headers.tar.gz` to `build/agus-headers.tar.gz`
@@ -100,24 +100,24 @@ build-headers:
 
 ### Phase 2: iOS Build Refactoring
 
-#### Step 2.1: Rename `build_ios_xcframework.sh` → `build_binaries_ios.sh`
+#### Step 2.1: Use Dart build tool for iOS XCFramework
 
-- Update output from `ios/Frameworks/CoMaps.xcframework` to `build/agus-binaries-ios/CoMaps.xcframework`
-- Update comments to reflect new naming
+- Run `dart run tool/build.dart --build-binaries --platform ios`
+- Output: `build/agus-binaries-ios/CoMaps.xcframework`
 
 #### Step 2.2: Refactor `build-ios-xcframework` → `build-ios-native` workflow
 
 - Add `depends_on: build-headers`
 - Remove headers bundling steps (now in `build-headers`)
-- Update script call to `build_binaries_ios.sh`
+- Update build step to call `dart run tool/build.dart --build-binaries --platform ios`
 - Output `agus-binaries-ios.zip` (containing `CoMaps.xcframework`)
 - Update env var from `XCFRAMEWORK_PATH` to `IOS_BINARIES_PATH`
 
 ### Phase 3: Android Native Build
 
-#### Step 3.1: Create `build_binaries_android.sh`
+#### Step 3.1: Use Dart build tool for Android binaries
 
-New script that:
+Use `dart run tool/build.dart --build-binaries --platform android`, which:
 1. Iterates over ABIs: `arm64-v8a`, `armeabi-v7a`, `x86_64`
 2. Invokes CMake with Android NDK toolchain for each ABI
 3. Builds CoMaps static libraries (`.a` files)
@@ -159,7 +159,7 @@ build-android-native:
     - Save CoMaps Cache
     - Apply CoMaps Patches
     - Build Boost Headers
-    - Build Android Native Libraries (build_binaries_android.sh)
+    - Build Android Native Libraries (dart run tool/build.dart --build-binaries --platform android)
     - Prepare Android Binaries Artifact
     - deploy-to-bitrise-io (intermediate file: ANDROID_BINARIES_PATH)
 ```
@@ -318,13 +318,13 @@ When working on the plugin:
 
 The CI/CD pipeline now supports all major desktop and mobile platforms:
 
-| Platform | Build Script | Artifact | Status |
-|----------|--------------|----------|--------|
-| Android | `build_binaries_android.sh` | `agus-binaries-android.zip` | ✅ Implemented |
-| iOS | `build_binaries_ios.sh` | `agus-binaries-ios.zip` | ✅ Implemented |
-| macOS | `build_binaries_macos.sh` | `agus-binaries-macos.zip` | ✅ Implemented |
-| Windows | `build_binaries_windows.ps1` | `agus-binaries-windows.zip` | ✅ Implemented |
-| Linux | `build_binaries_linux.sh` | `agus-binaries-linux.zip` | ✅ Implemented |
+| Platform | Build Tool | Artifact | Status |
+|----------|------------|----------|--------|
+| Android | `dart run tool/build.dart --build-binaries --platform android` | `agus-binaries-android.zip` | ✅ Implemented |
+| iOS | `dart run tool/build.dart --build-binaries --platform ios` | `agus-binaries-ios.zip` | ✅ Implemented |
+| macOS | `dart run tool/build.dart --build-binaries --platform macos` | `agus-binaries-macos.zip` | ✅ Implemented |
+| Windows | `dart run tool/build.dart --build-binaries --platform windows` | `agus-binaries-windows.zip` | ✅ Implemented |
+| Linux | `dart run tool/build.dart --build-binaries --platform linux` | `agus-binaries-linux.zip` | ✅ Implemented |
 
 ### GitHub Actions Jobs
 
@@ -346,10 +346,10 @@ Headers (`agus-headers.tar.gz`) remain shared across all platforms.
    - Individual: `agus-binaries-android.zip`, `agus-binaries-ios.zip`, etc.
    - Unified: `agus-maps-binaries-vX.Y.Z.zip` (contains all platforms)
 
-2. Build script changes:
-   - `download_libs.sh` has been **removed** (v0.1.3)
-   - `build_ios_xcframework.sh` → `build_binaries_ios.sh`
-   - `bundle_ios_headers.sh` → `bundle_headers.sh`
+2. Build tool changes:
+  - Legacy `download_libs.sh` has been **removed** (v0.1.3)
+  - iOS/macOS/Android/Windows/Linux binaries are now built via `tool/build.dart`
+  - `bundle_headers.sh` remains as the CI headers bundling helper
 
 3. Workflow changes:
    - `build-ios-xcframework` → `build-ios-native`
@@ -366,10 +366,10 @@ The bootstrap and CI scripts now guard simple counters with `((++var)) || true` 
 ## Checklist
 
 - [x] Create `build-headers` workflow
-- [x] Rename `bundle_ios_headers.sh` → `bundle_headers.sh`
-- [x] Rename `build_ios_xcframework.sh` → `build_binaries_ios.sh`
+- [x] Legacy rename `bundle_ios_headers.sh` → `bundle_headers.sh`
+- [x] Use `tool/build.dart` for iOS binaries
 - [x] Refactor `build-ios-xcframework` → `build-ios-native` workflow
-- [x] Create `build_binaries_android.sh`
+- [x] Use `tool/build.dart` for Android binaries
 - [x] Create `build-android-native` workflow
 - [x] Remove `download_libs.sh` (v0.1.3 - manual download only)
 - [x] Update `android/build.gradle` for detection-only logic
@@ -379,7 +379,7 @@ The bootstrap and CI scripts now guard simple counters with `((++var)) || true` 
 - [x] Refactor `build-ios` workflow
 - [x] Update `release` workflow
 - [x] Update `build-release` pipeline
-- [x] Create `build_binaries_linux.sh`
+- [x] Use `tool/build.dart` for Linux binaries
 - [x] Create `build-and-release-linux-platform` workflow (GitHub Actions)
 - [x] Update `RELEASE.md` with Linux installation instructions
 - [x] Test end-to-end pipeline

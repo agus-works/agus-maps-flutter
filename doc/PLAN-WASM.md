@@ -957,7 +957,7 @@ void _handlePointerEvent(PointerEvent event) {
 - Basic offline rendering in browser
 
 **Deliverables:**
-- `scripts/build_wasm.sh` - Emscripten compilation
+- Dart build tool WASM target (planned) - Emscripten compilation
 - `src/AgusWebGlContextFactory.cpp` - WebGL backend
 - `web/` directory with example HTML + JS
 - WASM binary + bundled assets (~150 MB)
@@ -1194,10 +1194,10 @@ void _handlePointerEvent(PointerEvent event) {
    - Measure uncompressed and gzipped sizes
    - Identify largest components (libraries)
 
-3. **Create WASM Build Script**
-   - `scripts/build_wasm.sh` with Emscripten CMake
-   - Set up cross-platform (macOS/Linux support)
-   - Document build requirements
+3. **Create WASM Build Target**
+  - Dart build tool WASM target with Emscripten CMake
+  - Set up cross-platform (macOS/Linux support)
+  - Document build requirements
 
 ### Next Phases (Weeks 2-4)
 
