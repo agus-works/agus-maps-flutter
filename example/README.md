@@ -56,6 +56,7 @@ The `agus_maps_flutter` plugin and this example app demonstrate:
 - 🖐️ **Gesture Support** — Pan, pinch-to-zoom, rotation (multitouch)
 - 🖱️ **macOS Trackpad Zoom** — Pinch or two-finger parallel swipe (Google Maps-style) with cursor-centered zoom
 - 📐 **Responsive** — Automatically handles resize and device pixel ratio
+- 🔍 **DPI-Aware Label Scaling** — Adjustable map label scale with persistent settings
 - 🔌 **Simple API** — Drop-in `AgusMap` widget with `AgusMapController`
 - **Fuzzy Search API** — Fast offline search logic for finding map regions
 
@@ -72,6 +73,7 @@ The example app implements a full-featured map viewer including:
   - **Gesture Support**: Pan, pinch-to-zoom, and rotation.
   - **Trackpad Support**: Native macOS trackpad gestures (pinch/swipe).
 - **Responsive UI**: Adapts layout for mobile and desktop window sizes.
+- **Settings**: Map label scale slider (persistent) for DPI/visual scaling.
 
 ## Getting Started
 

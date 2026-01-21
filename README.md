@@ -495,6 +495,7 @@ AgusMap(
   initialLat: 36.1408,
   initialLon: -5.3536,
   initialZoom: 14,
+  userScale: 1.0, // Optional: adjust label scale (DPI-aware)
   onMapReady: () => print('Map is ready!'),
 )
 ```

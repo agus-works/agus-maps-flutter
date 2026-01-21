@@ -1,3 +1,45 @@
+## 0.1.17
+
+### Map Rendering & UX
+
+* **Dynamic visual scaling**: Added a `density` parameter to `createMapSurface` and `resizeMapSurface`, enabling DPI-aware visual scaling without surface recreation. `AgusMap` now combines device pixel ratio with a user scale, and the example app includes a persistent map label scale slider.
+
+* **Windows pixel conversion**: Rounded physical pixel dimensions on Windows and improved diagnostics/texture filtering for clearer rendering.
+
+### Platform Fixes
+
+* **macOS shutdown stability**: Fixed quit hangs and Cmd+Q aborts by making Metal context cleanup non-blocking and safer during teardown.
+
+### Build System & Tooling
+
+* **Windows data generation compatibility**: Desktop data generation now uses Git Bash on Windows and avoids multiprocessing in `libkomwm.py` via a dedicated patch.
+
+* **Map downloader enhancements**: Added force re-download and cache handling flags to `tool/map_downloader.dart`.
+
+* **Data tooling cleanup**: Removed symbol texture download logic from the data generation pipeline.
+
+* **Script cleanup**: Retired legacy bootstrap/patch validation scripts in favor of Dart hooks and `build_all` scripts.
+
+### CI/CD
+
+* **Windows-focused builds**: CI now enables CoMaps builds on Windows only and streamlines Python setup/submodule LFS handling.
+
+* **LFS reliability**: Added `git lfs pull` for nested submodules and improved logging during initialization.
+
+### Dependencies
+
+* **Tooling updates**: `archive` 4.0.7, `ffigen` 20.1.1, `flutter_lints` 6.0.0; CI Flutter updated to 3.38.7.
+
+### Documentation
+
+* **Windows assets guidance**: Documented extracted asset locations on Windows.
+
+* **CoMaps tag refresh**: Updated docs and scripts to `COMAPS_TAG` v2026.01.08-11.
+
+### Maintenance
+
+* **Example lockfiles**: Removed `path_provider_foundation` from iOS/macOS example Podfile locks.
+
 ## 0.1.16
 
 ### Windows Rendering

@@ -4,6 +4,10 @@ This document outlines the implementation plan for splitting the Android build p
 
 ## Overview
 
+### Status Update (v0.1.17+)
+
+The CI pipeline now uses Dart hooks (`tool/build.dart`) as the primary build orchestrator. Legacy bootstrap/build scripts referenced in the historical plan below were removed; only `scripts/build_all.*` and `scripts/bundle_headers.sh` remain as wrappers around the Dart build tool. For the current CI implementation, refer to [.github/workflows/devops.yml](.github/workflows/devops.yml).
+
 ### Goals
 
 1. **Split Android build** into two stages: native library build and example app build
@@ -20,29 +24,17 @@ This document outlines the implementation plan for splitting the Android build p
 
 > **Note:** Individual platform zips (`agus-binaries-ios.zip`, `agus-binaries-android.zip`, etc.) are generated as intermediate CI artifacts but are NOT published to GitHub Releases. Only the unified package is published.
 
-### Script Naming Convention
+### Script Naming Convention (Current)
 
-| Bash Script (Linux/macOS) | PowerShell Script (Windows) | Purpose |
-|---------------------------|----------------------------|---------|
-| `bundle_headers.sh` | — | Bundle shared headers (platform-agnostic) |
-| `build_binaries_ios.sh` | — | Build iOS XCFramework |
-| `build_binaries_macos.sh` | — | Build macOS XCFramework |
-| `build_binaries_android.sh` | `build_binaries_android.ps1` | Build Android native libs |
-| `build_binaries_linux.sh` | — | Build Linux native libs |
-| — | `build_binaries_windows.ps1` | Build Windows native libs |
-| — | `bootstrap_windows.ps1` | Bootstrap Windows development environment |
-| `bootstrap_android.sh` | `bootstrap_android.ps1` | Bootstrap Android dependencies |
-| `bootstrap_ios.sh` | — | Bootstrap iOS dependencies |
-| `bootstrap_macos.sh` | — | Bootstrap macOS dependencies |
-| `bootstrap_common.sh` | `BootstrapCommon.psm1` | Shared bootstrap utilities module |
-| `fetch_comaps.sh` | `fetch_comaps.ps1` | Clone/update CoMaps source |
-| `apply_comaps_patches.sh` | `apply_comaps_patches.ps1` | Apply patches to CoMaps |
-| `copy_comaps_data.sh` | `copy_comaps_data.ps1` | Copy CoMaps data files |
-| `regenerate_patches.sh` | `regenerate_patches.ps1` | Regenerate patches from thirdparty changes |
-| `validate_patches.sh` | `validate_patches.ps1` | Validate patches match current state |
+Most legacy bootstrap/build scripts were removed in favor of Dart hooks. CI and local builds now use the following helpers:
 
-> **Note:** Windows developers can use the `.ps1` PowerShell scripts for local development and testing. The CI/CD pipeline uses bash scripts on Linux/macOS runners.
->
+| Script | Purpose |
+|--------|---------|
+| `tool/build.dart` | Primary build orchestration (bootstrap, patches, data generation, native builds) |
+| `scripts/build_all.sh` | Local macOS/Linux build wrapper for Dart hooks |
+| `scripts/build_all.ps1` | Local Windows build wrapper for Dart hooks |
+| `scripts/bundle_headers.sh` | Bundle shared headers artifact for CI/release packaging |
+
 > **Consumer Note (v0.1.2+):** Consumers should download the unified binary package from GitHub Releases and extract it directly to their Flutter app root. No auto-download scripts are used - the build systems simply detect pre-built binaries.
 
 ## Pipeline Architecture

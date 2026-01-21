@@ -42,8 +42,8 @@ cd agus-maps-flutter
 # or
 .\scripts\build_all.ps1  # Windows PowerShell 7+
 
-# For quicker iteration, use bootstrap script
-./scripts/bootstrap.sh
+# Targeted native builds (optional)
+dart run tool/build.dart --build-binaries --platform <platform>
 ```
 
 See **[CONTRIBUTING.md](CONTRIBUTING.md#development-setup)** for complete setup instructions and prerequisites.
@@ -346,14 +346,16 @@ Scroll/pan the map by pixel distance.
 Create a map rendering surface with given dimensions.
 - **Parameters** (all optional):
   - `width`, `height`: Physical pixel dimensions (defaults to screen size)
-  - `density`: Device pixel ratio (e.g., `2.0` for Retina displays)
+  - `density`: Device pixel ratio / visual scale (e.g., `2.0` for Retina displays). On Windows this enables DPI-aware label scaling without recreating the surface.
 - **Returns**: Texture ID for Flutter `Texture` widget
 - **Implementation**: MethodChannel-based, platform-specific (Android/iOS/macOS/Linux/Windows)
 - **Platforms**: All
 
-#### `resizeMapSurface(int width, int height) -> Future<void>`
+#### `resizeMapSurface(int width, int height, {double? density}) -> Future<void>`
 Resize the map surface to new dimensions.
-- **Parameters**: `width`, `height`: New physical pixel dimensions
+- **Parameters**:
+  - `width`, `height`: New physical pixel dimensions
+  - `density`: Optional visual scale for DPI changes (Windows)
 - **Implementation**: MethodChannel-based, fully implemented
 - **Platforms**: All
 
@@ -368,6 +370,7 @@ Main Flutter widget that displays a CoMaps map.
 - `onMapReady`: Callback when map is ready
 - `controller`: `AgusMapController` for programmatic control
 - `isVisible`: Whether map is currently visible (for `IndexedStack` optimization)
+- `userScale`: Visual scale multiplier for labels (combined with device pixel ratio)
 
 **Implementation**: Fully implemented with gesture handling, surface management, and visibility optimization
 

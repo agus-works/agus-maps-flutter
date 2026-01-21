@@ -70,16 +70,17 @@ dart run ffigen --config ffigen.yaml
 - Android SDK with NDK 27.3+
 - CMake 4.2+
 - Ninja build system
+- Python 3 with the `protobuf` module (`pip install protobuf`)
 - Git (with ability to initialize submodules)
 - **macOS** for iOS, macOS, and Android builds
-- **Windows** with PowerShell 7+ for Windows and Android builds
+- **Windows** with PowerShell 7+ and Git Bash (data generation) for Windows and Android builds
 - **Linux** (Ubuntu 22.04+ or equivalent) for Linux and Android builds
 
 > **Important for Contributors:** Do NOT set the `AGUS_MAPS_HOME` environment variable when working on the plugin. The build scripts handle everything automatically by building from source. `AGUS_MAPS_HOME` is only for **consumers** of the published plugin who download the pre-built SDK.
 
 ### Initial Setup
 
-We provide **unified build scripts** that handle the entire build process from source:
+We provide **unified build scripts** that handle the entire build process from source via Dart hooks (`tool/build.dart`):
 
 | Build Machine | Target Platforms | Recommended Script |
 |---------------|------------------|-------------------|
@@ -88,13 +89,12 @@ We provide **unified build scripts** that handle the entire build process from s
 | **Linux** | Android, Linux | `./scripts/build_all.sh` |
 
 The `build_all` scripts handle:
-1. Fetching CoMaps source code at the correct version
-2. Applying ALL patches (superset for all platforms)
-3. Initializing ALL submodules (required for patches)
-4. Building Boost headers
-5. Generating and copying CoMaps data files
-6. Downloading base MWM samples (World, Gibraltar)
-7. Platform-specific setup (XCFrameworks for iOS/macOS, vcpkg for Windows)
+1. Bootstrapping CoMaps source (clone, tag checkout, submodules, LFS)
+2. Applying patches (superset for all platforms)
+3. Building Boost headers
+4. Generating and copying CoMaps data files
+5. Downloading base MWM samples (World, WorldCoasts, Gibraltar)
+6. Building native binaries for the host-supported platforms
 
 **macOS (targets: Android, iOS, macOS):**
 ```bash
@@ -104,9 +104,6 @@ cd agus-maps-flutter
 
 # Run unified build script (builds ALL targets from source)
 ./scripts/build_all.sh
-
-# Or use bootstrap for quicker setup (downloads pre-built binaries)
-./scripts/bootstrap.sh
 
 # Build and run example
 cd example
@@ -121,9 +118,6 @@ cd agus-maps-flutter
 
 # Run unified build script (builds ALL targets from source)
 .\scripts\build_all.ps1
-
-# Or use bootstrap for quicker setup (downloads pre-built binaries)
-.\scripts\bootstrap.ps1
 
 # Build and run example
 cd example
@@ -148,7 +142,7 @@ cd example
 flutter run -d linux
 ```
 
-### Build Script Options
+### Build Script Usage
 
 The `build_all` scripts are the recommended way to build everything from source:
 
@@ -162,51 +156,17 @@ The `build_all` scripts are the recommended way to build everything from source:
 .\scripts\build_all.ps1                   # Full build: fetch, patch, build binaries, build apps
 ```
 
-For quicker iteration during development, use the bootstrap scripts:
+For targeted native builds, use the Dart build tool directly:
 
-**macOS/Linux (`bootstrap.sh`):**
 ```bash
-./scripts/bootstrap.sh                    # Default: download pre-built binaries
-./scripts/bootstrap.sh --build-binaries    # Build all binaries from source (~1 hour total)
-./scripts/bootstrap.sh --no-cache          # Disable local caching
+dart run tool/build.dart --build-binaries --platform <platform>
 ```
 
-**Windows (`bootstrap.ps1`):**
-```powershell
-.\scripts\bootstrap.ps1                   # Default
-.\scripts\bootstrap.ps1 -NoCache           # Disable local caching
-.\scripts\bootstrap.ps1 -SkipPatches       # Skip patch application (debugging)
-.\scripts\bootstrap.ps1 -VcpkgRoot D:\vcpkg # Custom vcpkg location
-```
+Add `--skip-patches` if you need to debug patch application.
 
 ### Build Script Architecture
 
-The build and bootstrap scripts share common logic:
-- **Bash**: `scripts/bootstrap_common.sh` (sourced by `bootstrap.sh` and `build_all.sh`)
-- **PowerShell**: `scripts/BootstrapCommon.psm1` (imported by `bootstrap.ps1` and `build_all.ps1`)
-
-This ensures:
-1. Same CoMaps tag is used across all platforms
-2. ALL patches are applied (superset for all platforms)
-3. ALL submodules are fully initialized (required for patches like gflags)
-4. Boost headers are built consistently
-5. Data files are copied to example assets
-6. XCFrameworks downloaded/built for iOS and macOS (macOS only)
-7. vcpkg dependencies installed for Windows (Windows only)
-
-### Local Cache Mechanism (Development Only)
-
-To speed up patch iteration during development, the bootstrap scripts implement local caching:
-
-- **macOS**: After fresh clone, `thirdparty/` is compressed to `.thirdparty.tar.bz2`
-- **Windows**: After fresh clone, `thirdparty/` is compressed to `.thirdparty.7z` (requires 7-Zip)
-
-The cache is created **before patches are applied**, allowing you to:
-1. Delete the `thirdparty/` folder
-2. Re-run bootstrap
-3. Quickly restore from cache and re-apply patches
-
-> **Note:** Caching is automatically disabled in CI environments (`$CI=true`) to avoid interfering with CI-specific caching mechanisms.
+`build_all` is a thin wrapper around the Dart hooks in `tool/build.dart`. It orchestrates the CoMaps checkout, patch application, Boost headers, data generation, and native builds. Standalone bootstrap/patch scripts are no longer required.
 
 ### Rebuilding After Changes
 
@@ -222,16 +182,12 @@ flutter run
 
 ## CoMaps Patches
 
-The `thirdparty/comaps` directory contains a patched checkout of CoMaps. Patches are maintained in `patches/comaps/` and applied via:
+The `thirdparty/comaps` directory contains a patched checkout of CoMaps. Patches are maintained in `patches/comaps/` and applied automatically by the Dart build tool (`tool/build.dart`) as part of `build_all` or targeted builds.
 
-**Linux/macOS:**
+To skip patch application (debugging), run:
+
 ```bash
-./scripts/apply_comaps_patches.sh
-```
-
-**Windows PowerShell:**
-```powershell
-.\scripts\apply_comaps_patches.ps1
+dart run tool/build.dart --skip-patches
 ```
 
 | Patch | Purpose |
