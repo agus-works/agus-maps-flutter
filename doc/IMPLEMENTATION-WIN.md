@@ -16,10 +16,10 @@
 When you run the Windows example exe, assets are **extracted into the user’s Documents folder**, not next to the executable.
 
 **Exact locations (relative to the user home directory):**
-- `Documents\agus_maps_flutter\maps\` → extracted `.mwm` map files
-- `Documents\agus_maps_flutter\` → extracted CoMaps data files (styles, symbols, classificator, etc.)
+- `%USERPROFILE%\Documents\agus_maps_flutter\maps\` → extracted `.mwm` map files
+- `%USERPROFILE%\Documents\agus_maps_flutter\` → extracted CoMaps data files (styles, symbols, classificator, etc.)
 
-If you delete these folders (or the marker file `Documents\agus_maps_flutter\.comaps_data_extracted`), the next app run will re-extract from bundled `flutter_assets`.
+If you delete these folders (or the marker file `%USERPROFILE%\Documents\agus_maps_flutter\.comaps_data_extracted`), the next app run will re-extract from bundled `flutter_assets`.
 
 ## Cross-Platform Rendering Comparison
 
@@ -1139,7 +1139,7 @@ This is supported by patches 0030 and 0031 which modify `thread_checker.cpp` and
 Windows builds include automatic crash dump generation for debugging. When the app crashes, a minidump file is written to:
 
 ```
-Documents\agus_maps_flutter\agus_maps_crash_YYYYMMDD_HHMMSS.dmp
+%USERPROFILE%\Documents\agus_maps_flutter\agus_maps_crash_YYYYMMDD_HHMMSS.dmp
 ```
 
 This file can be loaded in Visual Studio or WinDbg for post-mortem debugging.
@@ -1573,8 +1573,8 @@ endif()
    - **Reference:** CoMaps' `OGLContext::Init()` in `drape/oglcontext.cpp` shows the expected initialization.
 
 11. **Stale data extraction:** Old data files without symbol textures.
-   - Delete `Documents\agus_maps_flutter\.comaps_data_extracted` marker file
-   - Delete `Documents\agus_maps_flutter\` folder contents
+   - Delete `%USERPROFILE%\Documents\agus_maps_flutter\.comaps_data_extracted` marker file
+   - Delete `%USERPROFILE%\Documents\agus_maps_flutter\` folder contents
    - Rebuild and run to force fresh extraction
 
 12. **ApplyFramebuffer overriding postprocess FBO:**
