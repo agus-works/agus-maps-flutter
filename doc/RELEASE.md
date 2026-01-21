@@ -515,6 +515,47 @@ The example app includes minimal map data for testing. For production use, you'l
 | "Cannot verify developer" | Right-click > Open > Open |
 | Blank map | Ensure map data files are in place |
 
+### iOS/macOS Build Failures (SDK Consumers)
+
+| Issue | Solution |
+|-------|----------|
+| `'platform/platform.hpp' file not found` | Clear cached headers and re-run pod install (see below) |
+| `fatal error: '...' file not found` after SDK switch | Clear cached headers and re-run pod install (see below) |
+| Build worked before but fails after changing `AGUS_MAPS_HOME` | Clear cached headers and re-run pod install (see below) |
+
+#### Clearing Cached Headers When Switching SDK Versions
+
+The plugin caches headers and frameworks from `AGUS_MAPS_HOME` in the pub.dev cache. If you switch SDK versions or change the SDK path, stale cached files may cause build failures with missing header errors.
+
+**Solution:**
+
+```bash
+# 1. Clear the cached headers and frameworks from pub cache
+rm -rf ~/.pub-cache/hosted/pub.dev/agus_maps_flutter-*/macos/Headers
+rm -rf ~/.pub-cache/hosted/pub.dev/agus_maps_flutter-*/macos/Frameworks
+rm -rf ~/.pub-cache/hosted/pub.dev/agus_maps_flutter-*/ios/Headers
+rm -rf ~/.pub-cache/hosted/pub.dev/agus_maps_flutter-*/ios/Frameworks
+
+# 2. Clean the app build
+cd your_app
+flutter clean
+
+# 3. Re-run pub get
+flutter pub get
+
+# 4. Re-run pod install with the correct AGUS_MAPS_HOME
+# macOS:
+cd macos && AGUS_MAPS_HOME=/path/to/agus-maps-sdk-vX.Y.Z pod install && cd ..
+
+# iOS:
+cd ios && AGUS_MAPS_HOME=/path/to/agus-maps-sdk-vX.Y.Z pod install && cd ..
+
+# 5. Build again
+flutter build macos --release  # or ios, etc.
+```
+
+> **Why does this happen?** The podspec copies headers from `AGUS_MAPS_HOME` during `pod install` and stores a marker file tracking the SDK path. If you previously used a different SDK path (even if deleted), the marker may point to the old location and the cached headers may be incomplete or outdated. Clearing the cache forces a fresh copy from the current SDK.
+
 
 ## Building from Source
 

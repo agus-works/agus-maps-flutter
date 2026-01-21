@@ -440,11 +440,30 @@ If you can successfully build and run the quickstart app, your development envir
 
 6. **Copy the new assets** to your app root (overwriting old ones).
 
-7. Rebuild your app:
+7. **Clear cached headers** (iOS/macOS only):
+   ```bash
+   # Clear stale headers from pub cache
+   rm -rf ~/.pub-cache/hosted/pub.dev/agus_maps_flutter-*/macos/Headers
+   rm -rf ~/.pub-cache/hosted/pub.dev/agus_maps_flutter-*/macos/Frameworks
+   rm -rf ~/.pub-cache/hosted/pub.dev/agus_maps_flutter-*/ios/Headers
+   rm -rf ~/.pub-cache/hosted/pub.dev/agus_maps_flutter-*/ios/Frameworks
+   ```
+
+8. Rebuild your app:
    ```bash
    flutter clean
+   flutter pub get
+   
+   # For macOS:
+   cd macos && AGUS_MAPS_HOME=/path/to/new-sdk pod install && cd ..
+   
+   # For iOS:
+   cd ios && AGUS_MAPS_HOME=/path/to/new-sdk pod install && cd ..
+   
    flutter run
    ```
+
+> **⚠️ iOS/macOS Note:** The plugin caches native headers from `AGUS_MAPS_HOME` during `pod install`. When upgrading SDK versions or switching SDK paths, you **must** clear the cached headers (step 7) to avoid build failures with "file not found" errors. See [Troubleshooting](doc/RELEASE.md#clearing-cached-headers-when-switching-sdk-versions) for details.
 
 ### Alternative: Vendored Plugin
 
