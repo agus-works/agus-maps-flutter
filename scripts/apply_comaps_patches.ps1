@@ -86,13 +86,13 @@ try {
         Write-Host "Resetting working tree to HEAD..." -ForegroundColor Yellow
         
         # Force checkout to discard all local changes
-        & git checkout --force HEAD 2>&1 | Out-Null
-        & git clean -fd 2>&1 | Out-Null
+        git checkout --force HEAD
+        git clean -fd
         
         # Reset submodules
         Write-Host "Resetting submodules..." -ForegroundColor Yellow
-        & git submodule foreach --recursive 'git checkout --force HEAD 2>/dev/null || true' 2>&1 | Out-Null
-        & git submodule foreach --recursive 'git clean -fd 2>/dev/null || true' 2>&1 | Out-Null
+        git submodule foreach --recursive 'git checkout --force HEAD'
+        git submodule foreach --recursive 'git clean -fd'
         
         Write-Host "Working tree reset complete" -ForegroundColor Green
         Write-Host ""
