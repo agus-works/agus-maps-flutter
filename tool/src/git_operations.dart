@@ -103,7 +103,7 @@ Future<void> initSubmodules({String? comapsDir}) async {
   print('Download LFS recursively');
   await runProcess(
     'git',
-    ['submodule', 'foreach', '--init', '--recursive', 'git', 'lfs', 'pull'],
+    ['submodule', 'foreach', '--recursive', 'git', 'lfs', 'pull'],
     workingDirectory: dir,
   );
 }
