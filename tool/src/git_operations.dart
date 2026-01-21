@@ -87,9 +87,24 @@ Future<void> initSubmodules({String? comapsDir}) async {
   }
   
   // Initialize submodules
+  print('Initializing submodules');
   await runProcess(
     'git',
     ['submodule', 'update', '--init', '--recursive'],
+    workingDirectory: dir,
+  );
+  
+  print('Download LFS on CoMaps');
+  await runProcess(
+    'git',
+    ['lfs', 'pull'],
+    workingDirectory: dir,
+  );
+
+  print('Download LFS recursively');
+  await runProcess(
+    'git',
+    ['submodule', 'foreach', '--init', '--recursive', 'git', 'lfs', 'pull'],
     workingDirectory: dir,
   );
 }

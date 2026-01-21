@@ -236,10 +236,10 @@ function Bootstrap-CoMaps {
                 Write-LogInfo "Already at $Tag ($currentHead). Skipping fetch and update."
             } else {
                 Write-LogInfo "Updating tags..."
-                & git fetch --tags --prune 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+                git fetch --tags --prune
                 
                 Write-LogInfo "Checking out tag: $Tag"
-                & git checkout --detach $Tag 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+                git checkout --detach $Tag
                 
                 if ($LASTEXITCODE -ne 0) {
                     throw "Failed to checkout tag: $Tag"
@@ -247,7 +247,11 @@ function Bootstrap-CoMaps {
 
                 # Only update submodules if we actually changed something or if requested
                 Write-LogInfo "Updating submodules..."
-                & git submodule update --init --recursive 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+                git submodule update --init --recursive
+
+                Write-LogInfo "Downloading LFS submodules..."
+                git lfs pull
+                git submodule foreach --recursive 'git lfs pull'
             }
         } finally {
             Pop-Location
@@ -263,7 +267,7 @@ function Bootstrap-CoMaps {
         
         # Clone without checkout to configure git settings first
         $cloneArgs = @('clone', '--no-checkout', '--branch', $Tag, $script:COMAPS_GIT_URL, $comapsDir)
-        & git @cloneArgs 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+        git @cloneArgs
         
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to clone CoMaps repository"
@@ -272,9 +276,10 @@ function Bootstrap-CoMaps {
         # Configure git settings before checkout
         Push-Location $comapsDir
         try {
-            & git config core.autocrlf false
-            & git config core.eol lf
-            & git checkout HEAD 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+            git config core.autocrlf false
+            git config core.eol lf
+            git config --global core.symlinks true
+            git checkout HEAD
         } finally {
             Pop-Location
         }
@@ -283,10 +288,16 @@ function Bootstrap-CoMaps {
     }
     
     # Initialize ALL submodules recursively - critical for patches
-    Write-LogInfo "Initializing submodules (this may take a while)..."
     Push-Location $comapsDir
+    
     try {
-        & git submodule update --init --recursive 2>&1 | ForEach-Object { Write-Host $_ -ForegroundColor Gray }
+        Write-LogInfo "Initializing submodules (this may take a while)..."
+        git submodule update --init --recursive
+        
+        Write-LogInfo "Downloading LFS submodules..."
+        git lfs pull
+        git submodule foreach --recursive 'git lfs pull'
+
         if ($LASTEXITCODE -ne 0) {
             Write-LogWarn "Submodule initialization had issues (may be non-fatal)"
         }
@@ -344,13 +355,18 @@ function Bootstrap-ApplyPatches {
         # Reset working tree before applying patches
         if (-not $NoReset -and -not $DryRun) {
             Write-LogInfo "Resetting working tree to HEAD..."
-            & git checkout --force HEAD 2>&1 | Out-Null
-            & git clean -fd 2>&1 | Out-Null
+            git checkout --force HEAD
+            git clean -fd
             
             # Reset submodules
             Write-LogInfo "Resetting submodules..."
-            & git submodule foreach --recursive 'git checkout --force HEAD 2>/dev/null || true' 2>&1 | Out-Null
-            & git submodule foreach --recursive 'git clean -fd 2>/dev/null || true' 2>&1 | Out-Null
+            git submodule foreach --recursive 'git checkout --force HEAD'
+            git submodule foreach --recursive 'git clean -fd'
+
+            # Downloading LFS submodules
+            Write-LogInfo "Downloading LFS submodules..."
+            git lfs pull
+            git submodule foreach --recursive 'git lfs pull'
         }
         
         $applied = 0
