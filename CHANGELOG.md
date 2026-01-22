@@ -1,3 +1,15 @@
+## 0.1.18
+
+### Map View
+
+* **Initial Viewport Fix**: Delayed initial map view setup to ensure `onMapReady` is called first and map registration completes, preventing race conditions during startup.
+
+### Documentation
+
+* **Cached headers troubleshooting**: Updated README and RELEASE.md with instructions for clearing cached headers on iOS/macOS to resolve potential build issues.
+
+* **Project management guides**: Added `doc/ARCHIVING.md` and `doc/COPYING.md` to provide standardized guidelines for archiving and copying the project directory.
+
 ## 0.1.17
 
 ### Map Rendering & UX
