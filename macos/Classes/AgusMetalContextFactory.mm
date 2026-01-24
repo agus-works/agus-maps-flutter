@@ -279,19 +279,6 @@ public:
         LOG(LINFO, ("DrawMetalContext::Present() ENTER, count:", presentCount,
                     "lastEndRendering:", m_lastEndRenderingCount,
                     "activeRenderCycles:", m_activeRenderCycles));
-        if (kUseLegacyPresent) {
-            // Legacy behavior: rely on base Present() to commit and wait.
-            dp::metal::MetalBaseContext::Present();
-
-            // For the first few frames after DrapeEngine creation, always notify Flutter.
-            if (m_initialFrameCount > 0) {
-                m_initialFrameCount--;
-                agus_notify_frame_ready();
-            }
-
-            LOG(LINFO, ("DrawMetalContext::Present() EXIT (legacy), count:", presentCount));
-            return;
-        }
 
         // WORKAROUND for macOS: We're rendering to an offscreen CVPixelBuffer-backed texture,
         // NOT to a CAMetalLayer/screen. The base MetalBaseContext::Present() does:
@@ -355,7 +342,16 @@ public:
 
         LOG(LINFO, ("DrawMetalContext::Present() EXIT, count:", presentCount));
     }
-    
+
+private:
+    id<MTLTexture> m_renderTexture;
+    int m_initialFrameCount = 120;  // Notify for ~2 seconds at 60fps to ensure initial content shows
+    bool m_renderCycleActive = false;  // Track if BeginRendering was called without Present
+    int m_activeRenderCycles = 0;  // Track number of render cycles that haven't completed Present()
+    int m_lastEndRenderingCount = 0;  // Last EndRendering count for diagnostics
+    int m_lastPresentCount = 0;  // Last Present count for diagnostics
+};
+
 class UploadMetalContext : public dp::metal::MetalBaseContext
 {
 public:
