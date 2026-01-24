@@ -279,8 +279,9 @@ jobs:
             echo "✓ Metal shaders compiled successfully"
             ls -lh ios/Resources/shaders_metal.metallib
           else
-            echo "⚠ Metal shader compilation skipped or failed"
-            echo "The app may fall back to OpenGL rendering"
+            echo "ERROR: Metal shader compilation failed or produced no metallib"
+            echo "iOS/macOS rendering requires shaders_metal.metallib"
+            exit 1
           fi
 
       - name: Create iOS Binaries Archive

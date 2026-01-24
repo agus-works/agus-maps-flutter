@@ -161,8 +161,6 @@ static id<MTLTexture> g_currentRenderTexture = nil;
 // Mutex for thread-safe texture swapping during resize.
 // Use a heap-allocated mutex to avoid static destruction order issues during app termination.
 static std::mutex * g_textureMutex = new std::mutex();
-// Toggle legacy Present() path to isolate rendering regressions.
-static const bool kUseLegacyPresent = true;
 
 namespace
 {
@@ -259,18 +257,6 @@ public:
         
         // Increment active render cycle count - this should be decremented by Present()
         m_activeRenderCycles++;
-
-        if (kUseLegacyPresent) {
-            // WORKAROUND: For frames after the first one (RenderEmptyFrame),
-            // the CoMaps render loop seems to get stuck and not call Present().
-            // Force a Present() call after every EndRendering() to ensure the frame is committed.
-            // The first frame (RenderEmptyFrame) will get Present() called twice but that's OK.
-            if (endCount >= 1) {
-                LOG(LINFO, ("DrawMetalContext::EndRendering() WORKAROUND: Forcing Present() after EndRendering",
-                            "endCount:", endCount));
-                Present();
-            }
-        }
     }
     
     /// Override Present() - also notifies Flutter for initial frames
@@ -370,21 +356,6 @@ public:
         LOG(LINFO, ("DrawMetalContext::Present() EXIT, count:", presentCount));
     }
     
-    /// Check if a render cycle was started but not completed with Present()
-    bool IsRenderCycleIncomplete() const { return m_renderCycleActive; }
-    
-private:
-    id<MTLTexture> m_renderTexture;
-    int m_initialFrameCount = 120;  // Notify for ~2 seconds at 60fps to ensure initial content shows
-    bool m_renderCycleActive = false;  // Track if BeginRendering was called without Present
-    int m_activeRenderCycles = 0;  // Track number of render cycles that haven't completed Present()
-    int m_lastEndRenderingCount = 0;  // Last EndRendering count for diagnostics
-    int m_lastPresentCount = 0;  // Last Present count for diagnostics
-};
-
-/// Upload context for background texture uploads
-/// Shares the Metal device with DrawMetalContext
-/// This context is used for uploading textures/resources in background threads
 class UploadMetalContext : public dp::metal::MetalBaseContext
 {
 public:

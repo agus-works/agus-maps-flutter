@@ -1,3 +1,9 @@
+## 0.1.20
+
+### macOS/iOS Rendering
+
+* **SDK shader validation**: CI now fails if `shaders_metal.metallib` is missing, preventing release of iOS/macOS SDK artifacts that would render blank.
+
 ## 0.1.19
 
 ### macOS/iOS Rendering
