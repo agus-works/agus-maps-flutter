@@ -16,15 +16,43 @@ env:
 
 jobs:
   # ==========================================================================
+  # Detect if current commit is tagged
+  # ==========================================================================
+  detect-tag:
+    name: Detect tag on commit
+    runs-on: ubuntu-latest
+    outputs:
+      has_tag: ${{ steps.tag-check.outputs.has_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check for release tag on commit
+        id: tag-check
+        run: |
+          TAGS=$(git tag --points-at "$GITHUB_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          if [ -n "$TAGS" ]; then
+            echo "has_tag=true" >> $GITHUB_OUTPUT
+            echo "Found release tag(s): $TAGS"
+          else
+            echo "has_tag=false" >> $GITHUB_OUTPUT
+            echo "No release tags on this commit"
+          fi
+
+  # ==========================================================================
   # macOS Job: Builds iOS and macOS
   # ==========================================================================
   build-and-release-mac-platforms:
     name: Build iOS and macOS
     # Toggle: set to 'true' to run macOS, 'false' to skip (saves cost)
-    if: true
+    if: ${{ github.ref_type == 'tag' || needs.detect-tag.outputs.has_tag != 'true' }}
     runs-on: macos-latest
     permissions:
       contents: write
+    needs: detect-tag
     steps:
       # ======================================================================
       # Setup
@@ -534,10 +562,11 @@ jobs:
   build-and-release-android-platform:
     name: Build Android
     # Toggle: set to 'true' to run Android, 'false' to skip (saves cost)
-    if: true
+    if: ${{ github.ref_type == 'tag' || needs.detect-tag.outputs.has_tag != 'true' }}
     runs-on: macos-latest
     permissions:
       contents: write
+    needs: detect-tag
     steps:
       # ======================================================================
       # Setup
@@ -842,10 +871,11 @@ jobs:
   build-and-release-windows-platform:
     name: Build Windows
     # Toggle: set to 'true' to run Windows, 'false' to skip (saves cost)
-    if: true
+    if: ${{ github.ref_type == 'tag' || needs.detect-tag.outputs.has_tag != 'true' }}
     runs-on: windows-latest
     permissions:
       contents: write
+    needs: detect-tag
     steps:
       # ======================================================================
       # Setup
@@ -1177,10 +1207,11 @@ jobs:
   build-and-release-linux-platform:
     name: Build Linux
     # Toggle: set to 'true' to run Linux, 'false' to skip (saves cost)
-    if: true
+    if: ${{ github.ref_type == 'tag' || needs.detect-tag.outputs.has_tag != 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    needs: detect-tag
     steps:
       # ======================================================================
       # Setup
