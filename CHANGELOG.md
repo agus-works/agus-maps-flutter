@@ -1,3 +1,10 @@
+## 0.1.19
+
+### macOS/iOS Rendering
+
+* **Regression isolation toggle**: Added a legacy Metal `Present()` path toggle to help diagnose broken initial rendering on macOS/iOS SDK consumers introduced after v0.1.14.
+* **Documentation note**: Documented the regression investigation and the diagnostic toggle location in macOS implementation notes.
+
 ## 0.1.18
 
 ### Map View
