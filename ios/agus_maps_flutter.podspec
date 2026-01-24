@@ -80,7 +80,7 @@ if ENV['AGUS_MAPS_HOME']
 end
 Pod::Spec.new do |s|
   s.name             = 'agus_maps_flutter'
-  s.version          = '0.1.21'
+  s.version          = '0.1.22'
   s.summary          = 'High-performance offline maps for Flutter using CoMaps engine.'
   s.description      = <<-DESC
 A Flutter plugin that provides high-performance offline vector map rendering

@@ -320,7 +320,11 @@ public:
         }
 
         // Notify Flutter only after the GPU finishes the full command buffer.
-        bool shouldNotify = (notifyFlutter || currentCount <= 120);
+        // ALWAYS notify Flutter when we present, because CoMaps engine correctly handles
+        // idle suspension (stops calling Present). If Present is called, we have a new frame.
+        // We must notify Flutter to repaint the texture, otherwise the UI will stall
+        // even though the engine is rendering (as seen in the investigation logs).
+        bool shouldNotify = true;
         if (shouldNotify) {
             id<MTLCommandBuffer> completionBuffer = m_frameCommandBuffer;
             [completionBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {

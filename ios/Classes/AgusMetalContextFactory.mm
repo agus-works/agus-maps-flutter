@@ -329,7 +329,10 @@ public:
         // fill color (first pass) without roads/labels on iOS. Using a
         // completion handler guarantees Flutter samples a fully rendered frame
         // without blocking the render thread.
-        bool shouldNotify = (notifyFlutter || currentCount <= 120);
+        //
+        // ALWAYS notify Flutter when we present. CoMaps engine manages the render loop
+        // and suspends when idle, so continuous notification here is correct and efficient.
+        bool shouldNotify = true;
         if (shouldNotify) {
             id<MTLCommandBuffer> completionBuffer = m_frameCommandBuffer;
             [completionBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {

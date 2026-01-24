@@ -474,6 +474,17 @@ See [ISSUE-macos-resize-white-screen.md](ISSUE-macos-resize-white-screen.md) for
 - iOS: `AgusBridge.h` does NOT have `agus_native_resize_surface()` (iOS apps don't resize)
 - macOS: Has the additional function, debouncing, and thread synchronization for resize
 
+### Stalled Rendering on Interactive Gestures ✅ RESOLVED
+
+**Problem:** Users reported that the map view would stop updating (stall) after the first few seconds of interaction (pan/zoom), requiring a window resize to force a repaint. This was a regression introduced in v0.1.18.
+
+**Root Cause:** The `AgusMetalContextFactory` implementation included an optimization to stop notifying Flutter of new frames after the first 120 frames (2 seconds), relying instead on an `active_frame_callback` from the engine to signal updates. This callback proved unreliable for continuous interactive gestures, causing Flutter to miss frame updates even though the engine was rendering.
+
+**Solution:** Removed the frame count limit in `AgusMetalContextFactory::Present()`. We now **always** notify Flutter when a frame is presented. This is efficient because the CoMaps engine inherently suspends its render loop when idle, so `Present()` is only called when there is actual content to display.
+
+**Files Updated:**
+- `macos/Classes/AgusMetalContextFactory.mm`
+
 ### Multiple Displays
 
 macOS supports multiple displays with different scale factors. Consider:

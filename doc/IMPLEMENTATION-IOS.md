@@ -310,6 +310,14 @@ The active frame callback leverages CoMaps' existing efficiency:
 
 All CoMaps modifications are captured in `patches/comaps/0012-active-frame-callback.patch`, which is automatically applied by `tool/build.dart` during bootstrap.
 
+### Update (v0.1.22): Reliable Frame Notification
+
+While the Active Frame Callback mechanism remains in the codebase, **v0.1.22** introduced a critical fix to ensure rendering reliability. We discovered that relying solely on the callback for interactive frames could lead to stalled rendering (map freezing) during pan/zoom gestures.
+
+**The Fix:** `AgusMetalContextFactory.mm` now **always** notifies Flutter when `Present()` is called, regardless of the active frame callback.
+
+**Why:** The CoMaps engine naturally suspends its render loop when idle (no animations, no interaction). Therefore, `Present()` is only called when there is new content to show. By hooking into `Present()`, we guarantee that every frame produced by the GPU is signaled to Flutter, eliminating stalls while maintaining battery efficiency (since the engine itself still sleeps when inactive).
+
 
 ## XCFramework Distribution
 

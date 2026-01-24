@@ -1,3 +1,10 @@
+## 0.1.22
+
+### macOS/iOS Rendering
+
+* **Fixed Stalled Rendering**: Resolved a critical issue where the map would freeze during pan/zoom operations after the first few seconds of interaction. The fix ensures that Flutter is notified immediately whenever a new frame is presented by the Metal engine, bypassing a previous optimization that was causing missed frames during interactive gestures. This restores smooth, continuous map updates on both macOS and iOS.
+* **Documentation**: Updated implementation documentation for macOS and iOS to reflect the improved frame notification logic.
+
 ## 0.1.21
 
 ### Map View
