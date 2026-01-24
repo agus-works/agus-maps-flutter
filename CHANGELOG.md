@@ -1,3 +1,13 @@
+## 0.1.21
+
+### Map View
+
+* **Initial viewport ordering**: Restored v0.1.17 behavior by applying the initial `setView` before `onMapReady` to avoid delayed/blank initial renders for consumers.
+
+### macOS
+
+* **Metal context build fix**: Restored missing `DrawMetalContext` members and removed stale legacy-branch references to unblock macOS builds.
+
 ## 0.1.20
 
 ### macOS/iOS Rendering

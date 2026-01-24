@@ -411,20 +411,12 @@ class _AgusMapState extends State<AgusMap> {
       _currentSize = logicalSize;
     });
 
-    // Call onMapReady first so consumer can register maps
-    widget.onMapReady?.call();
-
-    // Set initial view AFTER onMapReady - maps must be registered first
-    // for the viewport to correctly show the desired location.
-    // Use a short delay to ensure map registration (which may be async) completes
-    // and tiles have a chance to load.
+    // Set initial view if specified
     if (widget.initialLat != null && widget.initialLon != null) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          setView(widget.initialLat!, widget.initialLon!, widget.initialZoom ?? 14);
-        }
-      });
+      setView(widget.initialLat!, widget.initialLon!, widget.initialZoom ?? 14);
     }
+
+    widget.onMapReady?.call();
   }
 
   Future<void> _handleResize(
