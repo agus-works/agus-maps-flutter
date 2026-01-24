@@ -422,6 +422,19 @@ presentation model is **command buffer commit + completion handler**, not drawab
 This prevents lock inversions during shutdown and keeps frame notifications consistent with
 fully-rendered frames.
 
+#### Regression Note: Broken Initial Render on macOS/iOS (v0.1.15+)
+
+**Symptom:** Plugin consumers using the unified SDK built after v0.1.14 reported broken or missing
+initial rendering on macOS/iOS, while v0.1.14 worked correctly.
+
+**Suspected Areas:**
+- Offscreen `Present()` changes in [macos/Classes/AgusMetalContextFactory.mm](macos/Classes/AgusMetalContextFactory.mm)
+- Dynamic visual scale updates in [macos/Classes/AgusMapsFlutterPlugin.swift](macos/Classes/AgusMapsFlutterPlugin.swift)
+
+**Temporary Diagnostic Toggle:** A legacy presentation path can be enabled to isolate the regression.
+See `kUseLegacyPresent` in [macos/Classes/AgusMetalContextFactory.mm](macos/Classes/AgusMetalContextFactory.mm).
+If rendering returns with legacy enabled, the new offscreen presentation path is the likely culprit.
+
 #### Follow-up: Shutdown Abort in `AgusMetalContextFactory` ✅ RESOLVED
 
 **Problem:** After fixing the quit hang, a crash remained on Cmd+Q with

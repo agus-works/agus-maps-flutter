@@ -161,6 +161,8 @@ static id<MTLTexture> g_currentRenderTexture = nil;
 // Mutex for thread-safe texture swapping during resize.
 // Use a heap-allocated mutex to avoid static destruction order issues during app termination.
 static std::mutex * g_textureMutex = new std::mutex();
+// Toggle legacy Present() path to isolate rendering regressions.
+static const bool kUseLegacyPresent = true;
 
 namespace
 {
@@ -257,6 +259,18 @@ public:
         
         // Increment active render cycle count - this should be decremented by Present()
         m_activeRenderCycles++;
+
+        if (kUseLegacyPresent) {
+            // WORKAROUND: For frames after the first one (RenderEmptyFrame),
+            // the CoMaps render loop seems to get stuck and not call Present().
+            // Force a Present() call after every EndRendering() to ensure the frame is committed.
+            // The first frame (RenderEmptyFrame) will get Present() called twice but that's OK.
+            if (endCount >= 1) {
+                LOG(LINFO, ("DrawMetalContext::EndRendering() WORKAROUND: Forcing Present() after EndRendering",
+                            "endCount:", endCount));
+                Present();
+            }
+        }
     }
     
     /// Override Present() - also notifies Flutter for initial frames
@@ -279,6 +293,19 @@ public:
         LOG(LINFO, ("DrawMetalContext::Present() ENTER, count:", presentCount,
                     "lastEndRendering:", m_lastEndRenderingCount,
                     "activeRenderCycles:", m_activeRenderCycles));
+        if (kUseLegacyPresent) {
+            // Legacy behavior: rely on base Present() to commit and wait.
+            dp::metal::MetalBaseContext::Present();
+
+            // For the first few frames after DrapeEngine creation, always notify Flutter.
+            if (m_initialFrameCount > 0) {
+                m_initialFrameCount--;
+                agus_notify_frame_ready();
+            }
+
+            LOG(LINFO, ("DrawMetalContext::Present() EXIT (legacy), count:", presentCount));
+            return;
+        }
 
         // WORKAROUND for macOS: We're rendering to an offscreen CVPixelBuffer-backed texture,
         // NOT to a CAMetalLayer/screen. The base MetalBaseContext::Present() does:
