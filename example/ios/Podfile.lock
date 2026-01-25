@@ -30,7 +30,7 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/storage_space/ios"
 
 SPEC CHECKSUMS:
-  agus_maps_flutter: 2e0ad928014e788ac4a70dee82bf0218d328d93e
+  agus_maps_flutter: e5fefe0372d6eb9d65753fb5febcb4e00592443a
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
