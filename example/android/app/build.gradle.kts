@@ -30,10 +30,6 @@ android {
         versionName = flutter.versionName
     }
 
-    aaptOptions {
-        noCompress("mwm")
-    }
-
 
     buildTypes {
         release {
@@ -41,6 +37,9 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+    androidResources {
+        noCompress += listOf("mwm")
     }
 }
 
