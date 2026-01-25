@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<journey name="Favorites Journey">
+    <description>User can click on items in favorites and the app map navigates to those specific
+        region of interest in the map.
+    </description>
+    <actions xml:space="preserve">
+        <action>Go to Favorites Tab, verify that there is Gibraltar and the Philippines in the list.</action>
+        <action>Press on Gibraltar and check if display transitioned to the Map tab.</action>
+        <action>Verify if Map is focused on Gibraltar.</action>
+        <action>Go to Favorites Tab and press on Philippines in the list.</action>
+        <action>Verify if Map is focused on the Philippines.</action>
+    </actions>
+</journey>
