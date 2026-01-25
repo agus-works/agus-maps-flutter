@@ -15,7 +15,7 @@ class BuildConfig {
   static const String defaultComapsTag = 'v2026.01.08-11';
   static const String flutterVersion = '3.38.7';
   static const String cmakeVersion = '4.2.1';
-  static const String ndkVersion = '27.3.13750724';
+  static const String ndkVersion = '29.0.14206865';
   static const String buildType = 'Release';
   
   // Android configuration
