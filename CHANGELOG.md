@@ -1,3 +1,18 @@
+## 0.1.23
+
+### Android Build & Tooling
+
+* **Gradle/AGP updates**: Added Gradle wrapper 8.14, updated Gradle/Android plugin versions, and aligned Kotlin/Flutter compatibility.
+* **Packaging tweak**: Refactored Android `mwm` `noCompress` configuration and updated the application plugin version.
+
+### Android Testing
+
+* **AGP test suite**: Added Android Gradle Plugin test suite support with a new Favorite’s Journey test case.
+
+### Release Metadata
+
+* **Version bump**: Updated plugin version to 0.1.23 across podspecs, Podfile.lock, and pubspec.lock.
+
 ## 0.1.22
 
 ### macOS/iOS Rendering
