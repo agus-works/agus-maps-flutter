@@ -48,7 +48,7 @@ Future<void> checkoutComapsTag(String tag, {String? comapsDir}) async {
   print('Checking out CoMaps tag: $tag');
   
   // Fetch tags
-  await runProcess('git', ['fetch', '--tags', '--prune'], workingDirectory: dir);
+  await runProcess('git', ['fetch', '--tags', '--prune', '--no-recurse-submodules'], workingDirectory: dir);
   
   // Checkout tag
   await runProcess('git', ['checkout', '--detach', tag], workingDirectory: dir);
@@ -87,11 +87,28 @@ Future<void> initSubmodules({String? comapsDir}) async {
   
   // Initialize submodules
   print('Initializing submodules');
-  await runProcess(
-    'git',
-    ['submodule', 'update', '--init', '--recursive'],
-    workingDirectory: dir,
-  );
+  try {
+    await runProcess(
+      'git',
+      ['submodule', 'update', '--init', '--recursive'],
+      workingDirectory: dir,
+    );
+  } catch (e) {
+    print('Warning: Submodule update failed. Attempting to recover...');
+    // Try to recover: sync URLs and force update
+    try {
+      await runProcess('git', ['submodule', 'sync', '--recursive'], workingDirectory: dir);
+      await runProcess(
+        'git',
+        ['submodule', 'update', '--init', '--recursive', '--force'],
+        workingDirectory: dir,
+      );
+      print('Submodule recovery successful');
+    } catch (e2) {
+      print('Error: Submodule recovery failed: $e2');
+      rethrow;
+    }
+  }
   
   print('Download LFS on CoMaps');
   await runProcess(
