@@ -12,6 +12,7 @@ env:
   FLUTTER_VERSION: "3.38.7"
   NDK_VERSION: "29.0.14206865"
   CMAKE_VERSION: "4.2.1"
+  QT6_VERSION: "6.8.3"
   BUILD_TYPE: Release
 
 jobs:
@@ -175,6 +176,12 @@ jobs:
           pip install 'protobuf<4.0'
           # Add venv to PATH for subsequent steps
           echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT6_VERSION }}
+          cache: true
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -742,6 +749,12 @@ jobs:
           pip install 'protobuf<4.0'
           echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
 
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT6_VERSION }}
+          cache: true
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -1059,6 +1072,12 @@ jobs:
           echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
         shell: pwsh
 
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT6_VERSION }}
+          cache: true
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -1349,6 +1368,12 @@ jobs:
           pip install 'protobuf<4.0'
           # Add venv to PATH for subsequent steps
           echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT6_VERSION }}
+          cache: true
 
       - name: Setup CMake
         uses: lukka/get-cmake@latest
