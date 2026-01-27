@@ -58,6 +58,7 @@ namespace agus
     int GetWidth() const;
     int GetHeight() const;
     void UpdateSurfaceSize(int w, int h);
+    void ResizeSurface(int w, int h);
 
   private:
     bool QuerySurfaceSize();

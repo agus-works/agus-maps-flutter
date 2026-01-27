@@ -227,6 +227,10 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
     'agus_maps_flutter_shaders' => ['Resources/shaders_metal.metallib']
   }
 
+  # Localized type strings used by the core place page (macOS)
+  # Copied into the main app bundle for NSLocalizedStringFromTable to find
+  s.resources = ['Resources/LocalizedStrings/**/*.strings']
+
   # Vendored CoMaps XCFramework - must be manually placed before pod install
   # Download from GitHub Releases: agus-maps-binaries-vX.Y.Z.zip
   s.vendored_frameworks = 'Frameworks/CoMaps.xcframework'

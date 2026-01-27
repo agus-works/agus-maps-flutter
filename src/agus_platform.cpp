@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <fstream>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <cstring>  // for strerror
@@ -131,9 +132,17 @@ void Platform::SetupMeasurementSystem() const
 __attribute__((visibility("default"))) void AndroidThreadAttachToJVM() {}
 __attribute__((visibility("default"))) void AndroidThreadDetachFromJVM() {}
 
-// Android system languages stub
+// Android system languages
+static std::string g_localeTag = "en";
+
+extern "C" __attribute__((visibility("default"))) void AgusPlatform_SetLocale(const char* locale)
+{
+  if (locale && *locale)
+    g_localeTag = locale;
+}
+
 __attribute__((visibility("default"))) std::vector<std::string> GetAndroidSystemLanguages() {
-  return {"en"};
+  return {g_localeTag};
 }
 
 // Forward declarations for HTTP (HttpThread is declared at file scope)
@@ -154,17 +163,161 @@ namespace downloader {
 }
 
 namespace platform {
-  __attribute__((visibility("default"))) std::string GetLocalizedTypeName(std::string const & type) { return type; }
+  namespace {
+    std::mutex g_localizedTypesMutex;
+    std::unordered_map<std::string, std::string> g_localizedTypes;
+    std::string g_loadedLocaleTag;
+
+    std::string NormalizeTypeKey(std::string const & type) {
+      std::string key = type;
+      if (key.rfind("type.", 0) != 0)
+        key = "type." + key;
+      std::replace(key.begin(), key.end(), '-', '.');
+      std::replace(key.begin(), key.end(), ':', '_');
+      return key;
+    }
+
+    std::string Unescape(std::string const & input) {
+      std::string out;
+      out.reserve(input.size());
+      for (size_t i = 0; i < input.size(); ++i) {
+        char c = input[i];
+        if (c == '\\' && i + 1 < input.size()) {
+          char n = input[i + 1];
+          switch (n) {
+            case 'n': out.push_back('\n'); break;
+            case 'r': out.push_back('\r'); break;
+            case 't': out.push_back('\t'); break;
+            case '"': out.push_back('"'); break;
+            case '\\': out.push_back('\\'); break;
+            default: out.push_back(n); break;
+          }
+          ++i;
+        } else {
+          out.push_back(c);
+        }
+      }
+      return out;
+    }
+
+    bool ReadQuoted(std::string const & line, size_t & pos, std::string & out) {
+      auto start = line.find('"', pos);
+      if (start == std::string::npos) return false;
+      std::string result;
+      for (size_t i = start + 1; i < line.size(); ++i) {
+        char c = line[i];
+        if (c == '\\' && i + 1 < line.size()) {
+          result.push_back(c);
+          result.push_back(line[i + 1]);
+          ++i;
+          continue;
+        }
+        if (c == '"') {
+          pos = i + 1;
+          out = Unescape(result);
+          return true;
+        }
+        result.push_back(c);
+      }
+      return false;
+    }
+
+    bool LoadLocalizedTypesFromFile(std::string const & path) {
+      std::ifstream file(path);
+      if (!file.is_open())
+        return false;
+
+      std::unordered_map<std::string, std::string> map;
+      std::string line;
+      while (std::getline(file, line)) {
+        auto trimmed = line;
+        trimmed.erase(0, trimmed.find_first_not_of(" \t\r\n"));
+        if (trimmed.empty() || trimmed.rfind("/*", 0) == 0 || trimmed.rfind("//", 0) == 0)
+          continue;
+
+        size_t pos = 0;
+        std::string key;
+        if (!ReadQuoted(trimmed, pos, key))
+          continue;
+        auto eq = trimmed.find('=', pos);
+        if (eq == std::string::npos)
+          continue;
+        pos = eq + 1;
+        std::string value;
+        if (!ReadQuoted(trimmed, pos, value))
+          continue;
+        if (!key.empty() && !value.empty())
+          map.emplace(std::move(key), std::move(value));
+      }
+
+      g_localizedTypes = std::move(map);
+      return !g_localizedTypes.empty();
+    }
+
+    bool EnsureLocalizedTypesLoaded() {
+      std::lock_guard<std::mutex> lock(g_localizedTypesMutex);
+
+      std::string tag = g_localeTag;
+      std::replace(tag.begin(), tag.end(), '_', '-');
+      if (!g_loadedLocaleTag.empty() && g_loadedLocaleTag == tag && !g_localizedTypes.empty())
+        return true;
+
+      g_localizedTypes.clear();
+      g_loadedLocaleTag.clear();
+
+      auto const & resDir = GetPlatform().ResourcesDir();
+      auto const baseDir = resDir + "localized_types/";
+
+      auto tryLoad = [&](std::string const & localeTag) {
+        auto path = baseDir + localeTag + ".lproj/LocalizableTypes.strings";
+        if (LoadLocalizedTypesFromFile(path)) {
+          g_loadedLocaleTag = localeTag;
+          return true;
+        }
+        return false;
+      };
+
+      if (!tag.empty() && tryLoad(tag))
+        return true;
+
+      auto sep = tag.find('-');
+      if (sep != std::string::npos) {
+        auto lang = tag.substr(0, sep);
+        if (tryLoad(lang))
+          return true;
+      }
+
+      return tryLoad("en");
+    }
+  }  // namespace
+
+  __attribute__((visibility("default"))) std::string GetLocalizedTypeName(std::string const & type) {
+    if (!EnsureLocalizedTypesLoaded())
+      return type;
+
+    auto key = NormalizeTypeKey(type);
+    auto it = g_localizedTypes.find(key);
+    if (it == g_localizedTypes.end())
+      return type;
+    return it->second;
+  }
   __attribute__((visibility("default"))) std::string GetLocalizedBrandName(std::string const & brand) { return brand; }
   __attribute__((visibility("default"))) std::string GetLocalizedString(std::string const & key) { return key; }
   __attribute__((visibility("default"))) std::string GetCurrencySymbol(std::string const & currencyCode) { return currencyCode; }
   __attribute__((visibility("default"))) std::string GetLocalizedMyPositionBookmarkName() { return "My Position"; }
   
-  // Locale stub
   __attribute__((visibility("default"))) Locale GetCurrentLocale() {
     Locale locale;
-    locale.m_language = "en";
-    locale.m_country = "US";
+    std::string tag = g_localeTag;
+    std::replace(tag.begin(), tag.end(), '_', '-');
+    auto const sep = tag.find('-');
+    if (sep != std::string::npos) {
+      locale.m_language = tag.substr(0, sep);
+      locale.m_country = tag.substr(sep + 1);
+    } else {
+      locale.m_language = tag;
+      locale.m_country = "";
+    }
     locale.m_currency = "USD";
     locale.m_decimalSeparator = ".";
     locale.m_groupingSeparator = ",";

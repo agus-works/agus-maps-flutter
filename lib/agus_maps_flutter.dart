@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:developer' as developer;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'dart:ffi' hide Size;
@@ -81,6 +83,7 @@ class PlacePageData {
   final PlacePageCoordinates coordinates;
   final List<String> rawTypes;
   final Map<int, String> metadata;
+  final Map<String, String> metadataTags;
   final int? bookmarkId;
   final int? bookmarkCategoryId;
   final int? trackId;
@@ -101,6 +104,7 @@ class PlacePageData {
     required this.coordinates,
     required this.rawTypes,
     required this.metadata,
+    required this.metadataTags,
     this.bookmarkId,
     this.bookmarkCategoryId,
     this.trackId,
@@ -119,6 +123,24 @@ class PlacePageData {
       }
     }
 
+    final rawMetadataTags =
+        (json['metadataTags'] as Map?)?.cast<String, dynamic>();
+    final parsedMetadataTags = <String, String>{};
+    if (rawMetadataTags != null) {
+      for (final entry in rawMetadataTags.entries) {
+        final key = entry.key.trim();
+        final value = entry.value?.toString();
+        if (key.isNotEmpty && value != null && value.isNotEmpty) {
+          parsedMetadataTags[key] = value;
+        }
+      }
+    }
+
+    final rawSubtitle =
+        (json['subtitleRaw'] as String?) ?? (json['subtitle'] as String?) ?? '';
+    final localizedSubtitle =
+        PlacePageLocalization.localizeTypeKey(rawSubtitle);
+
     return PlacePageData(
       featureId: PlacePageFeatureId.fromJson(
         (json['featureId'] as Map?)?.cast<String, dynamic>() ?? const {},
@@ -127,7 +149,7 @@ class PlacePageData {
       openingMode: (json['openingMode'] as num?)?.toInt() ?? 0,
       title: (json['title'] as String?) ?? '',
       secondaryTitle: (json['secondaryTitle'] as String?) ?? '',
-      subtitle: (json['subtitle'] as String?) ?? '',
+      subtitle: localizedSubtitle ?? rawSubtitle,
       address: (json['address'] as String?) ?? '',
       lat: (json['lat'] as num?)?.toDouble() ?? 0,
       lon: (json['lon'] as num?)?.toDouble() ?? 0,
@@ -142,11 +164,263 @@ class PlacePageData {
               .toList() ??
           const [],
       metadata: parsedMetadata,
+      metadataTags: parsedMetadataTags,
       bookmarkId: (json['bookmarkId'] as num?)?.toInt(),
       bookmarkCategoryId: (json['bookmarkCategoryId'] as num?)?.toInt(),
       trackId: (json['trackId'] as num?)?.toInt(),
     );
   }
+}
+
+class PlacePageLocalization {
+  static bool debugLoggingEnabled = false;
+  static Map<String, String> _typeTranslations = {};
+  static Map<String, String> _stringTranslations = {};
+  static String? _loadedLocaleKey;
+  static String? _loadedStringsLocaleKey;
+  static bool _isLoading = false;
+
+  static bool get isLoaded => _typeTranslations.isNotEmpty;
+  static bool get isStringsLoaded => _stringTranslations.isNotEmpty;
+
+  static Future<void> preload({ui.Locale? locale}) async {
+    if (_isLoading) return;
+    _isLoading = true;
+    try {
+      final targetLocale = locale ?? ui.PlatformDispatcher.instance.locale;
+      final candidates = _buildLocaleCandidates(targetLocale);
+      _logDebug('Preload localization: candidates=$candidates');
+      _typeTranslations =
+          await _loadLocalizedMap('LocalizableTypes.strings', candidates);
+      _loadedLocaleKey = _typeTranslations.isNotEmpty ? _loadedLocaleKey : null;
+      _logDebug(
+        'Loaded LocalizableTypes: locale=$_loadedLocaleKey entries=${_typeTranslations.length}',
+      );
+
+      _stringTranslations = await _loadLocalizedMap(
+          'Localizable.strings', candidates,
+          isTypes: false);
+      _loadedStringsLocaleKey =
+          _stringTranslations.isNotEmpty ? _loadedStringsLocaleKey : null;
+      _logDebug(
+        'Loaded Localizable: locale=$_loadedStringsLocaleKey entries=${_stringTranslations.length}',
+      );
+    } finally {
+      _isLoading = false;
+    }
+  }
+
+  static String? localizeTypeKey(String key) {
+    if (key.isEmpty) {
+      return null;
+    }
+    final normalizedKey = _normalizeTypeKey(key);
+    if (!_typeTranslations.containsKey(normalizedKey)) {
+      _logDebug(
+        'Type localization miss: key=$key normalized=$normalizedKey loaded=$_loadedLocaleKey',
+      );
+      return null;
+    }
+    return _typeTranslations[normalizedKey];
+  }
+
+  static String? localizeStringKey(String key) {
+    if (key.isEmpty || !_stringTranslations.containsKey(key)) {
+      return null;
+    }
+    return _stringTranslations[key];
+  }
+
+  static String localizeMetadataTag(String tag) {
+    if (tag.isEmpty) {
+      return '';
+    }
+    final localizationKey = _metadataLabelKeys[tag] ?? tag;
+    final localized = localizeStringKey(localizationKey);
+    if (localized != null && localized.isNotEmpty) {
+      return _cleanLabel(localized);
+    }
+    return _humanizeTag(tag);
+  }
+
+  static List<String> _buildLocaleCandidates(ui.Locale locale) {
+    final languageCode = locale.languageCode;
+    final countryCode = locale.countryCode;
+    final scriptCode = locale.scriptCode;
+    final candidates = <String>[];
+
+    if (languageCode.isNotEmpty) {
+      if (scriptCode != null && scriptCode.isNotEmpty) {
+        candidates.add('$languageCode-$scriptCode');
+      }
+      if (countryCode != null && countryCode.isNotEmpty) {
+        candidates.add('$languageCode-$countryCode');
+      }
+      candidates.add(languageCode);
+    }
+
+    final withUnderscore = <String>[];
+    for (final candidate in candidates) {
+      if (candidate.contains('-')) {
+        withUnderscore.add(candidate.replaceAll('-', '_'));
+      }
+    }
+
+    final all = <String>{...candidates, ...withUnderscore};
+    return all.toList();
+  }
+
+  static Future<Map<String, String>> _loadLocalizedMap(
+    String fileName,
+    List<String> candidates, {
+    bool isTypes = true,
+  }) async {
+    for (final candidate in candidates) {
+      final map = await _tryLoadForLocale(candidate, fileName);
+      if (map.isNotEmpty) {
+        if (isTypes) {
+          _loadedLocaleKey = candidate;
+        } else {
+          _loadedStringsLocaleKey = candidate;
+        }
+        _logDebug(
+            'Loaded $fileName for locale=$candidate entries=${map.length}');
+        return map;
+      }
+      _logDebug('No $fileName for locale=$candidate');
+    }
+    final fallback = await _tryLoadForLocale('en', fileName);
+    if (fallback.isNotEmpty) {
+      if (isTypes) {
+        _loadedLocaleKey = 'en';
+      } else {
+        _loadedStringsLocaleKey = 'en';
+      }
+      _logDebug(
+          'Loaded $fileName fallback locale=en entries=${fallback.length}');
+      return fallback;
+    }
+    _logDebug('Failed to load $fileName for candidates=$candidates');
+    return {};
+  }
+
+  static Future<Map<String, String>> _tryLoadForLocale(
+    String localeKey,
+    String fileName,
+  ) async {
+    final paths = [
+      'packages/agus_maps_flutter/assets/localized_types/$localeKey.lproj/$fileName',
+      'packages/agus_maps_flutter/assets/localized_types/$localeKey/$fileName',
+    ];
+    for (final path in paths) {
+      try {
+        final content = await rootBundle.loadString(path);
+        _logDebug('Loaded asset: $path');
+        return _parseStrings(content);
+      } catch (_) {
+        _logDebug('Missing asset: $path');
+        continue;
+      }
+    }
+    return {};
+  }
+
+  static Map<String, String> _parseStrings(String content) {
+    final map = <String, String>{};
+    final lines = content.split('\n');
+    final entryPattern = RegExp(r'^\s*"(.*)"\s*=\s*"(.*)";\s*$');
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty ||
+          trimmed.startsWith('/*') ||
+          trimmed.startsWith('//')) {
+        continue;
+      }
+      final match = entryPattern.firstMatch(trimmed);
+      if (match == null) continue;
+      final key = _unescape(match.group(1) ?? '');
+      final value = _unescape(match.group(2) ?? '');
+      if (key.isNotEmpty && value.isNotEmpty) {
+        map[key] = value;
+      }
+    }
+    return map;
+  }
+
+  static String _unescape(String input) {
+    return input
+        .replaceAll('\\"', '"')
+        .replaceAll('\\n', '\n')
+        .replaceAll('\\r', '\r')
+        .replaceAll('\\t', '\t')
+        .replaceAll('\\\\', '\\');
+  }
+
+  static String _normalizeTypeKey(String typeKey) {
+    var key = typeKey;
+    if (!key.startsWith('type.')) {
+      key = 'type.$key';
+    }
+    key = key.replaceAll('-', '.').replaceAll(':', '_');
+    return key;
+  }
+
+  static String _cleanLabel(String label) {
+    var cleaned = label.replaceAll(RegExp(r'%\d*\$?[@sd]'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (cleaned.endsWith(':')) {
+      cleaned = cleaned.substring(0, cleaned.length - 1).trim();
+    }
+    return cleaned;
+  }
+
+  static String _humanizeTag(String tag) {
+    final normalized = tag.replaceAll(':', ' ').replaceAll('_', ' ');
+    return normalized
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) =>
+            part[0].toUpperCase() + (part.length > 1 ? part.substring(1) : ''))
+        .join(' ');
+  }
+
+  static void _logDebug(String message) {
+    if (!debugLoggingEnabled) {
+      return;
+    }
+    developer.log(message, name: 'agus_maps_flutter.localization');
+  }
+
+  static const Map<String, String> _metadataLabelKeys = {
+    'cuisine': 'cuisine',
+    'opening_hours': 'opening_hours',
+    'phone': 'phone',
+    'fax': 'fax',
+    'website': 'website',
+    'email': 'email',
+    'wikipedia': 'read_in_wikipedia',
+    'wikimedia_commons': 'wikimedia_commons',
+    'capacity': 'capacity',
+    'wheelchair': 'wheelchair',
+    'drive_through': 'drive_through',
+    'website:menu': 'website_menu',
+    'self_service': 'self_service',
+    'outdoor_seating': 'outdoor_seating',
+    'network': 'network',
+    'contact:facebook': 'facebook',
+    'contact:instagram': 'instagram',
+    'contact:twitter': 'twitter',
+    'contact:vk': 'vk',
+    'contact:line': 'line',
+    'contact:mastodon': 'fediverse',
+    'contact:bluesky': 'social_bluesky',
+    'panoramax': 'panoramax',
+    'branch': 'branch',
+  };
+}
+
+Future<void> preloadPlacePageLocalization({ui.Locale? locale}) {
+  return PlacePageLocalization.preload(locale: locale);
 }
 
 PlacePageData? getCurrentPlacePage() {
@@ -286,7 +560,8 @@ int registerSingleMapWithVersion(String fullPath, int version) {
   final pathPtr = normalizedPath.toNativeUtf8().cast<Char>();
   try {
     try {
-      return _bindings.comaps_register_single_map_with_version(pathPtr, version);
+      return _bindings.comaps_register_single_map_with_version(
+          pathPtr, version);
     } on ArgumentError {
       // Symbol may not exist on some platforms/binaries. Fall back to legacy API.
       return _bindings.comaps_register_single_map(pathPtr);
@@ -506,7 +781,7 @@ class _TapState {
   _TapState(this.startPosition, this.startTime);
 }
 
-class _AgusMapState extends State<AgusMap> {
+class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   int? _textureId;
   Size? _currentSize; // Logical size
   bool _surfaceCreated = false;
@@ -521,6 +796,58 @@ class _AgusMapState extends State<AgusMap> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    _scheduleMetricsResize();
+  }
+
+  void _scheduleMetricsResize() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final renderObject = context.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.hasSize) return;
+
+      final size = renderObject.size;
+      if (size.width <= 0 || size.height <= 0) return;
+
+      final pixelRatio = View.of(context).devicePixelRatio;
+      final userScale = widget.userScale;
+
+      if (!_surfaceCreated) {
+        if (widget.isVisible) {
+          _createSurface(size, pixelRatio, userScale);
+        } else {
+          _pendingResizeSize = size;
+          _pendingResizePixelRatio = pixelRatio;
+          _pendingResizeUserScale = userScale;
+        }
+        return;
+      }
+
+      if (_currentSize == size &&
+          _devicePixelRatio == pixelRatio &&
+          _userScale == userScale) {
+        return;
+      }
+
+      if (widget.isVisible) {
+        _handleResize(size, pixelRatio, userScale);
+      } else {
+        _pendingResizeSize = size;
+        _pendingResizePixelRatio = pixelRatio;
+        _pendingResizeUserScale = userScale;
+      }
+    });
   }
 
   @override
@@ -557,11 +884,11 @@ class _AgusMapState extends State<AgusMap> {
 
     // Convert logical pixels to physical pixels for crisp rendering
     final physicalWidth = Platform.isWindows
-      ? (logicalSize.width * pixelRatio).round()
-      : (logicalSize.width * pixelRatio).toInt();
+        ? (logicalSize.width * pixelRatio).round()
+        : (logicalSize.width * pixelRatio).toInt();
     final physicalHeight = Platform.isWindows
-      ? (logicalSize.height * pixelRatio).round()
-      : (logicalSize.height * pixelRatio).toInt();
+        ? (logicalSize.height * pixelRatio).round()
+        : (logicalSize.height * pixelRatio).toInt();
 
     final visualScale = pixelRatio * userScale;
     debugPrint(
@@ -612,11 +939,11 @@ class _AgusMapState extends State<AgusMap> {
 
     // Convert logical pixels to physical pixels
     final physicalWidth = Platform.isWindows
-      ? (newLogicalSize.width * pixelRatio).round()
-      : (newLogicalSize.width * pixelRatio).toInt();
+        ? (newLogicalSize.width * pixelRatio).round()
+        : (newLogicalSize.width * pixelRatio).toInt();
     final physicalHeight = Platform.isWindows
-      ? (newLogicalSize.height * pixelRatio).round()
-      : (newLogicalSize.height * pixelRatio).toInt();
+        ? (newLogicalSize.height * pixelRatio).round()
+        : (newLogicalSize.height * pixelRatio).toInt();
 
     if (physicalWidth <= 0 || physicalHeight <= 0) return;
 
@@ -698,7 +1025,8 @@ class _AgusMapState extends State<AgusMap> {
 
   void _handlePointerSignal(PointerSignalEvent event) {
     if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
-    if (_activePointers.isNotEmpty) return; // don't interfere with real drag/pinch
+    if (_activePointers.isNotEmpty)
+      return; // don't interfere with real drag/pinch
 
     if (event is PointerScrollEvent) {
       // Use direct scale API similar to Qt CoMaps implementation
@@ -706,22 +1034,21 @@ class _AgusMapState extends State<AgusMap> {
       // Flutter's scrollDelta.dy is typically ~100 per notch (platform-dependent)
       // We tune the divisor for a good zoom feel similar to Google Maps
       final dy = event.scrollDelta.dy;
-      
+
       // Calculate zoom factor - larger divisor = slower zoom
       // 3.0 * 360.0 = 1080 matches Qt behavior
       // We use a slightly smaller value for faster, more responsive zoom
-      final factor = -dy / 600.0;  // Negative because scroll down = zoom out
-      
+      final factor = -dy / 600.0; // Negative because scroll down = zoom out
+
       // Convert logical position to physical pixels
       final pixelX = event.localPosition.dx * _devicePixelRatio;
       final pixelY = event.localPosition.dy * _devicePixelRatio;
-      
+
       // Apply exponential zoom factor for smooth, proportional zooming
       // exp(factor) ensures zoom rate is consistent regardless of current zoom level
       scaleMap(exp(factor), pixelX, pixelY, animated: false);
     }
   }
-
 
   void _sendTouchEvent(TouchType type, int pointerId, Offset position) {
     // Use cached pixel ratio for coordinate conversion (matches surface dimensions)

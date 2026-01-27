@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Arrays;
+import java.util.Locale;
 
 import io.flutter.view.TextureRegistry;
 import android.view.Surface;
@@ -67,6 +68,11 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     
     // Initialize native frame callback
     nativeInitFrameCallback();
+
+    // Initialize native locale for localized type names
+    Locale locale = Locale.getDefault();
+    String localeTag = locale != null ? locale.toLanguageTag() : "en";
+    nativeSetLocale(localeTag);
     
     // Get display metrics for proper density
     WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
@@ -196,6 +202,7 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     private native void nativeSetVisualScale(float density);
   private native void nativeInitFrameCallback();
   private native void nativeCleanupFrameCallback();
+    private native void nativeSetLocale(String locale);
 
   /**
    * Called from native code when an active frame is rendered.
@@ -255,9 +262,10 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     File markerFile = new File(filesDir, ".comaps_data_extracted");
     File fontsDir = new File(filesDir, "fonts");
     File unicodeBlockFile = new File(fontsDir, "unicode_blocks.txt");
+    File localizedTypesFile = new File(filesDir, "localized_types/en.lproj/LocalizableTypes.strings");
     
     // Check if data is already extracted AND essential files exist
-    if (markerFile.exists() && unicodeBlockFile.exists()) {
+    if (markerFile.exists() && unicodeBlockFile.exists() && localizedTypesFile.exists()) {
         android.util.Log.d("AgusMapsFlutter", "Data already extracted at: " + filesDir.getAbsolutePath());
         return filesDir.getAbsolutePath();
     }
@@ -274,6 +282,7 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     android.util.Log.d("AgusMapsFlutter", "Data extracted to: " + filesDir.getAbsolutePath());
     return filesDir.getAbsolutePath();
   }
+
 
   private void extractAssetsRecursive(AssetManager assetManager, String assetPath, File outDir) throws IOException {
     String[] files = assetManager.list(assetPath);

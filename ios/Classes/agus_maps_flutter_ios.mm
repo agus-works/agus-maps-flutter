@@ -118,6 +118,114 @@ static void AppendFieldString(std::string & out, std::string_view key, std::stri
     AppendJsonString(out, value);
 }
 
+static std::string NormalizeTypeKey(std::string const & type) {
+    std::string key = type;
+    if (key.rfind("type.", 0) != 0) {
+        key = "type." + key;
+    }
+    std::replace(key.begin(), key.end(), '-', '.');
+    std::replace(key.begin(), key.end(), ':', '_');
+    return key;
+}
+
+static NSString *LookupLocalizedTypeInBundle(NSBundle *bundle, NSString *key, NSString *locale) {
+    if (!bundle) {
+        return nil;
+    }
+    NSBundle *localeBundle = [NSBundle bundleWithPath:[bundle pathForResource:locale
+                                                                       ofType:@"lproj"
+                                                                  inDirectory:@"Resources/LocalizedStrings"]];
+    if (localeBundle) {
+        NSString *value = NSLocalizedStringFromTableInBundle(key, @"LocalizableTypes", localeBundle, @"");
+        if (![value isEqualToString:key]) {
+            return value;
+        }
+    }
+    NSBundle *directLocaleBundle = [NSBundle bundleWithPath:[bundle pathForResource:locale
+                                                                             ofType:@"lproj"]];
+    if (directLocaleBundle) {
+        NSString *value = NSLocalizedStringFromTableInBundle(key, @"LocalizableTypes", directLocaleBundle, @"");
+        if (![value isEqualToString:key]) {
+            return value;
+        }
+    }
+    return nil;
+}
+
+static NSString *LookupLocalizedType(NSString *key, NSString *locale) {
+    NSBundle *mainBundle = NSBundle.mainBundle;
+    NSString *value = LookupLocalizedTypeInBundle(mainBundle, key, locale);
+    if (value) return value;
+
+    Class pluginClass = NSClassFromString(@"AgusMapsFlutterPlugin");
+    if (pluginClass) {
+        NSBundle *pluginBundle = [NSBundle bundleForClass:pluginClass];
+        value = LookupLocalizedTypeInBundle(pluginBundle, key, locale);
+        if (value) return value;
+    }
+
+    return nil;
+}
+
+static std::string LocalizeTypeName(std::string const & type) {
+    std::string key = NormalizeTypeKey(type);
+    NSString *nsKey = @(key.c_str());
+
+    NSString *value = NSLocalizedStringFromTableInBundle(nsKey, @"LocalizableTypes", NSBundle.mainBundle, @"");
+    if (![value isEqualToString:nsKey]) {
+        return [value UTF8String];
+    }
+
+    NSArray<NSString *> *preferred = [NSLocale preferredLanguages];
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    for (NSString *language in preferred) {
+        if (![candidates containsObject:language]) {
+            [candidates addObject:language];
+        }
+        NSRange dash = [language rangeOfString:@"-"];
+        if (dash.location != NSNotFound) {
+            NSString *shortLang = [language substringToIndex:dash.location];
+            if (![candidates containsObject:shortLang]) {
+                [candidates addObject:shortLang];
+            }
+        }
+    }
+    if (![candidates containsObject:@"en"]) {
+        [candidates addObject:@"en"];
+    }
+
+    for (NSString *locale in candidates) {
+        NSString *localized = LookupLocalizedType(nsKey, locale);
+        if (localized) {
+            return [localized UTF8String];
+        }
+    }
+
+    return key;
+}
+
+static std::string GetLocalizedSubtitle(place_page::Info const & info) {
+    auto subtitle = info.GetSubtitle();
+    if (!subtitle.empty()) {
+        auto localized = LocalizeTypeName(subtitle);
+        auto normalizedKey = NormalizeTypeKey(subtitle);
+        if (!localized.empty() && localized != normalizedKey) {
+            return localized;
+        }
+    }
+
+    auto const & rawTypes = info.GetRawTypes();
+    if (!rawTypes.empty()) {
+        auto localized = LocalizeTypeName(rawTypes.front());
+        auto normalizedKey = NormalizeTypeKey(rawTypes.front());
+        if (!localized.empty() && localized != normalizedKey) {
+            return localized;
+        }
+    }
+
+    return subtitle;
+}
+
 static void AppendFieldBool(std::string & out, std::string_view key, bool value, bool & first) {
     if (!first) out.push_back(',');
     first = false;
@@ -161,7 +269,7 @@ static std::string BuildPlacePageJson(place_page::Info const & info) {
     auto const ll = info.GetLatLon();
     AppendFieldString(out, "title", info.GetTitle(), first);
     AppendFieldString(out, "secondaryTitle", info.GetSecondaryTitle(), first);
-    AppendFieldString(out, "subtitle", info.GetSubtitle(), first);
+    AppendFieldString(out, "subtitle", GetLocalizedSubtitle(info), first);
     AppendFieldString(out, "address", info.GetSecondarySubtitle(), first);
     AppendFieldDouble(out, "lat", ll.m_lat, first);
     AppendFieldDouble(out, "lon", ll.m_lon, first);

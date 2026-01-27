@@ -163,11 +163,49 @@ check_python_protobuf() {
     fi
 }
 
+check_qt6() {
+    local qt_config=""
+
+    if [[ -n "${Qt6_DIR:-}" ]] && [[ -f "${Qt6_DIR}/Qt6Config.cmake" ]]; then
+        qt_config="${Qt6_DIR}/Qt6Config.cmake"
+    elif [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
+        IFS=':' read -r -a prefix_paths <<< "$CMAKE_PREFIX_PATH"
+        for prefix in "${prefix_paths[@]}"; do
+            if [[ -f "$prefix/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
+                qt_config="$prefix/lib/cmake/Qt6/Qt6Config.cmake"
+                break
+            fi
+        done
+    elif command -v qtpaths6 &>/dev/null; then
+        local qt_prefix
+        qt_prefix="$(qtpaths6 --query QT_INSTALL_PREFIX 2>/dev/null || true)"
+        if [[ -n "$qt_prefix" ]] && [[ -f "$qt_prefix/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
+            qt_config="$qt_prefix/lib/cmake/Qt6/Qt6Config.cmake"
+        fi
+    elif command -v qmake6 &>/dev/null; then
+        local qt_prefix
+        qt_prefix="$(qmake6 -query QT_INSTALL_PREFIX 2>/dev/null || true)"
+        if [[ -n "$qt_prefix" ]] && [[ -f "$qt_prefix/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
+            qt_config="$qt_prefix/lib/cmake/Qt6/Qt6Config.cmake"
+        fi
+    fi
+
+    if [[ -z "$qt_config" ]]; then
+        log_error "Qt6 is not installed or not discoverable."
+        log_error "Install Qt6 and set Qt6_DIR or CMAKE_PREFIX_PATH to its CMake directory."
+        log_error "Example: export Qt6_DIR=/path/to/Qt/6.x.x/macos/lib/cmake/Qt6"
+        exit 1
+    fi
+
+    log_info "Qt6: found (${qt_config})"
+}
+
 check_dependencies() {
     log_header "Checking Dependencies"
     check_dart
     check_flutter
     check_python_protobuf
+    check_qt6
     log_success "Dependencies check passed"
 }
 

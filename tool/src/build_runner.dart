@@ -3,12 +3,22 @@
 import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'config.dart' show BuildConfig, BuildMode, getComapsTag;
-import 'platform_detector.dart' show getRepoRoot, getComapsDir, getBuildDir, detectOS, OSType;
-import 'git_operations.dart' show cloneComaps, checkoutComapsTag, initSubmodules;
+import 'platform_detector.dart'
+    show getRepoRoot, getComapsDir, getBuildDir, detectOS, OSType;
+import 'git_operations.dart'
+    show cloneComaps, checkoutComapsTag, initSubmodules;
 import 'patch_applicator.dart' show applyPatches;
 import 'file_operations.dart' show ensureDir, copyPath;
+import 'assets_updater.dart'
+    show syncLocalizedStringsAssets, copyDataFiles, updateFlutterAssetsList;
 import 'process_runner.dart' show runProcess, commandExists;
-import 'cmake_build.dart' show buildAndroidAbi, buildiOSXCFramework, buildMacOSXCFramework, buildWindowsLibrary, buildLinuxLibrary;
+import 'cmake_build.dart'
+    show
+        buildAndroidAbi,
+        buildiOSXCFramework,
+        buildMacOSXCFramework,
+        buildWindowsLibrary,
+        buildLinuxLibrary;
 import 'archive_manager.dart' show createTarGz, extractTarGz;
 
 /// Build runner configuration
@@ -53,7 +63,8 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
   print('');
 
   // Step 1: Bootstrap CoMaps
-  await _bootstrapComaps(tag, skipPatches: config.skipPatches, noCache: config.noCache);
+  await _bootstrapComaps(tag,
+      skipPatches: config.skipPatches, noCache: config.noCache);
 
   // Step 2: Build Boost headers
   await _buildBoostHeaders();
@@ -61,35 +72,41 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
   // Step 3: Generate CoMaps data files
   await _generateComapsData();
 
-  // Step 4: Copy data files to example/assets
-  await _copyDataFiles();
+  // Step 4: Sync localized strings into Flutter assets
+  await syncLocalizedStringsAssets();
 
-  // Step 5: Build native binaries (if requested)
+  // Step 5: Copy data files to example/assets
+  await copyDataFiles();
+
+  // Step 6: Update pubspec assets list after asset sync/copy
+  await updateFlutterAssetsList();
+
+  // Step 7: Build native binaries (if requested)
   bool builtIOS = false;
   bool builtMacOS = false;
-  
+
   if (config.buildBinaries) {
     final platforms = config.platforms ?? _getDefaultPlatforms();
     for (final platform in platforms) {
       await _buildPlatform(platform);
-      
+
       // Track iOS/macOS builds for Metal shaders and CocoaPods
       if (platform == 'ios') builtIOS = true;
       if (platform == 'macos') builtMacOS = true;
-      
+
       // Setup CocoaPods after iOS/macOS builds
       if (platform == 'ios' || platform == 'macos') {
         await _setupCocoaPods(platform);
       }
     }
-    
-    // Build Metal shaders if iOS or macOS was built (macOS only)
+
     if (Platform.isMacOS && (builtIOS || builtMacOS)) {
       await _buildMetalShaders();
     }
   } else {
     print('');
-    print('Build binaries: false (use --build-binaries to build native libraries)');
+    print(
+        'Build binaries: false (use --build-binaries to build native libraries)');
   }
 
   print('');
@@ -97,23 +114,27 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
 }
 
 /// Bootstrap CoMaps (clone, checkout, submodules, patches)
-/// 
+///
 /// Implements local caching for faster iteration on patches:
 /// - Cache file: .thirdparty-{tag}.tar.gz (in repo root)
 /// - Cache is created AFTER clone, BEFORE patches
 /// - If thirdparty/ is deleted and cache exists, extract from cache
 /// - Use --no-cache to disable caching behavior
-Future<void> _bootstrapComaps(String tag, {bool skipPatches = false, bool noCache = false}) async {
+Future<void> _bootstrapComaps(
+  String tag, {
+  bool skipPatches = false,
+  bool noCache = false,
+}) async {
   final repoRoot = getRepoRoot();
   final thirdpartyDir = path.join(repoRoot, 'thirdparty');
   final comapsDir = getComapsDir();
-  
+
   // Sanitize tag for filename (replace slashes and special chars)
   final safeTag = tag.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
   final cacheFile = path.join(repoRoot, '.thirdparty-$safeTag.tar.gz');
-  
+
   print('=== Bootstrap CoMaps ===');
-  
+
   // Show cache status
   final cacheExists = await File(cacheFile).exists();
   if (noCache) {
@@ -125,18 +146,18 @@ Future<void> _bootstrapComaps(String tag, {bool skipPatches = false, bool noCach
   } else {
     print('Cache: not found (will create after fresh clone)');
   }
-  
+
   // Track if this was a fresh clone (for cache creation)
   var freshClone = false;
   var usedCache = false;
-  
+
   // Try to restore from cache if thirdparty doesn't exist
   if (!noCache && !await Directory(comapsDir).exists() && cacheExists) {
     print('');
     print('=== Restoring from Cache ===');
     print('Extracting .thirdparty-$safeTag.tar.gz...');
     final stopwatch = Stopwatch()..start();
-    
+
     try {
       await extractTarGz(cacheFile, repoRoot);
       stopwatch.stop();
@@ -145,7 +166,6 @@ Future<void> _bootstrapComaps(String tag, {bool skipPatches = false, bool noCach
     } catch (e) {
       print('Warning: Cache extraction failed: $e');
       print('Falling back to git clone...');
-      // Clean up any partial extraction
       if (await Directory(thirdpartyDir).exists()) {
         await Directory(thirdpartyDir).delete(recursive: true);
       }
@@ -161,40 +181,36 @@ Future<void> _bootstrapComaps(String tag, {bool skipPatches = false, bool noCach
       } else {
         print('CoMaps repository already exists');
       }
-      // Still checkout correct tag and update submodules
       await checkoutComapsTag(tag);
       await initSubmodules();
     } else {
-      // Clone fresh
       await cloneComaps(tag);
       freshClone = true;
     }
   } else {
-    // Clone fresh
     await cloneComaps(tag);
     freshClone = true;
   }
-  
+
   // Create cache after fresh clone (BEFORE patches)
-  // This allows iterating on patches without re-cloning
   if (!noCache && freshClone && !usedCache) {
     print('');
     print('=== Creating Cache ===');
     print('Compressing thirdparty to .thirdparty-$safeTag.tar.gz...');
     print('This may take a few minutes (using fastest compression)...');
     final stopwatch = Stopwatch()..start();
-    
+
     try {
       await createTarGz(thirdpartyDir, cacheFile);
       stopwatch.stop();
-      
+
       final cacheSize = await File(cacheFile).length();
       final cacheSizeMB = (cacheSize / 1024 / 1024).toStringAsFixed(1);
-      print('Cache created: $cacheSizeMB MB in ${stopwatch.elapsed.inSeconds} seconds');
+      print(
+          'Cache created: $cacheSizeMB MB in ${stopwatch.elapsed.inSeconds} seconds');
       print('Tip: Delete thirdparty/ and re-run to use cache');
     } catch (e) {
       print('Warning: Failed to create cache: $e');
-      // Don't fail the build if cache creation fails
     }
   }
 
@@ -216,7 +232,8 @@ Future<void> _bootstrapComaps(String tag, {bool skipPatches = false, bool noCach
 }
 
 Future<void> _disableLibkomwmMultiprocessingOnWindows(String comapsDir) async {
-  final targetPath = path.join(comapsDir, 'tools', 'kothic', 'src', 'libkomwm.py');
+  final targetPath =
+      path.join(comapsDir, 'tools', 'kothic', 'src', 'libkomwm.py');
   final file = File(targetPath);
   if (!await file.exists()) {
     return;
@@ -227,10 +244,12 @@ Future<void> _disableLibkomwmMultiprocessingOnWindows(String comapsDir) async {
     return;
   }
 
-  final updated = content.replaceFirst('MULTIPROCESSING = True', 'MULTIPROCESSING = False');
+  final updated =
+      content.replaceFirst('MULTIPROCESSING = True', 'MULTIPROCESSING = False');
   if (updated != content) {
     await file.writeAsString(updated);
-    print('Applied Windows fallback: MULTIPROCESSING = False in tools/kothic/src/libkomwm.py');
+    print(
+        'Applied Windows fallback: MULTIPROCESSING = False in tools/kothic/src/libkomwm.py');
   }
 }
 
@@ -238,21 +257,23 @@ Future<void> _disableLibkomwmMultiprocessingOnWindows(String comapsDir) async {
 Future<void> _buildBoostHeaders() async {
   final comapsDir = getComapsDir();
   final boostDir = path.join(comapsDir, '3party', 'boost');
-  
+
   // Check for flat boost/ directory (created by b2 headers)
   final flatConfigFile = path.join(boostDir, 'boost', 'config.hpp');
-  
+
   // Check for modular structure (libs/config/include/boost/config.hpp)
   // CoMaps CMake directly includes from modular paths, so we don't need b2 headers
-  final modularConfigFile = path.join(boostDir, 'libs', 'config', 'include', 'boost', 'config.hpp');
+  final modularConfigFile =
+      path.join(boostDir, 'libs', 'config', 'include', 'boost', 'config.hpp');
 
   print('=== Build Boost Headers ===');
 
   // First, check if modular structure exists (preferred - no build needed)
   if (await File(modularConfigFile).exists()) {
     print('Boost modular headers found (libs/*/include structure)');
-    print('CMake will use modular include paths directly - no b2 headers needed');
-    
+    print(
+        'CMake will use modular include paths directly - no b2 headers needed');
+
     // Verify a few more essential modules exist
     final essentialModules = ['regex', 'container', 'iterator', 'range'];
     var allFound = true;
@@ -263,7 +284,7 @@ Future<void> _buildBoostHeaders() async {
         allFound = false;
       }
     }
-    
+
     if (allFound) {
       print('All essential Boost modules verified');
       print('');
@@ -287,20 +308,22 @@ Future<void> _buildBoostHeaders() async {
   // If we get here, we need to run b2 headers to create the flat structure
   // This is a fallback path - normally the modular structure should be sufficient
   print('Building flat Boost headers with b2...');
-  
-  final b2Exe = Platform.isWindows ? path.join(boostDir, 'b2.exe') : path.join(boostDir, 'b2');
+
+  final b2Exe = Platform.isWindows
+      ? path.join(boostDir, 'b2.exe')
+      : path.join(boostDir, 'b2');
 
   // Check if b2 already exists (bootstrap already done)
   final b2Exists = await File(b2Exe).exists();
-  
+
   if (!b2Exists) {
     // Need to run bootstrap first
     print('Running bootstrap...');
-    
+
     if (Platform.isWindows) {
       // On Windows, check for available compilers first
       final hasVsDevCmd = await _findVsDevCmd();
-      
+
       final bootstrapBat = path.join(boostDir, 'bootstrap.bat');
       if (await File(bootstrapBat).exists()) {
         if (hasVsDevCmd != null) {
@@ -315,7 +338,8 @@ call "${hasVsDevCmd}"
 cd /d "${boostDir}"
 call bootstrap.bat
 ''');
-            await runProcess('cmd', ['/c', tempBat], workingDirectory: boostDir, verbose: true);
+            await runProcess('cmd', ['/c', tempBat],
+                workingDirectory: boostDir, verbose: true);
             // Clean up temp file
             try {
               await File(tempBat).delete();
@@ -323,19 +347,23 @@ call bootstrap.bat
           } catch (e) {
             // Fallback: try direct execution
             print('VS Dev Cmd method failed, trying direct execution...');
-            await runProcess('cmd', ['/c', 'bootstrap.bat'], workingDirectory: boostDir, verbose: true);
+            await runProcess('cmd', ['/c', 'bootstrap.bat'],
+                workingDirectory: boostDir, verbose: true);
           }
         } else {
           // Try direct execution - let bootstrap.bat find the compiler
           print('Running bootstrap.bat directly...');
           try {
-            await runProcess('cmd', ['/c', 'bootstrap.bat'], workingDirectory: boostDir, verbose: true);
+            await runProcess('cmd', ['/c', 'bootstrap.bat'],
+                workingDirectory: boostDir, verbose: true);
           } catch (e) {
             print('');
             print('ERROR: Failed to build Boost b2 tool.');
             print('');
-            print('This requires a C++ compiler. Please ensure one of the following:');
-            print('  1. Visual Studio 2019/2022 with "Desktop development with C++" workload');
+            print(
+                'This requires a C++ compiler. Please ensure one of the following:');
+            print(
+                '  1. Visual Studio 2019/2022 with "Desktop development with C++" workload');
             print('  2. Run from "Developer Command Prompt for VS"');
             print('  3. MinGW-w64 (gcc) in PATH');
             print('');
@@ -346,11 +374,13 @@ call bootstrap.bat
       } else {
         // Try bash bootstrap.sh (Git Bash, WSL, MSYS2)
         print('bootstrap.bat not found, trying bash bootstrap.sh...');
-        await runProcess('bash', ['bootstrap.sh'], workingDirectory: boostDir, verbose: true);
+        await runProcess('bash', ['bootstrap.sh'],
+            workingDirectory: boostDir, verbose: true);
       }
     } else {
       // Unix systems
-      await runProcess('bash', ['bootstrap.sh'], workingDirectory: boostDir, verbose: true);
+      await runProcess('bash', ['bootstrap.sh'],
+          workingDirectory: boostDir, verbose: true);
     }
   } else {
     print('b2 already exists, skipping bootstrap');
@@ -358,20 +388,24 @@ call bootstrap.bat
 
   // Verify b2 exists after bootstrap
   if (!await File(b2Exe).exists()) {
-    throw Exception('Bootstrap completed but b2 executable not found at: $b2Exe');
+    throw Exception(
+        'Bootstrap completed but b2 executable not found at: $b2Exe');
   }
 
   // Build headers with b2
   print('Building headers with b2...');
   if (Platform.isWindows) {
-    await runProcess('cmd', ['/c', 'b2.exe', 'headers'], workingDirectory: boostDir, verbose: true);
+    await runProcess('cmd', ['/c', 'b2.exe', 'headers'],
+        workingDirectory: boostDir, verbose: true);
   } else {
-    await runProcess('./b2', ['headers'], workingDirectory: boostDir, verbose: true);
+    await runProcess('./b2', ['headers'],
+        workingDirectory: boostDir, verbose: true);
   }
 
   // Verify headers were generated
   if (!await File(flatConfigFile).exists()) {
-    throw Exception('b2 headers completed but config.hpp not found at: $flatConfigFile');
+    throw Exception(
+        'b2 headers completed but config.hpp not found at: $flatConfigFile');
   }
 
   print('Boost headers built');
@@ -381,14 +415,16 @@ call bootstrap.bat
 /// Find Visual Studio Developer Command Prompt
 Future<String?> _findVsDevCmd() async {
   if (!Platform.isWindows) return null;
-  
+
   // Common VS installation paths
-  final programFiles = Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)';
-  final programFilesNormal = Platform.environment['ProgramFiles'] ?? r'C:\Program Files';
-  
+  final programFiles =
+      Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)';
+  final programFilesNormal =
+      Platform.environment['ProgramFiles'] ?? r'C:\Program Files';
+
   final vsYears = ['2022', '2019', '2017'];
   final vsEditions = ['Enterprise', 'Professional', 'Community', 'BuildTools'];
-  
+
   for (final year in vsYears) {
     for (final edition in vsEditions) {
       // VS 2022 is typically in Program Files (not x86)
@@ -407,7 +443,7 @@ Future<String?> _findVsDevCmd() async {
       }
     }
   }
-  
+
   return null;
 }
 
@@ -424,10 +460,20 @@ Future<void> _generateComapsData() async {
   final visibilityFile = path.join(dataDir, 'visibility.txt');
   final categoriesFile = path.join(dataDir, 'categories.txt');
 
-  if (await File(classificatorFile).exists() &&
+  final symbolsSdf =
+      path.join(dataDir, 'symbols', 'xxhdpi', 'light', 'symbols.sdf');
+  final symbolsPng =
+      path.join(dataDir, 'symbols', 'xxhdpi', 'light', 'symbols.png');
+
+  final dataAlreadyGenerated = await File(classificatorFile).exists() &&
       await File(typesFile).exists() &&
       await File(visibilityFile).exists() &&
-      await File(categoriesFile).exists()) {
+      await File(categoriesFile).exists();
+
+  final symbolsReady =
+      await File(symbolsSdf).exists() && await File(symbolsPng).exists();
+
+  if (dataAlreadyGenerated && symbolsReady) {
     print('Data files already generated');
     print('');
     return;
@@ -452,7 +498,8 @@ Future<void> _generateComapsData() async {
 
   Future<void> runUnixDataScripts() async {
     // Generate drawing rules
-    final generateDrulesScript = path.join(comapsDir, 'tools', 'unix', 'generate_drules.sh');
+    final generateDrulesScript =
+        path.join(comapsDir, 'tools', 'unix', 'generate_drules.sh');
     if (await File(generateDrulesScript).exists()) {
       print('Generating drawing rules...');
       await runProcess(
@@ -464,7 +511,8 @@ Future<void> _generateComapsData() async {
     }
 
     // Generate categories
-    final generateCategoriesScript = path.join(comapsDir, 'tools', 'unix', 'generate_categories.sh');
+    final generateCategoriesScript =
+        path.join(comapsDir, 'tools', 'unix', 'generate_categories.sh');
     if (await File(generateCategoriesScript).exists()) {
       print('Generating categories...');
       await runProcess(
@@ -476,7 +524,8 @@ Future<void> _generateComapsData() async {
     }
 
     // Generate desktop UI strings
-    final generateDesktopUIScript = path.join(comapsDir, 'tools', 'unix', 'generate_desktop_ui_strings.sh');
+    final generateDesktopUIScript =
+        path.join(comapsDir, 'tools', 'unix', 'generate_desktop_ui_strings.sh');
     if (await File(generateDesktopUIScript).exists()) {
       print('Generating desktop UI strings...');
       try {
@@ -488,8 +537,33 @@ Future<void> _generateComapsData() async {
           throwOnError: false,
         );
       } catch (e) {
-        print('Warning: generate_desktop_ui_strings.sh had warnings (may be expected)');
+        print(
+            'Warning: generate_desktop_ui_strings.sh had warnings (may be expected)');
       }
+    }
+
+    // Generate symbols atlas (symbols.png + symbols.sdf)
+    final symbolsSdf =
+        path.join(dataDir, 'symbols', 'xxhdpi', 'light', 'symbols.sdf');
+    final symbolsPng =
+        path.join(dataDir, 'symbols', 'xxhdpi', 'light', 'symbols.png');
+    if (!await File(symbolsSdf).exists() || !await File(symbolsPng).exists()) {
+      final generateSymbolsScript =
+          path.join(comapsDir, 'tools', 'unix', 'generate_symbols.sh');
+      if (await File(generateSymbolsScript).exists()) {
+        print('Generating symbols atlas (symbols.png/symbols.sdf)...');
+        await runProcess(
+          'bash',
+          [generateSymbolsScript],
+          workingDirectory: comapsDir,
+          environment: env,
+        );
+      } else {
+        print(
+            'Warning: generate_symbols.sh not found; symbols atlas may be missing');
+      }
+    } else {
+      print('Symbols atlas already generated');
     }
   }
 
@@ -500,7 +574,8 @@ Future<void> _generateComapsData() async {
       env['PATH'] = '$gitBashDir;${env['PATH'] ?? ''}';
       print('Bash detected on Windows; using Git Bash at $gitBashPath');
     } else {
-      print('Bash detected on Windows; running Unix data generation scripts...');
+      print(
+          'Bash detected on Windows; running Unix data generation scripts...');
     }
     await runUnixDataScripts();
   } else {
@@ -560,7 +635,13 @@ Future<void> _copyDataFiles() async {
   }
 
   // Copy directories
-  final dirsToCopy = ['categories-strings', 'countries-strings', 'fonts', 'symbols', 'styles'];
+  final dirsToCopy = [
+    'categories-strings',
+    'countries-strings',
+    'fonts',
+    'symbols',
+    'styles'
+  ];
   for (final dir in dirsToCopy) {
     final srcDir = path.join(comapsDataDir, dir);
     if (await Directory(srcDir).exists()) {
@@ -568,6 +649,14 @@ Future<void> _copyDataFiles() async {
       await copyPath(srcDir, destDir);
       print('  Copied: $dir/');
     }
+  }
+
+  // Copy localized type strings into comaps_data for Android native localization
+  final localizedTypesSrc = path.join(repoRoot, 'assets', 'localized_types');
+  if (await Directory(localizedTypesSrc).exists()) {
+    final localizedTypesDest = path.join(destDataDir, 'localized_types');
+    await copyPath(localizedTypesSrc, localizedTypesDest);
+    print('  Copied: localized_types/');
   }
 
   // Copy ICU data
@@ -645,7 +734,8 @@ Future<void> _buildiOS() async {
 
   final xcframeworkPath = path.join(outputDir, 'CoMaps.xcframework');
   if (await Directory(xcframeworkPath).exists()) {
-    await copyPath(xcframeworkPath, path.join(frameworksDir, 'CoMaps.xcframework'));
+    await copyPath(
+        xcframeworkPath, path.join(frameworksDir, 'CoMaps.xcframework'));
   }
 }
 
@@ -660,7 +750,8 @@ Future<void> _buildMacOS() async {
 
   final xcframeworkPath = path.join(outputDir, 'CoMaps.xcframework');
   if (await Directory(xcframeworkPath).exists()) {
-    await copyPath(xcframeworkPath, path.join(frameworksDir, 'CoMaps.xcframework'));
+    await copyPath(
+        xcframeworkPath, path.join(frameworksDir, 'CoMaps.xcframework'));
   }
 }
 
@@ -703,19 +794,19 @@ Future<void> _buildMetalShaders() async {
 
   final comapsDir = getComapsDir();
   final repoRoot = getRepoRoot();
-  
+
   // Find shader directory (try multiple locations)
   var shadersDir = path.join(comapsDir, 'libs', 'shaders', 'Metal');
   if (!await Directory(shadersDir).exists()) {
     // Try alternative location: thirdparty/comaps/shaders/Metal
     shadersDir = path.join(comapsDir, 'shaders', 'Metal');
   }
-  
+
   if (!await Directory(shadersDir).exists()) {
     // Search recursively for shaders/Metal directory
     await for (final entity in Directory(comapsDir).list(recursive: true)) {
-      if (entity is Directory && 
-          entity.path.contains('shaders') && 
+      if (entity is Directory &&
+          entity.path.contains('shaders') &&
           entity.path.contains('Metal') &&
           path.basename(entity.path) == 'Metal') {
         shadersDir = entity.path;
@@ -723,7 +814,7 @@ Future<void> _buildMetalShaders() async {
       }
     }
   }
-  
+
   // Try to find .metal files if directory still doesn't exist
   if (!await Directory(shadersDir).exists()) {
     await for (final entity in Directory(comapsDir).list(recursive: true)) {
@@ -735,13 +826,15 @@ Future<void> _buildMetalShaders() async {
   }
 
   if (!await Directory(shadersDir).exists()) {
-    print('Warning: Metal shader directory not found, skipping Metal shader compilation');
+    print(
+        'Warning: Metal shader directory not found, skipping Metal shader compilation');
     print('The app may fall back to OpenGL rendering');
     return;
   }
 
   final tempDir = path.join(getBuildDir(), 'metal_temp');
-  final outputLib = path.join(getBuildDir(), 'metal_shaders', 'shaders_metal.metallib');
+  final outputLib =
+      path.join(getBuildDir(), 'metal_shaders', 'shaders_metal.metallib');
   await ensureDir(tempDir);
   await ensureDir(path.dirname(outputLib));
 
@@ -756,7 +849,8 @@ Future<void> _buildMetalShaders() async {
   }
 
   if (metalFiles.isEmpty) {
-    print('Warning: No Metal shader files found, skipping Metal shader compilation');
+    print(
+        'Warning: No Metal shader files found, skipping Metal shader compilation');
     return;
   }
 
@@ -771,10 +865,21 @@ Future<void> _buildMetalShaders() async {
       // Try with macosx SDK first (works for both macOS and iOS with Metal 2.0)
       await runProcess(
         'xcrun',
-        ['-sdk', 'macosx', 'metal', '-c', '-std=osx-metal2.0', '-I', shadersDir, '-o', airFile, metalFile],
+        [
+          '-sdk',
+          'macosx',
+          'metal',
+          '-c',
+          '-std=osx-metal2.0',
+          '-I',
+          shadersDir,
+          '-o',
+          airFile,
+          metalFile
+        ],
         throwOnError: false,
       );
-      
+
       if (await File(airFile).exists()) {
         airFiles.add(airFile);
         print('  Compiled: $filename');
@@ -808,16 +913,16 @@ Future<void> _buildMetalShaders() async {
     // Copy to platform resource directories
     final iosResources = path.join(repoRoot, 'ios', 'Resources');
     final macosResources = path.join(repoRoot, 'macos', 'Resources');
-    
+
     await ensureDir(iosResources);
     await ensureDir(macosResources);
-    
+
     final iosDest = path.join(iosResources, 'shaders_metal.metallib');
     final macosDest = path.join(macosResources, 'shaders_metal.metallib');
-    
+
     await File(outputLib).copy(iosDest);
     await File(outputLib).copy(macosDest);
-    
+
     print('Copied to ios/Resources/');
     print('Copied to macos/Resources/');
   } catch (e) {
@@ -849,7 +954,8 @@ Future<void> _setupCocoaPods(String platform) async {
   final podDir = path.join(repoRoot, 'example', platform);
 
   if (!await Directory(podDir).exists()) {
-    print('Warning: $platform example directory not found, skipping CocoaPods setup');
+    print(
+        'Warning: $platform example directory not found, skipping CocoaPods setup');
     return;
   }
 

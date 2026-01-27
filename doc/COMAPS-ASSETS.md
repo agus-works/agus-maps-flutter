@@ -115,6 +115,11 @@ categories-strings/
 | `symbols/` | Map icons (POI markers, etc.) at various DPI scales |
 | `styles/` | Map style definitions |
 | `fonts/` | Font files for text rendering (optional, uses system fonts) |
+| `localized_types/` | LocalizableTypes.strings used for POI subtitle localization (Android native) |
+
+**Important:** POI icons require the generated atlas files `symbols.png` and `symbols.sdf` inside each DPI folder
+(e.g. `symbols/xxhdpi/light/symbols.png` and `symbols/xxhdpi/light/symbols.sdf`). These are produced by
+`tools/unix/generate_symbols.sh` and are not checked in by default.
 
 ### ICU Data (Transliteration)
 
@@ -189,6 +194,11 @@ dart run tool/build.dart --no-cache
    - `symbols/`
    - `styles/`
    - `fonts/`
+   - `localized_types/`
+
+6. **Generates symbols atlas** (if missing):
+   - Runs `tools/unix/generate_symbols.sh`
+   - Produces `symbols.png` and `symbols.sdf` for all DPI buckets
 
 ### Git Ignore Policy
 
@@ -582,6 +592,25 @@ flutter:
 
 
 ## Troubleshooting
+
+### Missing POI icons (Android)
+
+**Symptom:** POI icons (e.g., hospital cross) do not show on Android, or appear only at extreme zoom levels.
+
+**Cause:** The generated symbols atlas files (`symbols.png` / `symbols.sdf`) are missing in
+`example/assets/comaps_data/symbols/`.
+
+**Fix:** Re-run the build tool to regenerate symbols:
+
+```bash
+dart run tool/build.dart --no-cache
+```
+
+Ensure dependencies are installed for the symbols generator:
+
+- CMake + Ninja
+- Qt (for `skin_generator_tool`)
+- optipng
 
 ### "Map shows blank" or "No tiles loaded"
 

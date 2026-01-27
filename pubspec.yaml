@@ -50,6 +50,73 @@ flutter:
   # adding or updating assets for this project.
   #
   # Please refer to README.md for a detailed explanation.
+  assets:
+    - assets/localized_types/af.lproj/
+    - assets/localized_types/ar.lproj/
+    - assets/localized_types/ast.lproj/
+    - assets/localized_types/az.lproj/
+    - assets/localized_types/be.lproj/
+    - assets/localized_types/ber.lproj/
+    - assets/localized_types/bg.lproj/
+    - assets/localized_types/bn.lproj/
+    - assets/localized_types/ca.lproj/
+    - assets/localized_types/cs.lproj/
+    - assets/localized_types/cy.lproj/
+    - assets/localized_types/da.lproj/
+    - assets/localized_types/de.lproj/
+    - assets/localized_types/el.lproj/
+    - assets/localized_types/en-GB.lproj/
+    - assets/localized_types/en.lproj/
+    - assets/localized_types/eo.lproj/
+    - assets/localized_types/es-MX.lproj/
+    - assets/localized_types/es.lproj/
+    - assets/localized_types/et.lproj/
+    - assets/localized_types/eu.lproj/
+    - assets/localized_types/fa.lproj/
+    - assets/localized_types/fi.lproj/
+    - assets/localized_types/fr.lproj/
+    - assets/localized_types/gl.lproj/
+    - assets/localized_types/gsw.lproj/
+    - assets/localized_types/he.lproj/
+    - assets/localized_types/hi.lproj/
+    - assets/localized_types/hr.lproj/
+    - assets/localized_types/hu.lproj/
+    - assets/localized_types/ia.lproj/
+    - assets/localized_types/id.lproj/
+    - assets/localized_types/is.lproj/
+    - assets/localized_types/it.lproj/
+    - assets/localized_types/ja.lproj/
+    - assets/localized_types/kab.lproj/
+    - assets/localized_types/kk.lproj/
+    - assets/localized_types/ko.lproj/
+    - assets/localized_types/lt.lproj/
+    - assets/localized_types/lv.lproj/
+    - assets/localized_types/ml.lproj/
+    - assets/localized_types/mr.lproj/
+    - assets/localized_types/mt.lproj/
+    - assets/localized_types/nb.lproj/
+    - assets/localized_types/nl.lproj/
+    - assets/localized_types/pl.lproj/
+    - assets/localized_types/pt-BR.lproj/
+    - assets/localized_types/pt-PT.lproj/
+    - assets/localized_types/pt.lproj/
+    - assets/localized_types/pt_PT.lproj/
+    - assets/localized_types/ro.lproj/
+    - assets/localized_types/ru.lproj/
+    - assets/localized_types/sk.lproj/
+    - assets/localized_types/sl.lproj/
+    - assets/localized_types/sq.lproj/
+    - assets/localized_types/sr.lproj/
+    - assets/localized_types/sv.lproj/
+    - assets/localized_types/sw.lproj/
+    - assets/localized_types/ta.lproj/
+    - assets/localized_types/th.lproj/
+    - assets/localized_types/tr.lproj/
+    - assets/localized_types/uk.lproj/
+    - assets/localized_types/ur.lproj/
+    - assets/localized_types/vi.lproj/
+    - assets/localized_types/zh-Hans.lproj/
+    - assets/localized_types/zh-Hant.lproj/
   plugin:
     platforms:
       android:

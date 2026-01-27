@@ -180,6 +180,22 @@ namespace agus
       m_surfaceWidth = w;
       m_surfaceHeight = h;
   }
+
+    void AgusOGLContextFactory::ResizeSurface(int w, int h) {
+      if (w <= 0 || h <= 0) return;
+      if (!m_nativeWindow) {
+        UpdateSurfaceSize(w, h);
+        return;
+      }
+
+      EGLint format = 0;
+      if (m_config != nullptr) {
+        eglGetConfigAttrib(m_display, m_config, EGL_NATIVE_VISUAL_ID, &format);
+      }
+
+      ANativeWindow_setBuffersGeometry(m_nativeWindow, w, h, format);
+      QuerySurfaceSize();
+    }
   
   bool AgusOGLContextFactory::QuerySurfaceSize() {
       EGLint w, h;

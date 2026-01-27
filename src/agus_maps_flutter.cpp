@@ -33,12 +33,14 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 #include "base/logging.hpp"
 #include "map/framework.hpp"
 #include "map/place_page_info.hpp"
+#include "indexer/feature_meta.hpp"
 #include "platform/local_country_file.hpp"
 #include "drape/graphics_context_factory.hpp"
 #include "drape_frontend/visual_params.hpp"
 #include "drape_frontend/user_event_stream.hpp"
 #include "drape_frontend/active_frame_callback.hpp"
 #include "geometry/mercator.hpp"
+#include "platform/localization.hpp"
 #include "agus_ogl.hpp"
 #include <sstream>
 #include <iomanip>
@@ -46,6 +48,7 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 
 extern "C" void AgusPlatform_Init(const char* apkPath, const char* storagePath);
 extern "C" void AgusPlatform_InitPaths(const char* resourcePath, const char* writablePath);
+extern "C" void AgusPlatform_SetLocale(const char* locale);
 
 // Custom log handler that redirects to Android logcat without aborting on ERROR
 static void AgusLogMessage(base::LogLevel level, base::SrcPoint const & src, std::string const & msg) {
@@ -73,6 +76,7 @@ static void AgusLogMessage(base::LogLevel level, base::SrcPoint const & src, std
 // Globals
 static std::unique_ptr<Framework> g_framework;
 static drape_ptr<dp::ThreadSafeFactory> g_factory;
+static agus::AgusOGLContextFactory* g_oglFactory = nullptr;
 static std::string g_resourcePath;
 static std::string g_writablePath;
 static bool g_platformInitialized = false;
@@ -163,7 +167,8 @@ static std::string BuildPlacePageJson(place_page::Info const & info) {
     auto const ll = info.GetLatLon();
     AppendFieldString(out, "title", info.GetTitle(), first);
     AppendFieldString(out, "secondaryTitle", info.GetSecondaryTitle(), first);
-    AppendFieldString(out, "subtitle", info.GetSubtitle(), first);
+    auto subtitle = info.GetSubtitle();
+    AppendFieldString(out, "subtitle", subtitle, first);
     AppendFieldString(out, "address", info.GetSecondarySubtitle(), first);
     AppendFieldDouble(out, "lat", ll.m_lat, first);
     AppendFieldDouble(out, "lon", ll.m_lon, first);
@@ -223,6 +228,29 @@ static std::string BuildPlacePageJson(place_page::Info const & info) {
         if (!metaFirst) out.push_back(',');
         metaFirst = false;
         AppendJsonString(out, std::to_string(static_cast<int>(id)));
+        out.push_back(':');
+        AppendJsonString(out, value);
+    });
+    out.push_back('}');
+
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, "metadataTags");
+    out.push_back(':');
+    out.push_back('{');
+    bool metaTagFirst = true;
+    info.ForEachMetadataReadable([&](osm::MapObject::MetadataID id, std::string const & value) {
+        if (value.empty()) return;
+        auto const type = static_cast<feature::Metadata::EType>(id);
+        if (type == feature::Metadata::FMD_CHARGE_SOCKETS ||
+            type == feature::Metadata::FMD_COUNT) {
+          return;
+        }
+        auto const tag = feature::ToString(type);
+        if (tag.empty()) return;
+        if (!metaTagFirst) out.push_back(',');
+        metaTagFirst = false;
+        AppendJsonString(out, tag);
         out.push_back(':');
         AppendJsonString(out, value);
     });
@@ -462,6 +490,7 @@ Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeSetSurface(
     oglFactory->UpdateSurfaceSize(width, height);
     
     // Wrap our context factory in ThreadSafeFactory for thread-safe context creation
+    g_oglFactory = oglFactory;
     g_factory = make_unique_dp<dp::ThreadSafeFactory>(oglFactory);
     
     // Create DrapeEngine with proper dimensions
@@ -481,18 +510,21 @@ Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeOnSurfaceChan
     g_surfaceHeight = height;
     g_density = density;
     
-    if (g_factory && g_framework) {
-        // Re-enable rendering with new surface
-        auto* rawFactory = static_cast<dp::ThreadSafeFactory*>(g_factory.get());
-        if (rawFactory) {
-            // Get the underlying factory and reset surface
-            // Note: This is a simplified approach - may need more work for proper surface recreation
-            g_framework->SetRenderingEnabled(make_ref(g_factory));
-            g_framework->OnSize(width, height);
-        }
+    if (g_oglFactory) {
+        g_oglFactory->ResetSurface();
+        g_oglFactory->SetSurface(window);
+        g_oglFactory->ResizeSurface(width, height);
+    } else if (window) {
+        ANativeWindow_release(window);
     }
-    
-    if (window) ANativeWindow_release(window);
+
+    if (g_factory && g_framework) {
+        g_framework->SetRenderingEnabled(make_ref(g_factory));
+        g_framework->OnSize(width, height);
+        g_framework->InvalidateRendering();
+        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+        g_framework->MakeFrameActive();
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -501,6 +533,10 @@ Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeOnSurfaceDest
     
     if (g_framework) {
         g_framework->SetRenderingDisabled(true /* destroySurface */);
+    }
+
+    if (g_oglFactory) {
+        g_oglFactory->ResetSurface();
     }
 }
 
@@ -514,8 +550,15 @@ Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeOnSizeChanged
     g_surfaceWidth = width;
     g_surfaceHeight = height;
     
+    if (g_oglFactory) {
+        g_oglFactory->ResizeSurface(width, height);
+    }
+
     if (g_framework && g_drapeEngineCreated) {
         g_framework->OnSize(width, height);
+        g_framework->InvalidateRendering();
+        g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+        g_framework->MakeFrameActive();
     }
 }
 
@@ -538,6 +581,17 @@ Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeSetVisualScal
     } else {
         __android_log_print(ANDROID_LOG_WARN, "AgusMapsFlutterNative",
             "nativeSetVisualScale: Framework not ready, stored density %.2f", density);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeSetLocale(
+    JNIEnv* env, jobject thiz, jstring localeTag) {
+    if (!localeTag) return;
+    const char* chars = env->GetStringUTFChars(localeTag, nullptr);
+    if (chars) {
+        AgusPlatform_SetLocale(chars);
+        env->ReleaseStringUTFChars(localeTag, chars);
     }
 }
 

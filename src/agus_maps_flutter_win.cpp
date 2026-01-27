@@ -45,6 +45,7 @@
 #include "drape_frontend/user_event_stream.hpp"
 #include "drape_frontend/active_frame_callback.hpp"
 #include "geometry/mercator.hpp"
+#include "indexer/feature_meta.hpp"
 
 // Forward declarations for Windows platform (defined in agus_platform_win.cpp)
 extern "C" void AgusPlatformWin_InitPaths(const char* resourcePath, const char* writablePath);
@@ -325,6 +326,29 @@ static std::string BuildPlacePageJson(place_page::Info const & info) {
         if (!metaFirst) out.push_back(',');
         metaFirst = false;
         AppendJsonString(out, std::to_string(static_cast<int>(id)));
+        out.push_back(':');
+        AppendJsonString(out, value);
+    });
+    out.push_back('}');
+
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, "metadataTags");
+    out.push_back(':');
+    out.push_back('{');
+    bool metaTagFirst = true;
+    info.ForEachMetadataReadable([&](osm::MapObject::MetadataID id, std::string const & value) {
+        if (value.empty()) return;
+        auto const type = static_cast<feature::Metadata::EType>(id);
+        if (type == feature::Metadata::FMD_CHARGE_SOCKETS ||
+            type == feature::Metadata::FMD_COUNT) {
+          return;
+        }
+        auto const tag = feature::ToString(type);
+        if (tag.empty()) return;
+        if (!metaTagFirst) out.push_back(',');
+        metaTagFirst = false;
+        AppendJsonString(out, tag);
         out.push_back(':');
         AppendJsonString(out, value);
     });
