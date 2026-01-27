@@ -34,6 +34,7 @@ migrate_working_dir/
 /build/
 /coverage/
 thirdparty/comaps
+assets/
 
 # Thirdparty cache archive (created by bootstrap scripts for faster iteration)
 .thirdparty.7z
