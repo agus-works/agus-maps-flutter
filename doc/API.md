@@ -368,6 +368,7 @@ Main Flutter widget that displays a CoMaps map.
 - `initialLat`, `initialLon`: Initial map center (WGS84)
 - `initialZoom`: Initial zoom level (0-20)
 - `onMapReady`: Callback when map is ready
+- `onPlacePage`: Callback when a place page (POI) is available after a tap
 - `controller`: `AgusMapController` for programmatic control
 - `isVisible`: Whether map is currently visible (for `IndexedStack` optimization)
 - `userScale`: Visual scale multiplier for labels (combined with device pixel ratio)
@@ -382,6 +383,23 @@ Controller for programmatic map control.
 - `animateToLocation(double lat, double lon, int zoom)`: Move map to location (animated) - **TODO: Not yet implemented**
 - `zoomIn()`: Zoom in by one level - **TODO: Not yet implemented**
 - `zoomOut()`: Zoom out by one level - **TODO: Not yet implemented**
+
+### Place Page (POI) API
+
+#### `getCurrentPlacePage() -> PlacePageData?`
+Get the current place page data, if a selection is active.
+- **Returns**: `PlacePageData` or `null`
+- **Implementation**: FFI (native JSON payload)
+- **Platforms**: All
+
+#### `closePlacePage()`
+Clear the current map selection and close any visible place page.
+- **Implementation**: FFI
+- **Platforms**: All
+
+#### `PlacePageData`
+Data model for place page details.
+- **Fields**: `title`, `subtitle`, `address`, `lat`, `lon`, `coordinates`, `metadata`, `featureId`, `objectType`, `openingMode`, `roadType`, `rawTypes`
 
 ### Helper Services
 

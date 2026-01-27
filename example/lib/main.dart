@@ -70,6 +70,7 @@ class _MyAppState extends State<MyApp> {
   bool _dataReady = false;
   int _currentTabIndex = 0; // Start on Map tab
   double _mapScale = 1.0;
+  agus_maps_flutter.PlacePageData? _placePage;
 
   int? _bundledMwmVersion;
 
@@ -248,6 +249,21 @@ class _MyAppState extends State<MyApp> {
   void _onMapReady() {
     // Kick off async work without blocking the widget callback.
     unawaited(_onMapReadyAsync());
+  }
+
+  void _handlePlacePage(agus_maps_flutter.PlacePageData? data) {
+    if (!mounted) return;
+    setState(() {
+      _placePage = data;
+    });
+  }
+
+  void _closePlacePage() {
+    agus_maps_flutter.closePlacePage();
+    if (!mounted) return;
+    setState(() {
+      _placePage = null;
+    });
   }
 
   Future<void> _onMapReadyAsync() async {
@@ -509,14 +525,24 @@ class _MyAppState extends State<MyApp> {
       );
     }
 
-    return agus_maps_flutter.AgusMap(
-      initialLat: kDefaultLocation.lat,
-      initialLon: kDefaultLocation.lon,
-      initialZoom: kDefaultLocation.zoom,
-      onMapReady: _onMapReady,
-      controller: _mapController,
-      isVisible: _currentTabIndex == 0, // Only resize when map tab is active
-      userScale: _mapScale,
+    return Stack(
+      children: [
+        agus_maps_flutter.AgusMap(
+          initialLat: kDefaultLocation.lat,
+          initialLon: kDefaultLocation.lon,
+          initialZoom: kDefaultLocation.zoom,
+          onMapReady: _onMapReady,
+          onPlacePage: _handlePlacePage,
+          controller: _mapController,
+          isVisible: _currentTabIndex == 0, // Only resize when map tab is active
+          userScale: _mapScale,
+        ),
+        if (_placePage != null)
+          _PlacePageSheet(
+            data: _placePage!,
+            onClose: _closePlacePage,
+          ),
+      ],
     );
   }
 
@@ -583,6 +609,153 @@ class _MyAppState extends State<MyApp> {
       onMapsChanged: () {
         setState(() {});
       },
+    );
+  }
+}
+
+class _PlacePageSheet extends StatelessWidget {
+  final agus_maps_flutter.PlacePageData data;
+  final VoidCallback onClose;
+
+  const _PlacePageSheet({
+    required this.data,
+    required this.onClose,
+  });
+
+  static const Map<int, String> _metadataLabels = {
+    1: 'Cuisine',
+    2: 'Opening hours',
+    3: 'Phone',
+    8: 'Website',
+    14: 'Email',
+    16: 'Wikipedia',
+    41: 'Wikimedia Commons',
+    42: 'Capacity',
+    43: 'Wheelchair',
+    45: 'Drive through',
+    46: 'Menu',
+    47: 'Self service',
+    48: 'Outdoor seating',
+    49: 'Network',
+    50: 'Fediverse',
+    51: 'Bluesky',
+    52: 'Panoramax',
+    55: 'Branch',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    final metadataEntries = data.metadata.entries
+        .where((entry) => _metadataLabels.containsKey(entry.key))
+        .toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: SafeArea(
+        minimum: const EdgeInsets.all(12),
+        child: Material(
+          elevation: 6,
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          data.title.isNotEmpty
+                              ? data.title
+                              : 'Map point',
+                          style: textTheme.titleLarge,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: onClose,
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Close',
+                      ),
+                    ],
+                  ),
+                  if (data.secondaryTitle.isNotEmpty)
+                    Text(
+                      data.secondaryTitle,
+                      style: textTheme.titleSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  if (data.subtitle.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        data.subtitle,
+                        style: textTheme.bodyMedium,
+                      ),
+                    ),
+                  if (data.address.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        data.address,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  if ((data.coordinates.decimal ?? '').isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        data.coordinates.decimal ?? '',
+                        style: textTheme.labelMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  if (metadataEntries.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Divider(color: colorScheme.outlineVariant),
+                    const SizedBox(height: 8),
+                    for (final entry in metadataEntries)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 130,
+                              child: Text(
+                                _metadataLabels[entry.key] ?? entry.key.toString(),
+                                style: textTheme.labelMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                entry.value,
+                                style: textTheme.bodyMedium,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

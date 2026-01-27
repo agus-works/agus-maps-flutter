@@ -213,6 +213,42 @@ class AgusMapsFlutterBindings {
   late final _comaps_scroll = _comaps_scrollPtr
       .asFunction<void Function(double, double)>();
 
+  /// Returns 1 if a place page is available, 0 otherwise.
+  int comaps_place_page_has_data() {
+    return _comaps_place_page_has_data();
+  }
+
+  late final _comaps_place_page_has_dataPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>(
+        'comaps_place_page_has_data',
+      );
+  late final _comaps_place_page_has_data = _comaps_place_page_has_dataPtr
+      .asFunction<int Function()>();
+
+  /// Returns a JSON string describing the current place page.
+  ffi.Pointer<ffi.Char> comaps_place_page_get_json() {
+    return _comaps_place_page_get_json();
+  }
+
+  late final _comaps_place_page_get_jsonPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
+        'comaps_place_page_get_json',
+      );
+  late final _comaps_place_page_get_json = _comaps_place_page_get_jsonPtr
+      .asFunction<ffi.Pointer<ffi.Char> Function()>();
+
+  /// Clear the current place page selection.
+  void comaps_place_page_clear_selection() {
+    return _comaps_place_page_clear_selection();
+  }
+
+  late final _comaps_place_page_clear_selectionPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>(
+        'comaps_place_page_clear_selection',
+      );
+  late final _comaps_place_page_clear_selection =
+      _comaps_place_page_clear_selectionPtr.asFunction<void Function()>();
+
   /// Register a single MWM map file directly by full path.
   /// This bypasses the version folder scanning and registers the map file
   /// directly with the rendering engine.

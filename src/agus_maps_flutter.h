@@ -53,6 +53,17 @@ FFI_PLUGIN_EXPORT void comaps_force_redraw(void);
 // id2, x2, y2: second touch pointer (use -1 for id2 if single touch)
 FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int id2, float x2, float y2);
 
+// Place page (POI) information
+// Returns 1 if a place page is available, 0 otherwise
+FFI_PLUGIN_EXPORT int comaps_place_page_has_data(void);
+
+// Returns a JSON string describing the current place page.
+// The returned pointer remains valid until the next call to this function.
+FFI_PLUGIN_EXPORT const char* comaps_place_page_get_json(void);
+
+// Clear the current place page selection
+FFI_PLUGIN_EXPORT void comaps_place_page_clear_selection(void);
+
 // Scale (zoom) the map by a factor, centered on a specific pixel point.
 // factor: Zoom factor (>1 zooms in, <1 zooms out). Use exp(scrollDelta) for smooth zooming.
 // pixelX, pixelY: Screen coordinates to zoom towards (in physical pixels)

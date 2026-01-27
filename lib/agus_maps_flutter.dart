@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -14,6 +15,167 @@ import 'agus_maps_flutter_bindings_generated.dart';
 // Export additional services
 export 'mwm_storage.dart';
 export 'mirror_service.dart';
+
+class PlacePageFeatureId {
+  final String mwmName;
+  final int mwmVersion;
+  final int index;
+
+  const PlacePageFeatureId({
+    required this.mwmName,
+    required this.mwmVersion,
+    required this.index,
+  });
+
+  factory PlacePageFeatureId.fromJson(Map<String, dynamic> json) {
+    return PlacePageFeatureId(
+      mwmName: (json['mwmName'] as String?) ?? '',
+      mwmVersion: (json['mwmVersion'] as num?)?.toInt() ?? 0,
+      index: (json['index'] as num?)?.toInt() ?? -1,
+    );
+  }
+}
+
+class PlacePageCoordinates {
+  final String? decimal;
+  final String? dms;
+  final String? osm;
+  final String? olc;
+  final String? utm;
+  final String? mgrs;
+
+  const PlacePageCoordinates({
+    this.decimal,
+    this.dms,
+    this.osm,
+    this.olc,
+    this.utm,
+    this.mgrs,
+  });
+
+  factory PlacePageCoordinates.fromJson(Map<String, dynamic> json) {
+    return PlacePageCoordinates(
+      decimal: json['decimal'] as String?,
+      dms: json['dms'] as String?,
+      osm: json['osm'] as String?,
+      olc: json['olc'] as String?,
+      utm: json['utm'] as String?,
+      mgrs: json['mgrs'] as String?,
+    );
+  }
+}
+
+class PlacePageData {
+  final PlacePageFeatureId featureId;
+  final int objectType;
+  final int openingMode;
+  final String title;
+  final String secondaryTitle;
+  final String subtitle;
+  final String address;
+  final double lat;
+  final double lon;
+  final String wikiDescriptionHtml;
+  final int roadType;
+  final bool isRoutePoint;
+  final PlacePageCoordinates coordinates;
+  final List<String> rawTypes;
+  final Map<int, String> metadata;
+  final int? bookmarkId;
+  final int? bookmarkCategoryId;
+  final int? trackId;
+
+  const PlacePageData({
+    required this.featureId,
+    required this.objectType,
+    required this.openingMode,
+    required this.title,
+    required this.secondaryTitle,
+    required this.subtitle,
+    required this.address,
+    required this.lat,
+    required this.lon,
+    required this.wikiDescriptionHtml,
+    required this.roadType,
+    required this.isRoutePoint,
+    required this.coordinates,
+    required this.rawTypes,
+    required this.metadata,
+    this.bookmarkId,
+    this.bookmarkCategoryId,
+    this.trackId,
+  });
+
+  factory PlacePageData.fromJson(Map<String, dynamic> json) {
+    final rawMetadata = (json['metadata'] as Map?)?.cast<String, dynamic>();
+    final parsedMetadata = <int, String>{};
+    if (rawMetadata != null) {
+      for (final entry in rawMetadata.entries) {
+        final key = int.tryParse(entry.key);
+        final value = entry.value?.toString();
+        if (key != null && value != null && value.isNotEmpty) {
+          parsedMetadata[key] = value;
+        }
+      }
+    }
+
+    return PlacePageData(
+      featureId: PlacePageFeatureId.fromJson(
+        (json['featureId'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      objectType: (json['objectType'] as num?)?.toInt() ?? 0,
+      openingMode: (json['openingMode'] as num?)?.toInt() ?? 0,
+      title: (json['title'] as String?) ?? '',
+      secondaryTitle: (json['secondaryTitle'] as String?) ?? '',
+      subtitle: (json['subtitle'] as String?) ?? '',
+      address: (json['address'] as String?) ?? '',
+      lat: (json['lat'] as num?)?.toDouble() ?? 0,
+      lon: (json['lon'] as num?)?.toDouble() ?? 0,
+      wikiDescriptionHtml: (json['wikiDescriptionHtml'] as String?) ?? '',
+      roadType: (json['roadType'] as num?)?.toInt() ?? 0,
+      isRoutePoint: (json['isRoutePoint'] as bool?) ?? false,
+      coordinates: PlacePageCoordinates.fromJson(
+        (json['coordinates'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      rawTypes: (json['rawTypes'] as List?)
+              ?.map((value) => value.toString())
+              .toList() ??
+          const [],
+      metadata: parsedMetadata,
+      bookmarkId: (json['bookmarkId'] as num?)?.toInt(),
+      bookmarkCategoryId: (json['bookmarkCategoryId'] as num?)?.toInt(),
+      trackId: (json['trackId'] as num?)?.toInt(),
+    );
+  }
+}
+
+PlacePageData? getCurrentPlacePage() {
+  try {
+    if (_bindings.comaps_place_page_has_data() == 0) {
+      return null;
+    }
+    final ptr = _bindings.comaps_place_page_get_json();
+    if (ptr.address == 0) {
+      return null;
+    }
+    final jsonString = ptr.cast<Utf8>().toDartString();
+    if (jsonString.isEmpty) {
+      return null;
+    }
+    final decoded = jsonDecode(jsonString);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    return PlacePageData.fromJson(decoded);
+  } catch (error) {
+    debugPrint('[AgusMap] Failed to parse place page JSON: $error');
+    return null;
+  }
+}
+
+void closePlacePage() {
+  _bindings.comaps_place_page_clear_selection();
+}
 
 /// A very short-lived native function.
 ///
@@ -296,6 +458,11 @@ class AgusMap extends StatefulWidget {
   /// Callback when the map is ready.
   final VoidCallback? onMapReady;
 
+  /// Callback when a place page (POI) is available after a tap.
+  ///
+  /// The callback receives null if no place page is available.
+  final ValueChanged<PlacePageData?>? onPlacePage;
+
   /// Controller for programmatic map control.
   /// If not provided, the map can only be controlled via gestures.
   final AgusMapController? controller;
@@ -321,6 +488,7 @@ class AgusMap extends StatefulWidget {
     this.initialLon,
     this.initialZoom,
     this.onMapReady,
+    this.onPlacePage,
     this.controller,
     this.isVisible = true,
     this.userScale = 1.0,
@@ -328,6 +496,14 @@ class AgusMap extends StatefulWidget {
 
   @override
   State<AgusMap> createState() => _AgusMapState();
+}
+
+class _TapState {
+  final Offset startPosition;
+  final Duration startTime;
+  bool moved = false;
+
+  _TapState(this.startPosition, this.startTime);
 }
 
 class _AgusMapState extends State<AgusMap> {
@@ -466,25 +642,58 @@ class _AgusMapState extends State<AgusMap> {
 
   // Track active pointers for multitouch
   final Map<int, Offset> _activePointers = {};
+  final Map<int, _TapState> _tapStates = {};
+  bool _hadMultiplePointers = false;
+
+  static const double _tapSlop = 8.0;
+  static const Duration _tapTimeout = Duration(milliseconds: 350);
 
   void _handlePointerDown(PointerDownEvent event) {
     _activePointers[event.pointer] = event.localPosition;
+    _tapStates[event.pointer] = _TapState(event.localPosition, event.timeStamp);
+    if (_activePointers.length > 1) {
+      _hadMultiplePointers = true;
+    }
     _sendTouchEvent(TouchType.down, event.pointer, event.localPosition);
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
     _activePointers[event.pointer] = event.localPosition;
+    final tap = _tapStates[event.pointer];
+    if (tap != null) {
+      final distance = (event.localPosition - tap.startPosition).distance;
+      if (distance > _tapSlop) {
+        tap.moved = true;
+      }
+    }
     _sendTouchEvent(TouchType.move, event.pointer, event.localPosition);
   }
 
   void _handlePointerUp(PointerUpEvent event) {
     _sendTouchEvent(TouchType.up, event.pointer, event.localPosition);
+    final tap = _tapStates.remove(event.pointer);
     _activePointers.remove(event.pointer);
+
+    if (_activePointers.isEmpty) {
+      if (tap != null &&
+          !tap.moved &&
+          !_hadMultiplePointers &&
+          (event.timeStamp - tap.startTime) <= _tapTimeout) {
+        _emitPlacePageIfAvailable();
+      }
+      _hadMultiplePointers = false;
+      _tapStates.clear();
+    }
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
     _sendTouchEvent(TouchType.cancel, event.pointer, event.localPosition);
     _activePointers.remove(event.pointer);
+    _tapStates.remove(event.pointer);
+    if (_activePointers.isEmpty) {
+      _hadMultiplePointers = false;
+      _tapStates.clear();
+    }
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
@@ -537,6 +746,18 @@ class _AgusMapState extends State<AgusMap> {
     }
 
     sendTouchEvent(type, pointerId, x1, y1, id2: id2, x2: x2, y2: y2);
+  }
+
+  void _emitPlacePageIfAvailable() {
+    if (widget.onPlacePage == null) {
+      return;
+    }
+
+    Future.delayed(const Duration(milliseconds: 60), () {
+      if (!mounted) return;
+      final data = getCurrentPlacePage();
+      widget.onPlacePage?.call(data);
+    });
   }
 
   @override

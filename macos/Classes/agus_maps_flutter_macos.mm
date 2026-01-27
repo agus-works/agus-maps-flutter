@@ -16,10 +16,15 @@
 #include <memory>
 #include <atomic>
 #include <chrono>
+#include <mutex>
+#include <sstream>
+#include <iomanip>
+#include <string_view>
 
 // CoMaps Framework includes
 #include "base/logging.hpp"
 #include "map/framework.hpp"
+#include "map/place_page_info.hpp"
 #include "platform/local_country_file.hpp"
 #include "drape/graphics_context_factory.hpp"
 #include "drape_frontend/visual_params.hpp"
@@ -43,6 +48,8 @@ static std::string g_resourcePath;
 static std::string g_writablePath;
 static bool g_platformInitialized = false;
 static bool g_drapeEngineCreated = false;
+static std::string g_placePageJson;
+static std::mutex g_placePageMutex;
 
 // Surface state
 static int32_t g_surfaceWidth = 0;
@@ -66,6 +73,167 @@ static FrameReadyCallback g_frameReadyCallback = nullptr;
 
 // Forward declaration for active frame notification
 static void notifyFlutterFrameReady(void);
+
+static std::string JsonEscape(std::string_view input) {
+    std::string out;
+    out.reserve(input.size() + 8);
+    for (char c : input) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    std::ostringstream oss;
+                    oss << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                        << static_cast<int>(static_cast<unsigned char>(c));
+                    out += oss.str();
+                } else {
+                    out.push_back(c);
+                }
+                break;
+        }
+    }
+    return out;
+}
+
+static void AppendJsonString(std::string & out, std::string_view value) {
+    out.push_back('"');
+    out += JsonEscape(value);
+    out.push_back('"');
+}
+
+static void AppendFieldString(std::string & out, std::string_view key, std::string_view value, bool & first) {
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, key);
+    out.push_back(':');
+    AppendJsonString(out, value);
+}
+
+static void AppendFieldBool(std::string & out, std::string_view key, bool value, bool & first) {
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, key);
+    out.push_back(':');
+    out += value ? "true" : "false";
+}
+
+static void AppendFieldInt(std::string & out, std::string_view key, int64_t value, bool & first) {
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, key);
+    out.push_back(':');
+    out += std::to_string(value);
+}
+
+static void AppendFieldDouble(std::string & out, std::string_view key, double value, bool & first) {
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, key);
+    out.push_back(':');
+    std::ostringstream oss;
+    oss << std::setprecision(10) << value;
+    out += oss.str();
+}
+
+static int GetObjectType(place_page::Info const & info) {
+    if (info.IsMyPosition()) return 3; // MY_POSITION
+    if (info.IsBookmark()) return 2; // BOOKMARK
+    if (info.IsTrack()) return 5; // TRACK
+    if (info.HasApiUrl()) return 1; // API_POINT
+    return 0; // POI
+}
+
+static std::string BuildPlacePageJson(place_page::Info const & info) {
+    std::string out;
+    out.reserve(4096);
+    out.push_back('{');
+    bool first = true;
+
+    auto const ll = info.GetLatLon();
+    AppendFieldString(out, "title", info.GetTitle(), first);
+    AppendFieldString(out, "secondaryTitle", info.GetSecondaryTitle(), first);
+    AppendFieldString(out, "subtitle", info.GetSubtitle(), first);
+    AppendFieldString(out, "address", info.GetSecondarySubtitle(), first);
+    AppendFieldDouble(out, "lat", ll.m_lat, first);
+    AppendFieldDouble(out, "lon", ll.m_lon, first);
+    AppendFieldString(out, "wikiDescriptionHtml", info.GetWikiDescription(), first);
+    AppendFieldInt(out, "objectType", GetObjectType(info), first);
+    AppendFieldInt(out, "openingMode", static_cast<int>(info.GetOpeningMode()), first);
+    AppendFieldInt(out, "roadType", static_cast<int>(info.GetRoadType()), first);
+    AppendFieldBool(out, "isRoutePoint", info.IsRoutePoint(), first);
+
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, "featureId");
+    out.push_back(':');
+    out.push_back('{');
+    bool fidFirst = true;
+    auto const & fid = info.GetID();
+    AppendFieldString(out, "mwmName", fid.GetMwmName(), fidFirst);
+    AppendFieldInt(out, "mwmVersion", static_cast<int64_t>(fid.GetMwmVersion()), fidFirst);
+    AppendFieldInt(out, "index", static_cast<int64_t>(fid.m_index), fidFirst);
+    out.push_back('}');
+
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, "coordinates");
+    out.push_back(':');
+    out.push_back('{');
+    bool coordFirst = true;
+    AppendFieldString(out, "decimal", info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDecimal), coordFirst);
+    AppendFieldString(out, "dms", info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDMS), coordFirst);
+    AppendFieldString(out, "osm", info.GetFormattedCoordinate(place_page::CoordinatesFormat::OSMLink), coordFirst);
+    AppendFieldString(out, "olc", info.GetFormattedCoordinate(place_page::CoordinatesFormat::OLCFull), coordFirst);
+    AppendFieldString(out, "utm", info.GetFormattedCoordinate(place_page::CoordinatesFormat::UTM), coordFirst);
+    AppendFieldString(out, "mgrs", info.GetFormattedCoordinate(place_page::CoordinatesFormat::MGRS), coordFirst);
+    out.push_back('}');
+
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, "rawTypes");
+    out.push_back(':');
+    out.push_back('[');
+    bool rawFirst = true;
+    for (auto const & type : info.GetRawTypes()) {
+        if (!rawFirst) out.push_back(',');
+        rawFirst = false;
+        AppendJsonString(out, type);
+    }
+    out.push_back(']');
+
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, "metadata");
+    out.push_back(':');
+    out.push_back('{');
+    bool metaFirst = true;
+    info.ForEachMetadataReadable([&](osm::MapObject::MetadataID id, std::string const & value) {
+        if (value.empty()) return;
+        if (!metaFirst) out.push_back(',');
+        metaFirst = false;
+        AppendJsonString(out, std::to_string(static_cast<int>(id)));
+        out.push_back(':');
+        AppendJsonString(out, value);
+    });
+    out.push_back('}');
+
+    if (info.IsBookmark()) {
+        AppendFieldInt(out, "bookmarkId", static_cast<int64_t>(info.GetBookmarkId()), first);
+        AppendFieldInt(out, "bookmarkCategoryId", static_cast<int64_t>(info.GetBookmarkCategoryId()), first);
+    }
+    if (info.IsTrack()) {
+        AppendFieldInt(out, "trackId", static_cast<int64_t>(info.GetTrackId()), first);
+    }
+
+    out.push_back('}');
+    return out;
+}
 
 #pragma mark - Logging
 
@@ -252,6 +420,31 @@ FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY) {
     
     // Scroll the map by the given distance
     g_framework->Scroll(distanceX, distanceY);
+}
+
+FFI_PLUGIN_EXPORT int comaps_place_page_has_data(void) {
+    if (!g_framework) {
+        return 0;
+    }
+    return g_framework->HasPlacePageInfo() ? 1 : 0;
+}
+
+FFI_PLUGIN_EXPORT const char* comaps_place_page_get_json(void) {
+    std::lock_guard<std::mutex> lock(g_placePageMutex);
+    if (!g_framework || !g_framework->HasPlacePageInfo()) {
+        g_placePageJson.clear();
+        return g_placePageJson.c_str();
+    }
+
+    g_placePageJson = BuildPlacePageJson(g_framework->GetCurrentPlacePageInfo());
+    return g_placePageJson.c_str();
+}
+
+FFI_PLUGIN_EXPORT void comaps_place_page_clear_selection(void) {
+    if (!g_framework) {
+        return;
+    }
+    g_framework->DeactivateMapSelection();
 }
 
 FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
