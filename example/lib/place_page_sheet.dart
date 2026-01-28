@@ -35,11 +35,7 @@ class PlacePageSheet extends StatelessWidget {
         .toList()
       ..sort((a, b) => a.label.compareTo(b.label));
 
-    final localizedSubtitle =
-        agus_maps_flutter.PlacePageLocalization.localizeTypeKey(
-              data.subtitle,
-            ) ??
-            data.subtitle;
+    final localizedSubtitle = data.subtitle;
 
     return Align(
       alignment: Alignment.bottomCenter,

@@ -138,8 +138,25 @@ class PlacePageData {
 
     final rawSubtitle =
         (json['subtitleRaw'] as String?) ?? (json['subtitle'] as String?) ?? '';
-    final localizedSubtitle =
-        PlacePageLocalization.localizeTypeKey(rawSubtitle);
+
+    final parsedRawTypes = (json['rawTypes'] as List?)
+            ?.map((value) => value.toString())
+            .toList() ??
+        const [];
+
+    final localizedSubtitle = PlacePageLocalization.localizeSubtitle(
+      rawSubtitle,
+      parsedRawTypes,
+    );
+
+    if (PlacePageLocalization.debugLoggingEnabled) {
+      developer.log(
+        'PlacePageData.fromJson: subtitleRaw="$rawSubtitle" '
+        'localized="$localizedSubtitle" '
+        'rawTypes=$parsedRawTypes',
+        name: 'agus_maps_flutter.place_page',
+      );
+    }
 
     return PlacePageData(
       featureId: PlacePageFeatureId.fromJson(
@@ -149,7 +166,7 @@ class PlacePageData {
       openingMode: (json['openingMode'] as num?)?.toInt() ?? 0,
       title: (json['title'] as String?) ?? '',
       secondaryTitle: (json['secondaryTitle'] as String?) ?? '',
-      subtitle: localizedSubtitle ?? rawSubtitle,
+      subtitle: localizedSubtitle,
       address: (json['address'] as String?) ?? '',
       lat: (json['lat'] as num?)?.toDouble() ?? 0,
       lon: (json['lon'] as num?)?.toDouble() ?? 0,
@@ -159,10 +176,7 @@ class PlacePageData {
       coordinates: PlacePageCoordinates.fromJson(
         (json['coordinates'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
-      rawTypes: (json['rawTypes'] as List?)
-              ?.map((value) => value.toString())
-              .toList() ??
-          const [],
+        rawTypes: parsedRawTypes,
       metadata: parsedMetadata,
       metadataTags: parsedMetadataTags,
       bookmarkId: (json['bookmarkId'] as num?)?.toInt(),
@@ -229,6 +243,30 @@ class PlacePageLocalization {
       return null;
     }
     return _stringTranslations[key];
+  }
+
+  static String localizeSubtitle(String subtitle, List<String> rawTypes) {
+    final trimmedSubtitle = subtitle.trim();
+    if (trimmedSubtitle.isNotEmpty) {
+      final parts = trimmedSubtitle.split(RegExp(r'\s+•\s+'));
+      if (parts.isNotEmpty) {
+        final head = parts.first.trim();
+        final localizedHead = localizeTypeKey(head);
+        if (localizedHead != null && localizedHead.isNotEmpty) {
+          if (parts.length == 1) {
+            return localizedHead;
+          }
+          return [localizedHead, ...parts.skip(1)].join(' • ');
+        }
+      }
+    }
+
+    final bestType = _bestLocalizedType(rawTypes);
+    if (bestType != null && bestType.isNotEmpty) {
+      return bestType;
+    }
+
+    return trimmedSubtitle;
   }
 
   static String localizeMetadataTag(String tag) {
@@ -417,6 +455,27 @@ class PlacePageLocalization {
     'panoramax': 'panoramax',
     'branch': 'branch',
   };
+
+  static String? _bestLocalizedType(List<String> rawTypes) {
+    String? bestLabel;
+    var bestScore = -1;
+    for (final rawType in rawTypes) {
+      final localized = localizeTypeKey(rawType);
+      if (localized == null || localized.isEmpty) {
+        continue;
+      }
+      final score = _typeSpecificityScore(rawType);
+      if (score > bestScore) {
+        bestScore = score;
+        bestLabel = localized;
+      }
+    }
+    return bestLabel;
+  }
+
+  static int _typeSpecificityScore(String rawType) {
+    return RegExp(r'[-_:]').allMatches(rawType).length;
+  }
 }
 
 Future<void> preloadPlacePageLocalization({ui.Locale? locale}) {
@@ -435,6 +494,12 @@ PlacePageData? getCurrentPlacePage() {
     final jsonString = ptr.cast<Utf8>().toDartString();
     if (jsonString.isEmpty) {
       return null;
+    }
+    if (PlacePageLocalization.debugLoggingEnabled) {
+      developer.log(
+        'Place page JSON (native): $jsonString',
+        name: 'agus_maps_flutter.place_page',
+      );
     }
     final decoded = jsonDecode(jsonString);
     if (decoded is! Map<String, dynamic>) {

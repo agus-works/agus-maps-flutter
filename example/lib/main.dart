@@ -136,6 +136,9 @@ class _MyAppState extends State<MyApp> {
     try {
       _log('Starting initialization...');
 
+      agus_maps_flutter.PlacePageLocalization.debugLoggingEnabled = true;
+      _log('Place page debug logging enabled.');
+
       await agus_maps_flutter.preloadPlacePageLocalization();
       _log(
         'Localization loaded: types=${agus_maps_flutter.PlacePageLocalization.isLoaded}, '
@@ -271,6 +274,24 @@ class _MyAppState extends State<MyApp> {
 
   void _handlePlacePage(agus_maps_flutter.PlacePageData? data) {
     if (!mounted) return;
+    if (data == null) {
+      _log('Place page cleared.');
+    } else {
+      final rawType =
+          data.rawTypes.isNotEmpty ? data.rawTypes.first : '';
+      final localizedFromRaw = rawType.isNotEmpty
+          ? agus_maps_flutter.PlacePageLocalization.localizeTypeKey(rawType)
+          : null;
+      _log(
+        'Place page received: title="${data.title}" '
+        'subtitle="${data.subtitle}" '
+        'rawType="$rawType" '
+        'localizedFromRaw="${localizedFromRaw ?? ''}" '
+        'address="${data.address}" '
+        'coords="${data.coordinates.decimal ?? ''}" '
+        'metadataTags=${data.metadataTags.keys.toList()}',
+      );
+    }
     setState(() {
       _placePage = data;
     });

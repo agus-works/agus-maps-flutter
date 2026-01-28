@@ -25,6 +25,7 @@
 #include "base/logging.hpp"
 #include "map/framework.hpp"
 #include "map/place_page_info.hpp"
+#include "indexer/feature_meta.hpp"
 #include "platform/local_country_file.hpp"
 #include "drape/graphics_context_factory.hpp"
 #include "drape_frontend/visual_params.hpp"
@@ -204,28 +205,6 @@ static std::string LocalizeTypeName(std::string const & type) {
     return key;
 }
 
-static std::string GetLocalizedSubtitle(place_page::Info const & info) {
-    auto subtitle = info.GetSubtitle();
-    if (!subtitle.empty()) {
-        auto localized = LocalizeTypeName(subtitle);
-        auto normalizedKey = NormalizeTypeKey(subtitle);
-        if (!localized.empty() && localized != normalizedKey) {
-            return localized;
-        }
-    }
-
-    auto const & rawTypes = info.GetRawTypes();
-    if (!rawTypes.empty()) {
-        auto localized = LocalizeTypeName(rawTypes.front());
-        auto normalizedKey = NormalizeTypeKey(rawTypes.front());
-        if (!localized.empty() && localized != normalizedKey) {
-            return localized;
-        }
-    }
-
-    return subtitle;
-}
-
 static void AppendFieldBool(std::string & out, std::string_view key, bool value, bool & first) {
     if (!first) out.push_back(',');
     first = false;
@@ -269,7 +248,7 @@ static std::string BuildPlacePageJson(place_page::Info const & info) {
     auto const ll = info.GetLatLon();
     AppendFieldString(out, "title", info.GetTitle(), first);
     AppendFieldString(out, "secondaryTitle", info.GetSecondaryTitle(), first);
-    AppendFieldString(out, "subtitle", GetLocalizedSubtitle(info), first);
+    AppendFieldString(out, "subtitle", info.GetSubtitle(), first);
     AppendFieldString(out, "address", info.GetSecondarySubtitle(), first);
     AppendFieldDouble(out, "lat", ll.m_lat, first);
     AppendFieldDouble(out, "lon", ll.m_lon, first);
@@ -329,6 +308,29 @@ static std::string BuildPlacePageJson(place_page::Info const & info) {
         if (!metaFirst) out.push_back(',');
         metaFirst = false;
         AppendJsonString(out, std::to_string(static_cast<int>(id)));
+        out.push_back(':');
+        AppendJsonString(out, value);
+    });
+    out.push_back('}');
+
+    if (!first) out.push_back(',');
+    first = false;
+    AppendJsonString(out, "metadataTags");
+    out.push_back(':');
+    out.push_back('{');
+    bool metaTagFirst = true;
+    info.ForEachMetadataReadable([&](osm::MapObject::MetadataID id, std::string const & value) {
+        if (value.empty()) return;
+        auto const type = static_cast<feature::Metadata::EType>(id);
+        if (type == feature::Metadata::FMD_CHARGE_SOCKETS ||
+            type == feature::Metadata::FMD_COUNT) {
+            return;
+        }
+        auto const tag = feature::ToString(type);
+        if (tag.empty()) return;
+        if (!metaTagFirst) out.push_back(',');
+        metaTagFirst = false;
+        AppendJsonString(out, tag);
         out.push_back(':');
         AppendJsonString(out, value);
     });
