@@ -466,6 +466,10 @@ bool AgusMapsFlutterPlugin::DataDirLooksComplete(const fs::path& dataDir) {
         dataDir / "drules_proto.bin",
         dataDir / "packed_polygons.bin",
         dataDir / "transit_colors.txt",
+        dataDir / "symbols" / "xxhdpi" / "light" / "symbols.sdf",
+        dataDir / "symbols" / "xxhdpi" / "light" / "symbols.png",
+        dataDir / "symbols" / "xxhdpi" / "dark" / "symbols.sdf",
+        dataDir / "symbols" / "xxhdpi" / "dark" / "symbols.png",
         dataDir / "countries-strings" / "en.json" / "localize.json",
         dataDir / "categories-strings" / "en.json" / "localize.json",
     };
