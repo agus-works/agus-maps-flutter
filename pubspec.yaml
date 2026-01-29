@@ -52,7 +52,6 @@ flutter:
   #
   # Please refer to README.md for a detailed explanation.
   assets:
-    - assets/fonts/
     - assets/localized_types/af.lproj/
     - assets/localized_types/ar.lproj/
     - assets/localized_types/ast.lproj/

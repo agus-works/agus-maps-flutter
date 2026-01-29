@@ -1,88 +1,110 @@
 // Copyright 2025 The Agus Maps Flutter Authors
 // SPDX-License-Identifier: MIT
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "include/agus_maps_flutter/agus_maps_flutter_plugin_c_api.h"
+#include "agus_maps_api.g.h"
 #include "../src/agus_maps_flutter.h"
+
+#include <flutter/plugin_registrar.h>
+#include <flutter/plugin_registrar_windows.h>
+#include <flutter/texture_registrar.h>
+
+#include <ShlObj.h>
+#include <windows.h>
+
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <stdexcept>
+#include <string>
 
-void AgusMapsFlutterPlugin::CreateMapSurface(
-    const CreateMapSurfaceRequest& request,
-    std::function<void(ErrorOr<int64_t> reply)> result) {
-    OutputDebugStringA("[AgusMapsFlutter] createMapSurface called\n");
+namespace agus_maps_flutter {
 
-    int32_t width = request.width() ? static_cast<int32_t>(*request.width()) : 800;
-    int32_t height = request.height() ? static_cast<int32_t>(*request.height()) : 600;
-    double density = request.density() ? *request.density() : 1.0;
+namespace fs = std::filesystem;
 
-    char msg[256];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Creating surface: %dx%d, density=%.2f\n",
-             width, height, density);
-    OutputDebugStringA(msg);
+class AgusMapsFlutterPlugin;
 
-    if (!LoadFfiLibrary()) {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to load FFI library\n");
-        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "Failed to load native FFI library")));
-        return;
+static HMODULE GetNativeLibraryHandle();
+
+using CreateSurfaceFn = void (*)(int32_t, int32_t, float);
+using OnSizeChangedFn = void (*)(int32_t, int32_t);
+using SetVisualScaleFn = void (*)(float);
+using OnSurfaceDestroyedFn = void (*)();
+using GetSharedTextureHandleFn = void* (*)();
+using GetD3D11DeviceFn = void* (*)();
+using GetD3D11TextureFn = void* (*)();
+using RenderFrameFn = void (*)();
+using SetFrameReadyCallbackFn = void (*)(FrameReadyCallback);
+
+static HMODULE g_ffiModule = nullptr;
+static bool g_ffiLoaded = false;
+
+static CreateSurfaceFn g_fnCreateSurface = nullptr;
+static OnSizeChangedFn g_fnOnSizeChanged = nullptr;
+static SetVisualScaleFn g_fnSetVisualScale = nullptr;
+static OnSurfaceDestroyedFn g_fnOnSurfaceDestroyed = nullptr;
+static GetSharedTextureHandleFn g_fnGetSharedTextureHandle = nullptr;
+static GetD3D11DeviceFn g_fnGetD3D11Device = nullptr;
+static GetD3D11TextureFn g_fnGetD3D11Texture = nullptr;
+static RenderFrameFn g_fnRenderFrame = nullptr;
+static SetFrameReadyCallbackFn g_fnSetFrameReadyCallback = nullptr;
+
+static AgusMapsFlutterPlugin* g_pluginInstance = nullptr;
+
+static bool LoadFfiLibrary() {
+    if (g_ffiLoaded) {
+        return g_ffiModule != nullptr;
     }
 
-    if (g_fnCreateSurface) {
-        OutputDebugStringA("[AgusMapsFlutter] Calling agus_native_create_surface...\n");
-        g_fnCreateSurface(width, height, static_cast<float>(density));
-        OutputDebugStringA("[AgusMapsFlutter] agus_native_create_surface returned\n");
-    } else {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: agus_native_create_surface not available\n");
-        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "agus_native_create_surface function not found")));
-        return;
+    g_ffiLoaded = true;
+    g_ffiModule = GetNativeLibraryHandle();
+    if (!g_ffiModule) {
+        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to load agus_maps_flutter.dll\n");
+        return false;
     }
 
-    if (g_fnSetFrameReadyCallback) {
-        g_fnSetFrameReadyCallback(&OnNativeFrameReady);
-        OutputDebugStringA("[AgusMapsFlutter] Frame ready callback set\n");
+    g_fnCreateSurface = reinterpret_cast<CreateSurfaceFn>(
+        GetProcAddress(g_ffiModule, "agus_native_create_surface"));
+    g_fnOnSizeChanged = reinterpret_cast<OnSizeChangedFn>(
+        GetProcAddress(g_ffiModule, "agus_native_on_size_changed"));
+    g_fnSetVisualScale = reinterpret_cast<SetVisualScaleFn>(
+        GetProcAddress(g_ffiModule, "agus_native_set_visual_scale"));
+    g_fnOnSurfaceDestroyed = reinterpret_cast<OnSurfaceDestroyedFn>(
+        GetProcAddress(g_ffiModule, "agus_native_on_surface_destroyed"));
+    g_fnGetSharedTextureHandle = reinterpret_cast<GetSharedTextureHandleFn>(
+        GetProcAddress(g_ffiModule, "agus_get_shared_texture_handle"));
+    g_fnGetD3D11Device = reinterpret_cast<GetD3D11DeviceFn>(
+        GetProcAddress(g_ffiModule, "agus_get_d3d11_device"));
+    g_fnGetD3D11Texture = reinterpret_cast<GetD3D11TextureFn>(
+        GetProcAddress(g_ffiModule, "agus_get_d3d11_texture"));
+    g_fnRenderFrame = reinterpret_cast<RenderFrameFn>(
+        GetProcAddress(g_ffiModule, "agus_render_frame"));
+    g_fnSetFrameReadyCallback = reinterpret_cast<SetFrameReadyCallbackFn>(
+        GetProcAddress(g_ffiModule, "agus_set_frame_ready_callback"));
+
+    if (!g_fnCreateSurface) {
+        OutputDebugStringA("[AgusMapsFlutter] WARN: Missing agus_native_create_surface\n");
     }
-
-    texture_id_ = texture_registrar_->RegisterTexture(
-        std::make_unique<flutter::TextureVariant>(
-            flutter::GpuSurfaceTexture(kFlutterDesktopGpuSurfaceTypeDXGISharedHandle,
-                                       &gpu_surface_desc_)));
-
-    if (texture_id_ < 0) {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to register texture\n");
-        result(ErrorOr<int64_t>(FlutterError("TEXTURE_ERROR", "Failed to register texture")));
-        return;
+    if (!g_fnOnSizeChanged) {
+        OutputDebugStringA("[AgusMapsFlutter] WARN: Missing agus_native_on_size_changed\n");
     }
-
-    surface_width_ = width;
-    surface_height_ = height;
-    last_density_ = density;
-    map_ready_sent_ = false;
-
     if (!g_fnGetSharedTextureHandle) {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: get_shared_texture_handle not available\n");
-        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "get_shared_texture_handle not available")));
-        return;
+        OutputDebugStringA("[AgusMapsFlutter] WARN: Missing agus_get_shared_texture_handle\n");
     }
 
-    void* handle = g_fnGetSharedTextureHandle();
-    if (!handle) {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to get shared texture handle\n");
-        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "Failed to get shared texture handle")));
-        return;
-    }
-
-    gpu_surface_desc_.handle = handle;
-    gpu_surface_desc_.width = width;
-    gpu_surface_desc_.height = height;
-
-    OutputDebugStringA("[AgusMapsFlutter] Surface created successfully\n");
-    result(ErrorOr<int64_t>(texture_id_));
-    if (flutter_api_) {
-        flutter_api_->OnRenderStateChanged(
-            RenderState::kActive,
-            &texture_id_,
-            []() {},
-            [](const FlutterError&) {});
-    }
+    return true;
 }
+
 std::string WideToUtf8(const std::wstring& wide) {
     if (wide.empty()) return std::string();
     int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.length()),
