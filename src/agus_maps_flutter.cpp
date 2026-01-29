@@ -646,11 +646,13 @@ FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path) {
     }
 }
 
+extern "C" void agus_localization_set_locale(const char* locale);
+
 FFI_PLUGIN_EXPORT void comaps_set_locale(const char* localeTag) {
     __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", 
                         "comaps_set_locale: %s", localeTag ? localeTag : "(null)");
     if (localeTag && *localeTag) {
-        AgusPlatform_SetLocale(localeTag);
+        agus_localization_set_locale(localeTag);
         __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
                             "comaps_set_locale: Locale set to '%s'", localeTag);
     } else {

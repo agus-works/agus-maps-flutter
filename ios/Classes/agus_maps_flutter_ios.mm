@@ -679,6 +679,13 @@ FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
     NSLog(@"[AgusMapsFlutter] Point is NOT covered by any registered MWM");
 }
 
+extern "C" void agus_localization_set_locale(const char* localeTag);
+
+FFI_PLUGIN_EXPORT void comaps_set_locale(const char* localeTag) {
+    NSLog(@"[AgusMapsFlutter] comaps_set_locale: %s", localeTag ? localeTag : "(null)");
+    agus_localization_set_locale(localeTag);
+}
+
 #pragma mark - DrapeEngine Creation
 
 static void createDrapeEngineIfNeeded(int width, int height, float density) {
