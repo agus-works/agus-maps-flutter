@@ -2,13 +2,23 @@
 
 ## Severity: Low
 
+## Status: Superseded
+
+> **Note**: This issue has been expanded with more detailed analysis and solutions.  
+> See [ISSUE-arena-allocator-ffi.md](ISSUE-arena-allocator-ffi.md) for the comprehensive version with:
+> - Non-technical explanations with analogies
+> - Arena allocator pattern implementation
+> - String caching solutions
+> - Performance benchmarks
+> - Mermaid diagrams
+
 ## Description
 
 FFI string parameters are converted using `toNativeUtf8()` which allocates memory for each call. While necessary for the FFI boundary, the current pattern allocates and frees memory frequently.
 
 ## Location
 
-- [lib/agus_maps_flutter.dart](../lib/agus_maps_flutter.dart) - Multiple functions using `toNativeUtf8()`
+- [lib/agus_maps_flutter.dart](../../lib/agus_maps_flutter.dart) - Multiple functions using `toNativeUtf8()`
 
 ## Current Behavior
 
