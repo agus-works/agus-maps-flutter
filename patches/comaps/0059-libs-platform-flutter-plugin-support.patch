@@ -11,12 +11,14 @@ index c26e864b1..5966daa70 100644
    location.hpp
    measurement_utils.cpp
    measurement_utils.hpp
-@@ -72,7 +70,7 @@ if (PLATFORM_IPHONE)
+@@ -72,7 +70,9 @@ if (PLATFORM_IPHONE)
      http_thread_apple.mm
      http_client_apple.mm
      http_uploader_apple.mm
 -    http_user_agent_ios.mm
 +    http_session_manager.mm
++    localization.cpp
++    localization.hpp
      localization.mm
      locale.mm
      network_policy_ios.h

@@ -1009,9 +1009,12 @@ Unity builds combine many source files, exceeding MSVC's default object section 
 
 **What it does:**
 
-1. **iOS Fix:** Changes `http_user_agent_ios.mm` → `http_session_manager.mm`
-   - The file `http_user_agent_ios.mm` does not exist in current CoMaps
-   - `http_session_manager.mm` is the correct file for HTTP session management
+1. **iOS Fix:** Multiple changes for iOS platform
+   - Changes `http_user_agent_ios.mm` → `http_session_manager.mm` (file renamed in CoMaps)
+   - **Adds `localization.cpp` and `localization.hpp`** to `PLATFORM_IPHONE` block
+   - iOS's `localization.mm` only implements 5 of 8 localization functions
+   - The missing `GetLocalizedDistanceUnits`, `GetLocalizedAltitudeUnits`, `GetLocalizedSpeedUnits` are in `localization.cpp`
+   - Without both files, iOS builds fail with "undefined symbol" linker errors
 
 2. **Android with `SKIP_ANDROID_JNI`:** (lines 86-96)
    ```cmake
@@ -1100,7 +1103,7 @@ Unity builds combine many source files, exceeding MSVC's default object section 
 
 | Platform | Condition | Key Source Files | Localization |
 |----------|-----------|------------------|--------------|
-| iOS | `PLATFORM_IPHONE` | `platform_ios.mm`, Apple HTTP, Metal | `localization.mm` (native) |
+| iOS | `PLATFORM_IPHONE` | `platform_ios.mm`, Apple HTTP, Metal | `localization.mm` + `localization.cpp` (iOS localization + unit conversions) |
 | Android (JNI) | `PLATFORM_ANDROID` | `platform_android.cpp`, JNI/APK reader | JNI localization |
 | Android (Flutter) | `SKIP_ANDROID_JNI AND PLATFORM_ANDROID` | Unix impl + curl + dummies | `agus_localization.cpp` |
 | macOS (Flutter) | `SKIP_QT AND PLATFORM_MAC` | `platform_mac.mm`, Apple HTTP | `agus_localization.cpp` |
@@ -1142,7 +1145,17 @@ This ensures POI type names and other localized strings display correctly on Win
 | Windows | `src/agus_platform_win.cpp` | `src/agus_localization.cpp` |
 | **Linux** | `src/agus_platform_linux.cpp` (HTTP stubs only) + `src/agus_maps_flutter_linux.cpp` (Platform class) | `src/agus_localization.cpp` |
 | macOS | Handled by CoMaps' own platform files | `src/agus_localization.cpp` (via podspec) |
-| iOS | Handled by CoMaps' own platform files | `localization.mm` (native iOS) |
+| iOS | Handled by CoMaps' own platform files | `localization.mm` (strings) + `localization.cpp` (units) in XCFramework |
+
+**iOS Localization Note:**
+CoMaps' `localization.mm` only implements 5 of 8 functions declared in `localization.hpp`:
+- `GetLocalizedTypeName`, `GetLocalizedBrandName`, `GetLocalizedString`
+- `GetCurrencySymbol`, `GetLocalizedMyPositionBookmarkName`
+
+The missing 3 functions are in `localization.cpp`:
+- `GetLocalizedDistanceUnits`, `GetLocalizedAltitudeUnits`, `GetLocalizedSpeedUnits`
+
+This patch ensures both files are compiled for iOS to prevent "undefined symbol" linker errors.
 
 
 ### 0060-3party-gflags-skip-install.patch
