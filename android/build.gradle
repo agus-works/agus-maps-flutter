@@ -88,6 +88,10 @@ android {
     defaultConfig {
         minSdk = 24
         
+        // Consumer ProGuard rules - these are automatically applied to apps using this plugin
+        // Required to keep classes that are accessed via JNI reflection from native code
+        consumerProguardFiles "proguard-rules.pro"
+        
         // Pass CMake arguments based on build mode
         if (isInRepo) {
             externalNativeBuild {
