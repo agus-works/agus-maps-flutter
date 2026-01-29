@@ -44,6 +44,9 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#define AGUS_EXPORT __declspec(dllexport)
+#else
+#define AGUS_EXPORT __attribute__((visibility("default")))
 #endif
 
 namespace platform
@@ -415,7 +418,7 @@ extern "C" {
 /// Set the locale tag explicitly
 /// Call this from Android JNI or Dart FFI to set the locale
 /// before any localization calls are made
-__attribute__((visibility("default")))
+AGUS_EXPORT
 void agus_localization_set_locale(const char* localeTag)
 {
     std::lock_guard<std::mutex> lock(platform::g_mutex);
@@ -428,7 +431,7 @@ void agus_localization_set_locale(const char* localeTag)
 
 /// Get the currently loaded locale tag
 /// Returns nullptr if no locale is loaded
-__attribute__((visibility("default")))
+AGUS_EXPORT
 const char* agus_localization_get_locale()
 {
     std::lock_guard<std::mutex> lock(platform::g_mutex);
