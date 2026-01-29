@@ -330,8 +330,31 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         
         let markerFile = appDir.appendingPathComponent(".comaps_data_extracted")
         
-        // Check if already extracted
-        if FileManager.default.fileExists(atPath: markerFile.path) {
+        // Essential files that must exist for CoMaps to work
+        let essentialFiles = [
+            "classificator.txt",
+            "types.txt",
+            "drules_proto.bin",
+            "packed_polygons.bin",
+            "transit_colors.txt",
+            "localized_types/en.lproj/LocalizableTypes.strings"  // Localized POI type names
+        ]
+        
+        // Check if already extracted AND essential files exist
+        var needsExtraction = !FileManager.default.fileExists(atPath: markerFile.path)
+        if !needsExtraction {
+            for file in essentialFiles {
+                let filePath = appDir.appendingPathComponent(file).path
+                if !FileManager.default.fileExists(atPath: filePath) {
+                    NSLog("[AgusMapsFlutter] Essential file missing: %@, forcing re-extraction", file)
+                    needsExtraction = true
+                    try? FileManager.default.removeItem(atPath: markerFile.path)
+                    break
+                }
+            }
+        }
+        
+        if !needsExtraction {
             NSLog("[AgusMapsFlutter] Data already extracted at: %@", appDir.path)
             return appDir.path
         }

@@ -37,6 +37,13 @@ FFI_PLUGIN_EXPORT void comaps_init(const char* apkPath, const char* storagePath)
 FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* writablePath);
 FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path);
 
+/// Set the locale for native POI type localization.
+/// Must be called after comaps_init_paths() for proper localization.
+/// If not called, the system locale is auto-detected.
+/// Can be called at any time to change locale (affects subsequent place page requests).
+/// @param localeTag BCP 47 locale tag (e.g., "en-US", "zh-Hans", "de")
+FFI_PLUGIN_EXPORT void comaps_set_locale(const char* localeTag);
+
 FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom);
 
 // Invalidate the current viewport to force tile reload

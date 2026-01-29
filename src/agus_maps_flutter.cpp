@@ -646,6 +646,19 @@ FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path) {
     }
 }
 
+FFI_PLUGIN_EXPORT void comaps_set_locale(const char* localeTag) {
+    __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", 
+                        "comaps_set_locale: %s", localeTag ? localeTag : "(null)");
+    if (localeTag && *localeTag) {
+        AgusPlatform_SetLocale(localeTag);
+        __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative", 
+                            "comaps_set_locale: Locale set to '%s'", localeTag);
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, "AgusMapsFlutterNative", 
+                            "comaps_set_locale: Empty locale tag, using auto-detect");
+    }
+}
+
 // Store current surface dimensions
 static int g_surfaceWidth = 0;
 static int g_surfaceHeight = 0;

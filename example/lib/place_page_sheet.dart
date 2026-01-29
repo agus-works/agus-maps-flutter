@@ -25,9 +25,9 @@ class PlacePageSheet extends StatelessWidget {
     final metadataEntries = data.metadataTags
         .map(
           (entry) => _MetadataEntry(
-            label: agus_maps_flutter.PlacePageLocalization.localizeMetadataTag(
-              entry.key,
-            ),
+            // NOTE: PlacePageLocalization has been removed.
+            // Use the metadata key directly with simple humanization.
+            label: _humanizeMetadataTag(entry.key),
             value: entry.value,
           ),
         )
@@ -150,4 +150,26 @@ class _MetadataEntry {
     required this.label,
     required this.value,
   });
+}
+
+/// Humanize a metadata tag key for display.
+/// e.g., "opening_hours" → "Opening Hours", "contact:phone" → "Phone"
+String _humanizeMetadataTag(String tag) {
+  if (tag.isEmpty) return '';
+
+  // Handle contact: prefix specially
+  if (tag.startsWith('contact:')) {
+    tag = tag.substring('contact:'.length);
+  }
+
+  // Replace underscores and colons with spaces
+  final normalized = tag.replaceAll('_', ' ').replaceAll(':', ' ');
+
+  // Capitalize each word
+  return normalized
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .map((part) =>
+          part[0].toUpperCase() + (part.length > 1 ? part.substring(1) : ''))
+      .join(' ');
 }

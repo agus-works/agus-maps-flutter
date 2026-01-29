@@ -1,153 +1,119 @@
 # Issue: Native Type Localization Not Working
 
-**Status**: Open  
-**Platforms Affected**: Windows, Android (macOS/iOS untested)  
+**Status**: Resolved  
+**Platforms Affected**: Windows, Android, Linux (macOS/iOS untested)  
 **Discovered**: 2026-01-29  
+**Resolved**: 2026-01-29
 
 ## Summary
 
-POI type names like `amenity-compressed_air` appear as raw type strings in the place page subtitle instead of being localized to user-friendly names like "Compressed Air".
+POI type names like `amenity-compressed_air` appeared as raw type strings in the place page subtitle instead of being localized to user-friendly names like "Compressed Air".
 
-## Observed Behavior
+## Resolution
+
+The issue was resolved by:
+
+1. **Removing Dart-side localization entirely** — The `PlacePageLocalization` class and all related functions have been removed from [lib/agus_maps_flutter.dart](lib/agus_maps_flutter.dart). All localization is now handled by native code.
+
+2. **Adding `setLocale()` API** — A new `setLocale(String localeTag)` function was added for consumers to explicitly set the locale for native localization. This should be called after `initWithPaths()` but before displaying place pages. The function gracefully handles missing symbols on older binaries.
+
+3. **Multi-platform `comaps_set_locale()`** — Added the FFI export to all platform implementations:
+   - Android: [src/agus_maps_flutter.cpp](../src/agus_maps_flutter.cpp)
+   - Windows: [src/agus_maps_flutter_win.cpp](../src/agus_maps_flutter_win.cpp)
+   - Linux: [src/agus_maps_flutter_linux.cpp](../src/agus_maps_flutter_linux.cpp)
+
+4. **Adding diagnostic logging** — Native `TryLoadLocale()` in [src/agus_localization.cpp](src/agus_localization.cpp) now logs:
+   - The `ResourcesDir` path being used
+   - Each file path attempted
+   - Success/failure status with translation count
+
+5. **Auto-generating asset declarations** — The build runner in [tool/src/assets_updater.dart](tool/src/assets_updater.dart) now auto-generates `localized_types` asset declarations for [example/pubspec.yaml](example/pubspec.yaml) after copying localization files.
+
+## New API: `setLocale()`
+
+```dart
+/// Set the locale for native POI type localization.
+///
+/// This controls how POI type names are translated in place page data
+/// (e.g., "amenity-fuel" → "Gas Station").
+///
+/// **When to call:**
+/// - After initWithPaths() so the resource directory is known
+/// - Before creating the map surface for best results
+/// - Can be called at any time to change locale (affects subsequent requests)
+///
+/// **Example:**
+/// ```dart
+/// final dataPath = await extractDataFiles();
+/// initWithPaths(dataPath, dataPath);
+/// setLocale(ui.PlatformDispatcher.instance.locale.toLanguageTag()); // e.g., "en-US"
+/// ```
+void setLocale(String localeTag);
+```
+
+**Behavior:**
+- If not called, native code auto-detects the system locale (may not work reliably on all platforms)
+- If the symbol is not found (older binaries), falls back to auto-detection with a debug message
+- Explicitly calling `setLocale()` is recommended for consistent cross-platform behavior
+
+## Migration Guide
+
+### For Plugin Consumers
+
+**Before (Dart localization):**
+```dart
+// OLD: Preload Dart-side localization
+await preloadPlacePageLocalization();
+initWithPaths(dataPath, dataPath);
+```
+
+**After (Native localization):**
+```dart
+// NEW: Set locale for native localization
+initWithPaths(dataPath, dataPath);
+setLocale(ui.PlatformDispatcher.instance.locale.toLanguageTag());
+```
+
+### What Changed
+
+| Component | Before | After |
+|-----------|--------|-------|
+| `PlacePageLocalization` class | Existed in Dart | **Removed** |
+| `preloadPlacePageLocalization()` | Required before use | **Removed** |
+| `localizeSubtitle()` | Dart-side, partial | **Removed** - native handles all |
+| `setLocale()` | Did not exist | **New** - explicit locale setting |
+| Place page subtitle | Partially localized | Fully pre-localized by native |
+
+## Original Problem
+
+### Observed Behavior
 
 When tapping on a POI (e.g., a gas station with compressed air amenity):
 
 ```
 subtitle="Gas Station · amenity-compressed_air · 🚻"
-rawType="toilets-yes"
-localizedFromRaw="Toilet"
 ```
 
-- **Main type** (`amenity-fuel` → "Gas Station") is localized ✓
-- **Secondary type** (`amenity-compressed_air`) appears **raw** ✗
-- **Dart-side fallback** correctly translates `toilets-yes` → "Toilet" ✓
+- **Main type** (`amenity-fuel` → "Gas Station") was localized ✓
+- **Secondary type** (`amenity-compressed_air`) appeared **raw** ✗
 
-## Root Cause Analysis
+### Root Cause
 
-### 1. Native Localization Code Path
-
-Both main and secondary types use the same function chain:
-
-```
-MapObject::GetLocalizedType()          → platform::GetLocalizedTypeName()
-MapObject::GetLocalizedAllTypes()      → platform::GetLocalizedTypeName()
-```
-
-**File**: [`thirdparty/comaps/libs/indexer/map_object.cpp`](file:///c:/Users/Bangonkali/Desktop/Projects/agus-maps-flutter/thirdparty/comaps/libs/indexer/map_object.cpp#L106-L156)
-
-### 2. Native Localization Implementation
-
-**File**: [`src/agus_localization.cpp`](file:///c:/Users/Bangonkali/Desktop/Projects/agus-maps-flutter/src/agus_localization.cpp)
-
-```cpp
-std::string GetLocalizedTypeName(std::string const & type)
-{
-    std::lock_guard<std::mutex> lock(g_mutex);
-    
-    if (!EnsureLocalizationLoaded())  // ← Returns false!
-        return type;                   // ← Returns raw type
-    
-    auto key = NormalizeTypeKey(type);
-    auto it = g_typeTranslations.find(key);
-    if (it == g_typeTranslations.end())
-        return type;
-    
-    return it->second;
-}
-```
-
-### 3. Why `EnsureLocalizationLoaded()` Fails
-
-The function calls `TryLoadLocale()` which constructs file paths like:
-
-```cpp
-std::string typesPath = baseDir + candidate + ".lproj/LocalizableTypes.strings";
-// Results in: "{ResourcesDir}/localized_types/en.lproj/LocalizableTypes.strings"
-```
-
-**Potential issues:**
-1. `GetPlatform().ResourcesDir()` may not return the correct path
-2. The `localized_types/` directory may not exist in the resources path
-3. The `.strings` files may not be extracted/accessible at runtime
-
-### 4. Dart-Side Fallback (Partial Workaround)
-
-**File**: [`lib/agus_maps_flutter.dart`](file:///c:/Users/Bangonkali/Desktop/Projects/agus-maps-flutter/lib/agus_maps_flutter.dart#L190-L212)
-
-The Dart layer has a `localizeSubtitle()` function that:
-1. Splits subtitle by ` • ` separator
-2. **Only localizes the FIRST part** (head)
-3. Leaves secondary parts unchanged
+The Dart-side `localizeSubtitle()` function only localized the **first** bullet point in the subtitle, leaving secondary types unchanged:
 
 ```dart
-static String localizeSubtitle(String subtitle, List<String> rawTypes) {
-  final parts = trimmedSubtitle.split(RegExp(r'\s+•\s+'));
-  final head = parts.first.trim();
-  final localizedHead = localizeTypeKey(head);  // Only head!
-  return [localizedHead, ...parts.skip(1)].join(' • ');  // Rest unchanged
-}
+// OLD CODE (removed)
+final parts = trimmedSubtitle.split(RegExp(r'\s+•\s+'));
+final head = parts.first.trim();
+final localizedHead = localizeTypeKey(head);  // Only head!
+return [localizedHead, ...parts.skip(1)].join(' • ');  // Rest unchanged!
 ```
 
-## Translation File Location
+Additionally, native localization was not loading translation files because:
+1. The locale wasn't being set explicitly on all platforms
+2. Asset declarations for `localized_types` were missing from the example app's pubspec
 
-Translations exist and are correctly formatted:
-
-**File**: [`example/assets/comaps_data/localized_types/en.lproj/LocalizableTypes.strings`](file:///c:/Users/Bangonkali/Desktop/Projects/agus-maps-flutter/example/assets/comaps_data/localized_types/en.lproj/LocalizableTypes.strings#L67)
-
-```
-"type.amenity.compressed_air" = "Compressed Air";
-```
-
-The translation is present in 40+ language files.
-
-## Debugging Steps
-
-### 1. Add Diagnostic Logging
-
-Add logging to `agus_localization.cpp` to trace:
-- What `GetPlatform().ResourcesDir()` returns
-- What file paths are being attempted
-- Whether `std::ifstream` can open the files
-
-### 2. Verify Resource Directory Structure
-
-Check that at runtime, the resources directory contains:
-```
-{ResourcesDir}/
-  localized_types/
-    en.lproj/
-      LocalizableTypes.strings
-      Localizable.strings
-```
-
-### 3. Verify Locale Setting
-
-Ensure `AgusPlatform_SetLocale()` is called before any place page is shown.
-
-## Proposed Fixes
-
-### Option A: Fix Native Localization (Recommended)
-
-1. Add logging to diagnose file path issues
-2. Ensure `.strings` files are extracted to the correct location
-3. Fix `TryLoadLocale()` to find files in the actual resource path
-
-### Option B: Enhance Dart-Side Fallback (Quick Fix)
-
-Modify `localizeSubtitle()` to localize ALL parts:
-
-```dart
-static String localizeSubtitle(String subtitle, List<String> rawTypes) {
-  final parts = trimmedSubtitle.split(RegExp(r'\s+•\s+'));
-  final localizedParts = parts.map((p) {
-    final localized = localizeTypeKey(p.trim());
-    return localized ?? p;
-  }).toList();
-  return localizedParts.join(' • ');
-}
-```
-
-## Related Files
+## Technical Details
 
 | File | Purpose |
 |------|---------|
@@ -157,11 +123,57 @@ static String localizeSubtitle(String subtitle, List<String> rawTypes) {
 | [`thirdparty/comaps/libs/indexer/map_object.cpp`](file:///c:/Users/Bangonkali/Desktop/Projects/agus-maps-flutter/thirdparty/comaps/libs/indexer/map_object.cpp) | GetLocalizedType/GetLocalizedAllTypes |
 
 ## Key Functions
+## Technical Details
 
-| Function | File | Line | Purpose |
-|----------|------|------|---------|
-| `GetLocalizedTypeName()` | agus_localization.cpp | 321 | Main entry point for type localization |
-| `EnsureLocalizationLoaded()` | agus_localization.cpp | 298 | Lazy-loads .strings files |
-| `TryLoadLocale()` | agus_localization.cpp | 271 | Attempts to load locale files |
-| `LoadStringsFile()` | agus_localization.cpp | 152 | Parses .strings file format |
-| `localizeSubtitle()` | agus_maps_flutter.dart | 190 | Dart fallback localization |
+### Native Localization Flow
+
+```
+setLocale("en-US")                      // Dart calls FFI
+    ↓
+comaps_set_locale("en-US")              // C++ FFI export
+    ↓
+AgusPlatform_SetLocale("en-US")         // Sets g_explicitLocaleTag
+    ↓
+GetLocalizedTypeName("amenity-fuel")    // Called from place page
+    ↓
+EnsureLocalizationLoaded()              // Checks/loads translations
+    ↓
+TryLoadLocale("en-US")                  // Loads .strings files
+    ↓
+LoadStringsFile("{ResourcesDir}/localized_types/en.lproj/LocalizableTypes.strings")
+    ↓
+Returns "Gas Station"                   // Localized name
+```
+
+### Diagnostic Log Output
+
+When localization succeeds, you'll see in logcat/debug console:
+
+```
+[LINFO] TryLoadLocale: localeTag = en-US ResourcesDir = /data/data/.../files/
+[LINFO] TryLoadLocale: Trying path = /data/data/.../files/localized_types/en-US.lproj/LocalizableTypes.strings
+[LINFO] TryLoadLocale: File not found or empty: ...
+[LINFO] TryLoadLocale: Trying path = /data/data/.../files/localized_types/en.lproj/LocalizableTypes.strings
+[LINFO] TryLoadLocale: SUCCESS! Loaded 1247 type translations and 892 string translations for locale = en
+```
+
+## Related Files
+
+| File | Purpose |
+|------|---------|
+| [src/agus_maps_flutter.h](../src/agus_maps_flutter.h) | FFI header with `comaps_set_locale()` declaration |
+| [src/agus_maps_flutter.cpp](../src/agus_maps_flutter.cpp) | FFI implementation calling `AgusPlatform_SetLocale()` |
+| [src/agus_localization.cpp](../src/agus_localization.cpp) | Native localization with diagnostic logging |
+| [lib/agus_maps_flutter.dart](../lib/agus_maps_flutter.dart) | Dart `setLocale()` wrapper |
+| [tool/src/assets_updater.dart](../tool/src/assets_updater.dart) | Auto-generates localized_types asset declarations |
+| [example/lib/main.dart](../example/lib/main.dart) | Example showing `setLocale()` usage |
+
+## Key Functions
+
+| Function | File | Purpose |
+|----------|------|---------|
+| `setLocale()` | agus_maps_flutter.dart | **NEW** Dart API for setting locale |
+| `comaps_set_locale()` | agus_maps_flutter.cpp | **NEW** FFI export for locale setting |
+| `GetLocalizedTypeName()` | agus_localization.cpp | Main entry point for type localization |
+| `TryLoadLocale()` | agus_localization.cpp | Loads .strings files with diagnostic logging |
+| `updateExampleLocalizedTypesAssets()` | assets_updater.dart | **NEW** Auto-generates pubspec assets |

@@ -301,7 +301,8 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             "categories.txt",
             "visibility.txt",
             "symbols/xxhdpi/light/symbols.sdf",  // Symbol textures required for rendering
-            "symbols/xxhdpi/dark/symbols.sdf"
+            "symbols/xxhdpi/dark/symbols.sdf",
+            "localized_types/en.lproj/LocalizableTypes.strings"  // Localized POI type names
         ]
         
         // Check if already extracted AND essential files exist

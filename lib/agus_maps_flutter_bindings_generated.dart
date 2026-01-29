@@ -115,6 +115,25 @@ class AgusMapsFlutterBindings {
   late final _comaps_load_map_path = _comaps_load_map_pathPtr
       .asFunction<void Function(ffi.Pointer<ffi.Char>)>();
 
+  /// Set the locale for native POI type localization.
+  /// Must be called after comaps_init_paths() for proper localization.
+  /// If not called, the system locale is auto-detected.
+  /// Can be called at any time to change locale (affects subsequent place page requests).
+  /// @param localeTag BCP 47 locale tag (e.g., "en-US", "zh-Hans", "de")
+  void comaps_set_locale(
+    ffi.Pointer<ffi.Char> localeTag,
+  ) {
+    return _comaps_set_locale(
+      localeTag,
+    );
+  }
+
+  late final _comaps_set_localePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Char>)>>(
+          'comaps_set_locale');
+  late final _comaps_set_locale = _comaps_set_localePtr
+      .asFunction<void Function(ffi.Pointer<ffi.Char>)>();
+
   void comaps_set_view(
     double lat,
     double lon,

@@ -391,6 +391,8 @@ static bool data_dir_looks_complete(const fs::path& dir) {
     dir / "drules_proto.bin",
     dir / "packed_polygons.bin",
     dir / "transit_colors.txt",
+    // Localized type names (e.g., "Gas Station" instead of "amenity-fuel")
+    dir / "localized_types" / "en.lproj" / "LocalizableTypes.strings",
   };
   
   for (const auto& p : required_files) {

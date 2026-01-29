@@ -51,6 +51,12 @@ flutter:
   # adding or updating assets for this project.
   #
   # Please refer to README.md for a detailed explanation.
+  #
+  # NOTE: localized_types assets have been removed from the plugin.
+  # Localization is now handled entirely by native code.
+  # The example app's pubspec.yaml declares localized_types as part of comaps_data
+  # which is extracted at runtime and loaded by native localization code.
+  # See setLocale() API for locale configuration.
   assets:
     - assets/localized_types/af.lproj/
     - assets/localized_types/ar.lproj/

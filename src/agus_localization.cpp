@@ -25,6 +25,7 @@
 #include "platform/platform.hpp"
 #include "platform/settings.hpp"
 #include "platform/measurement_utils.hpp"
+#include "base/logging.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -273,11 +274,15 @@ bool TryLoadLocale(std::string const & localeTag)
     auto const & resDir = GetPlatform().ResourcesDir();
     auto const baseDir = resDir + "localized_types/";
     
+    LOG(LINFO, ("TryLoadLocale: localeTag =", localeTag, "ResourcesDir =", resDir));
+    
     auto candidates = BuildLocaleCandidates(localeTag);
     
     for (auto const & candidate : candidates)
     {
         std::string typesPath = baseDir + candidate + ".lproj/LocalizableTypes.strings";
+        LOG(LINFO, ("TryLoadLocale: Trying path =", typesPath));
+        
         if (LoadStringsFile(typesPath, g_typeTranslations))
         {
             g_loadedLocaleTag = candidate;
@@ -286,10 +291,19 @@ bool TryLoadLocale(std::string const & localeTag)
             std::string stringsPath = baseDir + candidate + ".lproj/Localizable.strings";
             LoadStringsFile(stringsPath, g_stringTranslations);
             
+            LOG(LINFO, ("TryLoadLocale: SUCCESS! Loaded", g_typeTranslations.size(), 
+                        "type translations and", g_stringTranslations.size(), 
+                        "string translations for locale =", candidate));
+            
             return true;
+        }
+        else
+        {
+            LOG(LINFO, ("TryLoadLocale: File not found or empty:", typesPath));
         }
     }
     
+    LOG(LWARNING, ("TryLoadLocale: FAILED to load any locale files for", localeTag));
     return false;
 }
 

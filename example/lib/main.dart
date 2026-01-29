@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 import 'package:agus_maps_flutter/mwm_storage.dart';
@@ -16,7 +17,8 @@ void main() {
   // Ensure Flutter bindings are initialized before using platform channels
   // (required for SharedPreferences, path_provider, etc.)
   WidgetsFlutterBinding.ensureInitialized();
-  agus_maps_flutter.PlacePageLocalization.debugLoggingEnabled = true;
+  // NOTE: PlacePageLocalization has been removed. All localization is now
+  // handled by native code via setLocale(). No Dart-side preloading needed.
   runApp(const MyApp());
 }
 
@@ -136,24 +138,9 @@ class _MyAppState extends State<MyApp> {
     try {
       _log('Starting initialization...');
 
-      agus_maps_flutter.PlacePageLocalization.debugLoggingEnabled = true;
-      _log('Place page debug logging enabled.');
-
-      await agus_maps_flutter.preloadPlacePageLocalization();
-      _log(
-        'Localization loaded: types=${agus_maps_flutter.PlacePageLocalization.isLoaded}, '
-        'strings=${agus_maps_flutter.PlacePageLocalization.isStringsLoaded}',
-      );
-      _log(
-        'Localization test (type key): '
-        '${agus_maps_flutter.PlacePageLocalization.localizeTypeKey(
-          'aeroway-aerodrome-international',
-        )}',
-      );
-      _log(
-        'Localization test (string key): '
-        '${agus_maps_flutter.PlacePageLocalization.localizeStringKey('cuisine')}',
-      );
+      // NOTE: PlacePageLocalization has been removed. All localization is now
+      // handled by native code via setLocale(). The locale will be set after
+      // initWithPaths() is called.
 
       // Initialize MWM storage
       _log('Initializing MWM storage...');
@@ -249,6 +236,13 @@ class _MyAppState extends State<MyApp> {
       agus_maps_flutter.initWithPaths(dataPath, dataPath);
       _log('initWithPaths() complete');
 
+      // 5. Set the locale for native POI type localization
+      // This ensures type names like "amenity-fuel" are translated to "Gas Station"
+      // in the place page subtitle. Use the platform's current locale.
+      final localeTag = ui.PlatformDispatcher.instance.locale.toLanguageTag();
+      _log('Setting locale: $localeTag');
+      agus_maps_flutter.setLocale(localeTag);
+
       // NOTE: Don't call loadMap() here - Framework isn't ready yet!
       // Maps will be registered in _onMapReady() after surface creation.
       _log('Maps will be registered after surface creation...');
@@ -278,14 +272,12 @@ class _MyAppState extends State<MyApp> {
       _log('Place page cleared.');
     } else {
       final rawType = data.rawTypes.isNotEmpty ? data.rawTypes.first : '';
-      final localizedFromRaw = rawType.isNotEmpty
-          ? agus_maps_flutter.PlacePageLocalization.localizeTypeKey(rawType)
-          : null;
+      // NOTE: Subtitle is now pre-localized by native code.
+      // No Dart-side localizeTypeKey() call needed.
       _log(
         'Place page received: title="${data.title}" '
         'subtitle="${data.subtitle}" '
         'rawType="$rawType" '
-        'localizedFromRaw="${localizedFromRaw ?? ''}" '
         'address="${data.address}" '
         'coords="${data.coordinates.decimal ?? ''}" '
         'metadataTags=${data.metadataTags.map((entry) => entry.key).toList()}',

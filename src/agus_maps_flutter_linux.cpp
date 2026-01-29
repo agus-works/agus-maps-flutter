@@ -478,6 +478,20 @@ FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path) {
     }
 }
 
+// Forward declaration for locale setting from agus_localization.cpp
+extern "C" void agus_localization_set_locale(const char* localeTag);
+
+FFI_PLUGIN_EXPORT void comaps_set_locale(const char* localeTag) {
+    std::fprintf(stderr, "[AgusMapsFlutter] comaps_set_locale: %s\n", localeTag ? localeTag : "(null)");
+    
+    if (localeTag && *localeTag) {
+        agus_localization_set_locale(localeTag);
+        std::fprintf(stderr, "[AgusMapsFlutter] Locale set to '%s'\n", localeTag);
+    } else {
+        std::fprintf(stderr, "[AgusMapsFlutter] Empty locale tag, using auto-detect\n");
+    }
+}
+
 FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
     std::fprintf(stderr, "[AgusMapsFlutter] comaps_set_view: lat=%f, lon=%f, zoom=%d\n", lat, lon, zoom);
     if (g_framework) {

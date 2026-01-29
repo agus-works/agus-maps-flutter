@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:developer' as developer;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -8,7 +7,6 @@ import 'dart:ffi' hide Size;
 import 'dart:io';
 import 'dart:isolate';
 
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:ffi/ffi.dart';
 import 'src/agus_maps_api.g.dart';
 
@@ -102,335 +100,25 @@ class _AgusMapsFlutterApiHandler extends AgusMapsFlutterApi {
 
   @override
   void onPlacePageChanged(PlacePageData? placePage) {
-    _events._emitPlacePageChanged(_localizePlacePage(placePage));
+    // Place page data arrives pre-localized from native layer.
+    // No Dart-side localization needed - native handles all type translations.
+    _events._emitPlacePageChanged(placePage);
   }
 }
 
-PlacePageData? _localizePlacePage(PlacePageData? data) {
-  if (data == null) {
-    return null;
-  }
-  final localizedSubtitle = PlacePageLocalization.localizeSubtitle(
-    data.subtitle,
-    data.rawTypes,
-  );
+// NOTE: PlacePageLocalization class has been removed.
+// All localization is now handled by native code via setLocale().
+// POI type names arrive pre-localized in place page subtitle.
 
-  if (PlacePageLocalization.debugLoggingEnabled) {
-    developer.log(
-      'PlacePageData: subtitleRaw="${data.subtitle}" '
-      'localized="$localizedSubtitle" '
-      'rawTypes=${data.rawTypes}',
-      name: 'agus_maps_flutter.place_page',
-    );
-  }
-
-  data.subtitle = localizedSubtitle;
-  return data;
-}
-
-class PlacePageLocalization {
-  static bool debugLoggingEnabled = false;
-  static Map<String, String> _typeTranslations = {};
-  static Map<String, String> _stringTranslations = {};
-  static String? _loadedLocaleKey;
-  static String? _loadedStringsLocaleKey;
-  static bool _isLoading = false;
-
-  static bool get isLoaded => _typeTranslations.isNotEmpty;
-  static bool get isStringsLoaded => _stringTranslations.isNotEmpty;
-
-  static Future<void> preload({ui.Locale? locale}) async {
-    if (_isLoading) return;
-    _isLoading = true;
-    try {
-      final targetLocale = locale ?? ui.PlatformDispatcher.instance.locale;
-      final candidates = _buildLocaleCandidates(targetLocale);
-      _logDebug('Preload localization: candidates=$candidates');
-      _typeTranslations =
-          await _loadLocalizedMap('LocalizableTypes.strings', candidates);
-      _loadedLocaleKey = _typeTranslations.isNotEmpty ? _loadedLocaleKey : null;
-      _logDebug(
-        'Loaded LocalizableTypes: locale=$_loadedLocaleKey entries=${_typeTranslations.length}',
-      );
-
-      _stringTranslations = await _loadLocalizedMap(
-          'Localizable.strings', candidates,
-          isTypes: false);
-      _loadedStringsLocaleKey =
-          _stringTranslations.isNotEmpty ? _loadedStringsLocaleKey : null;
-      _logDebug(
-        'Loaded Localizable: locale=$_loadedStringsLocaleKey entries=${_stringTranslations.length}',
-      );
-    } finally {
-      _isLoading = false;
-    }
-  }
-
-  static String? localizeTypeKey(String key) {
-    if (key.isEmpty) {
-      return null;
-    }
-    final normalizedKey = _normalizeTypeKey(key);
-    if (!_typeTranslations.containsKey(normalizedKey)) {
-      _logDebug(
-        'Type localization miss: key=$key normalized=$normalizedKey loaded=$_loadedLocaleKey',
-      );
-      return null;
-    }
-    return _typeTranslations[normalizedKey];
-  }
-
-  static String? localizeStringKey(String key) {
-    if (key.isEmpty || !_stringTranslations.containsKey(key)) {
-      return null;
-    }
-    return _stringTranslations[key];
-  }
-
-  static String localizeSubtitle(String subtitle, List<String> rawTypes) {
-    final trimmedSubtitle = subtitle.trim();
-    if (trimmedSubtitle.isNotEmpty) {
-      final parts = trimmedSubtitle.split(RegExp(r'\s+•\s+'));
-      if (parts.isNotEmpty) {
-        final head = parts.first.trim();
-        final localizedHead = localizeTypeKey(head);
-        if (localizedHead != null && localizedHead.isNotEmpty) {
-          if (parts.length == 1) {
-            return localizedHead;
-          }
-          return [localizedHead, ...parts.skip(1)].join(' • ');
-        }
-      }
-    }
-
-    final bestType = _bestLocalizedType(rawTypes);
-    if (bestType != null && bestType.isNotEmpty) {
-      return bestType;
-    }
-
-    return trimmedSubtitle;
-  }
-
-  static String localizeMetadataTag(String tag) {
-    if (tag.isEmpty) {
-      return '';
-    }
-    final localizationKey = _metadataLabelKeys[tag] ?? tag;
-    final localized = localizeStringKey(localizationKey);
-    if (localized != null && localized.isNotEmpty) {
-      return _cleanLabel(localized);
-    }
-    return _humanizeTag(tag);
-  }
-
-  static List<String> _buildLocaleCandidates(ui.Locale locale) {
-    final languageCode = locale.languageCode;
-    final countryCode = locale.countryCode;
-    final scriptCode = locale.scriptCode;
-    final candidates = <String>[];
-
-    if (languageCode.isNotEmpty) {
-      if (scriptCode != null && scriptCode.isNotEmpty) {
-        candidates.add('$languageCode-$scriptCode');
-      }
-      if (countryCode != null && countryCode.isNotEmpty) {
-        candidates.add('$languageCode-$countryCode');
-      }
-      candidates.add(languageCode);
-    }
-
-    final withUnderscore = <String>[];
-    for (final candidate in candidates) {
-      if (candidate.contains('-')) {
-        withUnderscore.add(candidate.replaceAll('-', '_'));
-      }
-    }
-
-    final all = <String>{...candidates, ...withUnderscore};
-    return all.toList();
-  }
-
-  static Future<Map<String, String>> _loadLocalizedMap(
-    String fileName,
-    List<String> candidates, {
-    bool isTypes = true,
-  }) async {
-    for (final candidate in candidates) {
-      final map = await _tryLoadForLocale(candidate, fileName);
-      if (map.isNotEmpty) {
-        if (isTypes) {
-          _loadedLocaleKey = candidate;
-        } else {
-          _loadedStringsLocaleKey = candidate;
-        }
-        _logDebug(
-            'Loaded $fileName for locale=$candidate entries=${map.length}');
-        return map;
-      }
-      _logDebug('No $fileName for locale=$candidate');
-    }
-    final fallback = await _tryLoadForLocale('en', fileName);
-    if (fallback.isNotEmpty) {
-      if (isTypes) {
-        _loadedLocaleKey = 'en';
-      } else {
-        _loadedStringsLocaleKey = 'en';
-      }
-      _logDebug(
-          'Loaded $fileName fallback locale=en entries=${fallback.length}');
-      return fallback;
-    }
-    _logDebug('Failed to load $fileName for candidates=$candidates');
-    return {};
-  }
-
-  static Future<Map<String, String>> _tryLoadForLocale(
-    String localeKey,
-    String fileName,
-  ) async {
-    final paths = [
-      'packages/agus_maps_flutter/assets/localized_types/$localeKey.lproj/$fileName',
-      'packages/agus_maps_flutter/assets/localized_types/$localeKey/$fileName',
-    ];
-    for (final path in paths) {
-      try {
-        final content = await rootBundle.loadString(path);
-        _logDebug('Loaded asset: $path');
-        return _parseStrings(content);
-      } catch (_) {
-        _logDebug('Missing asset: $path');
-        continue;
-      }
-    }
-    return {};
-  }
-
-  static Map<String, String> _parseStrings(String content) {
-    final map = <String, String>{};
-    final lines = content.split('\n');
-    final entryPattern = RegExp(r'^\s*"(.*)"\s*=\s*"(.*)";\s*$');
-    for (final line in lines) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty ||
-          trimmed.startsWith('/*') ||
-          trimmed.startsWith('//')) {
-        continue;
-      }
-      final match = entryPattern.firstMatch(trimmed);
-      if (match == null) continue;
-      final key = _unescape(match.group(1) ?? '');
-      final value = _unescape(match.group(2) ?? '');
-      if (key.isNotEmpty && value.isNotEmpty) {
-        map[key] = value;
-      }
-    }
-    return map;
-  }
-
-  static String _unescape(String input) {
-    return input
-        .replaceAll('\\"', '"')
-        .replaceAll('\\n', '\n')
-        .replaceAll('\\r', '\r')
-        .replaceAll('\\t', '\t')
-        .replaceAll('\\\\', '\\');
-  }
-
-  static String _normalizeTypeKey(String typeKey) {
-    var key = typeKey;
-    if (!key.startsWith('type.')) {
-      key = 'type.$key';
-    }
-    key = key.replaceAll('-', '.').replaceAll(':', '_');
-    return key;
-  }
-
-  static String _cleanLabel(String label) {
-    var cleaned = label.replaceAll(RegExp(r'%\d*\$?[@sd]'), '');
-    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (cleaned.endsWith(':')) {
-      cleaned = cleaned.substring(0, cleaned.length - 1).trim();
-    }
-    return cleaned;
-  }
-
-  static String _humanizeTag(String tag) {
-    final normalized = tag.replaceAll(':', ' ').replaceAll('_', ' ');
-    return normalized
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .map((part) =>
-            part[0].toUpperCase() + (part.length > 1 ? part.substring(1) : ''))
-        .join(' ');
-  }
-
-  static void _logDebug(String message) {
-    if (!debugLoggingEnabled) {
-      return;
-    }
-    developer.log(message, name: 'agus_maps_flutter.localization');
-  }
-
-  static const Map<String, String> _metadataLabelKeys = {
-    'cuisine': 'cuisine',
-    'opening_hours': 'opening_hours',
-    'phone': 'phone',
-    'fax': 'fax',
-    'website': 'website',
-    'email': 'email',
-    'wikipedia': 'read_in_wikipedia',
-    'wikimedia_commons': 'wikimedia_commons',
-    'capacity': 'capacity',
-    'wheelchair': 'wheelchair',
-    'drive_through': 'drive_through',
-    'website:menu': 'website_menu',
-    'self_service': 'self_service',
-    'outdoor_seating': 'outdoor_seating',
-    'network': 'network',
-    'contact:facebook': 'facebook',
-    'contact:instagram': 'instagram',
-    'contact:twitter': 'twitter',
-    'contact:vk': 'vk',
-    'contact:line': 'line',
-    'contact:mastodon': 'fediverse',
-    'contact:bluesky': 'social_bluesky',
-    'panoramax': 'panoramax',
-    'branch': 'branch',
-  };
-
-  static String? _bestLocalizedType(List<String> rawTypes) {
-    String? bestLabel;
-    var bestScore = -1;
-    for (final rawType in rawTypes) {
-      final localized = localizeTypeKey(rawType);
-      if (localized == null || localized.isEmpty) {
-        continue;
-      }
-      final score = _typeSpecificityScore(rawType);
-      if (score > bestScore) {
-        bestScore = score;
-        bestLabel = localized;
-      }
-    }
-    return bestLabel;
-  }
-
-  static int _typeSpecificityScore(String rawType) {
-    return RegExp(r'[-_:]').allMatches(rawType).length;
-  }
-}
-
-Future<void> preloadPlacePageLocalization({ui.Locale? locale}) {
-  return PlacePageLocalization.preload(locale: locale);
-}
-
+/// Get the current place page data, if available.
+/// Place page data arrives pre-localized from native layer.
 Future<PlacePageData?> getCurrentPlacePage() async {
   try {
     if (_bindings.comaps_place_page_has_data() == 0) {
       return null;
     }
     final data = await AgusMapsHostApi().getCurrentPlacePage();
-    return _localizePlacePage(data);
+    return data;
   } catch (error) {
     debugPrint('[AgusMap] Failed to fetch place page: $error');
     return null;
@@ -503,6 +191,42 @@ void initWithPaths(String resourcePath, String writablePath) {
   _bindings.comaps_init_paths(resourcePathPtr, writablePathPtr);
   malloc.free(resourcePathPtr);
   malloc.free(writablePathPtr);
+}
+
+/// Set the locale for native POI type localization.
+///
+/// This controls how POI type names are translated in place page data
+/// (e.g., "amenity-fuel" → "Gas Station", "amenity-compressed_air" → "Compressed Air").
+///
+/// **When to call:**
+/// - After [initWithPaths] so the resource directory with localization files is known
+/// - Before creating the map surface or displaying any place pages for best results
+/// - Can be called at any time to change locale (affects subsequent place page requests)
+///
+/// **Behavior:**
+/// - If not called, the system locale is auto-detected (may not work reliably on all platforms)
+/// - Explicitly calling this is recommended for consistent behavior across platforms
+///
+/// **Example:**
+/// ```dart
+/// final dataPath = await extractDataFiles();
+/// initWithPaths(dataPath, dataPath);
+/// setLocale(ui.PlatformDispatcher.instance.locale.toLanguageTag()); // e.g., "en-US"
+/// await createMapSurface();
+/// ```
+///
+/// [localeTag] - BCP 47 locale tag (e.g., "en-US", "zh-Hans", "de", "ja")
+void setLocale(String localeTag) {
+  final localeTagPtr = localeTag.toNativeUtf8().cast<Char>();
+  try {
+    _bindings.comaps_set_locale(localeTagPtr);
+  } on ArgumentError {
+    // Symbol may not exist on platforms where the binary was built before this feature.
+    // Native will fall back to auto-detection based on system locale.
+    debugPrint('[AgusMap] setLocale: Symbol not found, using native auto-detection');
+  } finally {
+    malloc.free(localeTagPtr);
+  }
 }
 
 void loadMap(String path) {

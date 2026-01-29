@@ -90,16 +90,7 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/maps/Gibraltar.mwm
-    - assets/maps/World.mwm
-    - assets/maps/WorldCoasts.mwm
-    - assets/maps/icudt75l.dat
-    # CoMaps data files for engine initialization
     - assets/comaps_data/
-    - assets/comaps_data/fonts/
-    # NOTE: Flutter does not include nested directory contents when only the
-    # parent directory is listed. We must list each locale folder explicitly
-    # so `*/localize.json` files are bundled on desktop.
     - assets/comaps_data/categories-strings/ar.json/
     - assets/comaps_data/categories-strings/be.json/
     - assets/comaps_data/categories-strings/bg.json/
@@ -145,7 +136,6 @@ flutter:
     - assets/comaps_data/categories-strings/vi.json/
     - assets/comaps_data/categories-strings/zh-Hans.json/
     - assets/comaps_data/categories-strings/zh-Hant.json/
-
     - assets/comaps_data/countries-strings/ar.json/
     - assets/comaps_data/countries-strings/ast.json/
     - assets/comaps_data/countries-strings/az.json/
@@ -190,6 +180,91 @@ flutter:
     - assets/comaps_data/countries-strings/vi.json/
     - assets/comaps_data/countries-strings/zh-Hans.json/
     - assets/comaps_data/countries-strings/zh-Hant.json/
+    - assets/comaps_data/fonts/
+    - assets/comaps_data/localized_types/
+    - assets/comaps_data/localized_types/af.lproj/
+    - assets/comaps_data/localized_types/ar.lproj/
+    - assets/comaps_data/localized_types/ast.lproj/
+    - assets/comaps_data/localized_types/az.lproj/
+    - assets/comaps_data/localized_types/be.lproj/
+    - assets/comaps_data/localized_types/ber.lproj/
+    - assets/comaps_data/localized_types/bg.lproj/
+    - assets/comaps_data/localized_types/bn.lproj/
+    - assets/comaps_data/localized_types/ca.lproj/
+    - assets/comaps_data/localized_types/cs.lproj/
+    - assets/comaps_data/localized_types/cy.lproj/
+    - assets/comaps_data/localized_types/da.lproj/
+    - assets/comaps_data/localized_types/de.lproj/
+    - assets/comaps_data/localized_types/el.lproj/
+    - assets/comaps_data/localized_types/en-GB.lproj/
+    - assets/comaps_data/localized_types/en.lproj/
+    - assets/comaps_data/localized_types/eo.lproj/
+    - assets/comaps_data/localized_types/es-MX.lproj/
+    - assets/comaps_data/localized_types/es.lproj/
+    - assets/comaps_data/localized_types/et.lproj/
+    - assets/comaps_data/localized_types/eu.lproj/
+    - assets/comaps_data/localized_types/fa.lproj/
+    - assets/comaps_data/localized_types/fi.lproj/
+    - assets/comaps_data/localized_types/fr.lproj/
+    - assets/comaps_data/localized_types/gl.lproj/
+    - assets/comaps_data/localized_types/gsw.lproj/
+    - assets/comaps_data/localized_types/he.lproj/
+    - assets/comaps_data/localized_types/hi.lproj/
+    - assets/comaps_data/localized_types/hr.lproj/
+    - assets/comaps_data/localized_types/hu.lproj/
+    - assets/comaps_data/localized_types/ia.lproj/
+    - assets/comaps_data/localized_types/id.lproj/
+    - assets/comaps_data/localized_types/is.lproj/
+    - assets/comaps_data/localized_types/it.lproj/
+    - assets/comaps_data/localized_types/ja.lproj/
+    - assets/comaps_data/localized_types/kab.lproj/
+    - assets/comaps_data/localized_types/kk.lproj/
+    - assets/comaps_data/localized_types/ko.lproj/
+    - assets/comaps_data/localized_types/lt.lproj/
+    - assets/comaps_data/localized_types/lv.lproj/
+    - assets/comaps_data/localized_types/ml.lproj/
+    - assets/comaps_data/localized_types/mr.lproj/
+    - assets/comaps_data/localized_types/mt.lproj/
+    - assets/comaps_data/localized_types/nb.lproj/
+    - assets/comaps_data/localized_types/nl.lproj/
+    - assets/comaps_data/localized_types/pl.lproj/
+    - assets/comaps_data/localized_types/pt-BR.lproj/
+    - assets/comaps_data/localized_types/pt-PT.lproj/
+    - assets/comaps_data/localized_types/pt.lproj/
+    - assets/comaps_data/localized_types/pt_PT.lproj/
+    - assets/comaps_data/localized_types/ro.lproj/
+    - assets/comaps_data/localized_types/ru.lproj/
+    - assets/comaps_data/localized_types/sk.lproj/
+    - assets/comaps_data/localized_types/sl.lproj/
+    - assets/comaps_data/localized_types/sq.lproj/
+    - assets/comaps_data/localized_types/sr.lproj/
+    - assets/comaps_data/localized_types/sv.lproj/
+    - assets/comaps_data/localized_types/sw.lproj/
+    - assets/comaps_data/localized_types/ta.lproj/
+    - assets/comaps_data/localized_types/th.lproj/
+    - assets/comaps_data/localized_types/tr.lproj/
+    - assets/comaps_data/localized_types/uk.lproj/
+    - assets/comaps_data/localized_types/ur.lproj/
+    - assets/comaps_data/localized_types/vi.lproj/
+    - assets/comaps_data/localized_types/zh-Hans.lproj/
+    - assets/comaps_data/localized_types/zh-Hant.lproj/
+    - assets/comaps_data/styles/
+    - assets/comaps_data/styles/default/
+    - assets/comaps_data/styles/default/dark/
+    - assets/comaps_data/styles/default/dark/symbols-ad/
+    - assets/comaps_data/styles/default/dark/symbols/
+    - assets/comaps_data/styles/default/include/
+    - assets/comaps_data/styles/default/light/
+    - assets/comaps_data/styles/default/light/symbols-ad/
+    - assets/comaps_data/styles/default/light/symbols/
+    - assets/comaps_data/styles/outdoors/
+    - assets/comaps_data/styles/outdoors/dark/
+    - assets/comaps_data/styles/outdoors/include/
+    - assets/comaps_data/styles/outdoors/light/
+    - assets/comaps_data/styles/vehicle/
+    - assets/comaps_data/styles/vehicle/dark/
+    - assets/comaps_data/styles/vehicle/include/
+    - assets/comaps_data/styles/vehicle/light/
     - assets/comaps_data/symbols/
     - assets/comaps_data/symbols/6plus/
     - assets/comaps_data/symbols/6plus/dark/
@@ -210,23 +285,10 @@ flutter:
     - assets/comaps_data/symbols/xxxhdpi/
     - assets/comaps_data/symbols/xxxhdpi/dark/
     - assets/comaps_data/symbols/xxxhdpi/light/
-    - assets/comaps_data/styles/
-    - assets/comaps_data/styles/default/
-    - assets/comaps_data/styles/default/include/
-    - assets/comaps_data/styles/default/light/
-    - assets/comaps_data/styles/default/light/symbols/
-    - assets/comaps_data/styles/default/light/symbols-ad/
-    - assets/comaps_data/styles/default/dark/
-    - assets/comaps_data/styles/default/dark/symbols/
-    - assets/comaps_data/styles/default/dark/symbols-ad/
-    - assets/comaps_data/styles/vehicle/
-    - assets/comaps_data/styles/vehicle/include/
-    - assets/comaps_data/styles/vehicle/light/
-    - assets/comaps_data/styles/vehicle/dark/
-    - assets/comaps_data/styles/outdoors/
-    - assets/comaps_data/styles/outdoors/include/
-    - assets/comaps_data/styles/outdoors/light/
-    - assets/comaps_data/styles/outdoors/dark/
+    - assets/maps/Gibraltar.mwm
+    - assets/maps/World.mwm
+    - assets/maps/WorldCoasts.mwm
+    - assets/maps/icudt75l.dat
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
