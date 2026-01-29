@@ -206,7 +206,6 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
   s.source_files = [
     'Classes/**/*.{h,m,mm,swift}',
     '../src/agus_maps_flutter.h',
-    '../src/agus_localization.cpp',
   ]
   
   # Public headers for FFI - only C-compatible headers!
