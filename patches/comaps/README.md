@@ -1005,7 +1005,7 @@ Unity builds combine many source files, exceeding MSVC's default object section 
 
 **Category:** Build System / Platform Configuration
 
-**Purpose:** Comprehensive platform CMake configuration for Flutter plugin builds across all desktop and mobile platforms. This is a critical patch that enables CoMaps to be built as a headless/embedded library without Qt dependencies.
+**Purpose:** Comprehensive platform CMake configuration for Flutter plugin builds across all desktop and mobile platforms. This is a critical patch that enables CoMaps to be built as a headless/embedded library without Qt dependencies. **Also includes localization symbol deduplication** (merged from patch 0069) to prevent duplicate symbol errors.
 
 **What it does:**
 
@@ -1017,11 +1017,11 @@ Unity builds combine many source files, exceeding MSVC's default object section 
    ```cmake
    elseif(SKIP_ANDROID_JNI AND ${PLATFORM_ANDROID})
      # Android build without JNI (for Flutter plugin with external platform impl)
+     # Note: Localization is provided by agus_localization.cpp in the plugin
      append(SRC
        platform_unix_impl.cpp
        http_client_curl.cpp
        http_uploader_background_dummy.cpp
-       localization_dummy.cpp
        network_policy_dummy.cpp
        secure_storage_dummy.cpp
       )
@@ -1029,11 +1029,13 @@ Unity builds combine many source files, exceeding MSVC's default object section 
    - Used when building for Flutter Android where platform implementation is external
    - Skips JNI-based `platform_android.cpp` which requires APK/JVM access
    - External code (`agus_platform.cpp`) provides `Platform::GetReader()` etc.
+   - **Localization removed:** `localization_dummy.cpp` is NOT included; localization is provided by `agus_localization.cpp` in the Flutter plugin
 
 3. **macOS with `SKIP_QT`:** (lines 104-121)
    ```cmake
    elseif(SKIP_QT AND ${PLATFORM_MAC})
      # macOS build without Qt (for Flutter plugin)
+     # Note: Localization is provided by agus_localization.cpp in the plugin
      append(SRC
        gui_thread_apple.mm
        http_client_apple.mm
@@ -1045,11 +1047,13 @@ Unity builds combine many source files, exceeding MSVC's default object section 
    ```
    - Used for Flutter macOS plugin (Metal rendering via podspec)
    - Uses native Apple HTTP/networking instead of Qt
+   - **Localization removed:** `localization_dummy.cpp` is NOT included; localization is provided by `agus_localization.cpp` in the Flutter plugin
 
 4. **Windows with `SKIP_QT`:** (lines 122-135)
    ```cmake
    elseif(SKIP_QT AND ${PLATFORM_WIN})
      # Windows build without Qt (for Flutter plugin)
+     # Note: Localization is provided by agus_localization.cpp in the plugin
      append(SRC
        gui_thread_win.cpp
        http_client_curl.cpp
@@ -1059,17 +1063,18 @@ Unity builds combine many source files, exceeding MSVC's default object section 
    ```
    - Used for Flutter Windows plugin (WGL/D3D11 rendering)
    - Uses libcurl for HTTP instead of Qt::Network
+   - **Localization removed:** `localization_dummy.cpp` is NOT included; localization is provided by `agus_localization.cpp` in the Flutter plugin
 
 5. **Linux with `SKIP_QT`:** (lines 136-150) **[NEW for Linux support]**
    ```cmake
    elseif(SKIP_QT AND ${PLATFORM_LINUX})
      # Linux build without Qt (for Flutter plugin with external platform impl)
+     # Note: Localization is provided by agus_localization.cpp in the plugin
      append(SRC
        http_client_curl.cpp
        http_uploader_dummy.cpp
        http_uploader_background_dummy.cpp
        locale_std.cpp
-       localization_dummy.cpp
        network_policy_dummy.cpp
        platform_unix_impl.cpp
        platform_unix_impl.hpp
@@ -1080,6 +1085,7 @@ Unity builds combine many source files, exceeding MSVC's default object section 
    - Uses libcurl for HTTP, standard locale, dummy stubs for unused features
    - External code (`agus_maps_flutter_linux.cpp`) provides `Platform` class implementation
    - Does NOT include `platform_linux.cpp` (requires Qt) - we provide our own
+   - **Localization removed:** `localization_dummy.cpp` is NOT included; localization is provided by `agus_localization.cpp` in the Flutter plugin
 
 6. **Conditional Qt Linking:** (lines 237-239)
    ```cmake
@@ -1092,15 +1098,15 @@ Unity builds combine many source files, exceeding MSVC's default object section 
 
 **Platform Source File Mapping:**
 
-| Platform | Condition | Key Source Files |
-|----------|-----------|------------------|
-| iOS | `PLATFORM_IPHONE` | `platform_ios.mm`, Apple HTTP, Metal |
-| Android (JNI) | `PLATFORM_ANDROID` | `platform_android.cpp`, JNI/APK reader |
-| Android (Flutter) | `SKIP_ANDROID_JNI AND PLATFORM_ANDROID` | Unix impl + curl + dummies |
-| macOS (Flutter) | `SKIP_QT AND PLATFORM_MAC` | `platform_mac.mm`, Apple HTTP |
-| Windows (Flutter) | `SKIP_QT AND PLATFORM_WIN` | `platform_win.cpp`, curl + dummies |
-| **Linux (Flutter)** | `SKIP_QT AND PLATFORM_LINUX` | Unix impl + curl + dummies |
-| Desktop (Qt) | Default `else` | Qt-based platform, Qt::Network |
+| Platform | Condition | Key Source Files | Localization |
+|----------|-----------|------------------|--------------|
+| iOS | `PLATFORM_IPHONE` | `platform_ios.mm`, Apple HTTP, Metal | `localization.mm` (native) |
+| Android (JNI) | `PLATFORM_ANDROID` | `platform_android.cpp`, JNI/APK reader | JNI localization |
+| Android (Flutter) | `SKIP_ANDROID_JNI AND PLATFORM_ANDROID` | Unix impl + curl + dummies | `agus_localization.cpp` |
+| macOS (Flutter) | `SKIP_QT AND PLATFORM_MAC` | `platform_mac.mm`, Apple HTTP | `agus_localization.cpp` |
+| Windows (Flutter) | `SKIP_QT AND PLATFORM_WIN` | `platform_win.cpp`, curl + dummies | `agus_localization.cpp` |
+| **Linux (Flutter)** | `SKIP_QT AND PLATFORM_LINUX` | Unix impl + curl + dummies | `agus_localization.cpp` |
+| Desktop (Qt) | Default `else` | Qt-based platform, Qt::Network | `localization_dummy.cpp` |
 
 **Why it's needed:**
 
@@ -1117,14 +1123,26 @@ Flutter plugins cannot use Qt because:
 - Windows Flutter build fails: `Qt6::Network not found`
 - **Linux Flutter build fails:** `Qt6::Core not found`, `Qt6::Network not found`
 
+**Localization Strategy (Updated):**
+
+The `localization_dummy.cpp` file has been **removed** from all Flutter plugin build configurations. Instead, the Flutter plugin provides its own runtime localization implementation via `agus_localization.cpp` which:
+- Reads `.strings` files from `assets/localized_types/` at runtime
+- Supports all 66 locales (same as iOS)
+- Detects system locale automatically (Windows: `GetUserDefaultLocaleName`, macOS/Linux: `setlocale`/env)
+- Falls back through locale candidates (e.g., `en-US` → `en`)
+- Provides all 9 functions from `platform/localization.hpp`
+
+This ensures POI type names and other localized strings display correctly on Windows, macOS, and Linux, matching the iOS/Android behavior (e.g., "International Airport • CGY • ▲58 m • 🛜" instead of "Internet").
+
 **Related Files in agus-maps-flutter:**
 
-| Platform | External Platform Implementation |
-|----------|----------------------------------|
-| Android | `src/agus_platform.cpp` |
-| Windows | `src/agus_platform_win.cpp` |
-| **Linux** | `src/agus_platform_linux.cpp` (HTTP stubs only) + `src/agus_maps_flutter_linux.cpp` (Platform class) |
-| iOS/macOS | Handled by CoMaps' own platform files |
+| Platform | External Platform Implementation | Localization |
+|----------|----------------------------------|--------------|
+| Android | `src/agus_platform.cpp` | `src/agus_localization.cpp` |
+| Windows | `src/agus_platform_win.cpp` | `src/agus_localization.cpp` |
+| **Linux** | `src/agus_platform_linux.cpp` (HTTP stubs only) + `src/agus_maps_flutter_linux.cpp` (Platform class) | `src/agus_localization.cpp` |
+| macOS | Handled by CoMaps' own platform files | `src/agus_localization.cpp` (via podspec) |
+| iOS | Handled by CoMaps' own platform files | `localization.mm` (native iOS) |
 
 
 ### 0060-3party-gflags-skip-install.patch
@@ -1321,22 +1339,10 @@ The following patches have overlapping functionality and could be consolidated:
 - The drape (rendering) library cannot be compiled for Apple platforms
 
 
-### 0069-tools-kothic-libkomwm-windows-multiprocessing.patch
+### ~~0069-fix-duplicate-localization-symbols.patch~~ (MERGED INTO 0059)
 
-**File Modified:** `tools/kothic/src/libkomwm.py`
+**Status:** MERGED - This functionality is now part of `0059-libs-platform-flutter-plugin-support.patch`.
 
-**Category:** Windows Data Generation / Multiprocessing
+The localization symbol deduplication (removing `localization.cpp`/`localization.hpp` from the base SRC list and adding them only to non-Flutter platforms) has been merged into patch 0059 since both patches modify the same file (`libs/platform/CMakeLists.txt`). This prevents patch ordering conflicts and ensures reliable application.
 
-**Purpose:** Disables multiprocessing during drules generation (Windows-safe default).
-
-**What it does:**
-- Sets `MULTIPROCESSING = False` in `tools/kothic/src/libkomwm.py`
-
-**Why it's needed:**
-CoMaps `generate_drules.sh` invokes Python tooling that calls `set_start_method('fork')` when multiprocessing is enabled. Windows Python does not support `fork`, which causes a `ValueError` and stops data generation when running via Git Bash. Disabling multiprocessing avoids the unsupported `fork` path.
-
-**Without this patch:**
-- `generate_drules.sh` fails on Windows with `ValueError: cannot find context for 'fork'`
-- Data files like `classificator.txt`/`categories.txt` are not generated, causing runtime crashes
-
-
+See patch 0059 documentation for details on how localization files are now handled per-platform.

@@ -94,6 +94,7 @@ if(WIN32)
   set(PLATFORM_SOURCES
     "agus_maps_flutter_win.cpp"
     "agus_platform_win.cpp"
+    "agus_localization.cpp"
     "AgusWglContextFactory.cpp"
   )
 elseif(ANDROID)
@@ -101,6 +102,7 @@ elseif(ANDROID)
   set(PLATFORM_SOURCES
     "agus_maps_flutter.cpp"
     "agus_platform.cpp"
+    "agus_localization.cpp"
     "agus_ogl.cpp"
     "agus_gui_thread.cpp"
   )
@@ -111,6 +113,7 @@ elseif(UNIX AND NOT APPLE)
   set(PLATFORM_SOURCES
     "agus_maps_flutter_linux.cpp"
     "agus_platform_linux.cpp"
+    "agus_localization.cpp"
     "AgusEglContextFactory.cpp"
   )
 else()
@@ -118,6 +121,7 @@ else()
   set(PLATFORM_SOURCES
     "agus_maps_flutter.cpp"
     "agus_platform.cpp"
+    "agus_localization.cpp"
     "agus_ogl.cpp"
     "agus_gui_thread.cpp"
   )
@@ -129,6 +133,10 @@ add_library(agus_maps_flutter SHARED
 
 set_target_properties(agus_maps_flutter PROPERTIES
   OUTPUT_NAME "agus_maps_flutter"
+  # Disable Unity build for agus_maps_flutter
+  # Unity builds concatenate .cpp files, which can cause namespace/scope issues
+  # when our implementation files have namespace declarations that interact
+  UNITY_BUILD OFF
 )
 
 # ============================================================================

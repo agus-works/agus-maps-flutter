@@ -14,6 +14,35 @@
 
 **IMPORTANT:** The `./thirdparty/comaps` directory contains a git checkout of the CoMaps project with local modifications. These modifications are tracked via patch files in `./patches/comaps/`. Do not run patch update scripts at `./scripts` command automatically! Please update or create new patches. Always be precise, surgical, and anal about editing patches! Do not run scripts that will edit/modify all patches!
 
+#### Critical Patching Rules (MUST FOLLOW)
+
+1. **ONE PATCH PER FILE** - NEVER create multiple patch files that modify the same thirdparty file. If you need to add changes to a file that already has a patch, MERGE into the existing patch. Multiple patches for same file = context mismatch failures.
+2. **Let git generate patches** - After making changes: `cd thirdparty/comaps && git diff > ../../patches/comaps/NNNN-name.patch`
+3. **Test in isolation** before committing: `git reset --hard HEAD && git apply --check patch.patch`
+4. **Update README.md** in `patches/comaps/` when adding/modifying patches
+5. **Patch format**: LF line endings, UTF-8 no BOM, blank lines in hunks need leading space
+
+#### Quick Patch Workflow
+```powershell
+# 1. Reset to clean state
+cd thirdparty/comaps
+git reset --hard HEAD
+
+# 2. Apply all prior patches (if editing existing)
+# ...
+
+# 3. Make changes to file(s)
+
+# 4. Generate patch
+git diff > ../../patches/comaps/NNNN-description.patch
+
+# 5. Verify
+git reset --hard HEAD
+git apply --whitespace=nowarn ../../patches/comaps/NNNN-description.patch
+```
+
+See `doc/PATCHING-GUIDE.md` for detailed troubleshooting.
+
 ### Conventional Commits
 
 The key words “MUST”, “MUST NOT”, “REQUIRED”, “SHALL”, “SHALL NOT”, “SHOULD”, “SHOULD NOT”, “RECOMMENDED”, “MAY”, and “OPTIONAL” in this document are to be interpreted as described in RFC 2119.
