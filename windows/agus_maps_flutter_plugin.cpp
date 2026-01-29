@@ -2,118 +2,87 @@
 // SPDX-License-Identifier: MIT
 
 #include "include/agus_maps_flutter/agus_maps_flutter_plugin_c_api.h"
+#include "../src/agus_maps_flutter.h"
+#include <optional>
 
-#include <flutter/plugin_registrar_windows.h>
-#include <flutter/method_channel.h>
-#include <flutter/standard_method_codec.h>
-#include <flutter/encodable_value.h>
-#include <flutter/texture_registrar.h>
+void AgusMapsFlutterPlugin::CreateMapSurface(
+    const CreateMapSurfaceRequest& request,
+    std::function<void(ErrorOr<int64_t> reply)> result) {
+    OutputDebugStringA("[AgusMapsFlutter] createMapSurface called\n");
 
-#include <windows.h>
-#include <shlobj.h>
-#include <d3d11.h>
-#include <dxgi.h>
+    int32_t width = request.width() ? static_cast<int32_t>(*request.width()) : 800;
+    int32_t height = request.height() ? static_cast<int32_t>(*request.height()) : 600;
+    double density = request.density() ? *request.density() : 1.0;
 
-#include <memory>
-#include <string>
-#include <filesystem>
-#include <fstream>
-#include <mutex>
-#include <cmath>
-
-namespace fs = std::filesystem;
-
-namespace agus_maps_flutter {
-
-// =============================================================================
-// FFI Function Types (from agus_maps_flutter.dll)
-// =============================================================================
-
-typedef void (*FnAgusNativeCreateSurface)(int32_t width, int32_t height, float density);
-typedef void (*FnAgusNativeOnSizeChanged)(int32_t width, int32_t height);
-typedef void (*FnAgusNativeSetVisualScale)(float density);
-typedef void (*FnAgusNativeOnSurfaceDestroyed)(void);
-typedef void* (*FnAgusGetSharedTextureHandle)(void);
-typedef void* (*FnAgusGetD3D11Device)(void);
-typedef void* (*FnAgusGetD3D11Texture)(void);
-typedef void (*FnAgusRenderFrame)(void);
-typedef void (*FnAgusSetFrameReadyCallback)(void (*callback)(void));
-
-// Global FFI function pointers
-static HMODULE g_ffiLibrary = nullptr;
-static FnAgusNativeCreateSurface g_fnCreateSurface = nullptr;
-static FnAgusNativeOnSizeChanged g_fnOnSizeChanged = nullptr;
-static FnAgusNativeSetVisualScale g_fnSetVisualScale = nullptr;
-static FnAgusNativeOnSurfaceDestroyed g_fnOnSurfaceDestroyed = nullptr;
-static FnAgusGetSharedTextureHandle g_fnGetSharedTextureHandle = nullptr;
-static FnAgusGetD3D11Device g_fnGetD3D11Device = nullptr;
-static FnAgusGetD3D11Texture g_fnGetD3D11Texture = nullptr;
-static FnAgusRenderFrame g_fnRenderFrame = nullptr;
-static FnAgusSetFrameReadyCallback g_fnSetFrameReadyCallback = nullptr;
-
-// Forward declaration
-class AgusMapsFlutterPlugin;
-static AgusMapsFlutterPlugin* g_pluginInstance = nullptr;
-
-// Helper: Load FFI library and get function pointers
-static bool LoadFfiLibrary() {
-    if (g_ffiLibrary) return true;
-    
-    // Get executable directory
-    wchar_t path[MAX_PATH];
-    DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH) {
-        OutputDebugStringA("[AgusMapsFlutter] Failed to get module path\n");
-        return false;
-    }
-    
-    std::wstring exeDir(path, length);
-    auto pos = exeDir.find_last_of(L"\\/");
-    if (pos != std::wstring::npos) {
-        exeDir = exeDir.substr(0, pos);
-    }
-    
-    // FFI library should be in the same directory
-    std::wstring dllPath = exeDir + L"\\agus_maps_flutter.dll";
-    
-    OutputDebugStringW((L"[AgusMapsFlutter] Loading FFI library: " + dllPath + L"\n").c_str());
-    
-    g_ffiLibrary = LoadLibraryW(dllPath.c_str());
-    if (!g_ffiLibrary) {
-        DWORD error = GetLastError();
-        char msg[256];
-        snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Failed to load FFI library, error=%lu\n", error);
-        OutputDebugStringA(msg);
-        return false;
-    }
-    
-    // Get function pointers
-    g_fnCreateSurface = (FnAgusNativeCreateSurface)GetProcAddress(g_ffiLibrary, "agus_native_create_surface");
-    g_fnOnSizeChanged = (FnAgusNativeOnSizeChanged)GetProcAddress(g_ffiLibrary, "agus_native_on_size_changed");
-    g_fnSetVisualScale = (FnAgusNativeSetVisualScale)GetProcAddress(g_ffiLibrary, "agus_native_set_visual_scale");
-    g_fnOnSurfaceDestroyed = (FnAgusNativeOnSurfaceDestroyed)GetProcAddress(g_ffiLibrary, "agus_native_on_surface_destroyed");
-    g_fnGetSharedTextureHandle = (FnAgusGetSharedTextureHandle)GetProcAddress(g_ffiLibrary, "agus_get_shared_texture_handle");
-    g_fnGetD3D11Device = (FnAgusGetD3D11Device)GetProcAddress(g_ffiLibrary, "agus_get_d3d11_device");
-    g_fnGetD3D11Texture = (FnAgusGetD3D11Texture)GetProcAddress(g_ffiLibrary, "agus_get_d3d11_texture");
-    g_fnRenderFrame = (FnAgusRenderFrame)GetProcAddress(g_ffiLibrary, "agus_render_frame");
-    g_fnSetFrameReadyCallback = (FnAgusSetFrameReadyCallback)GetProcAddress(g_ffiLibrary, "agus_set_frame_ready_callback");
-    
-    char msg[512];
-    snprintf(msg, sizeof(msg), 
-             "[AgusMapsFlutter] FFI functions: create=%p, size=%p, scale=%p, destroy=%p, handle=%p, device=%p, tex=%p, render=%p, callback=%p\n",
-             g_fnCreateSurface, g_fnOnSizeChanged, g_fnSetVisualScale, g_fnOnSurfaceDestroyed, 
-             g_fnGetSharedTextureHandle, g_fnGetD3D11Device, g_fnGetD3D11Texture,
-             g_fnRenderFrame, g_fnSetFrameReadyCallback);
+    char msg[256];
+    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Creating surface: %dx%d, density=%.2f\n",
+             width, height, density);
     OutputDebugStringA(msg);
-    
-    if (!g_fnCreateSurface) {
-        OutputDebugStringA("[AgusMapsFlutter] WARN: agus_native_create_surface not found\n");
-    }
-    
-    return true;
-}
 
-// Helper: Convert std::wstring to std::string (UTF-8)
+    if (!LoadFfiLibrary()) {
+        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to load FFI library\n");
+        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "Failed to load native FFI library")));
+        return;
+    }
+
+    if (g_fnCreateSurface) {
+        OutputDebugStringA("[AgusMapsFlutter] Calling agus_native_create_surface...\n");
+        g_fnCreateSurface(width, height, static_cast<float>(density));
+        OutputDebugStringA("[AgusMapsFlutter] agus_native_create_surface returned\n");
+    } else {
+        OutputDebugStringA("[AgusMapsFlutter] ERROR: agus_native_create_surface not available\n");
+        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "agus_native_create_surface function not found")));
+        return;
+    }
+
+    if (g_fnSetFrameReadyCallback) {
+        g_fnSetFrameReadyCallback(&OnNativeFrameReady);
+        OutputDebugStringA("[AgusMapsFlutter] Frame ready callback set\n");
+    }
+
+    texture_id_ = texture_registrar_->RegisterTexture(
+        std::make_unique<flutter::TextureVariant>(
+            flutter::GpuSurfaceTexture(kFlutterDesktopGpuSurfaceTypeDXGISharedHandle,
+                                       &gpu_surface_desc_)));
+
+    if (texture_id_ < 0) {
+        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to register texture\n");
+        result(ErrorOr<int64_t>(FlutterError("TEXTURE_ERROR", "Failed to register texture")));
+        return;
+    }
+
+    surface_width_ = width;
+    surface_height_ = height;
+    last_density_ = density;
+    map_ready_sent_ = false;
+
+    if (!g_fnGetSharedTextureHandle) {
+        OutputDebugStringA("[AgusMapsFlutter] ERROR: get_shared_texture_handle not available\n");
+        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "get_shared_texture_handle not available")));
+        return;
+    }
+
+    void* handle = g_fnGetSharedTextureHandle();
+    if (!handle) {
+        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to get shared texture handle\n");
+        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "Failed to get shared texture handle")));
+        return;
+    }
+
+    gpu_surface_desc_.handle = handle;
+    gpu_surface_desc_.width = width;
+    gpu_surface_desc_.height = height;
+
+    OutputDebugStringA("[AgusMapsFlutter] Surface created successfully\n");
+    result(ErrorOr<int64_t>(texture_id_));
+    if (flutter_api_) {
+        flutter_api_->OnRenderStateChanged(
+            RenderState::kActive,
+            &texture_id_,
+            []() {},
+            [](const FlutterError&) {});
+    }
+}
 std::string WideToUtf8(const std::wstring& wide) {
     if (wide.empty()) return std::string();
     int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.length()),
@@ -171,19 +140,157 @@ std::string GetExecutableDir() {
     return "";
 }
 
-// Type aliases for Flutter types
-using FlutterMethodCall = flutter::MethodCall<flutter::EncodableValue>;
-using FlutterMethodResult = flutter::MethodResult<flutter::EncodableValue>;
-using FlutterMethodChannel = flutter::MethodChannel<flutter::EncodableValue>;
+using PlacePageHasDataFn = int (*)();
+using PlacePageCopyFn = AgusPlacePageData* (*)();
+using PlacePageFreeFn = void (*)(AgusPlacePageData*);
+using PlacePageClearSelectionFn = void (*)();
+
+static PlacePageHasDataFn g_fnPlacePageHasData = nullptr;
+static PlacePageCopyFn g_fnPlacePageCopy = nullptr;
+static PlacePageFreeFn g_fnPlacePageFree = nullptr;
+static PlacePageClearSelectionFn g_fnPlacePageClearSelection = nullptr;
+
+static HMODULE GetNativeLibraryHandle() {
+    HMODULE module = GetModuleHandleW(L"agus_maps_flutter.dll");
+    if (!module) {
+        module = LoadLibraryW(L"agus_maps_flutter.dll");
+    }
+    return module;
+}
+
+static bool EnsurePlacePageFunctionsLoaded() {
+    if (g_fnPlacePageHasData && g_fnPlacePageCopy && g_fnPlacePageFree &&
+        g_fnPlacePageClearSelection) {
+        return true;
+    }
+
+    if (!LoadFfiLibrary()) {
+        return false;
+    }
+
+    HMODULE module = GetNativeLibraryHandle();
+    if (!module) {
+        return false;
+    }
+
+    g_fnPlacePageHasData = reinterpret_cast<PlacePageHasDataFn>(
+        GetProcAddress(module, "comaps_place_page_has_data"));
+    g_fnPlacePageCopy = reinterpret_cast<PlacePageCopyFn>(
+        GetProcAddress(module, "comaps_place_page_copy"));
+    g_fnPlacePageFree = reinterpret_cast<PlacePageFreeFn>(
+        GetProcAddress(module, "comaps_place_page_free"));
+    g_fnPlacePageClearSelection = reinterpret_cast<PlacePageClearSelectionFn>(
+        GetProcAddress(module, "comaps_place_page_clear_selection"));
+
+    return g_fnPlacePageHasData && g_fnPlacePageCopy && g_fnPlacePageFree &&
+           g_fnPlacePageClearSelection;
+}
+
+static PlacePageData BuildPlacePageData(const AgusPlacePageData* data) {
+    const auto mwm_name = data->feature_id.mwm_name ? data->feature_id.mwm_name : "";
+    PlacePageFeatureId feature_id(
+        mwm_name,
+        data->feature_id.mwm_version,
+        data->feature_id.index);
+
+    std::optional<std::string> decimal = data->coordinates.decimal
+        ? std::optional<std::string>(data->coordinates.decimal)
+        : std::nullopt;
+    std::optional<std::string> dms = data->coordinates.dms
+        ? std::optional<std::string>(data->coordinates.dms)
+        : std::nullopt;
+    std::optional<std::string> osm = data->coordinates.osm
+        ? std::optional<std::string>(data->coordinates.osm)
+        : std::nullopt;
+    std::optional<std::string> olc = data->coordinates.olc
+        ? std::optional<std::string>(data->coordinates.olc)
+        : std::nullopt;
+    std::optional<std::string> utm = data->coordinates.utm
+        ? std::optional<std::string>(data->coordinates.utm)
+        : std::nullopt;
+    std::optional<std::string> mgrs = data->coordinates.mgrs
+        ? std::optional<std::string>(data->coordinates.mgrs)
+        : std::nullopt;
+
+    const std::string* decimal_ptr = decimal ? &*decimal : nullptr;
+    const std::string* dms_ptr = dms ? &*dms : nullptr;
+    const std::string* osm_ptr = osm ? &*osm : nullptr;
+    const std::string* olc_ptr = olc ? &*olc : nullptr;
+    const std::string* utm_ptr = utm ? &*utm : nullptr;
+    const std::string* mgrs_ptr = mgrs ? &*mgrs : nullptr;
+
+    PlacePageCoordinates coordinates(
+        decimal_ptr,
+        dms_ptr,
+        osm_ptr,
+        olc_ptr,
+        utm_ptr,
+        mgrs_ptr);
+
+    flutter::EncodableList raw_types;
+    raw_types.reserve(data->raw_types_count);
+    for (int32_t i = 0; i < data->raw_types_count; ++i) {
+        const char* type = data->raw_types[i] ? data->raw_types[i] : "";
+        raw_types.push_back(flutter::EncodableValue(std::string(type)));
+    }
+
+    flutter::EncodableList metadata;
+    metadata.reserve(data->metadata_count);
+    for (int32_t i = 0; i < data->metadata_count; ++i) {
+        const char* value = data->metadata[i].value ? data->metadata[i].value : "";
+        PlacePageIntMetadataEntry entry(data->metadata[i].key, value);
+        metadata.push_back(
+            flutter::EncodableValue(flutter::CustomEncodableValue(entry)));
+    }
+
+    flutter::EncodableList metadata_tags;
+    metadata_tags.reserve(data->metadata_tags_count);
+    for (int32_t i = 0; i < data->metadata_tags_count; ++i) {
+        const char* key = data->metadata_tags[i].key ? data->metadata_tags[i].key : "";
+        const char* value = data->metadata_tags[i].value ? data->metadata_tags[i].value : "";
+        PlacePageStringMetadataEntry entry(key, value);
+        metadata_tags.push_back(
+            flutter::EncodableValue(flutter::CustomEncodableValue(entry)));
+    }
+
+    int64_t bookmark_id_value = data->bookmark_id;
+    int64_t bookmark_category_id_value = data->bookmark_category_id;
+    int64_t track_id_value = data->track_id;
+    int64_t* bookmark_id = data->has_bookmark_id ? &bookmark_id_value : nullptr;
+    int64_t* bookmark_category_id =
+        data->has_bookmark_category_id ? &bookmark_category_id_value : nullptr;
+    int64_t* track_id = data->has_track_id ? &track_id_value : nullptr;
+
+    return PlacePageData(
+        feature_id,
+        data->object_type,
+        data->opening_mode,
+        data->title ? data->title : "",
+        data->secondary_title ? data->secondary_title : "",
+        data->subtitle ? data->subtitle : "",
+        data->address ? data->address : "",
+        data->lat,
+        data->lon,
+        data->wiki_description_html ? data->wiki_description_html : "",
+        data->road_type,
+        data->is_route_point != 0,
+        coordinates,
+        raw_types,
+        metadata,
+        metadata_tags,
+        bookmark_id,
+        bookmark_category_id,
+        track_id);
+}
 
 /// AgusMapsFlutterPlugin - Windows implementation
 /// 
-/// Handles MethodChannel calls for:
+/// Handles Pigeon host API calls for:
 /// - extractMap: Copy map assets from bundle to Documents
 /// - extractDataFiles: Extract CoMaps data files
 /// - getApkPath: Return executable directory (Windows equivalent)
 /// - createMapSurface/resizeMapSurface/destroyMapSurface: Texture management
-class AgusMapsFlutterPlugin : public flutter::Plugin {
+class AgusMapsFlutterPlugin : public flutter::Plugin, public AgusMapsHostApi {
 public:
     static void RegisterWithRegistrar(flutter::PluginRegistrarWindows* registrar);
 
@@ -198,19 +305,26 @@ public:
     void OnFrameReady();
 
 private:
-    void HandleMethodCall(const FlutterMethodCall& method_call,
-                          std::unique_ptr<FlutterMethodResult> result);
-
-    // Method handlers
-    void HandleExtractMap(const FlutterMethodCall& call,
-                          std::unique_ptr<FlutterMethodResult> result);
-    void HandleExtractDataFiles(std::unique_ptr<FlutterMethodResult> result);
-    void HandleGetApkPath(std::unique_ptr<FlutterMethodResult> result);
-    void HandleCreateMapSurface(const FlutterMethodCall& call,
-                                std::unique_ptr<FlutterMethodResult> result);
-    void HandleResizeMapSurface(const FlutterMethodCall& call,
-                                std::unique_ptr<FlutterMethodResult> result);
-    void HandleDestroyMapSurface(std::unique_ptr<FlutterMethodResult> result);
+    // Pigeon Host API implementations
+    void ExtractMap(
+        const std::string& asset_path,
+        std::function<void(ErrorOr<std::string> reply)> result) override;
+    void ExtractDataFiles(
+        std::function<void(ErrorOr<std::string> reply)> result) override;
+    void GetApkPath(
+        std::function<void(ErrorOr<std::string> reply)> result) override;
+    void CreateMapSurface(
+        const CreateMapSurfaceRequest& request,
+        std::function<void(ErrorOr<int64_t> reply)> result) override;
+    void ResizeMapSurface(
+        const ResizeMapSurfaceRequest& request,
+        std::function<void(ErrorOr<bool> reply)> result) override;
+    void DestroyMapSurface(
+        std::function<void(ErrorOr<bool> reply)> result) override;
+    void GetCurrentPlacePage(
+        std::function<void(ErrorOr<std::optional<PlacePageData>> reply)> result) override;
+    void ClearPlacePageSelection(
+        std::function<void(ErrorOr<bool> reply)> result) override;
 
     // Helper methods
     std::string ExtractMapAsset(const std::string& assetPath);
@@ -220,6 +334,8 @@ private:
 
     flutter::PluginRegistrarWindows* registrar_;
     flutter::TextureRegistrar* texture_registrar_;
+    std::unique_ptr<AgusMapsFlutterApi> flutter_api_;
+    bool map_ready_sent_ = false;
     
     // Texture state
     int64_t texture_id_ = -1;
@@ -248,17 +364,10 @@ void AgusMapsFlutterPlugin::RegisterWithRegistrar(
     // Pre-load FFI library
     LoadFfiLibrary();
     
-    auto channel = std::make_unique<FlutterMethodChannel>(
-        registrar->messenger(), "agus_maps_flutter",
-        &flutter::StandardMethodCodec::GetInstance());
-
     auto plugin = std::make_unique<AgusMapsFlutterPlugin>(registrar);
     g_pluginInstance = plugin.get();
 
-    channel->SetMethodCallHandler(
-        [plugin_pointer = plugin.get()](const auto& call, auto result) {
-            plugin_pointer->HandleMethodCall(call, std::move(result));
-        });
+    AgusMapsHostApi::SetUp(registrar->messenger(), plugin.get());
 
     registrar->AddPlugin(std::move(plugin));
     
@@ -269,6 +378,7 @@ AgusMapsFlutterPlugin::AgusMapsFlutterPlugin(
     flutter::PluginRegistrarWindows* registrar)
     : registrar_(registrar)
     , texture_registrar_(registrar->texture_registrar()) {
+    flutter_api_ = std::make_unique<AgusMapsFlutterApi>(registrar->messenger());
     OutputDebugStringA("[AgusMapsFlutter] Plugin constructed\n");
 }
 
@@ -292,59 +402,25 @@ void AgusMapsFlutterPlugin::OnFrameReady() {
     // Mark texture as needing update (called from native render thread)
     if (texture_id_ >= 0 && texture_registrar_) {
         texture_registrar_->MarkTextureFrameAvailable(texture_id_);
+        if (!map_ready_sent_ && flutter_api_) {
+            map_ready_sent_ = true;
+            flutter_api_->OnMapReady(
+                texture_id_,
+                []() {},
+                [](const FlutterError& error) {
+                    OutputDebugStringA("[AgusMapsFlutter] onMapReady failed\n");
+                });
+        }
     }
 }
-
-void AgusMapsFlutterPlugin::HandleMethodCall(
-    const FlutterMethodCall& method_call,
-    std::unique_ptr<FlutterMethodResult> result) {
-    
-    const std::string& method = method_call.method_name();
-    
-    if (method == "extractMap") {
-        HandleExtractMap(method_call, std::move(result));
-    } else if (method == "extractDataFiles") {
-        HandleExtractDataFiles(std::move(result));
-    } else if (method == "getApkPath") {
-        HandleGetApkPath(std::move(result));
-    } else if (method == "createMapSurface") {
-        HandleCreateMapSurface(method_call, std::move(result));
-    } else if (method == "resizeMapSurface") {
-        HandleResizeMapSurface(method_call, std::move(result));
-    } else if (method == "destroyMapSurface") {
-        HandleDestroyMapSurface(std::move(result));
-    } else {
-        result->NotImplemented();
-    }
-}
-
-void AgusMapsFlutterPlugin::HandleExtractMap(
-    const FlutterMethodCall& call,
-    std::unique_ptr<FlutterMethodResult> result) {
-    
-    const auto* arguments = std::get_if<flutter::EncodableMap>(call.arguments());
-    if (!arguments) {
-        result->Error("INVALID_ARGUMENT", "Expected map arguments");
-        return;
-    }
-
-    auto asset_it = arguments->find(flutter::EncodableValue("assetPath"));
-    if (asset_it == arguments->end()) {
-        result->Error("INVALID_ARGUMENT", "assetPath is required");
-        return;
-    }
-
-    const auto* assetPath = std::get_if<std::string>(&asset_it->second);
-    if (!assetPath) {
-        result->Error("INVALID_ARGUMENT", "assetPath must be a string");
-        return;
-    }
-
+void AgusMapsFlutterPlugin::ExtractMap(
+    const std::string& asset_path,
+    std::function<void(ErrorOr<std::string> reply)> result) {
     try {
-        std::string extractedPath = ExtractMapAsset(*assetPath);
-        result->Success(flutter::EncodableValue(extractedPath));
+        std::string extractedPath = ExtractMapAsset(asset_path);
+        result(ErrorOr<std::string>(extractedPath));
     } catch (const std::exception& e) {
-        result->Error("EXTRACTION_FAILED", e.what());
+        result(ErrorOr<std::string>(FlutterError("EXTRACTION_FAILED", e.what())));
     }
 }
 
@@ -390,13 +466,13 @@ std::string AgusMapsFlutterPlugin::ExtractMapAsset(const std::string& assetPath)
     return destPath.string();
 }
 
-void AgusMapsFlutterPlugin::HandleExtractDataFiles(
-    std::unique_ptr<FlutterMethodResult> result) {
+void AgusMapsFlutterPlugin::ExtractDataFiles(
+    std::function<void(ErrorOr<std::string> reply)> result) {
     try {
         std::string dataPath = ExtractAllDataFiles();
-        result->Success(flutter::EncodableValue(dataPath));
+        result(ErrorOr<std::string>(dataPath));
     } catch (const std::exception& e) {
-        result->Error("EXTRACTION_FAILED", e.what());
+        result(ErrorOr<std::string>(FlutterError("EXTRACTION_FAILED", e.what())));
     }
 }
 
@@ -483,59 +559,24 @@ bool AgusMapsFlutterPlugin::DataDirLooksComplete(const fs::path& dataDir) {
     return true;
 }
 
-void AgusMapsFlutterPlugin::HandleGetApkPath(
-    std::unique_ptr<FlutterMethodResult> result) {
-    // Windows equivalent: return executable directory (where data/ folder is)
+void AgusMapsFlutterPlugin::GetApkPath(
+    std::function<void(ErrorOr<std::string> reply)> result) {
     std::string exeDir = GetExecutableDir();
     if (exeDir.empty()) {
-        result->Error("PATH_ERROR", "Failed to get executable directory");
+        result(ErrorOr<std::string>(FlutterError("PATH_ERROR", "Failed to get executable directory")));
         return;
     }
-    result->Success(flutter::EncodableValue(exeDir));
+    result(ErrorOr<std::string>(exeDir));
 }
 
-void AgusMapsFlutterPlugin::HandleCreateMapSurface(
-    const FlutterMethodCall& call,
-    std::unique_ptr<FlutterMethodResult> result) {
-    
+void AgusMapsFlutterPlugin::CreateMapSurface(
+    const CreateMapSurfaceRequest& request,
+    std::function<void(ErrorOr<int64_t> reply)> result) {
     OutputDebugStringA("[AgusMapsFlutter] createMapSurface called\n");
-    
-    // Parse arguments
-    const auto* arguments = std::get_if<flutter::EncodableMap>(call.arguments());
-    if (!arguments) {
-        result->Error("INVALID_ARGUMENT", "Expected map arguments");
-        return;
-    }
-    
-    // Get width, height, density from arguments
-    int32_t width = 800;  // defaults
-    int32_t height = 600;
-    double density = 1.0;
-    
-    auto width_it = arguments->find(flutter::EncodableValue("width"));
-    if (width_it != arguments->end()) {
-        if (auto* intVal = std::get_if<int32_t>(&width_it->second)) {
-            width = *intVal;
-        } else if (auto* dblVal = std::get_if<double>(&width_it->second)) {
-            width = static_cast<int32_t>(*dblVal);
-        }
-    }
-    
-    auto height_it = arguments->find(flutter::EncodableValue("height"));
-    if (height_it != arguments->end()) {
-        if (auto* intVal = std::get_if<int32_t>(&height_it->second)) {
-            height = *intVal;
-        } else if (auto* dblVal = std::get_if<double>(&height_it->second)) {
-            height = static_cast<int32_t>(*dblVal);
-        }
-    }
-    
-    auto density_it = arguments->find(flutter::EncodableValue("density"));
-    if (density_it != arguments->end()) {
-        if (auto* dblVal = std::get_if<double>(&density_it->second)) {
-            density = *dblVal;
-        }
-    }
+
+    int32_t width = request.width() ? static_cast<int32_t>(*request.width()) : 800;
+    int32_t height = request.height() ? static_cast<int32_t>(*request.height()) : 600;
+    double density = request.density() ? *request.density() : 1.0;
     
     char msg[256];
     snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Creating surface: %dx%d, density=%.2f\n", 
@@ -545,7 +586,7 @@ void AgusMapsFlutterPlugin::HandleCreateMapSurface(
     // Ensure FFI library is loaded
     if (!LoadFfiLibrary()) {
         OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to load FFI library\n");
-        result->Error("FFI_ERROR", "Failed to load native FFI library");
+        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "Failed to load native FFI library")));
         return;
     }
     
@@ -556,7 +597,7 @@ void AgusMapsFlutterPlugin::HandleCreateMapSurface(
         OutputDebugStringA("[AgusMapsFlutter] agus_native_create_surface returned\n");
     } else {
         OutputDebugStringA("[AgusMapsFlutter] ERROR: agus_native_create_surface not available\n");
-        result->Error("FFI_ERROR", "agus_native_create_surface function not found");
+        result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "agus_native_create_surface function not found")));
         return;
     }
     
@@ -650,71 +691,42 @@ void AgusMapsFlutterPlugin::HandleCreateMapSurface(
         snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Texture registered with ID: %lld\n", texture_id_);
         OutputDebugStringA(msg);
         
-        result->Success(flutter::EncodableValue(texture_id_));
+        map_ready_sent_ = false;
+        result(ErrorOr<int64_t>(texture_id_));
+        if (flutter_api_) {
+            flutter_api_->OnRenderStateChanged(
+                RenderState::kActive,
+                &texture_id_,
+                []() {},
+                [](const FlutterError&) {});
+        }
     } else {
         // Fallback: return -1 if texture creation failed
         OutputDebugStringA("[AgusMapsFlutter] WARN: No D3D11 texture available, returning -1\n");
-        result->Success(flutter::EncodableValue(static_cast<int64_t>(-1)));
+        result(ErrorOr<int64_t>(static_cast<int64_t>(-1)));
     }
 }
 
-void AgusMapsFlutterPlugin::HandleResizeMapSurface(
-    const FlutterMethodCall& call,
-    std::unique_ptr<FlutterMethodResult> result) {
-    
+void AgusMapsFlutterPlugin::ResizeMapSurface(
+    const ResizeMapSurfaceRequest& request,
+    std::function<void(ErrorOr<bool> reply)> result) {
     std::fprintf(stderr, "[AgusMapsFlutter] resizeMapSurface method call received\n");
     std::fflush(stderr);
-    
-    // Parse arguments
-    const auto* arguments = std::get_if<flutter::EncodableMap>(call.arguments());
-    if (!arguments) {
-        std::fprintf(stderr, "[AgusMapsFlutter] resizeMapSurface: Invalid arguments\n");
-        std::fflush(stderr);
-        result->Error("INVALID_ARGUMENT", "Expected map arguments");
-        return;
-    }
-    
-    int32_t width = surface_width_;
-    int32_t height = surface_height_;
-    double density = 0.0;
-    
-    auto width_it = arguments->find(flutter::EncodableValue("width"));
-    if (width_it != arguments->end()) {
-        if (auto* intVal = std::get_if<int32_t>(&width_it->second)) {
-            width = *intVal;
-        } else if (auto* dblVal = std::get_if<double>(&width_it->second)) {
-            width = static_cast<int32_t>(*dblVal);
-        }
-    }
-    
-    auto height_it = arguments->find(flutter::EncodableValue("height"));
-    if (height_it != arguments->end()) {
-        if (auto* intVal = std::get_if<int32_t>(&height_it->second)) {
-            height = *intVal;
-        } else if (auto* dblVal = std::get_if<double>(&height_it->second)) {
-            height = static_cast<int32_t>(*dblVal);
-        }
-    }
 
-    auto density_it = arguments->find(flutter::EncodableValue("density"));
-    if (density_it != arguments->end()) {
-        if (auto* dblVal = std::get_if<double>(&density_it->second)) {
-            density = *dblVal;
-        }
-    }
-    
+    int32_t width = static_cast<int32_t>(request.width());
+    int32_t height = static_cast<int32_t>(request.height());
+    double density = request.density() ? *request.density() : 0.0;
+
     if (density > 0.0) {
         std::fprintf(stderr, "[AgusMapsFlutter] Resizing surface to %dx%d (density=%.2f)\n", width, height, density);
     } else {
         std::fprintf(stderr, "[AgusMapsFlutter] Resizing surface to %dx%d\n", width, height);
     }
     std::fflush(stderr);
-    
-    // Update stored dimensions
+
     surface_width_ = width;
     surface_height_ = height;
-    
-    // Call native resize function
+
     if (g_fnOnSizeChanged) {
         std::fprintf(stderr, "[AgusMapsFlutter] Calling g_fnOnSizeChanged(%d, %d)\n", width, height);
         std::fflush(stderr);
@@ -728,9 +740,7 @@ void AgusMapsFlutterPlugin::HandleResizeMapSurface(
                 last_density_ = density;
             }
         }
-        
-        // CRITICAL: Notify Flutter that the texture has been updated after resize
-        // This ensures Flutter samples the new texture with updated dimensions
+
         if (texture_id_ >= 0 && texture_registrar_) {
             texture_registrar_->MarkTextureFrameAvailable(texture_id_);
             std::fprintf(stderr, "[AgusMapsFlutter] MarkTextureFrameAvailable called after resize\n");
@@ -740,29 +750,80 @@ void AgusMapsFlutterPlugin::HandleResizeMapSurface(
         std::fprintf(stderr, "[AgusMapsFlutter] WARNING: g_fnOnSizeChanged is null!\n");
         std::fflush(stderr);
     }
-    
-    result->Success(flutter::EncodableValue(true));
+
+    result(ErrorOr<bool>(true));
 }
 
-void AgusMapsFlutterPlugin::HandleDestroyMapSurface(
-    std::unique_ptr<FlutterMethodResult> result) {
-    
+void AgusMapsFlutterPlugin::DestroyMapSurface(
+    std::function<void(ErrorOr<bool> reply)> result) {
     OutputDebugStringA("[AgusMapsFlutter] destroyMapSurface called\n");
-    
-    // Unregister texture
+
     if (texture_id_ >= 0 && texture_registrar_) {
         texture_registrar_->UnregisterTexture(texture_id_);
         texture_id_ = -1;
     }
-    
+
     texture_.reset();
-    
-    // Destroy native surface
+    map_ready_sent_ = false;
+
     if (g_fnOnSurfaceDestroyed) {
         g_fnOnSurfaceDestroyed();
     }
-    
-    result->Success(flutter::EncodableValue(true));
+
+    if (flutter_api_) {
+        flutter_api_->OnRenderStateChanged(
+            RenderState::kIdle,
+            nullptr,
+            []() {},
+            [](const FlutterError&) {});
+    }
+
+    result(ErrorOr<bool>(true));
+}
+
+void AgusMapsFlutterPlugin::GetCurrentPlacePage(
+    std::function<void(ErrorOr<std::optional<PlacePageData>> reply)> result) {
+    if (!EnsurePlacePageFunctionsLoaded()) {
+        OutputDebugStringA("[AgusMapsFlutter] getCurrentPlacePage unavailable (FFI missing)\n");
+        result(ErrorOr<std::optional<PlacePageData>>(std::nullopt));
+        return;
+    }
+
+    if (!g_fnPlacePageHasData || g_fnPlacePageHasData() == 0) {
+        result(ErrorOr<std::optional<PlacePageData>>(std::nullopt));
+        return;
+    }
+
+    AgusPlacePageData* native_data = g_fnPlacePageCopy ? g_fnPlacePageCopy() : nullptr;
+    if (!native_data) {
+        result(ErrorOr<std::optional<PlacePageData>>(std::nullopt));
+        return;
+    }
+
+    PlacePageData place_page = BuildPlacePageData(native_data);
+    if (g_fnPlacePageFree) {
+        g_fnPlacePageFree(native_data);
+    }
+
+    result(ErrorOr<std::optional<PlacePageData>>(
+        std::optional<PlacePageData>(std::move(place_page))));
+}
+
+void AgusMapsFlutterPlugin::ClearPlacePageSelection(
+    std::function<void(ErrorOr<bool> reply)> result) {
+    if (!EnsurePlacePageFunctionsLoaded()) {
+        OutputDebugStringA("[AgusMapsFlutter] clearPlacePageSelection unavailable (FFI missing)\n");
+        result(ErrorOr<bool>(false));
+        return;
+    }
+
+    if (g_fnPlacePageClearSelection) {
+        g_fnPlacePageClearSelection();
+        result(ErrorOr<bool>(true));
+        return;
+    }
+
+    result(ErrorOr<bool>(false));
 }
 
 }  // namespace agus_maps_flutter

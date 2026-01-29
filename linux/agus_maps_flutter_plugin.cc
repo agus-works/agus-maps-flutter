@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "include/agus_maps_flutter/agus_maps_flutter_plugin.h"
+#include "agus_maps_api.g.h"
+#include "../src/agus_maps_flutter.h"
 
 #include <flutter_linux/flutter_linux.h>
 #include <gtk/gtk.h>
@@ -29,6 +31,10 @@ extern "C" {
   int32_t agus_get_rendered_height(void);
   int agus_copy_pixels(uint8_t* buffer, int32_t bufferSize);
   void agus_set_frame_ready_callback(void (*callback)(void));
+  int comaps_place_page_has_data(void);
+  AgusPlacePageData* comaps_place_page_copy(void);
+  void comaps_place_page_free(AgusPlacePageData* data);
+  void comaps_place_page_clear_selection(void);
 }
 
 // ============================================================================
@@ -183,17 +189,101 @@ static void agus_map_texture_resize(AgusMapTexture* self, int32_t width, int32_t
 struct _AgusMapsFlutterPlugin {
   GObject parent_instance;
   FlPluginRegistrar* registrar;
-  FlMethodChannel* channel;
   FlTextureRegistrar* texture_registrar;
   AgusMapTexture* texture;
   int64_t texture_id;
   gboolean surface_created;
+  gboolean map_ready_sent;
+  agus_maps_flutterAgusMapsFlutterApi* flutter_api;
 };
 
 G_DEFINE_TYPE(AgusMapsFlutterPlugin, agus_maps_flutter_plugin, g_object_get_type())
 
 // Global plugin instance for frame callback
 static AgusMapsFlutterPlugin* g_plugin_instance = nullptr;
+
+static agus_maps_flutterPlacePageData* build_place_page_data(
+  const AgusPlacePageData* data) {
+  if (!data) {
+  return nullptr;
+  }
+
+  g_autoptr(agus_maps_flutterPlacePageFeatureId) feature_id =
+    agus_maps_flutter_place_page_feature_id_new(
+      data->feature_id.mwm_name ? data->feature_id.mwm_name : "",
+      data->feature_id.mwm_version,
+      data->feature_id.index);
+
+  g_autoptr(agus_maps_flutterPlacePageCoordinates) coordinates =
+    agus_maps_flutter_place_page_coordinates_new(
+      data->coordinates.decimal,
+      data->coordinates.dms,
+      data->coordinates.osm,
+      data->coordinates.olc,
+      data->coordinates.utm,
+      data->coordinates.mgrs);
+
+  g_autoptr(FlValue) raw_types = fl_value_new_list();
+  for (int32_t i = 0; i < data->raw_types_count; ++i) {
+  const char* type = data->raw_types[i] ? data->raw_types[i] : "";
+  fl_value_append_take(raw_types, fl_value_new_string(type));
+  }
+
+  g_autoptr(FlValue) metadata = fl_value_new_list();
+  for (int32_t i = 0; i < data->metadata_count; ++i) {
+  g_autoptr(agus_maps_flutterPlacePageIntMetadataEntry) entry =
+    agus_maps_flutter_place_page_int_metadata_entry_new(
+      data->metadata[i].key,
+      data->metadata[i].value ? data->metadata[i].value : "");
+  fl_value_append_take(
+    metadata,
+    fl_value_new_custom_object(
+      agus_maps_flutter_place_page_int_metadata_entry_type_id,
+      G_OBJECT(entry)));
+  }
+
+  g_autoptr(FlValue) metadata_tags = fl_value_new_list();
+  for (int32_t i = 0; i < data->metadata_tags_count; ++i) {
+  g_autoptr(agus_maps_flutterPlacePageStringMetadataEntry) entry =
+    agus_maps_flutter_place_page_string_metadata_entry_new(
+      data->metadata_tags[i].key ? data->metadata_tags[i].key : "",
+      data->metadata_tags[i].value ? data->metadata_tags[i].value : "");
+  fl_value_append_take(
+    metadata_tags,
+    fl_value_new_custom_object(
+      agus_maps_flutter_place_page_string_metadata_entry_type_id,
+      G_OBJECT(entry)));
+  }
+
+  int64_t bookmark_id_value = data->bookmark_id;
+  int64_t bookmark_category_id_value = data->bookmark_category_id;
+  int64_t track_id_value = data->track_id;
+  int64_t* bookmark_id = data->has_bookmark_id ? &bookmark_id_value : nullptr;
+  int64_t* bookmark_category_id =
+    data->has_bookmark_category_id ? &bookmark_category_id_value : nullptr;
+  int64_t* track_id = data->has_track_id ? &track_id_value : nullptr;
+
+  return agus_maps_flutter_place_page_data_new(
+    feature_id,
+    data->object_type,
+    data->opening_mode,
+    data->title ? data->title : "",
+    data->secondary_title ? data->secondary_title : "",
+    data->subtitle ? data->subtitle : "",
+    data->address ? data->address : "",
+    data->lat,
+    data->lon,
+    data->wiki_description_html ? data->wiki_description_html : "",
+    data->road_type,
+    data->is_route_point != 0,
+    coordinates,
+    raw_types,
+    metadata,
+    metadata_tags,
+    bookmark_id,
+    bookmark_category_id,
+    track_id);
+}
 
 // Frame callback - called from native code when a new frame is ready
 static void on_frame_ready() {
@@ -202,6 +292,21 @@ static void on_frame_ready() {
         g_plugin_instance->texture_registrar,
         FL_TEXTURE(g_plugin_instance->texture));
   }
+}
+
+static void send_render_state_changed(AgusMapsFlutterPlugin* self,
+                                      agus_maps_flutterRenderState state,
+                                      int64_t* surface_id) {
+  if (!self || !self->flutter_api) {
+    return;
+  }
+  agus_maps_flutter_agus_maps_flutter_api_on_render_state_changed(
+      self->flutter_api,
+      state,
+      surface_id,
+      nullptr,
+      nullptr,
+      nullptr);
 }
 
 // Get the data directory for the app (similar to Android's filesDir)
@@ -337,153 +442,207 @@ static std::string extract_data_files() {
   return data_dir_path.string();
 }
 
-// Called when a method call is received from Flutter.
-static void agus_maps_flutter_plugin_handle_method_call(
-    AgusMapsFlutterPlugin* self,
-    FlMethodCall* method_call) {
-  g_autoptr(FlMethodResponse) response = nullptr;
-  
-  const gchar* method = fl_method_call_get_name(method_call);
-  FlValue* args = fl_method_call_get_args(method_call);
-  
-  std::fprintf(stderr, "[AgusMapsFlutter] Method call: %s\n", method);
-  
-  if (strcmp(method, "extractMap") == 0) {
-    FlValue* asset_path_value = fl_value_lookup_string(args, "assetPath");
-    if (asset_path_value == nullptr || fl_value_get_type(asset_path_value) != FL_VALUE_TYPE_STRING) {
-      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-          "INVALID_ARGUMENT", "assetPath is required", nullptr));
-    } else {
-      const char* asset_path = fl_value_get_string(asset_path_value);
-      try {
-        std::string extracted_path = extract_map(asset_path);
-        g_autoptr(FlValue) result = fl_value_new_string(extracted_path.c_str());
-        response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
-      } catch (const std::exception& e) {
-        response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-            "EXTRACTION_FAILED", e.what(), nullptr));
-      }
-    }
-  } else if (strcmp(method, "extractDataFiles") == 0) {
-    try {
-      std::string data_path = extract_data_files();
-      g_autoptr(FlValue) result = fl_value_new_string(data_path.c_str());
-      response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
-    } catch (const std::exception& e) {
-      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-          "EXTRACTION_FAILED", e.what(), nullptr));
-    }
-  } else if (strcmp(method, "getApkPath") == 0) {
-    std::string exe_dir = get_executable_dir();
-    g_autoptr(FlValue) result = fl_value_new_string(exe_dir.c_str());
-    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
-  } else if (strcmp(method, "createMapSurface") == 0) {
-    // Extract parameters
-    FlValue* width_value = fl_value_lookup_string(args, "width");
-    FlValue* height_value = fl_value_lookup_string(args, "height");
-    FlValue* density_value = fl_value_lookup_string(args, "density");
-    
-    int32_t width = (width_value && fl_value_get_type(width_value) == FL_VALUE_TYPE_INT) 
-                    ? static_cast<int32_t>(fl_value_get_int(width_value)) : 800;
-    int32_t height = (height_value && fl_value_get_type(height_value) == FL_VALUE_TYPE_INT)
-                     ? static_cast<int32_t>(fl_value_get_int(height_value)) : 600;
-    float density = (density_value && fl_value_get_type(density_value) == FL_VALUE_TYPE_FLOAT)
-                    ? static_cast<float>(fl_value_get_float(density_value)) : 1.0f;
-    
-    std::fprintf(stderr, "[AgusMapsFlutter] createMapSurface: %dx%d density=%.2f\n", 
-                 width, height, density);
-    
-    // Create our pixel buffer texture for Flutter
-    if (!self->texture) {
-      self->texture = agus_map_texture_new(width, height);
-      
-      // Register with Flutter's texture registrar
-      if (self->texture_registrar) {
-        gboolean registered = fl_texture_registrar_register_texture(
-            self->texture_registrar, FL_TEXTURE(self->texture));
-        if (registered) {
-          self->texture_id = fl_texture_get_id(FL_TEXTURE(self->texture));
-          std::fprintf(stderr, "[AgusMapsFlutter] Texture registered with ID: %lld\n",
-                       static_cast<long long>(self->texture_id));
-        } else {
-          std::fprintf(stderr, "[AgusMapsFlutter] ERROR: Failed to register texture\n");
-          g_object_unref(self->texture);
-          self->texture = nullptr;
-          response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-              "TEXTURE_ERROR", "Failed to register texture", nullptr));
-          fl_method_call_respond(method_call, response, nullptr);
-          return;
-        }
-      }
-    }
-    
-    // Create native surface (EGL context + FBO)
-    int64_t native_result = agus_native_create_surface(width, height, density);
-    if (native_result < 0) {
-      std::fprintf(stderr, "[AgusMapsFlutter] ERROR: Failed to create native surface\n");
-      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-          "SURFACE_ERROR", "Failed to create native surface", nullptr));
-    } else {
-      self->surface_created = TRUE;
-      
-      // Set up frame callback to mark texture dirty when native renders new frame
-      agus_set_frame_ready_callback(on_frame_ready);
-      
-      std::fprintf(stderr, "[AgusMapsFlutter] Surface created, returning texture ID: %lld\n",
-                   static_cast<long long>(self->texture_id));
-      g_autoptr(FlValue) result = fl_value_new_int(self->texture_id);
-      response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
-    }
-  } else if (strcmp(method, "resizeMapSurface") == 0) {
-    FlValue* width_value = fl_value_lookup_string(args, "width");
-    FlValue* height_value = fl_value_lookup_string(args, "height");
-    FlValue* density_value = fl_value_lookup_string(args, "density");
-    
-    int32_t width = (width_value && fl_value_get_type(width_value) == FL_VALUE_TYPE_INT)
-                    ? static_cast<int32_t>(fl_value_get_int(width_value)) : 0;
-    int32_t height = (height_value && fl_value_get_type(height_value) == FL_VALUE_TYPE_INT)
-                     ? static_cast<int32_t>(fl_value_get_int(height_value)) : 0;
-    float density = (density_value && fl_value_get_type(density_value) == FL_VALUE_TYPE_FLOAT)
-                    ? static_cast<float>(fl_value_get_float(density_value)) : 0.0f;
-    
-    std::fprintf(stderr, "[AgusMapsFlutter] resizeMapSurface: %dx%d\n", width, height);
-    
-    if (width > 0 && height > 0) {
-      // Resize pixel buffer texture
-      if (self->texture) {
-        agus_map_texture_resize(self->texture, width, height);
-      }
-      
-      // Resize native surface
-      agus_native_on_size_changed(width, height);
-      if (density > 0) {
-        agus_native_set_visual_scale(density);
-      }
-    }
-    
-    g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
-    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
-  } else if (strcmp(method, "destroyMapSurface") == 0) {
-    std::fprintf(stderr, "[AgusMapsFlutter] destroyMapSurface\n");
-    
-    agus_set_frame_ready_callback(nullptr);
-    agus_native_on_surface_destroyed();
-    
-    if (self->texture && self->texture_registrar) {
-      fl_texture_registrar_unregister_texture(self->texture_registrar, 
-                                               FL_TEXTURE(self->texture));
-      g_object_unref(self->texture);
-      self->texture = nullptr;
-    }
-    self->surface_created = FALSE;
-    
-    g_autoptr(FlValue) result = fl_value_new_bool(TRUE);
-    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
-  } else {
-    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+static void handle_extract_map(const gchar* asset_path,
+                               agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+                               gpointer user_data) {
+  try {
+    std::string extracted_path = extract_map(asset_path);
+    agus_maps_flutter_agus_maps_host_api_respond_extract_map(
+        response_handle,
+        extracted_path.c_str());
+  } catch (const std::exception& e) {
+    agus_maps_flutter_agus_maps_host_api_respond_error_extract_map(
+        response_handle,
+        "EXTRACTION_FAILED",
+        e.what(),
+        nullptr);
   }
-  
-  fl_method_call_respond(method_call, response, nullptr);
+}
+
+static void handle_extract_data_files(
+    agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+    gpointer user_data) {
+  try {
+    std::string data_path = extract_data_files();
+    agus_maps_flutter_agus_maps_host_api_respond_extract_data_files(
+        response_handle,
+        data_path.c_str());
+  } catch (const std::exception& e) {
+    agus_maps_flutter_agus_maps_host_api_respond_error_extract_data_files(
+        response_handle,
+        "EXTRACTION_FAILED",
+        e.what(),
+        nullptr);
+  }
+}
+
+static void handle_get_apk_path(
+    agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+    gpointer user_data) {
+  std::string exe_dir = get_executable_dir();
+  agus_maps_flutter_agus_maps_host_api_respond_get_apk_path(
+      response_handle,
+      exe_dir.c_str());
+}
+
+static void handle_create_map_surface(
+    agus_maps_flutterCreateMapSurfaceRequest* request,
+    agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+    gpointer user_data) {
+  AgusMapsFlutterPlugin* self = AGUS_MAPS_FLUTTER_PLUGIN(user_data);
+  int64_t* width_ptr = agus_maps_flutter_create_map_surface_request_get_width(request);
+  int64_t* height_ptr = agus_maps_flutter_create_map_surface_request_get_height(request);
+  double* density_ptr = agus_maps_flutter_create_map_surface_request_get_density(request);
+
+  int32_t width = width_ptr ? static_cast<int32_t>(*width_ptr) : 800;
+  int32_t height = height_ptr ? static_cast<int32_t>(*height_ptr) : 600;
+  float density = density_ptr ? static_cast<float>(*density_ptr) : 1.0f;
+
+  std::fprintf(stderr, "[AgusMapsFlutter] createMapSurface: %dx%d density=%.2f\n",
+               width, height, density);
+
+  if (!self->texture) {
+    self->texture = agus_map_texture_new(width, height);
+    if (self->texture_registrar) {
+      gboolean registered = fl_texture_registrar_register_texture(
+          self->texture_registrar, FL_TEXTURE(self->texture));
+      if (registered) {
+        self->texture_id = fl_texture_get_id(FL_TEXTURE(self->texture));
+        std::fprintf(stderr, "[AgusMapsFlutter] Texture registered with ID: %lld\n",
+                     static_cast<long long>(self->texture_id));
+      } else {
+        std::fprintf(stderr, "[AgusMapsFlutter] ERROR: Failed to register texture\n");
+        g_object_unref(self->texture);
+        self->texture = nullptr;
+        agus_maps_flutter_agus_maps_host_api_respond_error_create_map_surface(
+            response_handle,
+            "TEXTURE_ERROR",
+            "Failed to register texture",
+            nullptr);
+        return;
+      }
+    }
+  }
+
+  int64_t native_result = agus_native_create_surface(width, height, density);
+  if (native_result < 0) {
+    std::fprintf(stderr, "[AgusMapsFlutter] ERROR: Failed to create native surface\n");
+    agus_maps_flutter_agus_maps_host_api_respond_error_create_map_surface(
+        response_handle,
+        "SURFACE_ERROR",
+        "Failed to create native surface",
+        nullptr);
+  } else {
+    self->surface_created = TRUE;
+    self->map_ready_sent = FALSE;
+    agus_set_frame_ready_callback(on_frame_ready);
+    std::fprintf(stderr, "[AgusMapsFlutter] Surface created, returning texture ID: %lld\n",
+                 static_cast<long long>(self->texture_id));
+    agus_maps_flutter_agus_maps_host_api_respond_create_map_surface(
+        response_handle,
+        self->texture_id);
+    int64_t surface_id = self->texture_id;
+    send_render_state_changed(self, AGUS_MAPS_FLUTTER_RENDER_STATE_ACTIVE, &surface_id);
+    if (self->flutter_api && !self->map_ready_sent) {
+      self->map_ready_sent = TRUE;
+      agus_maps_flutter_agus_maps_flutter_api_on_map_ready(
+          self->flutter_api,
+          self->texture_id,
+          nullptr,
+          nullptr,
+          nullptr);
+    }
+  }
+}
+
+static void handle_resize_map_surface(
+    agus_maps_flutterResizeMapSurfaceRequest* request,
+    agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+    gpointer user_data) {
+  AgusMapsFlutterPlugin* self = AGUS_MAPS_FLUTTER_PLUGIN(user_data);
+  int32_t width = static_cast<int32_t>(agus_maps_flutter_resize_map_surface_request_get_width(request));
+  int32_t height = static_cast<int32_t>(agus_maps_flutter_resize_map_surface_request_get_height(request));
+  double* density_ptr = agus_maps_flutter_resize_map_surface_request_get_density(request);
+
+  float density = density_ptr ? static_cast<float>(*density_ptr) : 0.0f;
+
+  std::fprintf(stderr, "[AgusMapsFlutter] resizeMapSurface: %dx%d\n", width, height);
+
+  if (width > 0 && height > 0) {
+    if (self->texture) {
+      agus_map_texture_resize(self->texture, width, height);
+    }
+    agus_native_on_size_changed(width, height);
+    if (density > 0) {
+      agus_native_set_visual_scale(density);
+    }
+  }
+
+  agus_maps_flutter_agus_maps_host_api_respond_resize_map_surface(
+      response_handle,
+      TRUE);
+}
+
+static void handle_destroy_map_surface(
+    agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+    gpointer user_data) {
+  AgusMapsFlutterPlugin* self = AGUS_MAPS_FLUTTER_PLUGIN(user_data);
+  std::fprintf(stderr, "[AgusMapsFlutter] destroyMapSurface\n");
+
+  agus_set_frame_ready_callback(nullptr);
+  agus_native_on_surface_destroyed();
+
+  if (self->texture && self->texture_registrar) {
+    fl_texture_registrar_unregister_texture(self->texture_registrar,
+                                             FL_TEXTURE(self->texture));
+    g_object_unref(self->texture);
+    self->texture = nullptr;
+  }
+  self->surface_created = FALSE;
+  self->map_ready_sent = FALSE;
+
+  send_render_state_changed(self, AGUS_MAPS_FLUTTER_RENDER_STATE_IDLE, nullptr);
+  agus_maps_flutter_agus_maps_host_api_respond_destroy_map_surface(
+      response_handle,
+      TRUE);
+}
+
+static void handle_get_current_place_page(
+    agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+    gpointer user_data) {
+  (void)user_data;
+  if (comaps_place_page_has_data() == 0) {
+    agus_maps_flutter_agus_maps_host_api_respond_get_current_place_page(
+        response_handle,
+        nullptr);
+    return;
+  }
+
+  AgusPlacePageData* native_data = comaps_place_page_copy();
+  if (!native_data) {
+    agus_maps_flutter_agus_maps_host_api_respond_get_current_place_page(
+        response_handle,
+        nullptr);
+    return;
+  }
+
+  g_autoptr(agus_maps_flutterPlacePageData) place_page =
+      build_place_page_data(native_data);
+  comaps_place_page_free(native_data);
+
+  agus_maps_flutter_agus_maps_host_api_respond_get_current_place_page(
+      response_handle,
+      place_page);
+}
+
+static void handle_clear_place_page_selection(
+    agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+    gpointer user_data) {
+  (void)user_data;
+  comaps_place_page_clear_selection();
+  agus_maps_flutter_agus_maps_host_api_respond_clear_place_page_selection(
+      response_handle,
+      TRUE);
 }
 
 static void agus_maps_flutter_plugin_dispose(GObject* object) {
@@ -508,6 +667,16 @@ static void agus_maps_flutter_plugin_dispose(GObject* object) {
     agus_native_on_surface_destroyed();
     self->surface_created = FALSE;
   }
+
+  if (self->registrar) {
+    FlBinaryMessenger* messenger = fl_plugin_registrar_get_messenger(self->registrar);
+    agus_maps_flutter_agus_maps_host_api_clear_method_handlers(messenger, nullptr);
+  }
+
+  if (self->flutter_api) {
+    g_object_unref(self->flutter_api);
+    self->flutter_api = nullptr;
+  }
   
   G_OBJECT_CLASS(agus_maps_flutter_plugin_parent_class)->dispose(object);
 }
@@ -518,17 +687,12 @@ static void agus_maps_flutter_plugin_class_init(AgusMapsFlutterPluginClass* klas
 
 static void agus_maps_flutter_plugin_init(AgusMapsFlutterPlugin* self) {
   self->registrar = nullptr;
-  self->channel = nullptr;
   self->texture_registrar = nullptr;
   self->texture = nullptr;
   self->texture_id = -1;
   self->surface_created = FALSE;
-}
-
-static void method_call_cb(FlMethodChannel* channel, FlMethodCall* method_call,
-                           gpointer user_data) {
-  AgusMapsFlutterPlugin* plugin = AGUS_MAPS_FLUTTER_PLUGIN(user_data);
-  agus_maps_flutter_plugin_handle_method_call(plugin, method_call);
+  self->map_ready_sent = FALSE;
+  self->flutter_api = nullptr;
 }
 
 void agus_maps_flutter_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
@@ -537,22 +701,31 @@ void agus_maps_flutter_plugin_register_with_registrar(FlPluginRegistrar* registr
 
   plugin->registrar = registrar;
   plugin->texture_registrar = fl_plugin_registrar_get_texture_registrar(registrar);
+  plugin->flutter_api = agus_maps_flutter_agus_maps_flutter_api_new(
+      fl_plugin_registrar_get_messenger(registrar),
+      nullptr);
   
   // Set global instance for frame callback
   g_plugin_instance = plugin;
 
-  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
-  g_autoptr(FlMethodChannel) channel =
-      fl_method_channel_new(fl_plugin_registrar_get_messenger(registrar),
-                            "agus_maps_flutter",
-                            FL_METHOD_CODEC(codec));
-  plugin->channel = FL_METHOD_CHANNEL(g_object_ref(channel));
-  
-  fl_method_channel_set_method_call_handler(channel, method_call_cb,
-                                            g_object_ref(plugin),
-                                            g_object_unref);
+    static const agus_maps_flutterAgusMapsHostApiVTable vtable = {
+      .extract_map = handle_extract_map,
+      .extract_data_files = handle_extract_data_files,
+      .get_apk_path = handle_get_apk_path,
+      .create_map_surface = handle_create_map_surface,
+      .resize_map_surface = handle_resize_map_surface,
+      .destroy_map_surface = handle_destroy_map_surface,
+      .get_current_place_page = handle_get_current_place_page,
+      .clear_place_page_selection = handle_clear_place_page_selection,
+    };
+    agus_maps_flutter_agus_maps_host_api_set_method_handlers(
+      fl_plugin_registrar_get_messenger(registrar),
+      nullptr,
+      &vtable,
+        g_object_ref(plugin),
+      g_object_unref);
 
   g_object_unref(plugin);
-  
+
   std::fprintf(stderr, "[AgusMapsFlutter] Linux plugin registered with texture support\n");
 }

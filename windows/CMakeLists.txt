@@ -138,6 +138,7 @@ endif()
 # The plugin DLL handles MethodChannel communication with Dart
 add_library(${PLUGIN_NAME} SHARED
   "agus_maps_flutter_plugin.cpp"
+  "agus_maps_api.g.cpp"
 )
 
 # Apply standard Flutter plugin compile definitions

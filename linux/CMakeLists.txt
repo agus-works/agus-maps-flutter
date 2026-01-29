@@ -19,6 +19,7 @@ pkg_check_modules(EPOXY REQUIRED epoxy)
 # Define the plugin library target
 add_library(${PLUGIN_NAME} SHARED
   "agus_maps_flutter_plugin.cc"
+  "agus_maps_api.g.cc"
 )
 
 # Apply a standard set of build settings that are configured in the

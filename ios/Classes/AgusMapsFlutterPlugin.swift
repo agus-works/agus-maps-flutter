@@ -6,11 +6,11 @@ import CoreVideo
 /// AgusMapsFlutterPlugin - Flutter plugin for CoMaps rendering on iOS
 ///
 /// This plugin implements:
-/// - FlutterPlugin for MethodChannel communication
+/// - FlutterPlugin for Pigeon messaging
 /// - FlutterTexture for zero-copy GPU texture sharing via CVPixelBuffer
 ///
 /// Architecture:
-/// 1. Flutter requests a map surface via MethodChannel
+/// 1. Flutter requests a map surface via Pigeon
 /// 2. Plugin creates CVPixelBuffer backed by IOSurface (Metal-compatible)
 /// 3. Native CoMaps engine renders to MTLTexture derived from CVPixelBuffer
 /// 4. Flutter samples the texture directly (zero-copy via IOSurface)
@@ -18,7 +18,7 @@ import CoreVideo
 /// Note: @objc(AgusMapsFlutterPlugin) gives this class a stable Objective-C name
 /// that native code can use with NSClassFromString, avoiding Swift name mangling.
 @objc(AgusMapsFlutterPlugin)
-public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
+public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, AgusMapsHostApi {
     
     // MARK: - Shared Instance for native callbacks
     
@@ -42,9 +42,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     // MARK: - Properties
     
-    private var channel: FlutterMethodChannel?
     private var textureRegistry: FlutterTextureRegistry?
     private var textureId: Int64 = -1
+    private var flutterApi: AgusMapsFlutterApi?
+    private var mapReadySent: Bool = false
     
     // CVPixelBuffer for zero-copy texture sharing
     private var pixelBuffer: CVPixelBuffer?
@@ -62,15 +63,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     // MARK: - FlutterPlugin Registration
     
     public static func register(with registrar: FlutterPluginRegistrar) {
-        let channel = FlutterMethodChannel(
-            name: "agus_maps_flutter",
-            binaryMessenger: registrar.messenger()
-        )
-        
         let instance = AgusMapsFlutterPlugin()
-        instance.channel = channel
         instance.textureRegistry = registrar.textures()
         instance.density = UIScreen.main.scale
+        instance.flutterApi = AgusMapsFlutterApi(binaryMessenger: registrar.messenger())
         
         // Store shared instance for native callbacks
         AgusMapsFlutterPlugin.sharedInstance = instance
@@ -81,7 +77,7 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
             NSLog("[AgusMapsFlutter] Warning: Metal device not available")
         }
         
-        registrar.addMethodCallDelegate(instance, channel: channel)
+        AgusMapsHostApiSetup.setUp(binaryMessenger: registrar.messenger(), api: instance)
         
         NSLog("[AgusMapsFlutter] Plugin registered, density=%.2f", instance.density)
     }
@@ -103,52 +99,116 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         cleanupTexture()
     }
     
-    // MARK: - MethodChannel Handler
-    
-    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        switch call.method {
-        case "extractMap":
-            handleExtractMap(call: call, result: result)
-            
-        case "extractDataFiles":
-            handleExtractDataFiles(result: result)
-            
-        case "getApkPath":
-            // iOS equivalent: main bundle resource path
-            result(Bundle.main.resourcePath)
-            
-        case "createMapSurface":
-            handleCreateMapSurface(call: call, result: result)
-            
-        case "resizeMapSurface":
-            handleResizeMapSurface(call: call, result: result)
-            
-        case "destroyMapSurface":
-            handleDestroyMapSurface(result: result)
-            
-        default:
-            result(FlutterMethodNotImplemented)
+    // MARK: - Pigeon Host API
+
+    private func stringFromC(_ value: UnsafePointer<CChar>?) -> String {
+        guard let value else {
+            return ""
         }
+        return String(cString: value)
     }
-    
-    // MARK: - Map Asset Extraction
-    
-    private func handleExtractMap(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let args = call.arguments as? [String: Any],
-              let assetPath = args["assetPath"] as? String else {
-            result(FlutterError(code: "INVALID_ARGUMENT", message: "assetPath is required", details: nil))
-            return
+
+    private func optionalStringFromC(_ value: UnsafePointer<CChar>?) -> String? {
+        guard let value else {
+            return nil
         }
-        
+        return String(cString: value)
+    }
+
+    private func makePlacePageData(from native: UnsafePointer<AgusPlacePageData>) -> PlacePageData {
+        let featureId = PlacePageFeatureId(
+            mwmName: stringFromC(native.pointee.feature_id.mwm_name),
+            mwmVersion: native.pointee.feature_id.mwm_version,
+            index: native.pointee.feature_id.index
+        )
+
+        let coordinates = PlacePageCoordinates(
+            decimal: optionalStringFromC(native.pointee.coordinates.decimal),
+            dms: optionalStringFromC(native.pointee.coordinates.dms),
+            osm: optionalStringFromC(native.pointee.coordinates.osm),
+            olc: optionalStringFromC(native.pointee.coordinates.olc),
+            utm: optionalStringFromC(native.pointee.coordinates.utm),
+            mgrs: optionalStringFromC(native.pointee.coordinates.mgrs)
+        )
+
+        var rawTypes: [String] = []
+        if let rawTypesPtr = native.pointee.raw_types {
+            for index in 0..<Int(native.pointee.raw_types_count) {
+                if let value = rawTypesPtr.advanced(by: index).pointee {
+                    rawTypes.append(String(cString: value))
+                }
+            }
+        }
+
+        var metadata: [PlacePageIntMetadataEntry] = []
+        if let metadataPtr = native.pointee.metadata {
+            for index in 0..<Int(native.pointee.metadata_count) {
+                let entry = metadataPtr.advanced(by: index).pointee
+                metadata.append(
+                    PlacePageIntMetadataEntry(
+                        key: entry.key,
+                        value: stringFromC(entry.value)
+                    )
+                )
+            }
+        }
+
+        var metadataTags: [PlacePageStringMetadataEntry] = []
+        if let metadataTagsPtr = native.pointee.metadata_tags {
+            for index in 0..<Int(native.pointee.metadata_tags_count) {
+                let entry = metadataTagsPtr.advanced(by: index).pointee
+                metadataTags.append(
+                    PlacePageStringMetadataEntry(
+                        key: stringFromC(entry.key),
+                        value: stringFromC(entry.value)
+                    )
+                )
+            }
+        }
+
+        let bookmarkId: Int64? = native.pointee.has_bookmark_id != 0
+            ? native.pointee.bookmark_id
+            : nil
+        let bookmarkCategoryId: Int64? = native.pointee.has_bookmark_category_id != 0
+            ? native.pointee.bookmark_category_id
+            : nil
+        let trackId: Int64? = native.pointee.has_track_id != 0
+            ? native.pointee.track_id
+            : nil
+
+        return PlacePageData(
+            featureId: featureId,
+            objectType: Int64(native.pointee.object_type),
+            openingMode: Int64(native.pointee.opening_mode),
+            title: stringFromC(native.pointee.title),
+            secondaryTitle: stringFromC(native.pointee.secondary_title),
+            subtitle: stringFromC(native.pointee.subtitle),
+            address: stringFromC(native.pointee.address),
+            lat: native.pointee.lat,
+            lon: native.pointee.lon,
+            wikiDescriptionHtml: stringFromC(native.pointee.wiki_description_html),
+            roadType: Int64(native.pointee.road_type),
+            isRoutePoint: native.pointee.is_route_point != 0,
+            coordinates: coordinates,
+            rawTypes: rawTypes,
+            metadata: metadata,
+            metadataTags: metadataTags,
+            bookmarkId: bookmarkId,
+            bookmarkCategoryId: bookmarkCategoryId,
+            trackId: trackId
+        )
+    }
+
+    func extractMap(assetPath: String, completion: @escaping (Result<String, Error>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let extractedPath = try self.extractMapAsset(assetPath: assetPath)
                 DispatchQueue.main.async {
-                    result(extractedPath)
+                    completion(.success(extractedPath))
                 }
             } catch {
                 DispatchQueue.main.async {
-                    result(FlutterError(code: "EXTRACTION_FAILED", message: error.localizedDescription, details: nil))
+                    completion(.failure(PigeonError(code: "EXTRACTION_FAILED", message: error.localizedDescription, details: nil)))
                 }
             }
         }
@@ -190,19 +250,42 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         return destPath.path
     }
     
-    private func handleExtractDataFiles(result: @escaping FlutterResult) {
+    func extractDataFiles(completion: @escaping (Result<String, Error>) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let dataPath = try self.extractDataFiles()
                 DispatchQueue.main.async {
-                    result(dataPath)
+                    completion(.success(dataPath))
                 }
             } catch {
                 DispatchQueue.main.async {
-                    result(FlutterError(code: "EXTRACTION_FAILED", message: error.localizedDescription, details: nil))
+                    completion(.failure(PigeonError(code: "EXTRACTION_FAILED", message: error.localizedDescription, details: nil)))
                 }
             }
         }
+    }
+
+    func getApkPath(completion: @escaping (Result<String, Error>) -> Void) {
+        completion(.success(Bundle.main.resourcePath ?? ""))
+    }
+
+    func getCurrentPlacePage(completion: @escaping (Result<PlacePageData?, Error>) -> Void) {
+        guard comaps_place_page_has_data() != 0 else {
+            completion(.success(nil))
+            return
+        }
+        guard let nativeData = comaps_place_page_copy() else {
+            completion(.success(nil))
+            return
+        }
+        let placePage = makePlacePageData(from: UnsafePointer(nativeData))
+        comaps_place_page_free(nativeData)
+        completion(.success(placePage))
+    }
+
+    func clearPlacePageSelection(completion: @escaping (Result<Bool, Error>) -> Void) {
+        comaps_place_page_clear_selection()
+        completion(.success(true))
     }
     
     private func extractDataFiles() throws -> String {
@@ -293,65 +376,59 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     // MARK: - Map Surface Management
     
-    private func handleCreateMapSurface(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        let args = call.arguments as? [String: Any]
-
-        if let densityArg = args?["density"] as? Double, densityArg > 0 {
+    func createMapSurface(request: CreateMapSurfaceRequest, completion: @escaping (Result<Int64, Error>) -> Void) {
+        if let densityArg = request.density, densityArg > 0 {
             density = CGFloat(densityArg)
         }
-        
-        // Get requested size or use screen size
-        var width = args?["width"] as? Int ?? 0
-        var height = args?["height"] as? Int ?? 0
-        
+
+        var width = Int(request.width ?? 0)
+        var height = Int(request.height ?? 0)
+
         if width <= 0 || height <= 0 {
             let screenSize = UIScreen.main.bounds.size
             let screenScale = UIScreen.main.scale
             width = Int(screenSize.width * screenScale)
             height = Int(screenSize.height * screenScale)
         }
-        
+
         surfaceWidth = width
         surfaceHeight = height
-        
+        mapReadySent = false
+
         NSLog("[AgusMapsFlutter] createMapSurface: %dx%d density=%.2f", width, height, density)
-        
-        // Create CVPixelBuffer for texture sharing
+
         do {
             try createPixelBuffer(width: width, height: height)
-            
-            // Register texture with Flutter
+
             guard let registry = textureRegistry else {
-                result(FlutterError(code: "NO_REGISTRY", message: "Texture registry not available", details: nil))
+                completion(.failure(PigeonError(code: "NO_REGISTRY", message: "Texture registry not available", details: nil)))
                 return
             }
-            
+
             textureId = registry.register(self)
             isRenderingEnabled = true
-            
-            // Initialize native surface
+
             nativeSetSurface(textureId: textureId, width: Int32(width), height: Int32(height), density: Float(density))
-            
+
             NSLog("[AgusMapsFlutter] Texture registered: id=%lld", textureId)
-            result(textureId)
-            
+            completion(.success(textureId))
+            sendRenderStateChanged(state: .active, surfaceId: textureId)
         } catch {
-            result(FlutterError(code: "CREATE_FAILED", message: error.localizedDescription, details: nil))
+            completion(.failure(PigeonError(code: "CREATE_FAILED", message: error.localizedDescription, details: nil)))
         }
     }
-    
-    private func handleResizeMapSurface(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let args = call.arguments as? [String: Any],
-              let width = args["width"] as? Int,
-              let height = args["height"] as? Int,
-              width > 0, height > 0 else {
-            result(FlutterError(code: "INVALID_ARGUMENT", message: "Valid width and height required", details: nil))
+
+    func resizeMapSurface(request: ResizeMapSurfaceRequest, completion: @escaping (Result<Bool, Error>) -> Void) {
+        let width = Int(request.width)
+        let height = Int(request.height)
+        guard width > 0, height > 0 else {
+            completion(.failure(PigeonError(code: "INVALID_ARGUMENT", message: "Valid width and height required", details: nil)))
             return
         }
 
         let sizeUnchanged = width == surfaceWidth && height == surfaceHeight
 
-        if let densityArg = args["density"] as? Double {
+        if let densityArg = request.density {
             let newDensity = CGFloat(densityArg)
             if newDensity > 0 && abs(newDensity - density) > .ulpOfOne {
                 density = newDensity
@@ -361,32 +438,29 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         }
 
         if sizeUnchanged {
-            result(true)
+            completion(.success(true))
             return
         }
-        
+
         surfaceWidth = width
         surfaceHeight = height
-        
+
         do {
             try createPixelBuffer(width: width, height: height)
             if let buffer = pixelBuffer {
-                // Update native surface with the new CVPixelBuffer so Metal renders to the resized target
                 nativeUpdateSurface(pixelBuffer: buffer, width: Int32(width), height: Int32(height))
             }
-            
-            // Notify Flutter of texture update
             textureRegistry?.textureFrameAvailable(textureId)
-            
-            result(true)
+            completion(.success(true))
         } catch {
-            result(FlutterError(code: "RESIZE_FAILED", message: error.localizedDescription, details: nil))
+            completion(.failure(PigeonError(code: "RESIZE_FAILED", message: error.localizedDescription, details: nil)))
         }
     }
-    
-    private func handleDestroyMapSurface(result: @escaping FlutterResult) {
+
+    func destroyMapSurface(completion: @escaping (Result<Bool, Error>) -> Void) {
         cleanupTexture()
-        result(true)
+        sendRenderStateChanged(state: .idle, surfaceId: nil)
+        completion(.success(true))
     }
     
     // MARK: - CVPixelBuffer Creation (Zero-Copy)
@@ -449,6 +523,7 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
     
     private func cleanupTexture() {
         isRenderingEnabled = false
+        mapReadySent = false
         
         if textureId >= 0, let registry = textureRegistry {
             registry.unregisterTexture(textureId)
@@ -481,6 +556,26 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture {
         }
         guard isRenderingEnabled, textureId >= 0 else { return }
         textureRegistry?.textureFrameAvailable(textureId)
+        if !mapReadySent {
+            mapReadySent = true
+            sendMapReady(surfaceId: textureId)
+        }
+    }
+
+    private func sendMapReady(surfaceId: Int64) {
+        flutterApi?.onMapReady(surfaceId: surfaceId) { result in
+            if case .failure(let error) = result {
+                NSLog("[AgusMapsFlutter] onMapReady failed: %@", error.localizedDescription)
+            }
+        }
+    }
+
+    private func sendRenderStateChanged(state: RenderState, surfaceId: Int64?) {
+        flutterApi?.onRenderStateChanged(state: state, surfaceId: surfaceId) { result in
+            if case .failure(let error) = result {
+                NSLog("[AgusMapsFlutter] onRenderStateChanged failed: %@", error.localizedDescription)
+            }
+        }
     }
     
     /// Get the Metal texture from current CVPixelBuffer (for native rendering)

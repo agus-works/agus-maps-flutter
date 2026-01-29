@@ -672,6 +672,7 @@ Developers can add custom overlay lines by calling `AgusWglContextFactory::SetOv
 | [doc/API.md](doc/API.md) | **API Reference** - All existing APIs exposed to Flutter and roadmap for future additions |
 | [doc/ARCHITECTURE-ANDROID.md](doc/ARCHITECTURE-ANDROID.md) | Deep dive: memory efficiency, battery savings, how it works |
 | [doc/COMAPS-ASSETS.md](doc/COMAPS-ASSETS.md) | **CoMaps asset management:** data files, localization, MWM maps |
+| [doc/IMPLEMENTATION-NATIVE-MESSAGE-PASSING.md](doc/IMPLEMENTATION-NATIVE-MESSAGE-PASSING.md) | **Native message passing:** Pigeon + FFI APIs, models, and platform wiring |
 | [doc/IMPLEMENTATION-ANDROID.md](doc/IMPLEMENTATION-ANDROID.md) | Android build instructions, debug/release modes |
 | [doc/IMPLEMENTATION-IOS.md](doc/IMPLEMENTATION-IOS.md) | iOS build instructions and Metal integration |
 | [doc/IMPLEMENTATION-MACOS.md](doc/IMPLEMENTATION-MACOS.md) | macOS build instructions, window resize handling |

@@ -277,8 +277,7 @@ class _MyAppState extends State<MyApp> {
     if (data == null) {
       _log('Place page cleared.');
     } else {
-      final rawType =
-          data.rawTypes.isNotEmpty ? data.rawTypes.first : '';
+      final rawType = data.rawTypes.isNotEmpty ? data.rawTypes.first : '';
       final localizedFromRaw = rawType.isNotEmpty
           ? agus_maps_flutter.PlacePageLocalization.localizeTypeKey(rawType)
           : null;
@@ -289,7 +288,7 @@ class _MyAppState extends State<MyApp> {
         'localizedFromRaw="${localizedFromRaw ?? ''}" '
         'address="${data.address}" '
         'coords="${data.coordinates.decimal ?? ''}" '
-        'metadataTags=${data.metadataTags.keys.toList()}',
+        'metadataTags=${data.metadataTags.map((entry) => entry.key).toList()}',
       );
     }
     setState(() {

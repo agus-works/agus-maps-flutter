@@ -158,6 +158,61 @@ void comaps_touch(ComapsHandle h, int type, int id, float x, float y);
 void comaps_set_view(ComapsHandle h, double lat, double lon, int zoom);
 ```
 
+## Typed Platform Messaging (Pigeon)
+
+All Dart↔native platform messages use Pigeon-generated, strongly typed APIs.
+The source definition lives in [pigeons/agus_maps_api.dart](pigeons/agus_maps_api.dart),
+with generated outputs placed in platform-specific folders.
+
+### File layout
+
+```
+pigeons/
+   agus_maps_api.dart
+lib/
+   src/
+      agus_maps_api.g.dart
+android/src/main/java/app/agus/maps/agus_maps_flutter/
+   AgusMapsApi.java
+ios/Classes/
+   AgusMapsApi.g.swift
+macos/Classes/
+   AgusMapsApi.g.swift
+windows/
+   agus_maps_api.g.h
+   agus_maps_api.g.cpp
+linux/
+   agus_maps_api.g.h
+   agus_maps_api.g.cc
+```
+
+### Regeneration
+
+From the repository root, run:
+
+```
+dart run pigeon \
+   --input pigeons/agus_maps_api.dart \
+   --dart_out lib/src/agus_maps_api.g.dart \
+   --java_out android/src/main/java/app/agus/maps/agus_maps_flutter/AgusMapsApi.java \
+   --java_package app.agus.maps.agus_maps_flutter \
+   --swift_out ios/Classes/AgusMapsApi.g.swift \
+   --cpp_header_out windows/agus_maps_api.g.h \
+   --cpp_source_out windows/agus_maps_api.g.cpp \
+   --cpp_namespace agus_maps_flutter \
+   --gobject_header_out linux/agus_maps_api.g.h \
+   --gobject_source_out linux/agus_maps_api.g.cc \
+   --gobject_module agus_maps_flutter
+
+dart run pigeon \
+   --input pigeons/agus_maps_api.dart \
+   --dart_out lib/src/agus_maps_api.g.dart \
+   --swift_out macos/Classes/AgusMapsApi.g.swift
+```
+
+Generated files are checked into version control and must not be edited by
+hand. Update the Pigeon source file and re-run generation instead.
+
 ## Performance Characteristics
 
 ### Memory Usage
@@ -207,4 +262,5 @@ Each platform's build system uses this priority:
 - [README.md](README.md) - Quick start and consumer guide
 - [doc/CONTRIBUTING.md](doc/CONTRIBUTING.md) - Contributor setup
 - [doc/ARCHITECTURE-ANDROID.md](doc/ARCHITECTURE-ANDROID.md) - Android deep dive
+- [doc/IMPLEMENTATION-NATIVE-MESSAGE-PASSING.md](doc/IMPLEMENTATION-NATIVE-MESSAGE-PASSING.md) - Native message passing (Pigeon + FFI) details
 - [doc/RENDER-LOOP.md](doc/RENDER-LOOP.md) - Render loop comparison

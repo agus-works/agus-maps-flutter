@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 import 'dart:developer' as developer;
 import 'dart:ui' as ui;
@@ -9,181 +8,124 @@ import 'dart:ffi' hide Size;
 import 'dart:io';
 import 'dart:isolate';
 
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:ffi/ffi.dart';
+import 'src/agus_maps_api.g.dart';
 
 import 'agus_maps_flutter_bindings_generated.dart';
 
 // Export additional services
 export 'mwm_storage.dart';
 export 'mirror_service.dart';
+export 'src/agus_maps_api.g.dart'
+    show
+        PlacePageData,
+        PlacePageFeatureId,
+        PlacePageCoordinates,
+        PlacePageIntMetadataEntry,
+        PlacePageStringMetadataEntry,
+        RenderState;
 
-class PlacePageFeatureId {
-  final String mwmName;
-  final int mwmVersion;
-  final int index;
+/// Low-frequency map-ready event emitted by native platforms.
+class MapReadyEvent {
+  final int surfaceId;
 
-  const PlacePageFeatureId({
-    required this.mwmName,
-    required this.mwmVersion,
-    required this.index,
-  });
+  const MapReadyEvent(this.surfaceId);
+}
 
-  factory PlacePageFeatureId.fromJson(Map<String, dynamic> json) {
-    return PlacePageFeatureId(
-      mwmName: (json['mwmName'] as String?) ?? '',
-      mwmVersion: (json['mwmVersion'] as num?)?.toInt() ?? 0,
-      index: (json['index'] as num?)?.toInt() ?? -1,
+/// Low-frequency render state change event emitted by native platforms.
+class RenderStateChangedEvent {
+  final RenderState state;
+  final int? surfaceId;
+
+  const RenderStateChangedEvent(this.state, this.surfaceId);
+}
+
+/// Low-frequency place page change event emitted by native platforms.
+class PlacePageChangedEvent {
+  final PlacePageData? placePage;
+
+  const PlacePageChangedEvent(this.placePage);
+}
+
+/// Broadcast streams for low-frequency native notifications.
+class AgusMapsFlutterEvents {
+  AgusMapsFlutterEvents._() {
+    AgusMapsFlutterApi.setUp(_AgusMapsFlutterApiHandler(this));
+  }
+
+  static final AgusMapsFlutterEvents instance = AgusMapsFlutterEvents._();
+
+  final StreamController<MapReadyEvent> _mapReadyController =
+      StreamController<MapReadyEvent>.broadcast();
+  final StreamController<RenderStateChangedEvent>
+      _renderStateChangedController =
+      StreamController<RenderStateChangedEvent>.broadcast();
+  final StreamController<PlacePageChangedEvent> _placePageChangedController =
+      StreamController<PlacePageChangedEvent>.broadcast();
+
+  Stream<MapReadyEvent> get onMapReady => _mapReadyController.stream;
+  Stream<RenderStateChangedEvent> get onRenderStateChanged =>
+      _renderStateChangedController.stream;
+  Stream<PlacePageChangedEvent> get onPlacePageChanged =>
+      _placePageChangedController.stream;
+
+  void _emitMapReady(int surfaceId) {
+    _mapReadyController.add(MapReadyEvent(surfaceId));
+  }
+
+  void _emitRenderStateChanged(RenderState state, int? surfaceId) {
+    _renderStateChangedController.add(
+      RenderStateChangedEvent(state, surfaceId),
     );
+  }
+
+  void _emitPlacePageChanged(PlacePageData? placePage) {
+    _placePageChangedController.add(PlacePageChangedEvent(placePage));
   }
 }
 
-class PlacePageCoordinates {
-  final String? decimal;
-  final String? dms;
-  final String? osm;
-  final String? olc;
-  final String? utm;
-  final String? mgrs;
+class _AgusMapsFlutterApiHandler extends AgusMapsFlutterApi {
+  final AgusMapsFlutterEvents _events;
 
-  const PlacePageCoordinates({
-    this.decimal,
-    this.dms,
-    this.osm,
-    this.olc,
-    this.utm,
-    this.mgrs,
-  });
+  _AgusMapsFlutterApiHandler(this._events);
 
-  factory PlacePageCoordinates.fromJson(Map<String, dynamic> json) {
-    return PlacePageCoordinates(
-      decimal: json['decimal'] as String?,
-      dms: json['dms'] as String?,
-      osm: json['osm'] as String?,
-      olc: json['olc'] as String?,
-      utm: json['utm'] as String?,
-      mgrs: json['mgrs'] as String?,
-    );
+  @override
+  void onMapReady(int surfaceId) {
+    _events._emitMapReady(surfaceId);
+  }
+
+  @override
+  void onRenderStateChanged(RenderState state, int? surfaceId) {
+    _events._emitRenderStateChanged(state, surfaceId);
+  }
+
+  @override
+  void onPlacePageChanged(PlacePageData? placePage) {
+    _events._emitPlacePageChanged(_localizePlacePage(placePage));
   }
 }
 
-class PlacePageData {
-  final PlacePageFeatureId featureId;
-  final int objectType;
-  final int openingMode;
-  final String title;
-  final String secondaryTitle;
-  final String subtitle;
-  final String address;
-  final double lat;
-  final double lon;
-  final String wikiDescriptionHtml;
-  final int roadType;
-  final bool isRoutePoint;
-  final PlacePageCoordinates coordinates;
-  final List<String> rawTypes;
-  final Map<int, String> metadata;
-  final Map<String, String> metadataTags;
-  final int? bookmarkId;
-  final int? bookmarkCategoryId;
-  final int? trackId;
+PlacePageData? _localizePlacePage(PlacePageData? data) {
+  if (data == null) {
+    return null;
+  }
+  final localizedSubtitle = PlacePageLocalization.localizeSubtitle(
+    data.subtitle,
+    data.rawTypes,
+  );
 
-  const PlacePageData({
-    required this.featureId,
-    required this.objectType,
-    required this.openingMode,
-    required this.title,
-    required this.secondaryTitle,
-    required this.subtitle,
-    required this.address,
-    required this.lat,
-    required this.lon,
-    required this.wikiDescriptionHtml,
-    required this.roadType,
-    required this.isRoutePoint,
-    required this.coordinates,
-    required this.rawTypes,
-    required this.metadata,
-    required this.metadataTags,
-    this.bookmarkId,
-    this.bookmarkCategoryId,
-    this.trackId,
-  });
-
-  factory PlacePageData.fromJson(Map<String, dynamic> json) {
-    final rawMetadata = (json['metadata'] as Map?)?.cast<String, dynamic>();
-    final parsedMetadata = <int, String>{};
-    if (rawMetadata != null) {
-      for (final entry in rawMetadata.entries) {
-        final key = int.tryParse(entry.key);
-        final value = entry.value?.toString();
-        if (key != null && value != null && value.isNotEmpty) {
-          parsedMetadata[key] = value;
-        }
-      }
-    }
-
-    final rawMetadataTags =
-        (json['metadataTags'] as Map?)?.cast<String, dynamic>();
-    final parsedMetadataTags = <String, String>{};
-    if (rawMetadataTags != null) {
-      for (final entry in rawMetadataTags.entries) {
-        final key = entry.key.trim();
-        final value = entry.value?.toString();
-        if (key.isNotEmpty && value != null && value.isNotEmpty) {
-          parsedMetadataTags[key] = value;
-        }
-      }
-    }
-
-    final rawSubtitle =
-        (json['subtitleRaw'] as String?) ?? (json['subtitle'] as String?) ?? '';
-
-    final parsedRawTypes = (json['rawTypes'] as List?)
-            ?.map((value) => value.toString())
-            .toList() ??
-        const [];
-
-    final localizedSubtitle = PlacePageLocalization.localizeSubtitle(
-      rawSubtitle,
-      parsedRawTypes,
-    );
-
-    if (PlacePageLocalization.debugLoggingEnabled) {
-      developer.log(
-        'PlacePageData.fromJson: subtitleRaw="$rawSubtitle" '
-        'localized="$localizedSubtitle" '
-        'rawTypes=$parsedRawTypes',
-        name: 'agus_maps_flutter.place_page',
-      );
-    }
-
-    return PlacePageData(
-      featureId: PlacePageFeatureId.fromJson(
-        (json['featureId'] as Map?)?.cast<String, dynamic>() ?? const {},
-      ),
-      objectType: (json['objectType'] as num?)?.toInt() ?? 0,
-      openingMode: (json['openingMode'] as num?)?.toInt() ?? 0,
-      title: (json['title'] as String?) ?? '',
-      secondaryTitle: (json['secondaryTitle'] as String?) ?? '',
-      subtitle: localizedSubtitle,
-      address: (json['address'] as String?) ?? '',
-      lat: (json['lat'] as num?)?.toDouble() ?? 0,
-      lon: (json['lon'] as num?)?.toDouble() ?? 0,
-      wikiDescriptionHtml: (json['wikiDescriptionHtml'] as String?) ?? '',
-      roadType: (json['roadType'] as num?)?.toInt() ?? 0,
-      isRoutePoint: (json['isRoutePoint'] as bool?) ?? false,
-      coordinates: PlacePageCoordinates.fromJson(
-        (json['coordinates'] as Map?)?.cast<String, dynamic>() ?? const {},
-      ),
-        rawTypes: parsedRawTypes,
-      metadata: parsedMetadata,
-      metadataTags: parsedMetadataTags,
-      bookmarkId: (json['bookmarkId'] as num?)?.toInt(),
-      bookmarkCategoryId: (json['bookmarkCategoryId'] as num?)?.toInt(),
-      trackId: (json['trackId'] as num?)?.toInt(),
+  if (PlacePageLocalization.debugLoggingEnabled) {
+    developer.log(
+      'PlacePageData: subtitleRaw="${data.subtitle}" '
+      'localized="$localizedSubtitle" '
+      'rawTypes=${data.rawTypes}',
+      name: 'agus_maps_flutter.place_page',
     );
   }
+
+  data.subtitle = localizedSubtitle;
+  return data;
 }
 
 class PlacePageLocalization {
@@ -482,32 +424,15 @@ Future<void> preloadPlacePageLocalization({ui.Locale? locale}) {
   return PlacePageLocalization.preload(locale: locale);
 }
 
-PlacePageData? getCurrentPlacePage() {
+Future<PlacePageData?> getCurrentPlacePage() async {
   try {
     if (_bindings.comaps_place_page_has_data() == 0) {
       return null;
     }
-    final ptr = _bindings.comaps_place_page_get_json();
-    if (ptr.address == 0) {
-      return null;
-    }
-    final jsonString = ptr.cast<Utf8>().toDartString();
-    if (jsonString.isEmpty) {
-      return null;
-    }
-    if (PlacePageLocalization.debugLoggingEnabled) {
-      developer.log(
-        'Place page JSON (native): $jsonString',
-        name: 'agus_maps_flutter.place_page',
-      );
-    }
-    final decoded = jsonDecode(jsonString);
-    if (decoded is! Map<String, dynamic>) {
-      return null;
-    }
-    return PlacePageData.fromJson(decoded);
+    final data = await AgusMapsHostApi().getCurrentPlacePage();
+    return _localizePlacePage(data);
   } catch (error) {
-    debugPrint('[AgusMap] Failed to parse place page JSON: $error');
+    debugPrint('[AgusMap] Failed to fetch place page: $error');
     return null;
   }
 }
@@ -543,25 +468,24 @@ Future<int> sumAsync(int a, int b) async {
   return completer.future;
 }
 
-final _channel = const MethodChannel('agus_maps_flutter');
+final AgusMapsHostApi _hostApi = AgusMapsHostApi();
+final AgusMapsFlutterEvents _flutterEvents = AgusMapsFlutterEvents.instance;
+
+/// Access to low-frequency native event streams.
+AgusMapsFlutterEvents get mapsFlutterEvents => _flutterEvents;
 
 Future<String> extractMap(String assetPath) async {
-  final String? path = await _channel.invokeMethod('extractMap', {
-    'assetPath': assetPath,
-  });
-  return path!;
+  return _hostApi.extractMap(assetPath);
 }
 
 /// Extract all CoMaps data files (classificator, types, categories, etc.)
 /// Returns the path to the directory containing the extracted files.
 Future<String> extractDataFiles() async {
-  final String? path = await _channel.invokeMethod('extractDataFiles');
-  return path!;
+  return _hostApi.extractDataFiles();
 }
 
 Future<String> getApkPath() async {
-  final String? path = await _channel.invokeMethod('getApkPath');
-  return path!;
+  return _hostApi.getApkPath();
 }
 
 void init(String apkPath, String storagePath) {
@@ -730,23 +654,29 @@ void scrollMap(double distanceX, double distanceY) {
 /// If width/height are not specified, uses the screen size.
 /// [density] is the device pixel ratio (e.g., 1.5 for 150% scaling on Windows).
 Future<int> createMapSurface({int? width, int? height, double? density}) async {
-  final int? textureId = await _channel.invokeMethod('createMapSurface', {
-    if (width != null) 'width': width,
-    if (height != null) 'height': height,
-    if (density != null) 'density': density,
-  });
-  return textureId!;
+  final request = CreateMapSurfaceRequest(
+    width: width,
+    height: height,
+    density: density,
+  );
+  return _hostApi.createMapSurface(request);
 }
 
 /// Resize the map surface to new dimensions.
 ///
 /// [density] is optional; on Windows it updates visual scale when display DPI changes.
 Future<void> resizeMapSurface(int width, int height, {double? density}) async {
-  await _channel.invokeMethod('resizeMapSurface', {
-    'width': width,
-    'height': height,
-    if (density != null) 'density': density,
-  });
+  final request = ResizeMapSurfaceRequest(
+    width: width,
+    height: height,
+    density: density,
+  );
+  await _hostApi.resizeMapSurface(request);
+}
+
+/// Destroy the active map surface if one exists.
+Future<bool> destroyMapSurface() {
+  return _hostApi.destroyMapSurface();
 }
 
 /// Controller for programmatic control of an AgusMap.
@@ -1145,9 +1075,10 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
       return;
     }
 
-    Future.delayed(const Duration(milliseconds: 60), () {
+    Future.delayed(const Duration(milliseconds: 60), () async {
       if (!mounted) return;
-      final data = getCurrentPlacePage();
+      final data = await getCurrentPlacePage();
+      if (!mounted) return;
       widget.onPlacePage?.call(data);
     });
   }

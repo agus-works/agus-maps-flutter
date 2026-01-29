@@ -29,6 +29,8 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
+#include <vector>
+#include <utility>
 #include <sstream>
 #include <iomanip>
 #include <cmath>
@@ -178,75 +180,26 @@ static std::atomic<bool> g_frameNotificationPending{false};
 // Mutex for thread safety
 static std::mutex g_mutex;
 
-// Place page JSON cache
-static std::string g_placePageJson;
 static std::mutex g_placePageMutex;
 
-static std::string JsonEscape(std::string_view input) {
-    std::string out;
-    out.reserve(input.size() + 8);
-    for (char c : input) {
-        switch (c) {
-            case '"': out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\b': out += "\\b"; break;
-            case '\f': out += "\\f"; break;
-            case '\n': out += "\\n"; break;
-            case '\r': out += "\\r"; break;
-            case '\t': out += "\\t"; break;
-            default:
-                if (static_cast<unsigned char>(c) < 0x20) {
-                    std::ostringstream oss;
-                    oss << "\\u" << std::hex << std::setw(4) << std::setfill('0')
-                        << static_cast<int>(static_cast<unsigned char>(c));
-                    out += oss.str();
-                } else {
-                    out.push_back(c);
-                }
-                break;
-        }
+static char* CopyString(std::string const & value) {
+    size_t const size = value.size();
+    auto* out = static_cast<char*>(malloc(size + 1));
+    if (!out) {
+        return nullptr;
     }
+    if (size > 0) {
+        memcpy(out, value.data(), size);
+    }
+    out[size] = '\0';
     return out;
 }
 
-static void AppendJsonString(std::string & out, std::string_view value) {
-    out.push_back('"');
-    out += JsonEscape(value);
-    out.push_back('"');
-}
-
-static void AppendFieldString(std::string & out, std::string_view key, std::string_view value, bool & first) {
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, key);
-    out.push_back(':');
-    AppendJsonString(out, value);
-}
-
-static void AppendFieldBool(std::string & out, std::string_view key, bool value, bool & first) {
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, key);
-    out.push_back(':');
-    out += value ? "true" : "false";
-}
-
-static void AppendFieldInt(std::string & out, std::string_view key, int64_t value, bool & first) {
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, key);
-    out.push_back(':');
-    out += std::to_string(value);
-}
-
-static void AppendFieldDouble(std::string & out, std::string_view key, double value, bool & first) {
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, key);
-    out.push_back(':');
-    std::ostringstream oss;
-    oss << std::setprecision(10) << value;
-    out += oss.str();
+static char* CopyOptionalString(std::string const & value) {
+    if (value.empty()) {
+        return nullptr;
+    }
+    return CopyString(value);
 }
 
 static int GetObjectType(place_page::Info const & info) {
@@ -257,113 +210,103 @@ static int GetObjectType(place_page::Info const & info) {
     return 0; // POI
 }
 
-static std::string BuildPlacePageJson(place_page::Info const & info) {
-    std::string out;
-    out.reserve(4096);
-    out.push_back('{');
-    bool first = true;
+static AgusPlacePageData* BuildPlacePageData(place_page::Info const & info) {
+    auto* data = static_cast<AgusPlacePageData*>(calloc(1, sizeof(AgusPlacePageData)));
+    if (!data) {
+        return nullptr;
+    }
 
     auto const ll = info.GetLatLon();
-    AppendFieldString(out, "title", info.GetTitle(), first);
-    AppendFieldString(out, "secondaryTitle", info.GetSecondaryTitle(), first);
-    AppendFieldString(out, "subtitle", info.GetSubtitle(), first);
-    AppendFieldString(out, "address", info.GetSecondarySubtitle(), first);
-    AppendFieldDouble(out, "lat", ll.m_lat, first);
-    AppendFieldDouble(out, "lon", ll.m_lon, first);
-    AppendFieldString(out, "wikiDescriptionHtml", info.GetWikiDescription(), first);
-    AppendFieldInt(out, "objectType", GetObjectType(info), first);
-    AppendFieldInt(out, "openingMode", static_cast<int>(info.GetOpeningMode()), first);
-    AppendFieldInt(out, "roadType", static_cast<int>(info.GetRoadType()), first);
-    AppendFieldBool(out, "isRoutePoint", info.IsRoutePoint(), first);
+    data->feature_id.mwm_name = CopyString(info.GetID().GetMwmName());
+    data->feature_id.mwm_version = static_cast<int64_t>(info.GetID().GetMwmVersion());
+    data->feature_id.index = static_cast<int64_t>(info.GetID().m_index);
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "featureId");
-    out.push_back(':');
-    out.push_back('{');
-    bool fidFirst = true;
-    auto const & fid = info.GetID();
-    AppendFieldString(out, "mwmName", fid.GetMwmName(), fidFirst);
-    AppendFieldInt(out, "mwmVersion", static_cast<int64_t>(fid.GetMwmVersion()), fidFirst);
-    AppendFieldInt(out, "index", static_cast<int64_t>(fid.m_index), fidFirst);
-    out.push_back('}');
+    data->object_type = static_cast<int32_t>(GetObjectType(info));
+    data->opening_mode = static_cast<int32_t>(info.GetOpeningMode());
+    data->title = CopyString(info.GetTitle());
+    data->secondary_title = CopyString(info.GetSecondaryTitle());
+    data->subtitle = CopyString(info.GetSubtitle());
+    data->address = CopyString(info.GetSecondarySubtitle());
+    data->lat = ll.m_lat;
+    data->lon = ll.m_lon;
+    data->wiki_description_html = CopyString(info.GetWikiDescription());
+    data->road_type = static_cast<int32_t>(info.GetRoadType());
+    data->is_route_point = info.IsRoutePoint() ? 1 : 0;
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "coordinates");
-    out.push_back(':');
-    out.push_back('{');
-    bool coordFirst = true;
-    AppendFieldString(out, "decimal", info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDecimal), coordFirst);
-    AppendFieldString(out, "dms", info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDMS), coordFirst);
-    AppendFieldString(out, "osm", info.GetFormattedCoordinate(place_page::CoordinatesFormat::OSMLink), coordFirst);
-    AppendFieldString(out, "olc", info.GetFormattedCoordinate(place_page::CoordinatesFormat::OLCFull), coordFirst);
-    AppendFieldString(out, "utm", info.GetFormattedCoordinate(place_page::CoordinatesFormat::UTM), coordFirst);
-    AppendFieldString(out, "mgrs", info.GetFormattedCoordinate(place_page::CoordinatesFormat::MGRS), coordFirst);
-    out.push_back('}');
+    data->coordinates.decimal = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDecimal));
+    data->coordinates.dms = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDMS));
+    data->coordinates.osm = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::OSMLink));
+    data->coordinates.olc = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::OLCFull));
+    data->coordinates.utm = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::UTM));
+    data->coordinates.mgrs = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::MGRS));
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "rawTypes");
-    out.push_back(':');
-    out.push_back('[');
-    bool rawFirst = true;
-    for (auto const & type : info.GetRawTypes()) {
-        if (!rawFirst) out.push_back(',');
-        rawFirst = false;
-        AppendJsonString(out, type);
+    auto const & rawTypes = info.GetRawTypes();
+    data->raw_types_count = static_cast<int32_t>(rawTypes.size());
+    if (data->raw_types_count > 0) {
+        data->raw_types = static_cast<const char**>(calloc(data->raw_types_count, sizeof(char*)));
+        for (int32_t i = 0; i < data->raw_types_count; ++i) {
+            data->raw_types[i] = CopyString(rawTypes[i]);
+        }
     }
-    out.push_back(']');
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "metadata");
-    out.push_back(':');
-    out.push_back('{');
-    bool metaFirst = true;
-    info.ForEachMetadataReadable([&](osm::MapObject::MetadataID id, std::string const & value) {
-        if (value.empty()) return;
-        if (!metaFirst) out.push_back(',');
-        metaFirst = false;
-        AppendJsonString(out, std::to_string(static_cast<int>(id)));
-        out.push_back(':');
-        AppendJsonString(out, value);
-    });
-    out.push_back('}');
+    std::vector<std::pair<int64_t, std::string>> metadata_entries;
+    std::vector<std::pair<std::string, std::string>> metadata_tag_entries;
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "metadataTags");
-    out.push_back(':');
-    out.push_back('{');
-    bool metaTagFirst = true;
     info.ForEachMetadataReadable([&](osm::MapObject::MetadataID id, std::string const & value) {
-        if (value.empty()) return;
+        if (value.empty()) {
+            return;
+        }
+        metadata_entries.emplace_back(static_cast<int64_t>(id), value);
         auto const type = static_cast<feature::Metadata::EType>(id);
         if (type == feature::Metadata::FMD_CHARGE_SOCKETS ||
             type == feature::Metadata::FMD_COUNT) {
-          return;
+            return;
         }
         auto const tag = feature::ToString(type);
-        if (tag.empty()) return;
-        if (!metaTagFirst) out.push_back(',');
-        metaTagFirst = false;
-        AppendJsonString(out, tag);
-        out.push_back(':');
-        AppendJsonString(out, value);
+        if (tag.empty()) {
+            return;
+        }
+        metadata_tag_entries.emplace_back(tag, value);
     });
-    out.push_back('}');
 
-    if (info.IsBookmark()) {
-        AppendFieldInt(out, "bookmarkId", static_cast<int64_t>(info.GetBookmarkId()), first);
-        AppendFieldInt(out, "bookmarkCategoryId", static_cast<int64_t>(info.GetBookmarkCategoryId()), first);
-    }
-    if (info.IsTrack()) {
-        AppendFieldInt(out, "trackId", static_cast<int64_t>(info.GetTrackId()), first);
+    data->metadata_count = static_cast<int32_t>(metadata_entries.size());
+    if (data->metadata_count > 0) {
+        data->metadata = static_cast<AgusPlacePageIntMetadataEntry*>(
+            calloc(data->metadata_count, sizeof(AgusPlacePageIntMetadataEntry)));
+        for (int32_t i = 0; i < data->metadata_count; ++i) {
+            data->metadata[i].key = metadata_entries[i].first;
+            data->metadata[i].value = CopyString(metadata_entries[i].second);
+        }
     }
 
-    out.push_back('}');
-    return out;
+    data->metadata_tags_count = static_cast<int32_t>(metadata_tag_entries.size());
+    if (data->metadata_tags_count > 0) {
+        data->metadata_tags = static_cast<AgusPlacePageStringMetadataEntry*>(
+            calloc(data->metadata_tags_count, sizeof(AgusPlacePageStringMetadataEntry)));
+        for (int32_t i = 0; i < data->metadata_tags_count; ++i) {
+            data->metadata_tags[i].key = CopyString(metadata_tag_entries[i].first);
+            data->metadata_tags[i].value = CopyString(metadata_tag_entries[i].second);
+        }
+    }
+
+    data->has_bookmark_id = info.IsBookmark() ? 1 : 0;
+    if (data->has_bookmark_id) {
+        data->bookmark_id = static_cast<int64_t>(info.GetBookmarkId());
+        data->has_bookmark_category_id = 1;
+        data->bookmark_category_id = static_cast<int64_t>(info.GetBookmarkCategoryId());
+    }
+    data->has_track_id = info.IsTrack() ? 1 : 0;
+    if (data->has_track_id) {
+        data->track_id = static_cast<int64_t>(info.GetTrackId());
+    }
+
+    return data;
 }
 
 #pragma endregion
@@ -648,15 +591,55 @@ FFI_PLUGIN_EXPORT int comaps_place_page_has_data(void) {
     return g_framework->HasPlacePageInfo() ? 1 : 0;
 }
 
-FFI_PLUGIN_EXPORT const char* comaps_place_page_get_json(void) {
+FFI_PLUGIN_EXPORT AgusPlacePageData* comaps_place_page_copy(void) {
     std::lock_guard<std::mutex> lock(g_placePageMutex);
     if (!g_framework || !g_framework->HasPlacePageInfo()) {
-        g_placePageJson.clear();
-        return g_placePageJson.c_str();
+        return nullptr;
+    }
+    return BuildPlacePageData(g_framework->GetCurrentPlacePageInfo());
+}
+
+FFI_PLUGIN_EXPORT void comaps_place_page_free(AgusPlacePageData* data) {
+    if (!data) {
+        return;
+    }
+    free(const_cast<char*>(data->feature_id.mwm_name));
+    free(const_cast<char*>(data->title));
+    free(const_cast<char*>(data->secondary_title));
+    free(const_cast<char*>(data->subtitle));
+    free(const_cast<char*>(data->address));
+    free(const_cast<char*>(data->wiki_description_html));
+
+    free(const_cast<char*>(data->coordinates.decimal));
+    free(const_cast<char*>(data->coordinates.dms));
+    free(const_cast<char*>(data->coordinates.osm));
+    free(const_cast<char*>(data->coordinates.olc));
+    free(const_cast<char*>(data->coordinates.utm));
+    free(const_cast<char*>(data->coordinates.mgrs));
+
+    if (data->raw_types) {
+        for (int32_t i = 0; i < data->raw_types_count; ++i) {
+            free(const_cast<char*>(data->raw_types[i]));
+        }
+        free(data->raw_types);
     }
 
-    g_placePageJson = BuildPlacePageJson(g_framework->GetCurrentPlacePageInfo());
-    return g_placePageJson.c_str();
+    if (data->metadata) {
+        for (int32_t i = 0; i < data->metadata_count; ++i) {
+            free(const_cast<char*>(data->metadata[i].value));
+        }
+        free(data->metadata);
+    }
+
+    if (data->metadata_tags) {
+        for (int32_t i = 0; i < data->metadata_tags_count; ++i) {
+            free(const_cast<char*>(data->metadata_tags[i].key));
+            free(const_cast<char*>(data->metadata_tags[i].value));
+        }
+        free(data->metadata_tags);
+    }
+
+    free(data);
 }
 
 FFI_PLUGIN_EXPORT void comaps_place_page_clear_selection(void) {

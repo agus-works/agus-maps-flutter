@@ -80,74 +80,26 @@ static agus::AgusOGLContextFactory* g_oglFactory = nullptr;
 static std::string g_resourcePath;
 static std::string g_writablePath;
 static bool g_platformInitialized = false;
-static std::string g_placePageJson;
 static std::mutex g_placePageMutex;
 
-static std::string JsonEscape(std::string_view input) {
-    std::string out;
-    out.reserve(input.size() + 8);
-    for (char c : input) {
-        switch (c) {
-            case '"': out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\b': out += "\\b"; break;
-            case '\f': out += "\\f"; break;
-            case '\n': out += "\\n"; break;
-            case '\r': out += "\\r"; break;
-            case '\t': out += "\\t"; break;
-            default:
-                if (static_cast<unsigned char>(c) < 0x20) {
-                    std::ostringstream oss;
-                    oss << "\\u" << std::hex << std::setw(4) << std::setfill('0')
-                        << static_cast<int>(static_cast<unsigned char>(c));
-                    out += oss.str();
-                } else {
-                    out.push_back(c);
-                }
-                break;
-        }
+static char* CopyString(std::string const & value) {
+    const size_t size = value.size();
+    char* out = static_cast<char*>(malloc(size + 1));
+    if (!out) {
+        return nullptr;
     }
+    if (size > 0) {
+        memcpy(out, value.data(), size);
+    }
+    out[size] = '\0';
     return out;
 }
 
-static void AppendJsonString(std::string & out, std::string_view value) {
-    out.push_back('"');
-    out += JsonEscape(value);
-    out.push_back('"');
-}
-
-static void AppendFieldString(std::string & out, std::string_view key, std::string_view value, bool & first) {
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, key);
-    out.push_back(':');
-    AppendJsonString(out, value);
-}
-
-static void AppendFieldBool(std::string & out, std::string_view key, bool value, bool & first) {
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, key);
-    out.push_back(':');
-    out += value ? "true" : "false";
-}
-
-static void AppendFieldInt(std::string & out, std::string_view key, int64_t value, bool & first) {
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, key);
-    out.push_back(':');
-    out += std::to_string(value);
-}
-
-static void AppendFieldDouble(std::string & out, std::string_view key, double value, bool & first) {
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, key);
-    out.push_back(':');
-    std::ostringstream oss;
-    oss << std::setprecision(10) << value;
-    out += oss.str();
+static char* CopyOptionalString(std::string const & value) {
+    if (value.empty()) {
+        return nullptr;
+    }
+    return CopyString(value);
 }
 
 static int GetObjectType(place_page::Info const & info) {
@@ -158,114 +110,494 @@ static int GetObjectType(place_page::Info const & info) {
     return 0; // POI
 }
 
-static std::string BuildPlacePageJson(place_page::Info const & info) {
-    std::string out;
-    out.reserve(4096);
-    out.push_back('{');
-    bool first = true;
+static AgusPlacePageData* BuildPlacePageData(place_page::Info const & info) {
+    auto* data = static_cast<AgusPlacePageData*>(calloc(1, sizeof(AgusPlacePageData)));
+    if (!data) {
+        return nullptr;
+    }
 
     auto const ll = info.GetLatLon();
-    AppendFieldString(out, "title", info.GetTitle(), first);
-    AppendFieldString(out, "secondaryTitle", info.GetSecondaryTitle(), first);
-    auto subtitle = info.GetSubtitle();
-    AppendFieldString(out, "subtitle", subtitle, first);
-    AppendFieldString(out, "address", info.GetSecondarySubtitle(), first);
-    AppendFieldDouble(out, "lat", ll.m_lat, first);
-    AppendFieldDouble(out, "lon", ll.m_lon, first);
-    AppendFieldString(out, "wikiDescriptionHtml", info.GetWikiDescription(), first);
-    AppendFieldInt(out, "objectType", GetObjectType(info), first);
-    AppendFieldInt(out, "openingMode", static_cast<int>(info.GetOpeningMode()), first);
-    AppendFieldInt(out, "roadType", static_cast<int>(info.GetRoadType()), first);
-    AppendFieldBool(out, "isRoutePoint", info.IsRoutePoint(), first);
+    data->feature_id.mwm_name = CopyString(info.GetID().GetMwmName());
+    data->feature_id.mwm_version = static_cast<int64_t>(info.GetID().GetMwmVersion());
+    data->feature_id.index = static_cast<int64_t>(info.GetID().m_index);
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "featureId");
-    out.push_back(':');
-    out.push_back('{');
-    bool fidFirst = true;
-    auto const & fid = info.GetID();
-    AppendFieldString(out, "mwmName", fid.GetMwmName(), fidFirst);
-    AppendFieldInt(out, "mwmVersion", static_cast<int64_t>(fid.GetMwmVersion()), fidFirst);
-    AppendFieldInt(out, "index", static_cast<int64_t>(fid.m_index), fidFirst);
-    out.push_back('}');
+    data->object_type = static_cast<int32_t>(GetObjectType(info));
+    data->opening_mode = static_cast<int32_t>(info.GetOpeningMode());
+    data->title = CopyString(info.GetTitle());
+    data->secondary_title = CopyString(info.GetSecondaryTitle());
+    data->subtitle = CopyString(info.GetSubtitle());
+    data->address = CopyString(info.GetSecondarySubtitle());
+    data->lat = ll.m_lat;
+    data->lon = ll.m_lon;
+    data->wiki_description_html = CopyString(info.GetWikiDescription());
+    data->road_type = static_cast<int32_t>(info.GetRoadType());
+    data->is_route_point = info.IsRoutePoint() ? 1 : 0;
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "coordinates");
-    out.push_back(':');
-    out.push_back('{');
-    bool coordFirst = true;
-    AppendFieldString(out, "decimal", info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDecimal), coordFirst);
-    AppendFieldString(out, "dms", info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDMS), coordFirst);
-    AppendFieldString(out, "osm", info.GetFormattedCoordinate(place_page::CoordinatesFormat::OSMLink), coordFirst);
-    AppendFieldString(out, "olc", info.GetFormattedCoordinate(place_page::CoordinatesFormat::OLCFull), coordFirst);
-    AppendFieldString(out, "utm", info.GetFormattedCoordinate(place_page::CoordinatesFormat::UTM), coordFirst);
-    AppendFieldString(out, "mgrs", info.GetFormattedCoordinate(place_page::CoordinatesFormat::MGRS), coordFirst);
-    out.push_back('}');
+    data->coordinates.decimal = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDecimal));
+    data->coordinates.dms = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::LatLonDMS));
+    data->coordinates.osm = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::OSMLink));
+    data->coordinates.olc = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::OLCFull));
+    data->coordinates.utm = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::UTM));
+    data->coordinates.mgrs = CopyOptionalString(
+        info.GetFormattedCoordinate(place_page::CoordinatesFormat::MGRS));
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "rawTypes");
-    out.push_back(':');
-    out.push_back('[');
-    bool rawFirst = true;
-    for (auto const & type : info.GetRawTypes()) {
-        if (!rawFirst) out.push_back(',');
-        rawFirst = false;
-        AppendJsonString(out, type);
+    auto const & rawTypes = info.GetRawTypes();
+    data->raw_types_count = static_cast<int32_t>(rawTypes.size());
+    if (data->raw_types_count > 0) {
+        data->raw_types = static_cast<const char**>(calloc(data->raw_types_count, sizeof(char*)));
+        for (int32_t i = 0; i < data->raw_types_count; ++i) {
+            data->raw_types[i] = CopyString(rawTypes[i]);
+        }
     }
-    out.push_back(']');
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "metadata");
-    out.push_back(':');
-    out.push_back('{');
-    bool metaFirst = true;
-    info.ForEachMetadataReadable([&](osm::MapObject::MetadataID id, std::string const & value) {
-        if (value.empty()) return;
-        if (!metaFirst) out.push_back(',');
-        metaFirst = false;
-        AppendJsonString(out, std::to_string(static_cast<int>(id)));
-        out.push_back(':');
-        AppendJsonString(out, value);
-    });
-    out.push_back('}');
+    std::vector<std::pair<int64_t, std::string>> metadata_entries;
+    std::vector<std::pair<std::string, std::string>> metadata_tag_entries;
 
-    if (!first) out.push_back(',');
-    first = false;
-    AppendJsonString(out, "metadataTags");
-    out.push_back(':');
-    out.push_back('{');
-    bool metaTagFirst = true;
     info.ForEachMetadataReadable([&](osm::MapObject::MetadataID id, std::string const & value) {
-        if (value.empty()) return;
+        if (value.empty()) {
+            return;
+        }
+        metadata_entries.emplace_back(static_cast<int64_t>(id), value);
         auto const type = static_cast<feature::Metadata::EType>(id);
         if (type == feature::Metadata::FMD_CHARGE_SOCKETS ||
             type == feature::Metadata::FMD_COUNT) {
-          return;
+            return;
         }
         auto const tag = feature::ToString(type);
-        if (tag.empty()) return;
-        if (!metaTagFirst) out.push_back(',');
-        metaTagFirst = false;
-        AppendJsonString(out, tag);
-        out.push_back(':');
-        AppendJsonString(out, value);
+        if (tag.empty()) {
+            return;
+        }
+        metadata_tag_entries.emplace_back(tag, value);
     });
-    out.push_back('}');
 
-    if (info.IsBookmark()) {
-        AppendFieldInt(out, "bookmarkId", static_cast<int64_t>(info.GetBookmarkId()), first);
-        AppendFieldInt(out, "bookmarkCategoryId", static_cast<int64_t>(info.GetBookmarkCategoryId()), first);
-    }
-    if (info.IsTrack()) {
-        AppendFieldInt(out, "trackId", static_cast<int64_t>(info.GetTrackId()), first);
+    data->metadata_count = static_cast<int32_t>(metadata_entries.size());
+    if (data->metadata_count > 0) {
+        data->metadata = static_cast<AgusPlacePageIntMetadataEntry*>(
+            calloc(data->metadata_count, sizeof(AgusPlacePageIntMetadataEntry)));
+        for (int32_t i = 0; i < data->metadata_count; ++i) {
+            data->metadata[i].key = metadata_entries[i].first;
+            data->metadata[i].value = CopyString(metadata_entries[i].second);
+        }
     }
 
-    out.push_back('}');
-    return out;
+    data->metadata_tags_count = static_cast<int32_t>(metadata_tag_entries.size());
+    if (data->metadata_tags_count > 0) {
+        data->metadata_tags = static_cast<AgusPlacePageStringMetadataEntry*>(
+            calloc(data->metadata_tags_count, sizeof(AgusPlacePageStringMetadataEntry)));
+        for (int32_t i = 0; i < data->metadata_tags_count; ++i) {
+            data->metadata_tags[i].key = CopyString(metadata_tag_entries[i].first);
+            data->metadata_tags[i].value = CopyString(metadata_tag_entries[i].second);
+        }
+    }
+
+    data->has_bookmark_id = info.IsBookmark() ? 1 : 0;
+    if (data->has_bookmark_id) {
+        data->bookmark_id = static_cast<int64_t>(info.GetBookmarkId());
+        data->has_bookmark_category_id = 1;
+        data->bookmark_category_id = static_cast<int64_t>(info.GetBookmarkCategoryId());
+    }
+    data->has_track_id = info.IsTrack() ? 1 : 0;
+    if (data->has_track_id) {
+        data->track_id = static_cast<int64_t>(info.GetTrackId());
+    }
+
+    return data;
+}
+
+static jobject NewJavaLong(JNIEnv* env, int64_t value) {
+    jclass cls = env->FindClass("java/lang/Long");
+    jmethodID valueOf = env->GetStaticMethodID(cls, "valueOf", "(J)Ljava/lang/Long;");
+    jobject obj = env->CallStaticObjectMethod(cls, valueOf, static_cast<jlong>(value));
+    env->DeleteLocalRef(cls);
+    return obj;
+}
+
+static jobject NewJavaDouble(JNIEnv* env, double value) {
+    jclass cls = env->FindClass("java/lang/Double");
+    jmethodID valueOf = env->GetStaticMethodID(cls, "valueOf", "(D)Ljava/lang/Double;");
+    jobject obj = env->CallStaticObjectMethod(cls, valueOf, static_cast<jdouble>(value));
+    env->DeleteLocalRef(cls);
+    return obj;
+}
+
+static jobject NewJavaBoolean(JNIEnv* env, bool value) {
+    jclass cls = env->FindClass("java/lang/Boolean");
+    jmethodID valueOf = env->GetStaticMethodID(cls, "valueOf", "(Z)Ljava/lang/Boolean;");
+    jobject obj = env->CallStaticObjectMethod(cls, valueOf, static_cast<jboolean>(value));
+    env->DeleteLocalRef(cls);
+    return obj;
+}
+
+static jobject NewArrayList(JNIEnv* env, jint capacity) {
+    jclass cls = env->FindClass("java/util/ArrayList");
+    jmethodID ctor = env->GetMethodID(cls, "<init>", "(I)V");
+    jobject list = env->NewObject(cls, ctor, capacity);
+    env->DeleteLocalRef(cls);
+    return list;
+}
+
+static void ArrayListAdd(JNIEnv* env, jobject list, jobject item) {
+    jclass cls = env->GetObjectClass(list);
+    jmethodID add = env->GetMethodID(cls, "add", "(Ljava/lang/Object;)Z");
+    env->CallBooleanMethod(list, add, item);
+    env->DeleteLocalRef(cls);
+}
+
+static jobject BuildPlacePageFeatureId(JNIEnv* env, AgusPlacePageFeatureId const & fid) {
+    jclass builderCls = env->FindClass(
+        "app/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageFeatureId$Builder");
+    jmethodID ctor = env->GetMethodID(builderCls, "<init>", "()V");
+    jobject builder = env->NewObject(builderCls, ctor);
+
+    jmethodID setMwmName = env->GetMethodID(
+        builderCls, "setMwmName",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageFeatureId$Builder;");
+    jmethodID setMwmVersion = env->GetMethodID(
+        builderCls, "setMwmVersion",
+        "(Ljava/lang/Long;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageFeatureId$Builder;");
+    jmethodID setIndex = env->GetMethodID(
+        builderCls, "setIndex",
+        "(Ljava/lang/Long;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageFeatureId$Builder;");
+    jmethodID build = env->GetMethodID(
+        builderCls, "build",
+        "()Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageFeatureId;");
+
+    jstring mwmName = env->NewStringUTF(fid.mwm_name ? fid.mwm_name : "");
+    jobject mwmVersion = NewJavaLong(env, fid.mwm_version);
+    jobject index = NewJavaLong(env, fid.index);
+
+    env->CallObjectMethod(builder, setMwmName, mwmName);
+    env->CallObjectMethod(builder, setMwmVersion, mwmVersion);
+    env->CallObjectMethod(builder, setIndex, index);
+
+    jobject featureId = env->CallObjectMethod(builder, build);
+
+    env->DeleteLocalRef(mwmName);
+    env->DeleteLocalRef(mwmVersion);
+    env->DeleteLocalRef(index);
+    env->DeleteLocalRef(builder);
+    env->DeleteLocalRef(builderCls);
+    return featureId;
+}
+
+static jobject BuildPlacePageCoordinates(JNIEnv* env, AgusPlacePageCoordinates const & coords) {
+    jclass builderCls = env->FindClass(
+        "app/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageCoordinates$Builder");
+    jmethodID ctor = env->GetMethodID(builderCls, "<init>", "()V");
+    jobject builder = env->NewObject(builderCls, ctor);
+
+    jmethodID setDecimal = env->GetMethodID(
+        builderCls, "setDecimal",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageCoordinates$Builder;");
+    jmethodID setDms = env->GetMethodID(
+        builderCls, "setDms",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageCoordinates$Builder;");
+    jmethodID setOsm = env->GetMethodID(
+        builderCls, "setOsm",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageCoordinates$Builder;");
+    jmethodID setOlc = env->GetMethodID(
+        builderCls, "setOlc",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageCoordinates$Builder;");
+    jmethodID setUtm = env->GetMethodID(
+        builderCls, "setUtm",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageCoordinates$Builder;");
+    jmethodID setMgrs = env->GetMethodID(
+        builderCls, "setMgrs",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageCoordinates$Builder;");
+    jmethodID build = env->GetMethodID(
+        builderCls, "build",
+        "()Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageCoordinates;");
+
+    if (coords.decimal) {
+        jstring value = env->NewStringUTF(coords.decimal);
+        env->CallObjectMethod(builder, setDecimal, value);
+        env->DeleteLocalRef(value);
+    } else {
+        env->CallObjectMethod(builder, setDecimal, nullptr);
+    }
+
+    if (coords.dms) {
+        jstring value = env->NewStringUTF(coords.dms);
+        env->CallObjectMethod(builder, setDms, value);
+        env->DeleteLocalRef(value);
+    } else {
+        env->CallObjectMethod(builder, setDms, nullptr);
+    }
+
+    if (coords.osm) {
+        jstring value = env->NewStringUTF(coords.osm);
+        env->CallObjectMethod(builder, setOsm, value);
+        env->DeleteLocalRef(value);
+    } else {
+        env->CallObjectMethod(builder, setOsm, nullptr);
+    }
+
+    if (coords.olc) {
+        jstring value = env->NewStringUTF(coords.olc);
+        env->CallObjectMethod(builder, setOlc, value);
+        env->DeleteLocalRef(value);
+    } else {
+        env->CallObjectMethod(builder, setOlc, nullptr);
+    }
+
+    if (coords.utm) {
+        jstring value = env->NewStringUTF(coords.utm);
+        env->CallObjectMethod(builder, setUtm, value);
+        env->DeleteLocalRef(value);
+    } else {
+        env->CallObjectMethod(builder, setUtm, nullptr);
+    }
+
+    if (coords.mgrs) {
+        jstring value = env->NewStringUTF(coords.mgrs);
+        env->CallObjectMethod(builder, setMgrs, value);
+        env->DeleteLocalRef(value);
+    } else {
+        env->CallObjectMethod(builder, setMgrs, nullptr);
+    }
+
+    jobject coordinates = env->CallObjectMethod(builder, build);
+
+    env->DeleteLocalRef(builder);
+    env->DeleteLocalRef(builderCls);
+    return coordinates;
+}
+
+static jobject BuildPlacePageIntMetadataEntry(
+    JNIEnv* env, AgusPlacePageIntMetadataEntry const & entry) {
+    jclass builderCls = env->FindClass(
+        "app/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageIntMetadataEntry$Builder");
+    jmethodID ctor = env->GetMethodID(builderCls, "<init>", "()V");
+    jobject builder = env->NewObject(builderCls, ctor);
+
+    jmethodID setKey = env->GetMethodID(
+        builderCls, "setKey",
+        "(Ljava/lang/Long;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageIntMetadataEntry$Builder;");
+    jmethodID setValue = env->GetMethodID(
+        builderCls, "setValue",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageIntMetadataEntry$Builder;");
+    jmethodID build = env->GetMethodID(
+        builderCls, "build",
+        "()Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageIntMetadataEntry;");
+
+    jobject key = NewJavaLong(env, entry.key);
+    jstring value = env->NewStringUTF(entry.value ? entry.value : "");
+
+    env->CallObjectMethod(builder, setKey, key);
+    env->CallObjectMethod(builder, setValue, value);
+
+    jobject metadataEntry = env->CallObjectMethod(builder, build);
+
+    env->DeleteLocalRef(key);
+    env->DeleteLocalRef(value);
+    env->DeleteLocalRef(builder);
+    env->DeleteLocalRef(builderCls);
+    return metadataEntry;
+}
+
+static jobject BuildPlacePageStringMetadataEntry(
+    JNIEnv* env, AgusPlacePageStringMetadataEntry const & entry) {
+    jclass builderCls = env->FindClass(
+        "app/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageStringMetadataEntry$Builder");
+    jmethodID ctor = env->GetMethodID(builderCls, "<init>", "()V");
+    jobject builder = env->NewObject(builderCls, ctor);
+
+    jmethodID setKey = env->GetMethodID(
+        builderCls, "setKey",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageStringMetadataEntry$Builder;");
+    jmethodID setValue = env->GetMethodID(
+        builderCls, "setValue",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageStringMetadataEntry$Builder;");
+    jmethodID build = env->GetMethodID(
+        builderCls, "build",
+        "()Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageStringMetadataEntry;");
+
+    jstring key = env->NewStringUTF(entry.key ? entry.key : "");
+    jstring value = env->NewStringUTF(entry.value ? entry.value : "");
+
+    env->CallObjectMethod(builder, setKey, key);
+    env->CallObjectMethod(builder, setValue, value);
+
+    jobject metadataEntry = env->CallObjectMethod(builder, build);
+
+    env->DeleteLocalRef(key);
+    env->DeleteLocalRef(value);
+    env->DeleteLocalRef(builder);
+    env->DeleteLocalRef(builderCls);
+    return metadataEntry;
+}
+
+static jobject BuildPlacePageData(JNIEnv* env, AgusPlacePageData const & data) {
+    jclass builderCls = env->FindClass(
+        "app/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder");
+    jmethodID ctor = env->GetMethodID(builderCls, "<init>", "()V");
+    jobject builder = env->NewObject(builderCls, ctor);
+
+    jmethodID setFeatureId = env->GetMethodID(
+        builderCls, "setFeatureId",
+        "(Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageFeatureId;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setObjectType = env->GetMethodID(
+        builderCls, "setObjectType",
+        "(Ljava/lang/Long;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setOpeningMode = env->GetMethodID(
+        builderCls, "setOpeningMode",
+        "(Ljava/lang/Long;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setTitle = env->GetMethodID(
+        builderCls, "setTitle",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setSecondaryTitle = env->GetMethodID(
+        builderCls, "setSecondaryTitle",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setSubtitle = env->GetMethodID(
+        builderCls, "setSubtitle",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setAddress = env->GetMethodID(
+        builderCls, "setAddress",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setLat = env->GetMethodID(
+        builderCls, "setLat",
+        "(Ljava/lang/Double;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setLon = env->GetMethodID(
+        builderCls, "setLon",
+        "(Ljava/lang/Double;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setWikiDescriptionHtml = env->GetMethodID(
+        builderCls, "setWikiDescriptionHtml",
+        "(Ljava/lang/String;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setRoadType = env->GetMethodID(
+        builderCls, "setRoadType",
+        "(Ljava/lang/Long;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setIsRoutePoint = env->GetMethodID(
+        builderCls, "setIsRoutePoint",
+        "(Ljava/lang/Boolean;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setCoordinates = env->GetMethodID(
+        builderCls, "setCoordinates",
+        "(Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageCoordinates;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setRawTypes = env->GetMethodID(
+        builderCls, "setRawTypes",
+        "(Ljava/util/List;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setMetadata = env->GetMethodID(
+        builderCls, "setMetadata",
+        "(Ljava/util/List;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setMetadataTags = env->GetMethodID(
+        builderCls, "setMetadataTags",
+        "(Ljava/util/List;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setBookmarkId = env->GetMethodID(
+        builderCls, "setBookmarkId",
+        "(Ljava/lang/Long;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setBookmarkCategoryId = env->GetMethodID(
+        builderCls, "setBookmarkCategoryId",
+        "(Ljava/lang/Long;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID setTrackId = env->GetMethodID(
+        builderCls, "setTrackId",
+        "(Ljava/lang/Long;)Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData$Builder;");
+    jmethodID build = env->GetMethodID(
+        builderCls, "build",
+        "()Lapp/agus/maps/agus_maps_flutter/AgusMapsApi$PlacePageData;");
+
+    jobject featureId = BuildPlacePageFeatureId(env, data.feature_id);
+    jobject coordinates = BuildPlacePageCoordinates(env, data.coordinates);
+    jobject rawTypes = NewArrayList(env, data.raw_types_count);
+    for (int32_t i = 0; i < data.raw_types_count; ++i) {
+        jstring value = env->NewStringUTF(data.raw_types[i] ? data.raw_types[i] : "");
+        ArrayListAdd(env, rawTypes, value);
+        env->DeleteLocalRef(value);
+    }
+
+    jobject metadata = NewArrayList(env, data.metadata_count);
+    for (int32_t i = 0; i < data.metadata_count; ++i) {
+        jobject entry = BuildPlacePageIntMetadataEntry(env, data.metadata[i]);
+        ArrayListAdd(env, metadata, entry);
+        env->DeleteLocalRef(entry);
+    }
+
+    jobject metadataTags = NewArrayList(env, data.metadata_tags_count);
+    for (int32_t i = 0; i < data.metadata_tags_count; ++i) {
+        jobject entry = BuildPlacePageStringMetadataEntry(env, data.metadata_tags[i]);
+        ArrayListAdd(env, metadataTags, entry);
+        env->DeleteLocalRef(entry);
+    }
+
+    jobject objectType = NewJavaLong(env, data.object_type);
+    jobject openingMode = NewJavaLong(env, data.opening_mode);
+    jobject roadType = NewJavaLong(env, data.road_type);
+    jobject lat = NewJavaDouble(env, data.lat);
+    jobject lon = NewJavaDouble(env, data.lon);
+    jobject isRoutePoint = NewJavaBoolean(env, data.is_route_point != 0);
+
+    jstring title = env->NewStringUTF(data.title ? data.title : "");
+    jstring secondaryTitle = env->NewStringUTF(data.secondary_title ? data.secondary_title : "");
+    jstring subtitle = env->NewStringUTF(data.subtitle ? data.subtitle : "");
+    jstring address = env->NewStringUTF(data.address ? data.address : "");
+    jstring wiki = env->NewStringUTF(data.wiki_description_html ? data.wiki_description_html : "");
+
+    env->CallObjectMethod(builder, setFeatureId, featureId);
+    env->CallObjectMethod(builder, setObjectType, objectType);
+    env->CallObjectMethod(builder, setOpeningMode, openingMode);
+    env->CallObjectMethod(builder, setTitle, title);
+    env->CallObjectMethod(builder, setSecondaryTitle, secondaryTitle);
+    env->CallObjectMethod(builder, setSubtitle, subtitle);
+    env->CallObjectMethod(builder, setAddress, address);
+    env->CallObjectMethod(builder, setLat, lat);
+    env->CallObjectMethod(builder, setLon, lon);
+    env->CallObjectMethod(builder, setWikiDescriptionHtml, wiki);
+    env->CallObjectMethod(builder, setRoadType, roadType);
+    env->CallObjectMethod(builder, setIsRoutePoint, isRoutePoint);
+    env->CallObjectMethod(builder, setCoordinates, coordinates);
+    env->CallObjectMethod(builder, setRawTypes, rawTypes);
+    env->CallObjectMethod(builder, setMetadata, metadata);
+    env->CallObjectMethod(builder, setMetadataTags, metadataTags);
+
+    if (data.has_bookmark_id) {
+        jobject bookmarkId = NewJavaLong(env, data.bookmark_id);
+        env->CallObjectMethod(builder, setBookmarkId, bookmarkId);
+        env->DeleteLocalRef(bookmarkId);
+    } else {
+        env->CallObjectMethod(builder, setBookmarkId, nullptr);
+    }
+
+    if (data.has_bookmark_category_id) {
+        jobject bookmarkCategoryId = NewJavaLong(env, data.bookmark_category_id);
+        env->CallObjectMethod(builder, setBookmarkCategoryId, bookmarkCategoryId);
+        env->DeleteLocalRef(bookmarkCategoryId);
+    } else {
+        env->CallObjectMethod(builder, setBookmarkCategoryId, nullptr);
+    }
+
+    if (data.has_track_id) {
+        jobject trackId = NewJavaLong(env, data.track_id);
+        env->CallObjectMethod(builder, setTrackId, trackId);
+        env->DeleteLocalRef(trackId);
+    } else {
+        env->CallObjectMethod(builder, setTrackId, nullptr);
+    }
+
+    jobject placePage = env->CallObjectMethod(builder, build);
+
+    env->DeleteLocalRef(featureId);
+    env->DeleteLocalRef(coordinates);
+    env->DeleteLocalRef(rawTypes);
+    env->DeleteLocalRef(metadata);
+    env->DeleteLocalRef(metadataTags);
+    env->DeleteLocalRef(objectType);
+    env->DeleteLocalRef(openingMode);
+    env->DeleteLocalRef(roadType);
+    env->DeleteLocalRef(lat);
+    env->DeleteLocalRef(lon);
+    env->DeleteLocalRef(isRoutePoint);
+    env->DeleteLocalRef(title);
+    env->DeleteLocalRef(secondaryTitle);
+    env->DeleteLocalRef(subtitle);
+    env->DeleteLocalRef(address);
+    env->DeleteLocalRef(wiki);
+    env->DeleteLocalRef(builder);
+    env->DeleteLocalRef(builderCls);
+
+    return placePage;
 }
 
 // Old init function for backwards compatibility (uses APK path)
@@ -595,6 +927,32 @@ Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeSetLocale(
     }
 }
 
+extern "C" JNIEXPORT jobject JNICALL
+Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeGetCurrentPlacePage(
+    JNIEnv* env, jobject thiz) {
+    std::lock_guard<std::mutex> lock(g_placePageMutex);
+    if (!g_framework || !g_framework->HasPlacePageInfo()) {
+        return nullptr;
+    }
+
+    AgusPlacePageData* snapshot = BuildPlacePageData(g_framework->GetCurrentPlacePageInfo());
+    if (!snapshot) {
+        return nullptr;
+    }
+
+    jobject placePage = BuildPlacePageData(env, *snapshot);
+    comaps_place_page_free(snapshot);
+    return placePage;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_app_agus_maps_agus_1maps_1flutter_AgusMapsFlutterPlugin_nativeClearPlacePageSelection(
+    JNIEnv* env, jobject thiz) {
+    (void)env;
+    (void)thiz;
+    comaps_place_page_clear_selection();
+}
+
 FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
      __android_log_print(ANDROID_LOG_DEBUG, "AgusMapsFlutterNative", "comaps_set_view: lat=%f, lon=%f, zoom=%d", lat, lon, zoom);
      if (g_framework) {
@@ -688,15 +1046,55 @@ FFI_PLUGIN_EXPORT int comaps_place_page_has_data(void) {
     return g_framework->HasPlacePageInfo() ? 1 : 0;
 }
 
-FFI_PLUGIN_EXPORT const char* comaps_place_page_get_json(void) {
+FFI_PLUGIN_EXPORT AgusPlacePageData* comaps_place_page_copy(void) {
     std::lock_guard<std::mutex> lock(g_placePageMutex);
     if (!g_framework || !g_framework->HasPlacePageInfo()) {
-        g_placePageJson.clear();
-        return g_placePageJson.c_str();
+        return nullptr;
+    }
+    return BuildPlacePageData(g_framework->GetCurrentPlacePageInfo());
+}
+
+FFI_PLUGIN_EXPORT void comaps_place_page_free(AgusPlacePageData* data) {
+    if (!data) {
+        return;
+    }
+    free(const_cast<char*>(data->feature_id.mwm_name));
+    free(const_cast<char*>(data->title));
+    free(const_cast<char*>(data->secondary_title));
+    free(const_cast<char*>(data->subtitle));
+    free(const_cast<char*>(data->address));
+    free(const_cast<char*>(data->wiki_description_html));
+
+    free(const_cast<char*>(data->coordinates.decimal));
+    free(const_cast<char*>(data->coordinates.dms));
+    free(const_cast<char*>(data->coordinates.osm));
+    free(const_cast<char*>(data->coordinates.olc));
+    free(const_cast<char*>(data->coordinates.utm));
+    free(const_cast<char*>(data->coordinates.mgrs));
+
+    if (data->raw_types) {
+        for (int32_t i = 0; i < data->raw_types_count; ++i) {
+            free(const_cast<char*>(data->raw_types[i]));
+        }
+        free(data->raw_types);
     }
 
-    g_placePageJson = BuildPlacePageJson(g_framework->GetCurrentPlacePageInfo());
-    return g_placePageJson.c_str();
+    if (data->metadata) {
+        for (int32_t i = 0; i < data->metadata_count; ++i) {
+            free(const_cast<char*>(data->metadata[i].value));
+        }
+        free(data->metadata);
+    }
+
+    if (data->metadata_tags) {
+        for (int32_t i = 0; i < data->metadata_tags_count; ++i) {
+            free(const_cast<char*>(data->metadata_tags[i].key));
+            free(const_cast<char*>(data->metadata_tags[i].value));
+        }
+        free(data->metadata_tags);
+    }
+
+    free(data);
 }
 
 FFI_PLUGIN_EXPORT void comaps_place_page_clear_selection(void) {

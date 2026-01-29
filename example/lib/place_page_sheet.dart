@@ -22,7 +22,7 @@ class PlacePageSheet extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    final metadataEntries = data.metadataTags.entries
+    final metadataEntries = data.metadataTags
         .map(
           (entry) => _MetadataEntry(
             label: agus_maps_flutter.PlacePageLocalization.localizeMetadataTag(

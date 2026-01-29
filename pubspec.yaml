@@ -27,6 +27,7 @@ dependencies:
 
 dev_dependencies:
   args: ^2.5.0
+  pigeon: ^25.0.0
   ffigen: ^20.1.1
   flutter_test:
     sdk: flutter
@@ -51,6 +52,7 @@ flutter:
   #
   # Please refer to README.md for a detailed explanation.
   assets:
+    - assets/fonts/
     - assets/localized_types/af.lproj/
     - assets/localized_types/ar.lproj/
     - assets/localized_types/ast.lproj/

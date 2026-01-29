@@ -7,10 +7,6 @@ import android.view.WindowManager;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
-import io.flutter.plugin.common.MethodCall;
-import io.flutter.plugin.common.MethodChannel;
-import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
-import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.embedding.engine.loader.FlutterLoader;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -24,10 +20,9 @@ import io.flutter.view.TextureRegistry;
 import android.view.Surface;
 
 /** AgusMapsFlutterPlugin */
-public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
+public class AgusMapsFlutterPlugin implements FlutterPlugin, AgusMapsApi.AgusMapsHostApi {
   private static final String TAG = "AgusMapsFlutter";
-  
-  private MethodChannel channel;
+
   private Context context;
   private TextureRegistry textureRegistry;
   private TextureRegistry.SurfaceProducer surfaceProducer;
@@ -35,6 +30,8 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   private int surfaceHeight = 0;
   private float density = 2.0f;
   private android.os.Handler mainHandler;
+    private AgusMapsApi.AgusMapsFlutterApi flutterApi;
+    private boolean mapReadySent = false;
   
   // Flag to ensure native library is loaded only once
   private static volatile boolean nativeLibraryLoaded = false;
@@ -59,9 +56,9 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
     // Load native library lazily - after Flutter plugin system is initialized
     ensureNativeLibraryLoaded();
-    
-    channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), "agus_maps_flutter");
-    channel.setMethodCallHandler(this);
+
+        AgusMapsApi.AgusMapsHostApi.setUp(flutterPluginBinding.getBinaryMessenger(), this);
+        flutterApi = new AgusMapsApi.AgusMapsFlutterApi(flutterPluginBinding.getBinaryMessenger());
     context = flutterPluginBinding.getApplicationContext();
     textureRegistry = flutterPluginBinding.getTextureRegistry();
     mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -84,76 +81,71 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
     }
   }
 
-  @Override
-  public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
-    if (call.method.equals("extractMap")) {
-      // ... existing code ...
-      String assetPath = call.argument("assetPath");
-      if (assetPath == null) {
-        result.error("INVALID_ARGUMENT", "assetPath is null", null);
-        return;
-      }
-      
-      new Thread(() -> {
-          try {
-              String extractedPath = extractMap(assetPath);
-              new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                  result.success(extractedPath);
-              });
-          } catch (Exception e) {
-              android.util.Log.e("AgusMapsFlutter", "Error extracting map", e);
-              new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                  result.error("EXTRACTION_FAILED", e.getMessage(), null);
-              });
-          }
-      }).start();
+    @Override
+    public void extractMap(@NonNull String assetPath, @NonNull AgusMapsApi.Result<String> result) {
+        new Thread(() -> {
+            try {
+                String extractedPath = extractMap(assetPath);
+                mainHandler.post(() -> result.success(extractedPath));
+            } catch (Exception e) {
+                android.util.Log.e(TAG, "Error extracting map", e);
+                mainHandler.post(() -> result.error(new AgusMapsApi.FlutterError(
+                        "EXTRACTION_FAILED", e.getMessage(), null)));
+            }
+        }).start();
+    }
 
-    } else if (call.method.equals("extractDataFiles")) {
-        // Extract all CoMaps data files from assets/comaps_data/
+    @Override
+    public void extractDataFiles(@NonNull AgusMapsApi.Result<String> result) {
         new Thread(() -> {
             try {
                 String dataPath = extractDataFiles();
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                    result.success(dataPath);
-                });
+                mainHandler.post(() -> result.success(dataPath));
             } catch (Exception e) {
-                android.util.Log.e("AgusMapsFlutter", "Error extracting data files", e);
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                    result.error("EXTRACTION_FAILED", e.getMessage(), null);
-                });
+                android.util.Log.e(TAG, "Error extracting data files", e);
+                mainHandler.post(() -> result.error(new AgusMapsApi.FlutterError(
+                        "EXTRACTION_FAILED", e.getMessage(), null)));
             }
         }).start();
-        
-    } else if (call.method.equals("getApkPath")) {
+    }
+
+    @Override
+    public void getApkPath(@NonNull AgusMapsApi.Result<String> result) {
         result.success(context.getApplicationInfo().sourceDir);
-    } else if (call.method.equals("createMapSurface")) {
-        // Get requested size from Flutter (in logical pixels)
-        Integer width = call.argument("width");
-        Integer height = call.argument("height");
-        Double densityArg = call.argument("density");
+    }
+
+    @Override
+    public void createMapSurface(
+            @NonNull AgusMapsApi.CreateMapSurfaceRequest request,
+            @NonNull AgusMapsApi.Result<Long> result) {
+        Long widthArg = request.getWidth();
+        Long heightArg = request.getHeight();
+        Double densityArg = request.getDensity();
 
         if (densityArg != null && densityArg > 0) {
             density = densityArg.floatValue();
         }
-        
-        // Use screen size as default if not specified
-        if (width == null || height == null || width <= 0 || height <= 0) {
+
+        int width = widthArg != null ? widthArg.intValue() : 0;
+        int height = heightArg != null ? heightArg.intValue() : 0;
+
+        if (width <= 0 || height <= 0) {
             WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
             DisplayMetrics dm = new DisplayMetrics();
             wm.getDefaultDisplay().getMetrics(dm);
             width = dm.widthPixels;
             height = dm.heightPixels;
         }
-        
+
         surfaceWidth = width;
         surfaceHeight = height;
-        
+        mapReadySent = false;
+
         android.util.Log.d(TAG, "createMapSurface: " + surfaceWidth + "x" + surfaceHeight + " density=" + density);
-        
+
         surfaceProducer = textureRegistry.createSurfaceProducer();
         surfaceProducer.setSize(surfaceWidth, surfaceHeight);
-        
-        // Set up surface lifecycle callback
+
         surfaceProducer.setCallback(new TextureRegistry.SurfaceProducer.Callback() {
             @Override
             public void onSurfaceAvailable() {
@@ -161,39 +153,95 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
                 Surface surface = surfaceProducer.getSurface();
                 nativeOnSurfaceChanged(surfaceProducer.id(), surface, surfaceWidth, surfaceHeight, density);
             }
-            
+
             @Override
             public void onSurfaceDestroyed() {
                 android.util.Log.d(TAG, "onSurfaceDestroyed: pausing rendering");
                 nativeOnSurfaceDestroyed();
             }
         });
-        
-        // Initial surface setup
+
         Surface surface = surfaceProducer.getSurface();
         nativeSetSurface(surfaceProducer.id(), surface, surfaceWidth, surfaceHeight, density);
         result.success(surfaceProducer.id());
-    } else if (call.method.equals("resizeMapSurface")) {
-        Integer width = call.argument("width");
-        Integer height = call.argument("height");
-        Double density = call.argument("density");
-        
-        if (width != null && height != null && width > 0 && height > 0 && surfaceProducer != null) {
+        sendRenderStateChanged(AgusMapsApi.RenderState.ACTIVE, surfaceProducer.id());
+    }
+
+    @Override
+    public void resizeMapSurface(
+            @NonNull AgusMapsApi.ResizeMapSurfaceRequest request,
+            @NonNull AgusMapsApi.Result<Boolean> result) {
+        if (surfaceProducer == null) {
+            result.error(new AgusMapsApi.FlutterError(
+                    "INVALID_STATE", "Surface not created or invalid size", null));
+            return;
+        }
+
+        int width = request.getWidth().intValue();
+        int height = request.getHeight().intValue();
+        Double densityArg = request.getDensity();
+
+        if (width > 0 && height > 0) {
             surfaceWidth = width;
             surfaceHeight = height;
             surfaceProducer.setSize(width, height);
             nativeOnSizeChanged(width, height);
-            if (density != null && density > 0) {
-                nativeSetVisualScale(density.floatValue());
+            if (densityArg != null && densityArg > 0) {
+                nativeSetVisualScale(densityArg.floatValue());
             }
             result.success(true);
         } else {
-            result.error("INVALID_STATE", "Surface not created or invalid size", null);
+            result.error(new AgusMapsApi.FlutterError(
+                    "INVALID_STATE", "Surface not created or invalid size", null));
         }
-    } else {
-      result.notImplemented();
     }
-  }
+
+    @Override
+    public void destroyMapSurface(@NonNull AgusMapsApi.Result<Boolean> result) {
+        if (surfaceProducer == null) {
+            result.success(false);
+            return;
+        }
+
+        nativeOnSurfaceDestroyed();
+        try {
+            surfaceProducer.release();
+        } catch (Exception e) {
+            android.util.Log.w(TAG, "Failed to release surface producer", e);
+        }
+        surfaceProducer = null;
+        surfaceWidth = 0;
+        surfaceHeight = 0;
+        mapReadySent = false;
+
+        sendRenderStateChanged(AgusMapsApi.RenderState.IDLE, null);
+        result.success(true);
+    }
+
+    @Override
+    public void getCurrentPlacePage(@NonNull AgusMapsApi.NullableResult<AgusMapsApi.PlacePageData> result) {
+        result.success(nativeGetCurrentPlacePage());
+    }
+
+    @Override
+    public void clearPlacePageSelection(@NonNull AgusMapsApi.Result<Boolean> result) {
+        nativeClearPlacePageSelection();
+        result.success(true);
+    }
+
+
+    private void sendRenderStateChanged(AgusMapsApi.RenderState state, Long surfaceId) {
+        if (flutterApi == null) return;
+        flutterApi.onRenderStateChanged(state, surfaceId, new AgusMapsApi.VoidResult() {
+            @Override
+            public void success() {}
+
+            @Override
+            public void error(@NonNull Throwable error) {
+                android.util.Log.w(TAG, "Render state callback failed", error);
+            }
+        });
+    }
 
   private native void nativeSetSurface(long textureId, Surface surface, int width, int height, float density);
   private native void nativeOnSurfaceChanged(long textureId, Surface surface, int width, int height, float density);
@@ -203,6 +251,8 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   private native void nativeInitFrameCallback();
   private native void nativeCleanupFrameCallback();
     private native void nativeSetLocale(String locale);
+    private native AgusMapsApi.PlacePageData nativeGetCurrentPlacePage();
+    private native void nativeClearPlacePageSelection();
 
   /**
    * Called from native code when an active frame is rendered.
@@ -220,11 +270,34 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
 
         // Ensure we call into Flutter engine APIs on the main thread.
         if (mainHandler != null) {
-            mainHandler.post(producer::scheduleFrame);
+                        mainHandler.post(() -> {
+                                producer.scheduleFrame();
+                                if (!mapReadySent) {
+                                        mapReadySent = true;
+                                        sendMapReady(producer.id());
+                                }
+                        });
         } else {
             producer.scheduleFrame();
+                        if (!mapReadySent) {
+                                mapReadySent = true;
+                                sendMapReady(producer.id());
+                        }
         }
   }
+
+    private void sendMapReady(long surfaceId) {
+        if (flutterApi == null) return;
+        flutterApi.onMapReady(surfaceId, new AgusMapsApi.VoidResult() {
+            @Override
+            public void success() {}
+
+            @Override
+            public void error(@NonNull Throwable error) {
+                android.util.Log.w(TAG, "Map ready callback failed", error);
+            }
+        });
+    }
 
   private String extractMap(String assetPath) throws IOException {
     android.util.Log.d("AgusMapsFlutter", "Extracting asset: " + assetPath);
@@ -333,6 +406,7 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, MethodCallHandler {
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
     // Cleanup native frame callback
     nativeCleanupFrameCallback();
-    channel.setMethodCallHandler(null);
+        AgusMapsApi.AgusMapsHostApi.setUp(binding.getBinaryMessenger(), null);
+        flutterApi = null;
   }
 }
