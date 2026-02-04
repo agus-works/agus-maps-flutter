@@ -341,21 +341,25 @@ When building as a library (not a full application), test/quality tools aren't n
 
 **Category:** macOS/iOS Metal / Resource Loading
 
-**Purpose:** Extends Metal shader library search to multiple bundle locations.
+**Purpose:** Extends Metal shader library search to multiple bundle locations on both iOS and macOS.
 
 **What it does:**
 - Searches main bundle first
 - Searches all loaded bundles
 - Searches all frameworks
 - Searches nested `.bundle` directories within frameworks
-- On macOS, searches `Contents/Frameworks` directory for plugin frameworks
+- On iOS, searches `<AppBundle>/Frameworks` directory for plugin frameworks
+- On macOS, searches `<AppBundle>/Contents/Frameworks` directory for plugin frameworks
 - Adds extensive logging for debugging library location
 
 **Why it's needed:**
-Flutter plugins package Metal shaders separately from the main app. The shader library might be in a framework bundle, a resource bundle inside a framework, or the plugin's own bundle.
+Flutter plugins package Metal shaders in CocoaPods resource bundles (`resource_bundles`). The shader library is typically located at `<Framework>/Resources/<PluginName>_shaders.bundle/shaders_metal.metallib`. The framework structure differs between iOS and macOS:
+- iOS: `Runner.app/Frameworks/agus_maps_flutter.framework/agus_maps_flutter_shaders.bundle/`
+- macOS: `Runner.app/Contents/Frameworks/agus_maps_flutter.framework/Resources/agus_maps_flutter_shaders.bundle/Contents/Resources/`
 
 **Without this patch:**
-- Metal shader library would not be found in Flutter plugin builds
+- Metal shader library would not be found in Flutter plugin builds on iOS
+- App would crash with "shaders_metal.metallib not found in any bundle!" assertion
 - Map rendering would fail on iOS/macOS with Metal
 
 

@@ -207,6 +207,11 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
     'Classes/**/*.{h,m,mm,swift}',
     '../src/agus_maps_flutter.h',
   ]
+
+  # CoMaps already provides localization symbols; avoid duplicate definitions
+  s.exclude_files = [
+    'Classes/AgusLocalizationBridge.mm'
+  ]
   
   # Public headers for FFI - only C-compatible headers!
   # C++ headers must NOT be exposed to Swift module

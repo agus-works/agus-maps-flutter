@@ -43,5 +43,15 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '12.0'
     end
+
+    # Avoid duplicate localization symbols from AgusLocalizationBridge.mm
+    if target.name == 'agus_maps_flutter'
+      target.source_build_phase.files.each do |file|
+        next unless file.file_ref && file.file_ref.path
+        if file.file_ref.path.end_with?('AgusLocalizationBridge.mm')
+          file.remove_from_project
+        end
+      end
+    end
   end
 end
