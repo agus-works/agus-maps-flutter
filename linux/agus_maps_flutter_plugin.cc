@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <dlfcn.h>
 #include <string>
 #include <filesystem>
 #include <fstream>
@@ -31,10 +32,6 @@ extern "C" {
   int32_t agus_get_rendered_height(void);
   int agus_copy_pixels(uint8_t* buffer, int32_t bufferSize);
   void agus_set_frame_ready_callback(void (*callback)(void));
-  int comaps_place_page_has_data(void);
-  AgusPlacePageData* comaps_place_page_copy(void);
-  void comaps_place_page_free(AgusPlacePageData* data);
-  void comaps_place_page_clear_selection(void);
 }
 
 // ============================================================================
@@ -201,6 +198,45 @@ G_DEFINE_TYPE(AgusMapsFlutterPlugin, agus_maps_flutter_plugin, g_object_get_type
 
 // Global plugin instance for frame callback
 static AgusMapsFlutterPlugin* g_plugin_instance = nullptr;
+
+using PlacePageHasDataFn = int (*)();
+using PlacePageCopyFn = AgusPlacePageData* (*)();
+using PlacePageFreeFn = void (*)(AgusPlacePageData* data);
+using PlacePageClearSelectionFn = void (*)();
+
+static PlacePageHasDataFn g_fnPlacePageHasData = nullptr;
+static PlacePageCopyFn g_fnPlacePageCopy = nullptr;
+static PlacePageFreeFn g_fnPlacePageFree = nullptr;
+static PlacePageClearSelectionFn g_fnPlacePageClearSelection = nullptr;
+static bool g_place_page_checked = false;
+
+static bool EnsurePlacePageFunctionsLoaded() {
+  if (g_place_page_checked) {
+    return g_fnPlacePageHasData && g_fnPlacePageCopy && g_fnPlacePageFree &&
+        g_fnPlacePageClearSelection;
+  }
+
+  g_place_page_checked = true;
+
+  g_fnPlacePageHasData = reinterpret_cast<PlacePageHasDataFn>(
+      dlsym(RTLD_DEFAULT, "comaps_place_page_has_data"));
+  g_fnPlacePageCopy = reinterpret_cast<PlacePageCopyFn>(
+      dlsym(RTLD_DEFAULT, "comaps_place_page_copy"));
+  g_fnPlacePageFree = reinterpret_cast<PlacePageFreeFn>(
+      dlsym(RTLD_DEFAULT, "comaps_place_page_free"));
+  g_fnPlacePageClearSelection = reinterpret_cast<PlacePageClearSelectionFn>(
+      dlsym(RTLD_DEFAULT, "comaps_place_page_clear_selection"));
+
+  if (!g_fnPlacePageHasData || !g_fnPlacePageCopy || !g_fnPlacePageFree ||
+      !g_fnPlacePageClearSelection) {
+    std::fprintf(stderr,
+                 "[AgusMapsFlutter] Place page FFI symbols not found; "
+                 "place page APIs disabled.\n");
+    return false;
+  }
+
+  return true;
+}
 
 static agus_maps_flutterPlacePageData* build_place_page_data(
   const AgusPlacePageData* data) {
@@ -613,14 +649,14 @@ static void handle_get_current_place_page(
     agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
     gpointer user_data) {
   (void)user_data;
-  if (comaps_place_page_has_data() == 0) {
+  if (!EnsurePlacePageFunctionsLoaded() || g_fnPlacePageHasData() == 0) {
     agus_maps_flutter_agus_maps_host_api_respond_get_current_place_page(
         response_handle,
         nullptr);
     return;
   }
 
-  AgusPlacePageData* native_data = comaps_place_page_copy();
+  AgusPlacePageData* native_data = g_fnPlacePageCopy();
   if (!native_data) {
     agus_maps_flutter_agus_maps_host_api_respond_get_current_place_page(
         response_handle,
@@ -630,7 +666,7 @@ static void handle_get_current_place_page(
 
   g_autoptr(agus_maps_flutterPlacePageData) place_page =
       build_place_page_data(native_data);
-  comaps_place_page_free(native_data);
+  g_fnPlacePageFree(native_data);
 
   agus_maps_flutter_agus_maps_host_api_respond_get_current_place_page(
       response_handle,
@@ -641,7 +677,14 @@ static void handle_clear_place_page_selection(
     agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
     gpointer user_data) {
   (void)user_data;
-  comaps_place_page_clear_selection();
+  if (!EnsurePlacePageFunctionsLoaded()) {
+    agus_maps_flutter_agus_maps_host_api_respond_clear_place_page_selection(
+        response_handle,
+        FALSE);
+    return;
+  }
+
+  g_fnPlacePageClearSelection();
   agus_maps_flutter_agus_maps_host_api_respond_clear_place_page_selection(
       response_handle,
       TRUE);
