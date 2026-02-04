@@ -114,11 +114,7 @@ class _AgusMapsFlutterApiHandler extends AgusMapsFlutterApi {
 /// Place page data arrives pre-localized from native layer.
 Future<PlacePageData?> getCurrentPlacePage() async {
   try {
-    if (_bindings.comaps_place_page_has_data() == 0) {
-      return null;
-    }
-    final data = await AgusMapsHostApi().getCurrentPlacePage();
-    return data;
+    return await AgusMapsHostApi().getCurrentPlacePage();
   } catch (error) {
     debugPrint('[AgusMap] Failed to fetch place page: $error');
     return null;
@@ -126,7 +122,7 @@ Future<PlacePageData?> getCurrentPlacePage() async {
 }
 
 void closePlacePage() {
-  _bindings.comaps_place_page_clear_selection();
+  AgusMapsHostApi().clearPlacePageSelection();
 }
 
 /// A very short-lived native function.

@@ -74,7 +74,9 @@ if(DEFINED ENV{CI})
 endif()
 
 # Location 1a: AGUS_MAPS_HOME (Environment Variable)
-if(DEFINED ENV{AGUS_MAPS_HOME} AND NOT PREBUILT_FOUND)
+# NOTE: When developing in-repo, prefer locally built binaries to ensure
+# symbols match the current plugin code.
+if(NOT IS_IN_REPO AND DEFINED ENV{AGUS_MAPS_HOME} AND NOT PREBUILT_FOUND)
   set(AGUS_SDK_HOME "$ENV{AGUS_MAPS_HOME}")
   set(SDK_LINUX_PREBUILT_DIR "${AGUS_SDK_HOME}/linux/prebuilt/x64")
   if(EXISTS "${SDK_LINUX_PREBUILT_DIR}/libagus_maps_flutter.so")
