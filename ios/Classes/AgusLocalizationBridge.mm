@@ -160,7 +160,13 @@ std::string g_speedUnitsImperial = "mph";
 namespace platform
 {
 
-std::string GetLocalizedTypeName(std::string const & type)
+#if defined(__clang__)
+#define AGUS_WEAK __attribute__((weak))
+#else
+#define AGUS_WEAK
+#endif
+
+AGUS_WEAK std::string GetLocalizedTypeName(std::string const & type)
 {
 	std::lock_guard<std::mutex> lock(g_mutex);
 	EnsureTranslationsLoaded();
@@ -176,12 +182,12 @@ std::string GetLocalizedTypeName(std::string const & type)
 	return type;
 }
 
-std::string GetLocalizedBrandName(std::string const & brand)
+AGUS_WEAK std::string GetLocalizedBrandName(std::string const & brand)
 {
 	return brand;
 }
 
-std::string GetLocalizedString(std::string const & key)
+AGUS_WEAK std::string GetLocalizedString(std::string const & key)
 {
 	std::lock_guard<std::mutex> lock(g_mutex);
 	EnsureTranslationsLoaded();
@@ -199,7 +205,7 @@ std::string GetLocalizedString(std::string const & key)
 	return key;
 }
 
-std::string GetCurrencySymbol(std::string const & currencyCode)
+AGUS_WEAK std::string GetCurrencySymbol(std::string const & currencyCode)
 {
 	@autoreleasepool {
 		NSLocale * locale = [NSLocale currentLocale];
@@ -213,7 +219,7 @@ std::string GetCurrencySymbol(std::string const & currencyCode)
 	return currencyCode;
 }
 
-std::string GetLocalizedMyPositionBookmarkName()
+AGUS_WEAK std::string GetLocalizedMyPositionBookmarkName()
 {
 	std::lock_guard<std::mutex> lock(g_mutex);
 	EnsureTranslationsLoaded();
@@ -226,7 +232,7 @@ std::string GetLocalizedMyPositionBookmarkName()
 	return "My Position";
 }
 
-LocalizedUnits const & GetLocalizedDistanceUnits()
+AGUS_WEAK LocalizedUnits const & GetLocalizedDistanceUnits()
 {
 	auto units = measurement_utils::Units::Metric;
 	settings::TryGet(settings::kMeasurementUnits, units);
@@ -235,7 +241,7 @@ LocalizedUnits const & GetLocalizedDistanceUnits()
 		: g_distanceUnitsImperial;
 }
 
-LocalizedUnits const & GetLocalizedAltitudeUnits()
+AGUS_WEAK LocalizedUnits const & GetLocalizedAltitudeUnits()
 {
 	auto units = measurement_utils::Units::Metric;
 	settings::TryGet(settings::kMeasurementUnits, units);
@@ -244,14 +250,14 @@ LocalizedUnits const & GetLocalizedAltitudeUnits()
 		: g_altitudeUnitsImperial;
 }
 
-std::string const & GetLocalizedSpeedUnits(measurement_utils::Units units)
+AGUS_WEAK std::string const & GetLocalizedSpeedUnits(measurement_utils::Units units)
 {
 	return (units == measurement_utils::Units::Metric)
 		? g_speedUnitsMetric
 		: g_speedUnitsImperial;
 }
 
-std::string const & GetLocalizedSpeedUnits()
+AGUS_WEAK std::string const & GetLocalizedSpeedUnits()
 {
 	auto units = measurement_utils::Units::Metric;
 	settings::TryGet(settings::kMeasurementUnits, units);
@@ -259,6 +265,8 @@ std::string const & GetLocalizedSpeedUnits()
 }
 
 }  // namespace platform
+
+#undef AGUS_WEAK
 
 // ============================================================================
 // C API for setting locale from Dart FFI
