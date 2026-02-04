@@ -1,18 +1,5 @@
-From 98c871c82869408619b0682255758807e3248386 Mon Sep 17 00:00:00 2001
-From: Antigravity <agent@example.com>
-Date: Mon, 02 Feb 2026 20:15:00 +0800
-Subject: [PATCH] libs/platform: disable default localization
-
-Disable default localization implementations in platform library
-to avoid duplicate symbol errors when linking with AgusLocalizationBridge
-in the Flutter plugin.
----
- libs/platform/localization.cpp | 4 ++++
- libs/platform/localization.mm  | 4 ++++
- 2 files changed, 8 insertions(+)
-
 diff --git a/libs/platform/localization.cpp b/libs/platform/localization.cpp
-index 738419e..3e5621a 100644
+index 33bf7097a..e7d2e2b53 100644
 --- a/libs/platform/localization.cpp
 +++ b/libs/platform/localization.cpp
 @@ -44,6 +44,8 @@ LocalizedUnits const & GetLocalizedUnits(measurement_utils::Units units, Measure
@@ -24,7 +11,7 @@ index 738419e..3e5621a 100644
  LocalizedUnits const & GetLocalizedDistanceUnits()
  {
    return GetLocalizedUnits(measurement_utils::GetMeasurementUnits(), MeasurementType::Distance);
-@@ -64,4 +66,6 @@ std::string const & GetLocalizedSpeedUnits()
+@@ -63,4 +65,7 @@ std::string const & GetLocalizedSpeedUnits()
  {
    return GetLocalizedSpeedUnits(measurement_utils::GetMeasurementUnits());
  }
@@ -33,7 +20,7 @@ index 738419e..3e5621a 100644
 +
  }  // namespace platform
 diff --git a/libs/platform/localization.mm b/libs/platform/localization.mm
-index 45a1b2c..9c8d7e6 100644
+index 3d007228f..7ca3c3eaa 100644
 --- a/libs/platform/localization.mm
 +++ b/libs/platform/localization.mm
 @@ -6,6 +6,8 @@
@@ -45,7 +32,7 @@ index 45a1b2c..9c8d7e6 100644
  std::string GetLocalizedTypeName(std::string const & type)
  {
    auto key = "type." + type;
-@@ -45,4 +47,6 @@ std::string GetLocalizedMyPositionBookmarkName()
+@@ -44,4 +46,7 @@ std::string GetLocalizedMyPositionBookmarkName()
                                          dateStyle:NSDateFormatterLongStyle
                                          timeStyle:NSDateFormatterShortStyle].UTF8String;
  }

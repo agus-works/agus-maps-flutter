@@ -1363,3 +1363,28 @@ The following patches have overlapping functionality and could be consolidated:
 The localization symbol deduplication (removing `localization.cpp`/`localization.hpp` from the base SRC list and adding them only to non-Flutter platforms) has been merged into patch 0059 since both patches modify the same file (`libs/platform/CMakeLists.txt`). This prevents patch ordering conflicts and ensures reliable application.
 
 See patch 0059 documentation for details on how localization files are now handled per-platform.
+
+
+### 0070-libs-platform-disable-localization.patch
+
+**Files Modified:** `libs/platform/localization.cpp`, `libs/platform/localization.mm`
+
+**Category:** Apple Platform / Localization / Linker Deduplication
+
+**Purpose:** Disables the default platform localization implementations to avoid
+duplicate symbols when the Flutter plugin provides `AgusLocalizationBridge`.
+
+**What it does:**
+- Wraps the localization functions in both files with `#if 0` / `#endif`.
+- Ensures the functions are not compiled into the CoMaps library for the Flutter
+  plugin build.
+
+**Why it's needed:**
+The Flutter plugin supplies its own localization bridge to avoid duplicated
+symbols between CoMaps and the plugin’s localization layer. Without this patch,
+Apple builds can fail with duplicate symbol errors or the wrong localization
+implementation can be linked.
+
+**Without this patch:**
+- iOS/macOS builds can fail at link time with duplicate localization symbols.
+- Localization may be sourced from the wrong implementation.
