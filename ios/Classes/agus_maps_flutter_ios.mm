@@ -185,6 +185,54 @@ static std::string LocalizeTypeName(std::string const & type) {
     return key;
 }
 
+static std::string TrimWhitespace(std::string const & value) {
+    auto const start = value.find_first_not_of(" \t\n\r");
+    if (start == std::string::npos) {
+        return std::string();
+    }
+    auto const end = value.find_last_not_of(" \t\n\r");
+    return value.substr(start, end - start + 1);
+}
+
+static bool IsTypeToken(std::string const & token) {
+    return token.rfind("type.", 0) == 0;
+}
+
+static std::string LocalizePlacePageSubtitle(std::string const & subtitle) {
+    if (subtitle.empty()) {
+        return subtitle;
+    }
+
+    static std::string const kSeparator = " • ";
+    std::string result;
+    size_t start = 0;
+    bool first = true;
+
+    while (true) {
+        auto const pos = subtitle.find(kSeparator, start);
+        auto const token = subtitle.substr(
+            start,
+            pos == std::string::npos ? std::string::npos : pos - start);
+        auto const trimmed = TrimWhitespace(token);
+        std::string localized = token;
+        if (IsTypeToken(trimmed)) {
+            localized = LocalizeTypeName(trimmed);
+        }
+
+        if (!first) {
+            result.append(kSeparator);
+        }
+        result.append(localized);
+        if (pos == std::string::npos) {
+            break;
+        }
+        start = pos + kSeparator.size();
+        first = false;
+    }
+
+    return result;
+}
+
 static int GetObjectType(place_page::Info const & info) {
     if (info.IsMyPosition()) return 3; // MY_POSITION
     if (info.IsBookmark()) return 2; // BOOKMARK
@@ -208,7 +256,7 @@ static AgusPlacePageData* BuildPlacePageData(place_page::Info const & info) {
     data->opening_mode = static_cast<int32_t>(info.GetOpeningMode());
     data->title = CopyString(info.GetTitle());
     data->secondary_title = CopyString(info.GetSecondaryTitle());
-    data->subtitle = CopyString(info.GetSubtitle());
+    data->subtitle = CopyString(LocalizePlacePageSubtitle(info.GetSubtitle()));
     data->address = CopyString(info.GetSecondarySubtitle());
     data->lat = ll.m_lat;
     data->lon = ll.m_lon;
