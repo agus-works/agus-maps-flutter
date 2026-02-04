@@ -58,6 +58,7 @@ flutter:
   # which is extracted at runtime and loaded by native localization code.
   # See setLocale() API for locale configuration.
   assets:
+    - assets/fonts/
     - assets/localized_types/af.lproj/
     - assets/localized_types/ar.lproj/
     - assets/localized_types/ast.lproj/
