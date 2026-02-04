@@ -32,6 +32,7 @@ extern "C" {
   int32_t agus_get_rendered_height(void);
   int agus_copy_pixels(uint8_t* buffer, int32_t bufferSize);
   void agus_set_frame_ready_callback(void (*callback)(void));
+  void comaps_shutdown(void);
 }
 
 // ============================================================================
@@ -198,6 +199,7 @@ G_DEFINE_TYPE(AgusMapsFlutterPlugin, agus_maps_flutter_plugin, g_object_get_type
 
 // Global plugin instance for frame callback
 static AgusMapsFlutterPlugin* g_plugin_instance = nullptr;
+static std::atomic<bool> g_shutdown_called{false};
 
 using PlacePageHasDataFn = int (*)();
 using PlacePageCopyFn = AgusPlacePageData* (*)();
@@ -711,6 +713,10 @@ static void agus_maps_flutter_plugin_dispose(GObject* object) {
   if (self->surface_created) {
     agus_native_on_surface_destroyed();
     self->surface_created = FALSE;
+  }
+
+  if (!g_shutdown_called.exchange(true)) {
+    comaps_shutdown();
   }
 
   if (self->registrar) {
