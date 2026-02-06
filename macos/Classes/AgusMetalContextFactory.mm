@@ -313,7 +313,6 @@ public:
         // [m_frameCommandBuffer presentDrawable:m_frameDrawable]; // SKIP THIS!
 
         // Capture count for completion handler
-        int currentCount = presentCount;
         bool notifyFlutter = (m_initialFrameCount > 0);
         if (notifyFlutter) {
             m_initialFrameCount--;
