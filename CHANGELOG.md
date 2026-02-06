@@ -85,7 +85,7 @@
 
 ### Dependencies
 
-* **Tooling updates**: `archive` 4.0.7, `ffigen` 20.1.1, `flutter_lints` 6.0.0; CI Flutter updated to 3.38.7.
+* **Tooling updates**: `archive` 4.0.7, `ffigen` 20.1.1, `flutter_lints` 6.0.0; CI Flutter updated to 3.38.9.
 
 ### Documentation
 
