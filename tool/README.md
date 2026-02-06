@@ -296,7 +296,7 @@ Build configuration constants and utilities.
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `defaultComapsTag` | `v2026.01.08-11` | Default CoMaps git tag |
-| `flutterVersion` | `3.38.7` | Target Flutter version |
+| `flutterVersion` | `3.38.9` | Target Flutter version |
 | `cmakeVersion` | `4.2.1` | CMake version |
 | `ndkVersion` | `29.0.14206865` | Android NDK version |
 | `buildType` | `Release` | CMake build type |
