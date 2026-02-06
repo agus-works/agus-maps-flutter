@@ -20,6 +20,7 @@
 // ============================================================================
 // Namespace-scope state (same as agus_localization.cpp)
 // ============================================================================
+#define AGUS_WEAK __attribute__((weak))
 namespace {
 std::mutex g_mutex;
 std::unordered_map<std::string, std::string> g_typeTranslations;
@@ -155,7 +156,7 @@ namespace {
 namespace platform
 {
 
-std::string GetLocalizedTypeName(std::string const& type)
+AGUS_WEAK std::string GetLocalizedTypeName(std::string const& type)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     EnsureTranslationsLoaded();
@@ -170,13 +171,13 @@ std::string GetLocalizedTypeName(std::string const& type)
     return type;
 }
 
-std::string GetLocalizedBrandName(std::string const& brand)
+AGUS_WEAK std::string GetLocalizedBrandName(std::string const& brand)
 {
     // Brands are typically not translated - return as-is
     return brand;
 }
 
-std::string GetLocalizedString(std::string const& key)
+AGUS_WEAK std::string GetLocalizedString(std::string const& key)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     EnsureTranslationsLoaded();
@@ -193,7 +194,7 @@ std::string GetLocalizedString(std::string const& key)
     return key;
 }
 
-std::string GetCurrencySymbol(std::string const& currencyCode)
+AGUS_WEAK std::string GetCurrencySymbol(std::string const& currencyCode)
 {
     @autoreleasepool {
         NSLocale* locale = [NSLocale currentLocale];
@@ -205,7 +206,7 @@ std::string GetCurrencySymbol(std::string const& currencyCode)
     return currencyCode;
 }
 
-std::string GetLocalizedMyPositionBookmarkName()
+AGUS_WEAK std::string GetLocalizedMyPositionBookmarkName()
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     EnsureTranslationsLoaded();
@@ -217,26 +218,26 @@ std::string GetLocalizedMyPositionBookmarkName()
     return "My Position";
 }
 
-LocalizedUnits const& GetLocalizedDistanceUnits()
+AGUS_WEAK LocalizedUnits const& GetLocalizedDistanceUnits()
 {
     auto units = measurement_utils::Units::Metric;
     settings::TryGet(settings::kMeasurementUnits, units);
     return (units == measurement_utils::Units::Metric) ? g_distanceUnitsMetric : g_distanceUnitsImperial;
 }
 
-LocalizedUnits const& GetLocalizedAltitudeUnits()
+AGUS_WEAK LocalizedUnits const& GetLocalizedAltitudeUnits()
 {
     auto units = measurement_utils::Units::Metric;
     settings::TryGet(settings::kMeasurementUnits, units);
     return (units == measurement_utils::Units::Metric) ? g_altitudeUnitsMetric : g_altitudeUnitsImperial;
 }
 
-std::string const& GetLocalizedSpeedUnits(measurement_utils::Units units)
+AGUS_WEAK std::string const& GetLocalizedSpeedUnits(measurement_utils::Units units)
 {
     return (units == measurement_utils::Units::Metric) ? g_speedUnitsMetric : g_speedUnitsImperial;
 }
 
-std::string const& GetLocalizedSpeedUnits()
+AGUS_WEAK std::string const& GetLocalizedSpeedUnits()
 {
     auto units = measurement_utils::Units::Metric;
     settings::TryGet(settings::kMeasurementUnits, units);
@@ -251,7 +252,7 @@ std::string const& GetLocalizedSpeedUnits()
 extern "C" {
 
 __attribute__((visibility("default")))
-void agus_localization_set_locale(const char* localeTag)
+AGUS_WEAK void agus_localization_set_locale(const char* localeTag)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_explicitLocaleTag = localeTag ? localeTag : "";
@@ -261,7 +262,7 @@ void agus_localization_set_locale(const char* localeTag)
 }
 
 __attribute__((visibility("default")))
-const char* agus_localization_get_locale()
+AGUS_WEAK const char* agus_localization_get_locale()
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     EnsureTranslationsLoaded();
@@ -275,3 +276,4 @@ const char* agus_localization_get_locale()
 }
 
 }  // extern "C"
+#undef AGUS_WEAK
