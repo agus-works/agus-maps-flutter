@@ -74,7 +74,7 @@ For developers using the published plugin:
    ```bash
    export AGUS_MAPS_HOME=/path/to/agus-maps-sdk-v0.1.7
    ```
-4. Copy assets to your Flutter app
+4. Copy assets from `example/assets/` to your Flutter app
 5. Build your app
 
 ### SDK Structure
@@ -91,7 +91,7 @@ agus-maps-sdk-vX.Y.Z/
 │   └── CoMaps.xcframework/
 ├── windows/prebuilt/x64/
 ├── linux/prebuilt/x64/
-├── assets/
+├── example/assets/
 │   ├── comaps_data/    # Engine data (styles, fonts, etc.)
 │   └── maps/           # ICU data + MWM map files
 └── headers/            # C++ headers (optional, for source builds)

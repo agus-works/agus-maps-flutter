@@ -1488,25 +1488,24 @@ jobs:
 
       - name: Create Assets Archive
         run: |
-          mkdir -p assets_package/assets
+          mkdir -p assets_package/example
 
-          # Copy CoMaps data
-          # We need to maintain the structure expected by the app/plugin
-          # Plugin expects: assets/comaps_data/...
-          mkdir -p assets_package/assets/comaps_data
-          cp -r thirdparty/comaps/data/* assets_package/assets/comaps_data/
+          # Package example/assets as the canonical asset bundle
+          # This includes comaps_data and maps (ICU only)
+          cp -r example/assets assets_package/example/
 
-          # Copy Map MWMs
-          # We only include icudt75l.dat, NOT the mwm files
-          mkdir -p assets_package/assets/maps
-          cp example/assets/maps/icudt75l.dat assets_package/assets/maps/
+          # Remove large MWM files and reports from the SDK archive
+          if [ -d assets_package/example/assets/maps ]; then
+            find assets_package/example/assets/maps -name "*.mwm" -delete
+            find assets_package/example/assets/maps -name "*_report.json" -delete
+          fi
 
           echo "=== Assets Package Content ==="
           ls -R assets_package/
 
           # Zip it
           cd assets_package
-          zip -r ../agus-assets.zip assets
+          zip -r ../agus-assets.zip example
           cd ..
 
           echo "Created agus-assets.zip ($(du -h agus-assets.zip | cut -f1))"
@@ -1677,17 +1676,17 @@ jobs:
           fi
 
           # ---------------------------------------------------------
-          # Assets: assets/comaps_data/, assets/maps/
-          # Archive contains: assets/ folder
-          # Target: root (creates assets/ folder)
+          # Assets: example/assets/comaps_data/, example/assets/maps/
+          # Archive contains: example/ folder
+          # Target: root (creates example/assets/)
           # Note: For plugin consumers who want app-level assets,
-          # they may need to copy assets/ to their app's assets folder.
+          # they should copy example/assets/ to their app's assets folder.
           # ---------------------------------------------------------
           if [ -f ../all-artifacts/agus-assets.zip ]; then
             echo "Extracting assets..."
             unzip -q ../all-artifacts/agus-assets.zip -d .
-            echo "  ✓ Assets: assets/"
-            ls assets/ 2>/dev/null || echo "  (no assets folder)"
+            echo "  ✓ Assets: example/assets/"
+            ls example/assets/ 2>/dev/null || echo "  (no assets folder)"
           fi
 
           # ---------------------------------------------------------
@@ -1750,7 +1749,7 @@ jobs:
                ```
             3. Copy assets to your Flutter app:
                ```bash
-               cp -r $AGUS_MAPS_HOME/assets/* your_app/assets/
+               cp -r $AGUS_MAPS_HOME/example/assets/* your_app/assets/
                ```
             4. Build your app
 
@@ -1760,7 +1759,7 @@ jobs:
             - `macos/Frameworks/CoMaps.xcframework/`
             - `windows/prebuilt/x64/`
             - `linux/prebuilt/x64/`
-            - `assets/` (CoMaps data files - copy to your app)
+            - `example/assets/` (CoMaps data files - copy to your app)
             - `headers/` (C++ headers, for building from source)
 
             > **Note:** Headers are included for developers who need to build from source.

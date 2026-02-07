@@ -26,7 +26,7 @@ dart run tool/build.dart
 # Build native binaries for all platforms (contributor mode)
 dart run tool/build.dart --build-binaries
 
-# Sync assets from thirdparty/comaps to assets/
+# Sync assets from thirdparty/comaps to example/assets
 dart run tool/asset_tools.dart
 
 # Download map files from CoMaps CDN
@@ -97,7 +97,7 @@ dart run tool/build.dart --no-cache
 3. **Generate CoMaps Data** - Run data generation scripts (classificator, symbols, etc.)
 4. **Sync Localized Strings** - Copy localization assets
 5. **Copy Data Files** - Copy essential data files to example assets
-6. **Update pubspec Assets** - Regenerate Flutter asset declarations
+6. **Update example pubspec assets** - Regenerate Flutter asset declarations
 7. **Build Native Binaries** - Compile platform-specific libraries (if `--build-binaries`)
 8. **Build Metal Shaders** - Compile Metal shaders for iOS/macOS (if applicable)
 9. **Setup CocoaPods** - Run pod install for iOS/macOS (if applicable)
@@ -115,7 +115,7 @@ The build tool implements local caching for faster iteration:
 
 ### `asset_tools.dart` - Asset Tool
 
-Synchronizes assets from thirdparty/comaps into the plugin's assets directories and updates pubspec.yaml asset declarations.
+Synchronizes assets from thirdparty/comaps into the example app's assets directory and updates example pubspec asset declarations.
 
 #### Usage
 
@@ -127,8 +127,8 @@ dart run tool/asset_tools.dart [options]
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--copy-assets` | `-c` | Copy assets from thirdparty/comaps into assets/ and example/assets |
-| `--update-pubspec` | `-u` | Regenerate pubspec.yaml assets list from assets/ |
+| `--copy-assets` | `-c` | Copy assets from thirdparty/comaps into example/assets |
+| `--update-pubspec` | `-u` | Regenerate example/pubspec.yaml assets list from example/assets |
 | `--help` | `-h` | Show help message |
 
 #### Examples
@@ -140,13 +140,13 @@ dart run tool/asset_tools.dart
 # Copy assets only
 dart run tool/asset_tools.dart --copy-assets
 
-# Update pubspec.yaml assets list only
+# Update example/pubspec.yaml assets list only
 dart run tool/asset_tools.dart --update-pubspec
 ```
 
 #### Functions
 
-- **syncLocalizedStringsAssets** - Copies localized strings from `thirdparty/comaps/iphone/Maps/LocalizedStrings/` to `assets/localized_types/`
+- **syncLocalizedStringsAssets** - Copies localized strings from `thirdparty/comaps/iphone/Maps/LocalizedStrings/` to `example/assets/comaps_data/localized_types/`
 - **copyDataFiles** - Copies essential CoMaps data files to `example/assets/comaps_data/`:
   - Configuration files: `classificator.txt`, `types.txt`, `categories.txt`, `visibility.txt`
   - Drawing rules: `drules_proto*.bin`, `drules_hash`
@@ -154,8 +154,7 @@ dart run tool/asset_tools.dart --update-pubspec
   - Visual assets: `colors.txt`, `patterns.txt`, `transit_colors.txt`
   - Directories: `fonts/`, `symbols/`, `styles/`, `categories-strings/`, `countries-strings/`
   - ICU data: `icudt75l.dat`
-- **updateFlutterAssetsList** - Scans `assets/` directory and updates `pubspec.yaml` with proper asset declarations
-- **updateExampleLocalizedTypesAssets** - Updates `example/pubspec.yaml` with localized_types asset entries
+- **updateExampleAssetsList** - Scans `example/assets/` and updates `example/pubspec.yaml` with proper asset declarations
 
 ---
 

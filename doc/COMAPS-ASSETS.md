@@ -29,7 +29,7 @@ The CoMaps rendering engine requires several categories of static data files to 
 │                         CoMaps Asset Flow                               │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  1. SOURCE (thirdparty/comaps/data/)                                    │
+│  1. SOURCE (thirdparty/comaps/data/ + iphone/Maps/LocalizedStrings/)    │
 │     │                                                                   │
 │     ▼ tool/build.dart (asset copy step)                                 │
 │                                                                         │
@@ -115,7 +115,7 @@ categories-strings/
 | `symbols/` | Map icons (POI markers, etc.) at various DPI scales |
 | `styles/` | Map style definitions |
 | `fonts/` | Font files for text rendering (optional, uses system fonts) |
-| `localized_types/` | LocalizableTypes.strings used for POI subtitle localization (Android native) |
+| `localized_types/` | LocalizableTypes.strings used for POI subtitle localization (Android native), sourced from CoMaps iOS LocalizedStrings |
 
 **Important:** POI icons require the generated atlas files `symbols.png` and `symbols.sdf` inside each DPI folder
 (e.g. `symbols/xxhdpi/light/symbols.png` and `symbols/xxhdpi/light/symbols.sdf`). These are produced by
@@ -142,7 +142,7 @@ See [MWM Map Files](#mwm-map-files) section for details.
 
 ## Source of Truth: thirdparty/comaps
 
-All CoMaps assets originate from the `thirdparty/comaps/data/` directory, which is a git checkout of the [CoMaps repository](https://codeberg.org/comaps/comaps).
+All CoMaps assets originate from the `thirdparty/comaps/` checkout of the [CoMaps repository](https://codeberg.org/comaps/comaps). Most assets come from `thirdparty/comaps/data/`, while `localized_types/` is sourced from `thirdparty/comaps/iphone/Maps/LocalizedStrings/`.
 
 ### Fetching CoMaps Source
 
@@ -194,9 +194,11 @@ dart run tool/build.dart --no-cache
    - `symbols/`
    - `styles/`
    - `fonts/`
-   - `localized_types/`
+6. **Copies** localized type strings from
+   `thirdparty/comaps/iphone/Maps/LocalizedStrings/` into
+   `example/assets/comaps_data/localized_types/`
 
-6. **Generates symbols atlas** (if missing):
+7. **Generates symbols atlas** (if missing):
    - Runs `tools/unix/generate_symbols.sh`
    - Produces `symbols.png` and `symbols.sdf` for all DPI buckets
 
