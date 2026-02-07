@@ -234,14 +234,14 @@ set AGUS_MAPS_HOME=C:\path\to\agus-maps-sdk-vX.Y.Z
 
 #### Step 5: Copy Assets
 
-Copy the `assets` folder from the SDK into your Flutter app's root directory.
+Copy the SDK's `example/assets` folder into your Flutter app's root directory.
 
 ```bash
 # MacOS/Linux
-cp -r $AGUS_MAPS_HOME/assets/ my_flutter_app/assets/
+cp -r $AGUS_MAPS_HOME/example/assets/ my_flutter_app/assets/
 
 # Windows
-Copy-Item -Recurse "$env:AGUS_MAPS_HOME\assets" "my_flutter_app\assets"
+Copy-Item -Recurse "$env:AGUS_MAPS_HOME\example\assets" "my_flutter_app\assets"
 ```
 
 Then add the assets to your `pubspec.yaml`. For now, there are a lot of assets that needs to be added. This is the way until we figure out a better way to do this.
@@ -438,7 +438,8 @@ If you can successfully build and run the quickstart app, your development envir
 
 5. Update your environment variable `AGUS_MAPS_HOME` to point to the new directory.
 
-6. **Copy the new assets** to your app root (overwriting old ones).
+6. **Copy the new assets** from `example/assets/` in the SDK to your app root
+  (overwriting old ones).
 
 7. **Clear cached headers** (iOS/macOS only):
    ```bash
@@ -492,8 +493,8 @@ For projects that need to vendor the plugin locally (offline builds, custom modi
 
 4. Copy assets to your app:
    ```bash
-   cp -r $AGUS_MAPS_HOME/assets/comaps_data assets/
-   cp -r $AGUS_MAPS_HOME/assets/maps assets/
+  cp -r $AGUS_MAPS_HOME/example/assets/comaps_data assets/
+  cp -r $AGUS_MAPS_HOME/example/assets/maps assets/
    ```
 
 5. Add assets to your `pubspec.yaml` and build.

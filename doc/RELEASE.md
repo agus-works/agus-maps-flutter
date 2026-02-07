@@ -18,7 +18,7 @@ The unified package contains everything needed for all platforms:
 - macOS XCFramework  
 - Windows DLLs (x64)
 - Linux shared libraries (x86_64)
-- CoMaps data files and ICU data
+- CoMaps data files and ICU data (under `example/assets/`)
 - C++ headers (for building from source)
 
 > **💡 Recommended:** Download only `agus-maps-binaries-vX.Y.Z.zip` and extract it into the plugin root. This places all binaries in the correct locations with a single extraction.
@@ -362,7 +362,16 @@ Expand-Archive -Path agus-maps-binaries-vX.Y.Z.zip -DestinationPath C:\path\to\m
 
 **Step 4: Configure assets**
 
-Add the assets to your `pubspec.yaml`:
+Copy the SDK assets from `example/assets/` into your app's `assets/` folder,
+then add them to your `pubspec.yaml`:
+
+```bash
+# Linux/macOS
+cp -r example/assets/* assets/
+
+# Windows (PowerShell)
+Copy-Item -Recurse -Force .\example\assets\* .\assets\
+```
 
 ```yaml
 flutter:
@@ -396,7 +405,7 @@ my_app/
 │   └── zlib1.dll
 ├── linux/prebuilt/x64/
 │   └── libagus_maps_flutter.so
-├── assets/
+├── example/assets/
 │   ├── comaps_data/
 │   │   └── ... (CoMaps resource files)
 │   └── maps/

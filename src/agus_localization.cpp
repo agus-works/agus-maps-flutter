@@ -2,7 +2,8 @@
 ///
 /// Cross-platform localization implementation for agus_maps_flutter.
 /// Provides runtime localization by loading .strings files from the
-/// assets/localized_types/ directory, matching iOS's localization format.
+/// assets/comaps_data/localized_types/ directory, matching iOS's localization
+/// format.
 ///
 /// This file implements all functions from platform/localization.hpp:
 /// - GetLocalizedTypeName() - POI type name localization

@@ -6,7 +6,7 @@ import 'dart:io';
 import 'package:args/args.dart';
 
 import 'src/assets_updater.dart'
-    show syncLocalizedStringsAssets, copyDataFiles, updateFlutterAssetsList;
+    show syncLocalizedStringsAssets, copyDataFiles, updateExampleAssetsList;
 
 Future<void> main(List<String> args) async {
   final parser = ArgParser()
@@ -14,14 +14,13 @@ Future<void> main(List<String> args) async {
       'copy-assets',
       abbr: 'c',
       defaultsTo: false,
-      help:
-          'Copy assets from thirdparty/comaps into assets/ and example/assets',
+      help: 'Copy assets from thirdparty/comaps into example/assets',
     )
     ..addFlag(
       'update-pubspec',
       abbr: 'u',
       defaultsTo: false,
-      help: 'Regenerate pubspec.yaml assets list from assets/',
+      help: 'Regenerate example/pubspec.yaml assets list from example/assets',
     )
     ..addFlag(
       'help',
@@ -54,7 +53,7 @@ Future<void> main(List<String> args) async {
     if (!copyAssets && !updatePubspec) {
       await syncLocalizedStringsAssets();
       await copyDataFiles();
-      await updateFlutterAssetsList();
+      await updateExampleAssetsList();
       exit(0);
     }
 
@@ -64,7 +63,7 @@ Future<void> main(List<String> args) async {
     }
 
     if (updatePubspec) {
-      await updateFlutterAssetsList();
+      await updateExampleAssetsList();
     }
 
     exit(0);

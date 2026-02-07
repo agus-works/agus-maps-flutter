@@ -11,14 +11,15 @@ import 'config.dart' show getPackageVersion;
 /// Download SDK from GitHub Releases
 Future<void> downloadSDK(String version) async {
   final repoRoot = getRepoRoot();
-  final sdkUrl = 'https://github.com/agus-works/agus-maps-flutter/releases/download/v$version/agus-maps-sdk-v$version.zip';
+  final sdkUrl =
+      'https://github.com/agus-works/agus-maps-flutter/releases/download/v$version/agus-maps-sdk-v$version.zip';
   final cacheDir = path.join(repoRoot, '.dart_tool', 'agus-maps-sdk');
   final cacheFile = path.join(cacheDir, 'agus-maps-sdk-v$version.zip');
   final extractDir = path.join(cacheDir, 'extracted');
-  
+
   print('Downloading SDK v$version from GitHub Releases...');
   print('URL: $sdkUrl');
-  
+
   // Check cache first
   if (await File(cacheFile).exists()) {
     print('Using cached SDK: $cacheFile');
@@ -26,25 +27,26 @@ Future<void> downloadSDK(String version) async {
     // Download SDK
     await ensureDir(cacheDir);
     print('Downloading...');
-    
+
     final response = await http.get(Uri.parse(sdkUrl));
     if (response.statusCode != 200) {
       throw Exception('Failed to download SDK: HTTP ${response.statusCode}');
     }
-    
+
     await File(cacheFile).writeAsBytes(response.bodyBytes);
-    print('Downloaded SDK: ${(response.bodyBytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
+    print(
+        'Downloaded SDK: ${(response.bodyBytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
   }
-  
+
   // Extract SDK
   print('Extracting SDK...');
   await ensureDir(extractDir);
   await extractZip(cacheFile, extractDir);
-  
+
   // Copy extracted files to plugin directories
   print('Installing SDK to plugin directories...');
   await _installSDK(extractDir, repoRoot);
-  
+
   print('SDK installation complete!');
 }
 
@@ -58,7 +60,7 @@ Future<void> _installSDK(String extractDir, String repoRoot) async {
     await copyPath(androidSrc, androidDest);
     print('  Installed Android binaries');
   }
-  
+
   // iOS framework
   final iosSrc = path.join(extractDir, 'ios', 'Frameworks');
   final iosDest = path.join(repoRoot, 'ios', 'Frameworks');
@@ -67,7 +69,7 @@ Future<void> _installSDK(String extractDir, String repoRoot) async {
     await copyPath(iosSrc, iosDest);
     print('  Installed iOS framework');
   }
-  
+
   // macOS framework
   final macosSrc = path.join(extractDir, 'macos', 'Frameworks');
   final macosDest = path.join(repoRoot, 'macos', 'Frameworks');
@@ -76,7 +78,7 @@ Future<void> _installSDK(String extractDir, String repoRoot) async {
     await copyPath(macosSrc, macosDest);
     print('  Installed macOS framework');
   }
-  
+
   // Windows binaries
   final windowsSrc = path.join(extractDir, 'windows', 'prebuilt');
   final windowsDest = path.join(repoRoot, 'windows', 'prebuilt');
@@ -85,7 +87,7 @@ Future<void> _installSDK(String extractDir, String repoRoot) async {
     await copyPath(windowsSrc, windowsDest);
     print('  Installed Windows binaries');
   }
-  
+
   // Linux binaries
   final linuxSrc = path.join(extractDir, 'linux', 'prebuilt');
   final linuxDest = path.join(repoRoot, 'linux', 'prebuilt');
@@ -94,12 +96,10 @@ Future<void> _installSDK(String extractDir, String repoRoot) async {
     await copyPath(linuxSrc, linuxDest);
     print('  Installed Linux binaries');
   }
-  
+
   // Assets (optional - typically copied to app)
-  final assetsSrc = path.join(extractDir, 'assets');
-  if (await Directory(assetsSrc).exists()) {
-    // Assets are typically copied to the app, not the plugin
-    // But we can note they're available
-    print('  Assets available in SDK (copy to your app)');
+  final exampleAssetsSrc = path.join(extractDir, 'example', 'assets');
+  if (await Directory(exampleAssetsSrc).exists()) {
+    print('  Assets available in SDK under example/assets (copy to your app)');
   }
 }

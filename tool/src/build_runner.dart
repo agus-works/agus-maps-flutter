@@ -10,7 +10,7 @@ import 'git_operations.dart'
 import 'patch_applicator.dart' show applyPatches;
 import 'file_operations.dart' show ensureDir, copyPath;
 import 'assets_updater.dart'
-    show syncLocalizedStringsAssets, copyDataFiles, updateFlutterAssetsList;
+    show syncLocalizedStringsAssets, copyDataFiles, updateExampleAssetsList;
 import 'process_runner.dart' show runProcess, commandExists;
 import 'cmake_build.dart'
     show
@@ -78,8 +78,8 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
   // Step 5: Copy data files to example/assets
   await copyDataFiles();
 
-  // Step 6: Update pubspec assets list after asset sync/copy
-  await updateFlutterAssetsList();
+  // Step 6: Update example pubspec assets list after asset sync/copy
+  await updateExampleAssetsList();
 
   // Step 7: Build native binaries (if requested)
   bool builtIOS = false;
@@ -652,7 +652,14 @@ Future<void> _copyDataFiles() async {
   }
 
   // Copy localized type strings into comaps_data for Android native localization
-  final localizedTypesSrc = path.join(repoRoot, 'assets', 'localized_types');
+  final localizedTypesSrc = path.join(
+    repoRoot,
+    'thirdparty',
+    'comaps',
+    'iphone',
+    'Maps',
+    'LocalizedStrings',
+  );
   if (await Directory(localizedTypesSrc).exists()) {
     final localizedTypesDest = path.join(destDataDir, 'localized_types');
     await copyPath(localizedTypesSrc, localizedTypesDest);

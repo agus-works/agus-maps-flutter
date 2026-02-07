@@ -79,7 +79,7 @@ We use CoMaps iOS string resources as the canonical source:
 - **Source:**
   - [thirdparty/comaps/iphone/Maps/LocalizedStrings](thirdparty/comaps/iphone/Maps/LocalizedStrings)
 - **Destination:**
-  - [assets/localized_types](assets/localized_types)
+  - [example/assets/comaps_data/localized_types](example/assets/comaps_data/localized_types)
 
 This folder contains both:
 - `LocalizableTypes.strings` (type names)
@@ -91,17 +91,17 @@ A sync step was added to the build tool to keep Flutter assets in sync:
   - `_syncLocalizedStringsAssets()`
 
 **What it does:**
-1. Deletes `assets/localized_types/` if it exists.
+1. Deletes `example/assets/comaps_data/localized_types/` if it exists.
 2. Copies all locales from
    [thirdparty/comaps/iphone/Maps/LocalizedStrings](thirdparty/comaps/iphone/Maps/LocalizedStrings)
-   into [assets/localized_types](assets/localized_types).
+  into [example/assets/comaps_data/localized_types](example/assets/comaps_data/localized_types).
 
 ### Additional copy for Android data
 When data files are prepared for Android, the localized types folder is copied
-into the native data bundle:
+directly from the CoMaps iOS localization source into the native data bundle:
 - [tool/src/build_runner.dart](tool/src/build_runner.dart)
-  - `_copyDataFiles()` copies `assets/localized_types/` into
-    `comaps_data/localized_types/` for Android runtime usage.
+  - `_copyDataFiles()` copies `thirdparty/comaps/iphone/Maps/LocalizedStrings/`
+    into `example/assets/comaps_data/localized_types/` for Android runtime usage.
 
 ## Result
 All platforms now receive raw type keys and metadata tags from native, and

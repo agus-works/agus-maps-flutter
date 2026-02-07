@@ -89,6 +89,7 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
+  # NOTE: This assets list is auto-generated from example/assets during builds.
   assets:
     - assets/comaps_data/
     - assets/comaps_data/categories-strings/ar.json/
@@ -117,6 +118,7 @@ flutter:
     - assets/comaps_data/categories-strings/it.json/
     - assets/comaps_data/categories-strings/ja.json/
     - assets/comaps_data/categories-strings/ko.json/
+    - assets/comaps_data/categories-strings/lt.json/
     - assets/comaps_data/categories-strings/lv.json/
     - assets/comaps_data/categories-strings/mr.json/
     - assets/comaps_data/categories-strings/nb.json/
@@ -145,7 +147,6 @@ flutter:
     - assets/comaps_data/countries-strings/cy.json/
     - assets/comaps_data/countries-strings/da.json/
     - assets/comaps_data/countries-strings/de.json/
-    - assets/comaps_data/countries-strings/default.json/
     - assets/comaps_data/countries-strings/el.json/
     - assets/comaps_data/countries-strings/en.json/
     - assets/comaps_data/countries-strings/es.json/
@@ -181,7 +182,6 @@ flutter:
     - assets/comaps_data/countries-strings/zh-Hans.json/
     - assets/comaps_data/countries-strings/zh-Hant.json/
     - assets/comaps_data/fonts/
-    - assets/comaps_data/localized_types/
     - assets/comaps_data/localized_types/af.lproj/
     - assets/comaps_data/localized_types/ar.lproj/
     - assets/comaps_data/localized_types/ast.lproj/
@@ -248,8 +248,6 @@ flutter:
     - assets/comaps_data/localized_types/vi.lproj/
     - assets/comaps_data/localized_types/zh-Hans.lproj/
     - assets/comaps_data/localized_types/zh-Hant.lproj/
-    - assets/comaps_data/styles/
-    - assets/comaps_data/styles/default/
     - assets/comaps_data/styles/default/dark/
     - assets/comaps_data/styles/default/dark/symbols-ad/
     - assets/comaps_data/styles/default/dark/symbols/
@@ -257,38 +255,27 @@ flutter:
     - assets/comaps_data/styles/default/light/
     - assets/comaps_data/styles/default/light/symbols-ad/
     - assets/comaps_data/styles/default/light/symbols/
-    - assets/comaps_data/styles/outdoors/
     - assets/comaps_data/styles/outdoors/dark/
     - assets/comaps_data/styles/outdoors/include/
     - assets/comaps_data/styles/outdoors/light/
-    - assets/comaps_data/styles/vehicle/
     - assets/comaps_data/styles/vehicle/dark/
     - assets/comaps_data/styles/vehicle/include/
     - assets/comaps_data/styles/vehicle/light/
-    - assets/comaps_data/symbols/
-    - assets/comaps_data/symbols/6plus/
     - assets/comaps_data/symbols/6plus/dark/
     - assets/comaps_data/symbols/6plus/light/
     - assets/comaps_data/symbols/default/
-    - assets/comaps_data/symbols/hdpi/
     - assets/comaps_data/symbols/hdpi/dark/
     - assets/comaps_data/symbols/hdpi/light/
-    - assets/comaps_data/symbols/mdpi/
     - assets/comaps_data/symbols/mdpi/dark/
     - assets/comaps_data/symbols/mdpi/light/
-    - assets/comaps_data/symbols/xhdpi/
     - assets/comaps_data/symbols/xhdpi/dark/
     - assets/comaps_data/symbols/xhdpi/light/
-    - assets/comaps_data/symbols/xxhdpi/
     - assets/comaps_data/symbols/xxhdpi/dark/
     - assets/comaps_data/symbols/xxhdpi/light/
-    - assets/comaps_data/symbols/xxxhdpi/
     - assets/comaps_data/symbols/xxxhdpi/dark/
     - assets/comaps_data/symbols/xxxhdpi/light/
-    - assets/maps/Gibraltar.mwm
-    - assets/maps/World.mwm
-    - assets/maps/WorldCoasts.mwm
-    - assets/maps/icudt75l.dat
+    - assets/countries-strings/en.json/
+    - assets/maps/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
