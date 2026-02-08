@@ -1087,6 +1087,11 @@ jobs:
           optipng -version
         shell: pwsh
 
+      - name: Install MinGW Zlib (Git Bash)
+        run: |
+          & "C:\Program Files\Git\usr\bin\pacman.exe" -S --noconfirm mingw-w64-x86_64-zlib
+        shell: pwsh
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
