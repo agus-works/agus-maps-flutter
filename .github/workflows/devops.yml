@@ -1081,6 +1081,12 @@ jobs:
           cache: true
           setup-python: 'false'
 
+      - name: Install OptiPNG
+        run: |
+          choco install optipng -y
+          optipng -version
+        shell: pwsh
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -1102,6 +1108,25 @@ jobs:
           AGUS_MAPS_BUILD_MODE: contributor
         run: |
           dart run tool/build.dart --no-cache
+        shell: pwsh
+
+      - name: Verify Symbols Atlas
+        run: |
+          $symbolsRoot = "example\assets\comaps_data\symbols\xxhdpi"
+          $required = @(
+            Join-Path $symbolsRoot "light\symbols.png",
+            Join-Path $symbolsRoot "light\symbols.sdf",
+            Join-Path $symbolsRoot "dark\symbols.png",
+            Join-Path $symbolsRoot "dark\symbols.sdf"
+          )
+
+          $missing = $required | Where-Object { -not (Test-Path $_) }
+          if ($missing.Count -gt 0) {
+            Write-Error "Missing symbol atlas files:\n$($missing -join "`n")"
+            Write-Error "Ensure generate_symbols.sh runs successfully (OptiPNG is required)."
+            exit 1
+          }
+          Write-Host "✓ Symbol atlas present in example/assets"
         shell: pwsh
 
       # ======================================================================
