@@ -903,7 +903,9 @@ jobs:
 
       - name: Install Python Protobuf
         shell: pwsh
-        run: pip install protobuf
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "protobuf<4.0"
 
       # ======================================================================
       # CoMaps Source Cache (Azure Blob Storage)
