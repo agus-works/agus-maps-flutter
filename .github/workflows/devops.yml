@@ -1087,9 +1087,28 @@ jobs:
           optipng -version
         shell: pwsh
 
-      - name: Install MinGW Zlib (Git Bash)
+      - name: Install MinGW Zlib (MSYS2)
         run: |
-          & "C:\Program Files\Git\usr\bin\pacman.exe" -S --noconfirm mingw-w64-x86_64-zlib
+          $pacmanCandidates = @(
+            "C:\Program Files\Git\usr\bin\pacman.exe",
+            "C:\tools\msys64\usr\bin\pacman.exe",
+            "C:\msys64\usr\bin\pacman.exe"
+          )
+
+          $pacman = $pacmanCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $pacman) {
+            Write-Host "pacman not found; installing MSYS2 via Chocolatey"
+            choco install msys2 -y
+            $pacman = $pacmanCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+
+          if (-not $pacman) {
+            Write-Error "pacman not found after MSYS2 install"
+            exit 1
+          }
+
+          & $pacman -Syu --noconfirm
+          & $pacman -S --noconfirm mingw-w64-x86_64-zlib
         shell: pwsh
 
       - name: Setup Flutter
