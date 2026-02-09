@@ -1133,7 +1133,20 @@ jobs:
           COMAPS_TAG: ${{ env.COMAPS_TAG }}
           AGUS_MAPS_BUILD_MODE: contributor
         run: |
+          if (-not $env:MSYS2_ROOT) {
+            Write-Error "MSYS2_ROOT not set; cannot configure MinGW toolchain for assets"
+            exit 1
+          }
+
           $env:PATH = "$env:MSYS2_ROOT\mingw64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
+          $env:ZLIB_ROOT = "$env:MSYS2_ROOT\mingw64"
+          $env:ZLIB_INCLUDE_DIR = "$env:MSYS2_ROOT\mingw64\include"
+          $env:ZLIB_LIBRARY = "$env:MSYS2_ROOT\mingw64\lib\libz.dll.a"
+          if ($env:CMAKE_PREFIX_PATH) {
+            $env:CMAKE_PREFIX_PATH = "$env:MSYS2_ROOT\mingw64;$env:CMAKE_PREFIX_PATH"
+          } else {
+            $env:CMAKE_PREFIX_PATH = "$env:MSYS2_ROOT\mingw64"
+          }
           dart run tool/build.dart --no-cache
         shell: pwsh
 
