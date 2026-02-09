@@ -1106,7 +1106,7 @@ jobs:
             exit 1
           }
 
-          $msysRoot = Split-Path -Parent (Split-Path -Parent $pacman)
+          $msysRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $pacman))
           & $pacman -Syu --noconfirm
           & $pacman -S --noconfirm mingw-w64-x86_64-zlib
 
@@ -1132,8 +1132,8 @@ jobs:
         env:
           COMAPS_TAG: ${{ env.COMAPS_TAG }}
           AGUS_MAPS_BUILD_MODE: contributor
-          PATH: ${{ env.MSYS2_ROOT }}\mingw64\bin;${{ env.MSYS2_ROOT }}\usr\bin;${{ env.PATH }}
         run: |
+          $env:PATH = "$env:MSYS2_ROOT\mingw64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
           dart run tool/build.dart --no-cache
         shell: pwsh
 
