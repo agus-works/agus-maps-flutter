@@ -1090,7 +1090,6 @@ jobs:
       - name: Install MinGW Zlib (MSYS2)
         run: |
           $pacmanCandidates = @(
-            "C:\Program Files\Git\usr\bin\pacman.exe",
             "C:\tools\msys64\usr\bin\pacman.exe",
             "C:\msys64\usr\bin\pacman.exe"
           )
@@ -1107,8 +1106,11 @@ jobs:
             exit 1
           }
 
+          $msysRoot = Split-Path -Parent (Split-Path -Parent $pacman)
           & $pacman -Syu --noconfirm
           & $pacman -S --noconfirm mingw-w64-x86_64-zlib
+
+          "MSYS2_ROOT=${msysRoot}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         shell: pwsh
 
       - name: Setup Flutter
@@ -1130,6 +1132,7 @@ jobs:
         env:
           COMAPS_TAG: ${{ env.COMAPS_TAG }}
           AGUS_MAPS_BUILD_MODE: contributor
+          PATH: ${{ env.MSYS2_ROOT }}\mingw64\bin;${{ env.MSYS2_ROOT }}\usr\bin;${{ env.PATH }}
         run: |
           dart run tool/build.dart --no-cache
         shell: pwsh
