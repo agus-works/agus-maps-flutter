@@ -901,11 +901,22 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install Python Protobuf
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           python -m pip install "protobuf<4.0"
+          python -c "import sys, google.protobuf; print(f'Python: {sys.executable}'); print(f'protobuf: {google.protobuf.__version__}')"
+
+          $pythonExe = (Get-Command python).Source
+          $pythonRoot = Split-Path -Parent $pythonExe
+          "PYTHON3_EXECUTABLE=$pythonExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PYTHON3_ROOT_DIR=$pythonRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       # ======================================================================
       # CoMaps Source Cache (Azure Blob Storage)
@@ -1134,6 +1145,8 @@ jobs:
         env:
           COMAPS_TAG: ${{ env.COMAPS_TAG }}
           AGUS_MAPS_BUILD_MODE: contributor
+          Python3_EXECUTABLE: ${{ env.PYTHON3_EXECUTABLE }}
+          Python3_ROOT_DIR: ${{ env.PYTHON3_ROOT_DIR }}
         run: |
           if (-not $env:MSYS2_ROOT) {
             Write-Error "MSYS2_ROOT not set; cannot configure MinGW toolchain for assets"
@@ -1149,6 +1162,19 @@ jobs:
           } else {
             $env:CMAKE_PREFIX_PATH = "$env:MSYS2_ROOT\mingw64"
           }
+
+          Write-Host "=== Python Diagnostics ==="
+          python --version
+          where.exe python
+          if (Get-Command python3 -ErrorAction SilentlyContinue) {
+            python3 --version
+            where.exe python3
+          } else {
+            Write-Host "python3 not found in PATH"
+          }
+          Write-Host "Python3_EXECUTABLE=$env:Python3_EXECUTABLE"
+          Write-Host "Python3_ROOT_DIR=$env:Python3_ROOT_DIR"
+
           dart run tool/build.dart --no-cache
         shell: pwsh
 
