@@ -881,6 +881,328 @@ jobs:
           path: artifacts/*
 
   # ==========================================================================
+  # Linux Job: Builds Android (for speed comparison vs macOS)
+  # ==========================================================================
+  build-and-release-android-linux-platform:
+    name: Build Android (using Linux)
+    # Toggle: set to 'true' to run Android-on-Linux, 'false' to skip
+    if: ${{ github.ref_type == 'tag' || needs.detect-tag.outputs.has_tag != 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    needs: detect-tag
+    steps:
+      # ======================================================================
+      # Setup
+      # ======================================================================
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # ======================================================================
+      # CoMaps Source Cache (Azure Blob Storage)
+      # ======================================================================
+      - name: Check CoMaps Cache
+        id: comaps-cache
+        run: |
+          # Parse Azure SAS URL into base URL and token
+          AZ_URL="${{ secrets.AZ_URL }}"
+          BASE_URL="${AZ_URL%%\?*}"
+          SAS_TOKEN="${AZ_URL#*\?}"
+          CACHE_FILE="agus/agus-comaps-linux-${{ env.COMAPS_TAG }}.tar.gz"
+          CACHE_URL="${BASE_URL}/${CACHE_FILE}?${SAS_TOKEN}"
+
+          echo "Checking for cache: ${BASE_URL}/${CACHE_FILE}"
+          if curl -sf --head "$CACHE_URL" > /dev/null 2>&1; then
+            echo "✓ Cache found!"
+            echo "cache-hit=true" >> $GITHUB_OUTPUT
+          else
+            echo "✗ Cache not found, will clone from git"
+            echo "cache-hit=false" >> $GITHUB_OUTPUT
+          fi
+          echo "cache-url=$CACHE_URL" >> $GITHUB_OUTPUT
+
+      - name: Download CoMaps from Cache
+        if: steps.comaps-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "Downloading CoMaps from Azure Blob Storage cache..."
+          mkdir -p thirdparty
+          curl -fL "${{ steps.comaps-cache.outputs.cache-url }}" | tar -xz -C thirdparty
+
+          echo "=== Verifying Cache Extraction ==="
+          ls -F thirdparty/comaps | head -10
+
+          if [ ! -d "thirdparty/comaps/.git" ]; then
+            echo "CRITICAL: .git directory not found in thirdparty/comaps!"
+            exit 1
+          fi
+
+          cd thirdparty/comaps
+          echo "Current HEAD: $(git rev-parse HEAD)"
+          echo "Expected Tag: ${{ env.COMAPS_TAG }}"
+          cd ../..
+
+          echo "✓ CoMaps restored from cache ($(du -sh thirdparty/comaps | cut -f1))"
+
+      - name: Clone CoMaps (Cache Miss)
+        id: clone-comaps
+        if: steps.comaps-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Cloning CoMaps with recursive submodules (this takes ~5-10 min)..."
+          mkdir -p thirdparty
+          git clone https://github.com/comaps/comaps.git thirdparty/comaps
+          cd thirdparty/comaps
+          git fetch --tags --prune
+          git checkout --detach ${{ env.COMAPS_TAG }}
+          git submodule update --init --recursive
+          git lfs pull
+          git submodule foreach --recursive git lfs pull
+          cd ../..
+          echo "✓ Clone complete ($(du -sh thirdparty/comaps | cut -f1))"
+          echo "cloned=true" >> $GITHUB_OUTPUT
+
+      - name: Upload CoMaps to Cache
+        if: steps.clone-comaps.outputs.cloned == 'true'
+        run: |
+          echo "Uploading pristine CoMaps to Azure Blob Storage cache..."
+
+          # Install azcopy
+          echo "Installing azcopy..."
+          curl -fsSL https://aka.ms/downloadazcopy-v10-linux -o /tmp/azcopy.tar.gz
+          tar -xzf /tmp/azcopy.tar.gz -C /tmp
+          AZCOPY=$(find /tmp -name 'azcopy' -type f 2>/dev/null | head -1)
+          chmod +x "$AZCOPY"
+
+          # Compress
+          if command -v pigz &> /dev/null; then
+            tar -c -C thirdparty comaps | pigz -1 > /tmp/comaps-cache.tar.gz
+          else
+            tar -cz -C thirdparty comaps > /tmp/comaps-cache.tar.gz
+          fi
+          CACHE_SIZE=$(du -h /tmp/comaps-cache.tar.gz | cut -f1)
+          echo "Cache archive size: $CACHE_SIZE"
+
+          # Upload
+          "$AZCOPY" copy /tmp/comaps-cache.tar.gz "${{ steps.comaps-cache.outputs.cache-url }}" \
+            --blob-type BlockBlob \
+            --overwrite=true
+
+          rm /tmp/comaps-cache.tar.gz
+          echo "✓ Cache uploaded successfully ($CACHE_SIZE)"
+
+      # ======================================================================
+      # Android SDK/NDK Setup
+      # ======================================================================
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          echo "Installing Android NDK ${{ env.NDK_VERSION }}..."
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "ndk;${{ env.NDK_VERSION }}"
+
+          # Set environment variables
+          NDK_PATH="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
+
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+
+          echo "✓ NDK installed at: $NDK_PATH"
+
+      - name: Verify Android Build Tools
+        run: |
+          echo "=== Android SDK Location ==="
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+
+          echo ""
+          echo "=== NDK Version ==="
+          NDK_PROPS="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}/source.properties"
+          if [ -f "$NDK_PROPS" ]; then
+            grep "Pkg.Revision" "$NDK_PROPS"
+          else
+            echo "ERROR: NDK not found at expected path!"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== CMake from NDK ==="
+          CMAKE_PATH=$(find "$ANDROID_HOME/cmake" -name "cmake" -type f 2>/dev/null | head -1)
+          if [ -n "$CMAKE_PATH" ]; then
+            "$CMAKE_PATH" --version
+          else
+            echo "CMake not found in Android SDK, will use system cmake"
+            cmake --version || echo "No system cmake either"
+          fi
+
+      - name: Install Linux Build Dependencies
+        run: |
+          echo "Installing Linux build dependencies..."
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            zip \
+            python3-venv
+
+          echo "CMake version:"
+          cmake --version
+          echo "Ninja version:"
+          ninja --version
+
+          python3 -m venv $HOME/.protobuf-venv
+          source $HOME/.protobuf-venv/bin/activate
+          pip install --upgrade pip
+          pip install 'protobuf<4.0'
+          echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT6_VERSION }}
+          cache: true
+          setup-python: 'false'
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+          ninjaVersion: latest
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      # ======================================================================
+      # Get Flutter Dependencies (for Dart build tool)
+      # ======================================================================
+      - name: Get Flutter Dependencies
+        run: flutter pub get
+
+      # ======================================================================
+      # Bootstrap CoMaps
+      # ======================================================================
+      - name: Bootstrap CoMaps
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
+        run: |
+          dart run tool/build.dart --no-cache
+
+      # ======================================================================
+      # Build Android Native Libraries
+      # ======================================================================
+      - name: Build Android Native Libraries
+        env:
+          COMAPS_TAG: ${{ env.COMAPS_TAG }}
+          AGUS_MAPS_BUILD_MODE: contributor
+        run: |
+          echo "Building Android native libraries on Linux..."
+          dart run tool/build.dart --build-binaries --platform android
+
+          echo "=== Build Output ==="
+          ls -la build/agus-binaries-android/
+
+      - name: Create Android Binaries Archive
+        run: |
+          cd build/agus-binaries-android
+          zip -r ../agus-binaries-android-linux.zip .
+          ls -lh ../agus-binaries-android-linux.zip
+
+      - name: Upload Android Binaries Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-binaries-android-linux
+          path: build/agus-binaries-android-linux.zip
+
+      # ======================================================================
+      # Build Android Example App
+      # ======================================================================
+      - name: Setup Android Pre-built Binaries
+        run: |
+          mkdir -p android/prebuilt
+          cp -R build/agus-binaries-android/* android/prebuilt/
+          echo "=== Prebuilt Structure ==="
+          ls -la android/prebuilt/
+
+      - name: Get Flutter Dependencies
+        run: |
+          flutter pub get
+          cd example
+          flutter pub get
+
+      - name: Download Base MWM Files
+        run: |
+          ASSETS_DIR="example/assets/maps"
+          mkdir -p "$ASSETS_DIR"
+
+          # Use Dart map downloader for cross-platform consistency
+          dart run tool/map_downloader.dart \
+            --output-dir "$ASSETS_DIR" \
+            --files "World.mwm,WorldCoasts.mwm,Gibraltar.mwm" \
+            --report "$ASSETS_DIR/download_report.json" \
+            --verbose
+
+          # Copy ICU data - fail if source is missing (critical for search)
+          ICU_SOURCE="thirdparty/comaps/data/icudt75l.dat"
+          ICU_DEST="$ASSETS_DIR/icudt75l.dat"
+          if [ ! -f "$ICU_SOURCE" ]; then
+            echo "ERROR: ICU data file not found: $ICU_SOURCE"
+            echo "This file is required for search/transliteration functionality."
+            exit 1
+          fi
+          if [ ! -f "$ICU_DEST" ]; then
+            cp "$ICU_SOURCE" "$ICU_DEST"
+            echo "Copied ICU data to assets/maps/"
+          else
+            echo "ICU data already present: $ICU_DEST"
+          fi
+
+          echo "=== Map Assets ==="
+          ls -lh "$ASSETS_DIR/"
+
+      - name: Build Android App Bundle (AAB)
+        run: |
+          cd example
+          flutter build appbundle --release \
+            --build-name=1.0.0 \
+            --build-number=${{ github.run_number }}
+
+      - name: Build Android APK
+        run: |
+          cd example
+          flutter build apk --release \
+            --build-name=1.0.0 \
+            --build-number=${{ github.run_number }}
+
+      - name: Prepare Android Artifacts
+        run: |
+          mkdir -p artifacts
+          cp example/build/app/outputs/bundle/release/app-release.aab artifacts/agus-maps-android-linux.aab
+          cp example/build/app/outputs/flutter-apk/app-release.apk artifacts/agus-maps-android-linux.apk
+          echo "=== Android Artifacts ==="
+          ls -lh artifacts/
+
+      - name: Upload Android App Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agus-maps-android-linux
+          path: artifacts/*
+
+  # ==========================================================================
   # Windows Job: Builds Windows only
   # ==========================================================================
   build-and-release-windows-platform:
