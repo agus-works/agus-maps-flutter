@@ -1413,6 +1413,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT6_VERSION }}
+          arch: win64_mingw
           cache: true
           setup-python: 'false'
 
@@ -1422,7 +1423,7 @@ jobs:
           optipng -version
         shell: pwsh
 
-      - name: Install MinGW Zlib (MSYS2)
+      - name: Install MinGW Toolchain (MSYS2)
         run: |
           $pacmanCandidates = @(
             "C:\tools\msys64\usr\bin\pacman.exe",
@@ -1442,8 +1443,12 @@ jobs:
           }
 
           $msysRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $pacman))
-          & $pacman -Syu --noconfirm
-          & $pacman -S --noconfirm mingw-w64-x86_64-zlib
+          & $pacman -Sy --noconfirm
+          & $pacman -S --noconfirm --needed `
+            mingw-w64-x86_64-toolchain `
+            mingw-w64-x86_64-zlib `
+            mingw-w64-x86_64-cmake `
+            mingw-w64-x86_64-ninja
 
           "MSYS2_ROOT=${msysRoot}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         shell: pwsh
@@ -1463,6 +1468,44 @@ jobs:
       # ======================================================================
       # Bootstrap CoMaps
       # ======================================================================
+      - name: Validate Windows Bootstrap Toolchain
+        run: |
+          if (-not $env:MSYS2_ROOT) {
+            Write-Error "MSYS2_ROOT not set; cannot validate bootstrap toolchain"
+            exit 1
+          }
+
+          $env:PATH = "$env:MSYS2_ROOT\mingw64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
+
+          $compiler = (Get-Command g++.exe -ErrorAction SilentlyContinue)
+          if (-not $compiler) {
+            Write-Error "g++.exe not found in PATH after MSYS setup"
+            exit 1
+          }
+
+          $qtDir = if ($env:Qt6_DIR) { $env:Qt6_DIR } else { "" }
+
+          Write-Host "=== Bootstrap Toolchain Diagnostics ==="
+          Write-Host "MSYS2_ROOT: $env:MSYS2_ROOT"
+          Write-Host "g++ path: $($compiler.Source)"
+          & g++.exe --version
+          Write-Host "Qt6_DIR: $qtDir"
+          where.exe bash
+          where.exe cmake
+          where.exe ninja
+
+          if ($qtDir -match 'msvc') {
+            Write-Error "Qt6_DIR points to an MSVC kit while bootstrap uses MinGW compiler"
+            exit 1
+          }
+
+          if ($compiler.Source -notlike "$env:MSYS2_ROOT\mingw64\bin\*") {
+            Write-Error "g++ is not resolved from MSYS2 mingw64\bin"
+            exit 1
+          }
+        shell: pwsh
+
       - name: Bootstrap CoMaps
         env:
           COMAPS_TAG: ${{ env.COMAPS_TAG }}
@@ -1476,6 +1519,12 @@ jobs:
           }
 
           $env:PATH = "$env:MSYS2_ROOT\mingw64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
+          $env:MSYSTEM = "MINGW64"
+          $env:CC = "$env:MSYS2_ROOT\mingw64\bin\gcc.exe"
+          $env:CXX = "$env:MSYS2_ROOT\mingw64\bin\g++.exe"
+          $env:CMAKE_C_COMPILER = $env:CC
+          $env:CMAKE_CXX_COMPILER = $env:CXX
           $env:ZLIB_ROOT = "$env:MSYS2_ROOT\mingw64"
           $env:ZLIB_INCLUDE_DIR = "$env:MSYS2_ROOT\mingw64\include"
           $env:ZLIB_LIBRARY = "$env:MSYS2_ROOT\mingw64\lib\libz.dll.a"
@@ -1484,6 +1533,22 @@ jobs:
           } else {
             $env:CMAKE_PREFIX_PATH = "$env:MSYS2_ROOT\mingw64"
           }
+
+          if ($env:Qt6_DIR -and ($env:Qt6_DIR -match 'msvc')) {
+            Write-Error "Qt6_DIR points to an MSVC kit; expected MinGW kit for bootstrap"
+            exit 1
+          }
+
+          Write-Host "=== Bootstrap Compiler Diagnostics ==="
+          Write-Host "CC=$env:CC"
+          Write-Host "CXX=$env:CXX"
+          Write-Host "CMAKE_PREFIX_PATH=$env:CMAKE_PREFIX_PATH"
+          Write-Host "Qt6_DIR=$env:Qt6_DIR"
+          & g++.exe --version
+          where.exe gcc
+          where.exe g++
+          where.exe cmake
+          where.exe ninja
 
           Write-Host "=== Python Diagnostics ==="
           python --version
@@ -1498,6 +1563,26 @@ jobs:
           Write-Host "Python3_ROOT_DIR=$env:Python3_ROOT_DIR"
 
           dart run tool/build.dart --no-cache
+        shell: pwsh
+
+      - name: Verify Bootstrap Qt Kit
+        run: |
+          $qtDir = if ($env:Qt6_DIR) { $env:Qt6_DIR } else { "" }
+
+          Write-Host "=== Post-Bootstrap Qt Verification ==="
+          Write-Host "Qt6_DIR=$qtDir"
+
+          if (-not $qtDir) {
+            Write-Error "Qt6_DIR is empty after bootstrap; cannot verify Qt toolchain"
+            exit 1
+          }
+
+          if ($qtDir -notmatch 'mingw') {
+            Write-Error "Qt6_DIR does not reference a MinGW Qt kit: $qtDir"
+            exit 1
+          }
+
+          Write-Host "✓ Qt kit is MinGW-compatible for Windows bootstrap"
         shell: pwsh
 
       - name: Verify Symbols Atlas
