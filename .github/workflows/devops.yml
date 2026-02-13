@@ -1067,12 +1067,13 @@ jobs:
           pip install 'protobuf<4.0'
           echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
 
-      - name: Install Qt 6
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT6_VERSION }}
-          cache: true
-          setup-python: 'false'
+      - name: Disk Usage Checkpoint (Initial)
+        run: |
+          echo "=== Disk Usage (Initial) ==="
+          df -h
+          echo ""
+          echo "=== Workspace Usage (Initial) ==="
+          du -sh thirdparty build example/build .dart_tool 2>/dev/null || true
 
       - name: Setup CMake
         uses: lukka/get-cmake@latest
@@ -1102,6 +1103,14 @@ jobs:
         run: |
           dart run tool/build.dart --no-cache
 
+      - name: Disk Usage Checkpoint (Post-Bootstrap)
+        run: |
+          echo "=== Disk Usage (Post-Bootstrap) ==="
+          df -h
+          echo ""
+          echo "=== Workspace Usage (Post-Bootstrap) ==="
+          du -sh thirdparty/comaps thirdparty build .dart_tool 2>/dev/null || true
+
       # ======================================================================
       # Build Android Native Libraries
       # ======================================================================
@@ -1116,6 +1125,14 @@ jobs:
           echo "=== Build Output ==="
           ls -la build/agus-binaries-android/
 
+      - name: Disk Usage Checkpoint (Post-Native Build)
+        run: |
+          echo "=== Disk Usage (Post-Native Build) ==="
+          df -h
+          echo ""
+          echo "=== Workspace Usage (Post-Native Build) ==="
+          du -sh thirdparty/comaps build build/android-* build/agus-binaries-android 2>/dev/null || true
+
       - name: Create Android Binaries Archive
         run: |
           cd build/agus-binaries-android
@@ -1127,6 +1144,19 @@ jobs:
         with:
           name: agus-binaries-android-linux
           path: build/agus-binaries-android-linux.zip
+
+      - name: Cleanup Intermediate Build Artifacts
+        run: |
+          echo "Cleaning large intermediate build directories before Flutter packaging..."
+          rm -rf build/android-arm64-v8a build/android-armeabi-v7a build/android-x86_64
+          rm -rf thirdparty/comaps/.git
+          rm -rf ~/.gradle/caches/transforms-* ~/.gradle/caches/*/transforms-* 2>/dev/null || true
+
+          echo "=== Disk Usage (After Cleanup) ==="
+          df -h
+          echo ""
+          echo "=== Workspace Usage (After Cleanup) ==="
+          du -sh thirdparty/comaps build build/agus-binaries-android example/build ~/.gradle/caches 2>/dev/null || true
 
       # ======================================================================
       # Build Android Example App
@@ -1176,6 +1206,9 @@ jobs:
 
       - name: Build Android App Bundle (AAB)
         run: |
+          echo "=== Disk Usage (Before AAB) ==="
+          df -h
+          du -sh thirdparty/comaps build example/build ~/.gradle/caches 2>/dev/null || true
           cd example
           flutter build appbundle --release \
             --build-name=1.0.0 \
