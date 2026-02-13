@@ -1270,6 +1270,15 @@ jobs:
 
           $pythonExe = (Get-Command python).Source
           $pythonRoot = Split-Path -Parent $pythonExe
+          $pythonScripts = Join-Path $pythonRoot "Scripts"
+          if (-not (Test-Path $pythonScripts)) {
+            $pythonScripts = $pythonRoot
+          }
+
+          # Persist canonical hosted Python paths for later bootstrap steps
+          "PYTHON_EXECUTABLE=$pythonExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PYTHON_ROOT_DIR=$pythonRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PYTHON_SCRIPTS_DIR=$pythonScripts" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PYTHON3_EXECUTABLE=$pythonExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PYTHON3_ROOT_DIR=$pythonRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -1450,6 +1459,23 @@ jobs:
           cache: true
           setup-python: 'false'
 
+      - name: Configure Qt 6 CMake Variables
+        shell: pwsh
+        run: |
+          if (-not $env:QT_ROOT_DIR) {
+            Write-Error "QT_ROOT_DIR is not set after install-qt-action"
+            exit 1
+          }
+
+          $qtCmakeDir = Join-Path $env:QT_ROOT_DIR "lib\cmake\Qt6"
+          if (-not (Test-Path $qtCmakeDir)) {
+            Write-Error "Qt6 CMake directory not found: $qtCmakeDir"
+            exit 1
+          }
+
+          "Qt6_DIR=$qtCmakeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Configured Qt6_DIR=$qtCmakeDir"
+
       - name: Install OptiPNG
         run: |
           choco install optipng -y
@@ -1543,6 +1569,9 @@ jobs:
         env:
           COMAPS_TAG: ${{ env.COMAPS_TAG }}
           AGUS_MAPS_BUILD_MODE: contributor
+          PYTHON_EXECUTABLE: ${{ env.PYTHON_EXECUTABLE }}
+          PYTHON_ROOT_DIR: ${{ env.PYTHON_ROOT_DIR }}
+          PYTHON_SCRIPTS_DIR: ${{ env.PYTHON_SCRIPTS_DIR }}
           Python3_EXECUTABLE: ${{ env.PYTHON3_EXECUTABLE }}
           Python3_ROOT_DIR: ${{ env.PYTHON3_ROOT_DIR }}
         run: |
@@ -1551,11 +1580,30 @@ jobs:
             exit 1
           }
 
-          $env:PATH = "$env:MSYS2_ROOT\mingw64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
+          if (-not $env:PYTHON_EXECUTABLE -or -not (Test-Path $env:PYTHON_EXECUTABLE)) {
+            Write-Error "PYTHON_EXECUTABLE is missing or invalid: $env:PYTHON_EXECUTABLE"
+            exit 1
+          }
+
+          if (-not $env:PYTHON_ROOT_DIR -or -not (Test-Path $env:PYTHON_ROOT_DIR)) {
+            Write-Error "PYTHON_ROOT_DIR is missing or invalid: $env:PYTHON_ROOT_DIR"
+            exit 1
+          }
+
+          # Keep hosted CPython ahead of MSYS2 Python for protobuf-based generators
+          $pythonPrefix = if ($env:PYTHON_SCRIPTS_DIR -and (Test-Path $env:PYTHON_SCRIPTS_DIR)) {
+            "$env:PYTHON_SCRIPTS_DIR;$env:PYTHON_ROOT_DIR"
+          } else {
+            $env:PYTHON_ROOT_DIR
+          }
+
+          $env:PATH = "$pythonPrefix;$env:MSYS2_ROOT\mingw64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
           $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
           $env:MSYSTEM = "MINGW64"
           $env:CC = "$env:MSYS2_ROOT\mingw64\bin\gcc.exe"
           $env:CXX = "$env:MSYS2_ROOT\mingw64\bin\g++.exe"
+          $env:PYTHON = $env:PYTHON_EXECUTABLE
+          $env:PYTHON3 = $env:PYTHON_EXECUTABLE
           $env:CMAKE_C_COMPILER = $env:CC
           $env:CMAKE_CXX_COMPILER = $env:CXX
           $env:ZLIB_ROOT = "$env:MSYS2_ROOT\mingw64"
@@ -1577,6 +1625,8 @@ jobs:
           Write-Host "CXX=$env:CXX"
           Write-Host "CMAKE_PREFIX_PATH=$env:CMAKE_PREFIX_PATH"
           Write-Host "Qt6_DIR=$env:Qt6_DIR"
+          Write-Host "PYTHON=$env:PYTHON"
+          Write-Host "PYTHON3=$env:PYTHON3"
           & g++.exe --version
           where.exe gcc
           where.exe g++
