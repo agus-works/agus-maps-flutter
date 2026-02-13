@@ -1,4 +1,5 @@
 {
     "search.useIgnoreFiles": false,
     "search.useGlobalIgnoreFiles": false,
+    "dotnet.defaultSolution": "disable",
 }
