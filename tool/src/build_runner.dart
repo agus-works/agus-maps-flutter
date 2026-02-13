@@ -487,6 +487,19 @@ Future<void> _generateComapsData() async {
   env['PYTHONUTF8'] = '1';
   env['PYTHONIOENCODING'] = 'utf-8';
 
+  if (Platform.isWindows) {
+    final pinnedPython = env['PYTHON3_EXECUTABLE'] ?? env['PYTHON_EXECUTABLE'];
+    if (pinnedPython != null && pinnedPython.isNotEmpty) {
+      final pythonDir = path.dirname(pinnedPython);
+      final currentPath = env['PATH'] ?? '';
+      env['PYTHON'] = pinnedPython;
+      env['PYTHON3'] = pinnedPython;
+      env['PATH'] =
+          pythonDir.isNotEmpty ? '$pythonDir;$currentPath' : currentPath;
+      print('Using pinned Python interpreter: $pinnedPython');
+    }
+  }
+
   String toBashPath(String windowsPath) {
     var p = windowsPath.replaceAll('\\', '/');
     if (RegExp(r'^[A-Za-z]:/').hasMatch(p)) {
