@@ -10,6 +10,7 @@ This directory contains build tools, utilities, and helper scripts for the Agus 
   - [asset_tools.dart](#asset_toolsdart---asset-tool)
   - [map_downloader.dart](#map_downloaderdart---map-downloader)
   - [check_mirrors.dart](#check_mirrorsdart---mirror-diagnostics)
+  - [delete_non_tag_workflow_runs.dart](#delete_non_tag_workflow_runsdart---github-actions-run-cleanup)
 - [Source Modules](#source-modules-toolsrc)
 - [Environment Variables](#environment-variables)
 - [Build Modes](#build-modes)
@@ -34,6 +35,9 @@ dart run tool/map_downloader.dart
 
 # Check CDN mirror availability
 dart run tool/check_mirrors.dart
+
+# Preview cleanup of non-tag devops workflow runs (safe dry-run)
+dart run tool/delete_non_tag_workflow_runs.dart
 ```
 
 ---
@@ -281,6 +285,60 @@ Best CoMaps CDN: CoMaps CDN (245ms latency)
 
 - `0` - At least one operational mirror found
 - `1` - No operational mirrors (critical failure)
+
+---
+
+### `delete_non_tag_workflow_runs.dart` - GitHub Actions Run Cleanup
+
+Deletes GitHub Actions workflow runs that were **not** executed as a strict
+release tag in format `vX.Y.Z`. This tool is scoped to one workflow and defaults
+to `devops.yml`.
+
+Default repository:
+
+- `https://github.com/agus-works/agus-maps-flutter/`
+
+Safety model:
+
+- **Dry-run by default** (no deletion unless `--execute` is provided)
+- **Skips active runs** (`queued` / `in_progress` / `waiting`)
+- **Always deletes** `failure` and `cancelled` conclusions (when not active)
+- **Always keeps** `success` conclusions
+- For other non-success conclusions, keeps only runs whose `head_branch`
+  matches `^v[0-9]+\.[0-9]+\.[0-9]+$`
+
+#### Usage
+
+```powershell
+dart run tool/delete_non_tag_workflow_runs.dart [options]
+```
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--repo <value>` | Repository URL or `OWNER/REPO` (default: `https://github.com/agus-works/agus-maps-flutter/`) |
+| `--workflow <value>` | Workflow file name or workflow ID (default: `devops.yml`) |
+| `--execute` | Actually delete runs (otherwise dry-run) |
+| `--max-pages <n>` | Maximum pages to fetch, 100 runs/page (default: `20`) |
+| `--max-delete <n>` | Optional cap for number of deletions in execute mode |
+| `--help`, `-h` | Show help message |
+
+#### Examples
+
+```powershell
+# Safe preview with defaults (repo + workflow + dry-run)
+dart run tool/delete_non_tag_workflow_runs.dart
+
+# Explicit repository URL
+dart run tool/delete_non_tag_workflow_runs.dart --repo https://github.com/agus-works/agus-maps-flutter/
+
+# Perform deletions
+dart run tool/delete_non_tag_workflow_runs.dart --execute
+
+# Perform at most 5 deletions in one run
+dart run tool/delete_non_tag_workflow_runs.dart --execute --max-delete 5
+```
 
 ---
 
