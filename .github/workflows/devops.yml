@@ -819,14 +819,14 @@ jobs:
       - name: Create Android Binaries Archive
         run: |
           cd build/agus-binaries-android
-          zip -r ../agus-binaries-android-linux.zip .
-          ls -lh ../agus-binaries-android-linux.zip
+          zip -r ../agus-binaries-android.zip .
+          ls -lh ../agus-binaries-android.zip
 
       - name: Upload Android Binaries Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: agus-binaries-android-linux
-          path: build/agus-binaries-android-linux.zip
+          name: agus-binaries-android
+          path: build/agus-binaries-android.zip
 
       - name: Cleanup Intermediate Build Artifacts
         run: |
@@ -907,15 +907,15 @@ jobs:
       - name: Prepare Android Artifacts
         run: |
           mkdir -p artifacts
-          cp example/build/app/outputs/bundle/release/app-release.aab artifacts/agus-maps-android-linux.aab
-          cp example/build/app/outputs/flutter-apk/app-release.apk artifacts/agus-maps-android-linux.apk
+          cp example/build/app/outputs/bundle/release/app-release.aab artifacts/agus-maps-android.aab
+          cp example/build/app/outputs/flutter-apk/app-release.apk artifacts/agus-maps-android.apk
           echo "=== Android Artifacts ==="
           ls -lh artifacts/
 
       - name: Upload Android App Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: agus-maps-android-linux
+          name: agus-maps-android
           path: artifacts/*
 
   # ==========================================================================
@@ -1810,6 +1810,7 @@ jobs:
     needs:
       - build-and-release-windows-platform
       - build-and-release-mac-platforms
+      - build-and-release-android-linux-platform
       - build-and-release-linux-platform
     # Run even if some dependencies partially failed or were skipped, but only on tags
     if: always() && startsWith(github.ref, 'refs/tags/')
