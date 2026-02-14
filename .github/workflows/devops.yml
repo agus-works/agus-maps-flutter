@@ -1360,44 +1360,8 @@ jobs:
           Write-Host "PYTHON=$env:PYTHON"
           Write-Host "PYTHON3=$env:PYTHON3"
           & g++.exe --version
-          where.exe gcc
-          where.exe g++
-          where.exe cmake
-          where.exe ninja
-
-          Write-Host "=== Python Diagnostics ==="
-          python --version
-          where.exe python
-          if (Get-Command python3 -ErrorAction SilentlyContinue) {
-            python3 --version
-            where.exe python3
-          } else {
-            Write-Host "python3 not found in PATH"
-          }
-          Write-Host "Python3_EXECUTABLE=$env:Python3_EXECUTABLE"
-          Write-Host "Python3_ROOT_DIR=$env:Python3_ROOT_DIR"
 
           dart run tool/build.dart --no-cache
-        shell: pwsh
-
-      - name: Verify Bootstrap Qt Kit
-        run: |
-          $qtDir = if ($env:Qt6_DIR) { $env:Qt6_DIR } else { "" }
-
-          Write-Host "=== Post-Bootstrap Qt Verification ==="
-          Write-Host "Qt6_DIR=$qtDir"
-
-          if (-not $qtDir) {
-            Write-Error "Qt6_DIR is empty after bootstrap; cannot verify Qt toolchain"
-            exit 1
-          }
-
-          if ($qtDir -notmatch 'mingw') {
-            Write-Error "Qt6_DIR does not reference a MinGW Qt kit: $qtDir"
-            exit 1
-          }
-
-          Write-Host "✓ Qt kit is MinGW-compatible for Windows bootstrap"
         shell: pwsh
 
       - name: Verify Symbols Atlas
@@ -1413,7 +1377,7 @@ jobs:
           $missing = $required | Where-Object { -not (Test-Path $_) }
           if ($missing.Count -gt 0) {
             Write-Error "Missing symbol atlas files:\n$($missing -join "`n")"
-            Write-Error "Ensure generate_symbols.sh runs successfully (OptiPNG is required)."
+            Write-Error "Ensure Linux assets artifact (agus-assets) was downloaded and copied successfully."
             exit 1
           }
           Write-Host "✓ Symbol atlas present in example/assets"

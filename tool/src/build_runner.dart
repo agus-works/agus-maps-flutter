@@ -487,36 +487,6 @@ Future<void> _generateComapsData() async {
   env['PYTHONUTF8'] = '1';
   env['PYTHONIOENCODING'] = 'utf-8';
 
-  if (Platform.isWindows) {
-    final pinnedPython = env['PYTHON3_EXECUTABLE'] ?? env['PYTHON_EXECUTABLE'];
-    if (pinnedPython != null && pinnedPython.isNotEmpty) {
-      final pythonDir = path.dirname(pinnedPython);
-      final cmakePython = pinnedPython.replaceAll('\\', '/');
-      final currentPath = env['PATH'] ?? '';
-      env['PYTHON'] = pinnedPython;
-      env['PYTHON3'] = pinnedPython;
-      env['PYTHON3_EXECUTABLE'] = cmakePython;
-      env['PYTHON_EXECUTABLE'] = cmakePython;
-      env['PATH'] =
-          pythonDir.isNotEmpty ? '$pythonDir;$currentPath' : currentPath;
-      print('Using pinned Python interpreter: $pinnedPython');
-    }
-  }
-
-  String toBashPath(String windowsPath) {
-    var p = windowsPath.replaceAll('\\', '/');
-    if (RegExp(r'^[A-Za-z]:/').hasMatch(p)) {
-      final drive = p.substring(0, 1).toLowerCase();
-      p = '/$drive${p.substring(2)}';
-    }
-    return p;
-  }
-
-  if (Platform.isWindows) {
-    env['OMIM_PATH'] = toBashPath(comapsDir);
-    env['DATA_PATH'] = toBashPath(dataDir);
-  }
-
   Future<void> runUnixDataScripts() async {
     // Generate drawing rules
     final generateDrulesScript =
@@ -573,23 +543,12 @@ Future<void> _generateComapsData() async {
           path.join(comapsDir, 'tools', 'unix', 'generate_symbols.sh');
       if (await File(generateSymbolsScript).exists()) {
         print('Generating symbols atlas (symbols.png/symbols.sdf)...');
-        if (Platform.isWindows) {
-          await _ensureWindowsSymbolsStyleDirectories(dataDir);
-        }
-        if (Platform.isWindows) {
-          await _runGenerateSymbolsWithPinnedPython(
-            comapsDir: comapsDir,
-            generateSymbolsScript: generateSymbolsScript,
-            env: env,
-          );
-        } else {
-          await runProcess(
-            'bash',
-            [generateSymbolsScript],
-            workingDirectory: comapsDir,
-            environment: env,
-          );
-        }
+        await runProcess(
+          'bash',
+          [generateSymbolsScript],
+          workingDirectory: comapsDir,
+          environment: env,
+        );
       } else {
         print(
             'Warning: generate_symbols.sh not found; symbols atlas may be missing');
@@ -617,70 +576,6 @@ Future<void> _generateComapsData() async {
 
   print('Data files generated');
   print('');
-}
-
-Future<void> _runGenerateSymbolsWithPinnedPython({
-  required String comapsDir,
-  required String generateSymbolsScript,
-  required Map<String, String> env,
-}) async {
-  final cmakePython = env['PYTHON3_EXECUTABLE'] ?? env['PYTHON_EXECUTABLE'];
-  final windowsSafeCmakePython = cmakePython?.replaceAll('\\', '/');
-  if (windowsSafeCmakePython == null || windowsSafeCmakePython.isEmpty) {
-    await runProcess(
-      'bash',
-      [generateSymbolsScript],
-      workingDirectory: comapsDir,
-      environment: env,
-    );
-    return;
-  }
-
-  final original = await File(generateSymbolsScript).readAsString();
-  const cmakeLine =
-      r'cmake -S "$OMIM_PATH" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKIP_TESTS:bool=true';
-  final injectedLine =
-      '$cmakeLine -DPython3_EXECUTABLE="$windowsSafeCmakePython" -DPython_EXECUTABLE="$windowsSafeCmakePython"';
-
-  if (!original.contains(cmakeLine)) {
-    await runProcess(
-      'bash',
-      [generateSymbolsScript],
-      workingDirectory: comapsDir,
-      environment: env,
-    );
-    return;
-  }
-
-  final tempScript = path.join(
-    comapsDir,
-    'build',
-    'generate_symbols_with_pinned_python.sh',
-  );
-  await ensureDir(path.dirname(tempScript));
-
-  var patched = original.replaceFirst(cmakeLine, injectedLine);
-  await File(tempScript).writeAsString(patched);
-
-  try {
-    await runProcess(
-      'bash',
-      [tempScript],
-      workingDirectory: comapsDir,
-      environment: env,
-    );
-  } finally {
-    try {
-      await File(tempScript).delete();
-    } catch (_) {}
-  }
-}
-
-Future<void> _ensureWindowsSymbolsStyleDirectories(String dataDir) async {
-  final styleRoot = path.join(dataDir, 'styles', 'default');
-  for (final theme in ['light', 'dark']) {
-    await ensureDir(path.join(styleRoot, theme, 'symbols'));
-  }
 }
 
 /// Copy data files to example/assets
