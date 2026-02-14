@@ -512,6 +512,11 @@ Future<void> _generateComapsData() async {
     return p;
   }
 
+  if (Platform.isWindows) {
+    env['OMIM_PATH'] = toBashPath(comapsDir);
+    env['DATA_PATH'] = toBashPath(dataDir);
+  }
+
   Future<void> runUnixDataScripts() async {
     // Generate drawing rules
     final generateDrulesScript =
@@ -569,6 +574,9 @@ Future<void> _generateComapsData() async {
       if (await File(generateSymbolsScript).exists()) {
         print('Generating symbols atlas (symbols.png/symbols.sdf)...');
         if (Platform.isWindows) {
+          await _ensureWindowsSymbolsStyleDirectories(dataDir);
+        }
+        if (Platform.isWindows) {
           await _runGenerateSymbolsWithPinnedPython(
             comapsDir: comapsDir,
             generateSymbolsScript: generateSymbolsScript,
@@ -617,7 +625,8 @@ Future<void> _runGenerateSymbolsWithPinnedPython({
   required Map<String, String> env,
 }) async {
   final cmakePython = env['PYTHON3_EXECUTABLE'] ?? env['PYTHON_EXECUTABLE'];
-  if (cmakePython == null || cmakePython.isEmpty) {
+  final windowsSafeCmakePython = cmakePython?.replaceAll('\\', '/');
+  if (windowsSafeCmakePython == null || windowsSafeCmakePython.isEmpty) {
     await runProcess(
       'bash',
       [generateSymbolsScript],
@@ -628,12 +637,19 @@ Future<void> _runGenerateSymbolsWithPinnedPython({
   }
 
   final original = await File(generateSymbolsScript).readAsString();
-    const cmakeLine =
+  const cmakeLine =
       r'cmake -S "$OMIM_PATH" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKIP_TESTS:bool=true';
   final injectedLine =
-      '$cmakeLine -DPython3_EXECUTABLE="$cmakePython" -DPython_EXECUTABLE="$cmakePython"';
+      '$cmakeLine -DPython3_EXECUTABLE="$windowsSafeCmakePython" -DPython_EXECUTABLE="$windowsSafeCmakePython"';
 
-  if (!original.contains(cmakeLine)) {
+  const symlinkLine =
+      r'ln -s "$STYLE_PATH/$resourceName$symbolsSuffix" "$PNG_PATH"';
+  const windowsCopyLines = r'''
+mkdir -p "$PNG_PATH"
+cp -R "$STYLE_PATH/$resourceName$symbolsSuffix"/. "$PNG_PATH"/
+''';
+
+  if (!original.contains(cmakeLine) || !original.contains(symlinkLine)) {
     await runProcess(
       'bash',
       [generateSymbolsScript],
@@ -650,7 +666,10 @@ Future<void> _runGenerateSymbolsWithPinnedPython({
   );
   await ensureDir(path.dirname(tempScript));
 
-  final patched = original.replaceFirst(cmakeLine, injectedLine);
+  var patched = original.replaceFirst(cmakeLine, injectedLine);
+  patched = patched.replaceAll(symlinkLine, windowsCopyLines);
+  patched = patched.replaceAll(
+      'rm -r "\$PNG_PATH" || true', 'rm -rf "\$PNG_PATH" || true');
   await File(tempScript).writeAsString(patched);
 
   try {
@@ -664,6 +683,13 @@ Future<void> _runGenerateSymbolsWithPinnedPython({
     try {
       await File(tempScript).delete();
     } catch (_) {}
+  }
+}
+
+Future<void> _ensureWindowsSymbolsStyleDirectories(String dataDir) async {
+  final styleRoot = path.join(dataDir, 'styles', 'default');
+  for (final theme in ['light', 'dark']) {
+    await ensureDir(path.join(styleRoot, theme, 'symbols'));
   }
 }
 
