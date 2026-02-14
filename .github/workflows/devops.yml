@@ -1210,6 +1210,37 @@ jobs:
       # ======================================================================
       # Bootstrap CoMaps
       # ======================================================================
+      - name: Prepare Windows Symbol Source Folders
+        shell: pwsh
+        run: |
+          $styleRoot = "thirdparty\comaps\data\styles\default"
+          $themes = @("dark", "light")
+          $densities = @("mdpi", "hdpi", "xhdpi", "6plus", "xxhdpi", "xxxhdpi")
+
+          if (-not (Test-Path $styleRoot)) {
+            Write-Error "Style root not found: $styleRoot"
+            exit 1
+          }
+
+          foreach ($theme in $themes) {
+            $themeRoot = Join-Path $styleRoot $theme
+            $symbolsSource = Join-Path $themeRoot "symbols"
+
+            if (-not (Test-Path $symbolsSource)) {
+              Write-Error "Symbols source not found: $symbolsSource"
+              exit 1
+            }
+
+            foreach ($density in $densities) {
+              $target = Join-Path $themeRoot $density
+              if (-not (Test-Path $target)) {
+                New-Item -ItemType Directory -Force -Path $target | Out-Null
+                Copy-Item -Path (Join-Path $symbolsSource "*") -Destination $target -Recurse -Force
+                Write-Host "Seeded symbols source: $target"
+              }
+            }
+          }
+
       - name: Validate Windows Bootstrap Toolchain
         run: |
           if (-not $env:MSYS2_ROOT) {
