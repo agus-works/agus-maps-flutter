@@ -978,15 +978,10 @@ jobs:
           $cacheFile = "agus/agus-comaps-win-${{ env.COMAPS_TAG }}.zip"
           $cacheUrl = "${baseUrl}/${cacheFile}?${sasToken}"
 
-          Write-Host "Checking for cache: ${baseUrl}/${cacheFile}"
-          try {
-            $response = Invoke-WebRequest -Uri $cacheUrl -Method Head -UseBasicParsing -ErrorAction Stop
-            Write-Host "✓ Cache found!"
-            "cache-hit=true" >> $env:GITHUB_OUTPUT
-          } catch {
-            Write-Host "✗ Cache not found, will clone from git"
-            "cache-hit=false" >> $env:GITHUB_OUTPUT
-          }
+          # Temporary hardening: force fresh clone on Windows to avoid
+          # intermittent cache corruption in style/symbol assets.
+          Write-Host "Windows CoMaps cache is temporarily disabled for reliability"
+          "cache-hit=false" >> $env:GITHUB_OUTPUT
           "cache-url=$cacheUrl" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
@@ -1238,6 +1233,34 @@ jobs:
                 Copy-Item -Path (Join-Path $symbolsSource "*") -Destination $target -Recurse -Force
                 Write-Host "Seeded symbols source: $target"
               }
+            }
+          }
+
+      - name: Validate Windows Symbols Layout
+        shell: pwsh
+        run: |
+          $required = @(
+            "thirdparty\comaps\data\styles\default\dark\symbols",
+            "thirdparty\comaps\data\styles\default\light\symbols"
+          )
+
+          Push-Location thirdparty\comaps
+          try {
+            foreach ($path in $required) {
+              $relative = $path.Replace("thirdparty\comaps\", "")
+              if (-not (Test-Path $path -PathType Container)) {
+                Write-Warning "Missing symbols directory, restoring from git: $relative"
+                git checkout -- $relative
+              }
+            }
+          } finally {
+            Pop-Location
+          }
+
+          foreach ($path in $required) {
+            if (-not (Test-Path $path -PathType Container)) {
+              Write-Error "Required symbols directory missing after restore: $path"
+              exit 1
             }
           }
 
