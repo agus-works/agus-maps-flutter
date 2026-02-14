@@ -642,14 +642,7 @@ Future<void> _runGenerateSymbolsWithPinnedPython({
   final injectedLine =
       '$cmakeLine -DPython3_EXECUTABLE="$windowsSafeCmakePython" -DPython_EXECUTABLE="$windowsSafeCmakePython"';
 
-  const symlinkLine =
-      r'ln -s "$STYLE_PATH/$resourceName$symbolsSuffix" "$PNG_PATH"';
-  const windowsCopyLines = r'''
-mkdir -p "$PNG_PATH"
-cp -R "$STYLE_PATH/$resourceName$symbolsSuffix"/. "$PNG_PATH"/
-''';
-
-  if (!original.contains(cmakeLine) || !original.contains(symlinkLine)) {
+  if (!original.contains(cmakeLine)) {
     await runProcess(
       'bash',
       [generateSymbolsScript],
@@ -667,9 +660,6 @@ cp -R "$STYLE_PATH/$resourceName$symbolsSuffix"/. "$PNG_PATH"/
   await ensureDir(path.dirname(tempScript));
 
   var patched = original.replaceFirst(cmakeLine, injectedLine);
-  patched = patched.replaceAll(symlinkLine, windowsCopyLines);
-  patched = patched.replaceAll(
-      'rm -r "\$PNG_PATH" || true', 'rm -rf "\$PNG_PATH" || true');
   await File(tempScript).writeAsString(patched);
 
   try {
