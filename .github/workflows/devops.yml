@@ -928,7 +928,9 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-    needs: detect-tag
+    needs:
+      - detect-tag
+      - build-and-release-linux-platform
     steps:
       # ======================================================================
       # Setup
@@ -978,10 +980,15 @@ jobs:
           $cacheFile = "agus/agus-comaps-win-${{ env.COMAPS_TAG }}.zip"
           $cacheUrl = "${baseUrl}/${cacheFile}?${sasToken}"
 
-          # Temporary hardening: force fresh clone on Windows to avoid
-          # intermittent cache corruption in style/symbol assets.
-          Write-Host "Windows CoMaps cache is temporarily disabled for reliability"
-          "cache-hit=false" >> $env:GITHUB_OUTPUT
+          Write-Host "Checking for cache: ${baseUrl}/${cacheFile}"
+          try {
+            $response = Invoke-WebRequest -Uri $cacheUrl -Method Head -UseBasicParsing -ErrorAction Stop
+            Write-Host "✓ Cache found!"
+            "cache-hit=true" >> $env:GITHUB_OUTPUT
+          } catch {
+            Write-Host "✗ Cache not found, will clone from git"
+            "cache-hit=false" >> $env:GITHUB_OUTPUT
+          }
           "cache-url=$cacheUrl" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
@@ -1205,86 +1212,52 @@ jobs:
       # ======================================================================
       # Bootstrap CoMaps
       # ======================================================================
-      - name: Prepare Windows Symbol Source Folders
+      - name: Download Linux Assets Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agus-assets
+          path: linux-assets
+
+      - name: Reuse Linux-Generated Symbols for Windows Bootstrap
         shell: pwsh
         run: |
-          $styleRoot = "thirdparty\comaps\data\styles\default"
-          $themes = @("dark", "light")
-          $densities = @("mdpi", "hdpi", "xhdpi", "6plus", "xxhdpi", "xxxhdpi")
-
-          if (-not (Test-Path $styleRoot)) {
-            Write-Error "Style root not found: $styleRoot"
+          $archive = "linux-assets\agus-assets.zip"
+          if (-not (Test-Path $archive)) {
+            Write-Error "Linux assets archive not found: $archive"
             exit 1
           }
 
-          foreach ($theme in $themes) {
-            $themeRoot = Join-Path $styleRoot $theme
-            $symbolsSource = Join-Path $themeRoot "symbols"
-
-            if (-not (Test-Path $symbolsSource)) {
-              Write-Error "Symbols source not found: $symbolsSource"
-              exit 1
-            }
-
-            foreach ($density in $densities) {
-              $target = Join-Path $themeRoot $density
-              if (-not (Test-Path $target)) {
-                New-Item -ItemType Directory -Force -Path $target | Out-Null
-                Copy-Item -Path (Join-Path $symbolsSource "*") -Destination $target -Recurse -Force
-                Write-Host "Seeded symbols source: $target"
-              }
-            }
+          $extractDir = "linux-assets\extracted"
+          if (Test-Path $extractDir) {
+            Remove-Item -Recurse -Force $extractDir
           }
+          Expand-Archive -Path $archive -DestinationPath $extractDir -Force
 
-      - name: Validate Windows Symbols Layout
-        shell: pwsh
-        run: |
+          $sourceRoot = Join-Path $extractDir "example\assets\comaps_data\symbols\xxhdpi"
+          $targetRoot = "thirdparty\comaps\data\symbols\xxhdpi"
           $required = @(
-            "thirdparty\comaps\data\styles\default\dark\symbols",
-            "thirdparty\comaps\data\styles\default\light\symbols"
+            "light\symbols.png",
+            "light\symbols.sdf",
+            "dark\symbols.png",
+            "dark\symbols.sdf"
           )
 
-          Push-Location thirdparty\comaps
-          try {
-            foreach ($path in $required) {
-              $relative = $path.Replace("thirdparty\comaps\", "")
-              if (-not (Test-Path $path -PathType Container)) {
-                Write-Warning "Missing symbols directory, restoring from git: $relative"
-                git checkout -- $relative
-              }
-            }
-          } finally {
-            Pop-Location
-          }
-
-          foreach ($path in $required) {
-            if (-not (Test-Path $path -PathType Container)) {
-              Write-Error "Required symbols directory missing after restore: $path"
+          foreach ($entry in $required) {
+            $src = Join-Path $sourceRoot $entry
+            if (-not (Test-Path $src)) {
+              Write-Error "Required Linux-generated symbol file missing: $src"
               exit 1
             }
           }
 
-      - name: Patch Symbol Generation Script for Windows
-        shell: pwsh
-        run: |
-          $scriptPath = "thirdparty\comaps\tools\unix\generate_symbols.sh"
-          if (-not (Test-Path $scriptPath)) {
-            Write-Error "generate_symbols.sh not found: $scriptPath"
-            exit 1
+          foreach ($entry in $required) {
+            $src = Join-Path $sourceRoot $entry
+            $dst = Join-Path $targetRoot $entry
+            $dstDir = Split-Path -Parent $dst
+            New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
+            Copy-Item -Path $src -Destination $dst -Force
+            Write-Host "Copied Linux symbol asset: $entry"
           }
-
-          $content = Get-Content -Path $scriptPath -Raw
-          $needle = 'ln -s "$STYLE_PATH/$resourceName$symbolsSuffix" "$PNG_PATH"'
-          if ($content -notmatch [regex]::Escape($needle)) {
-            Write-Error "Expected symlink line not found in generate_symbols.sh"
-            exit 1
-          }
-
-          $replacement = "  # Windows runners may fail to create symlinks reliably in this context.`n  # Ensure parent exists and fallback to copy if symlink is unavailable.`n  mkdir -p `"$(dirname `"`$PNG_PATH`")`"`n  ln -s `"`$STYLE_PATH/`$resourceName`$symbolsSuffix`" `"`$PNG_PATH`" || cp -R `"`$STYLE_PATH/`$resourceName`$symbolsSuffix`" `"`$PNG_PATH`""
-
-          $updated = $content.Replace($needle, $replacement.TrimEnd())
-          Set-Content -Path $scriptPath -Value $updated -NoNewline
-          Write-Host "Patched generate_symbols.sh for Windows symlink fallback"
 
       - name: Validate Windows Bootstrap Toolchain
         run: |
