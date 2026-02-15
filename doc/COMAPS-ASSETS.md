@@ -117,9 +117,10 @@ categories-strings/
 | `fonts/` | Font files for text rendering (optional, uses system fonts) |
 | `localized_types/` | LocalizableTypes.strings used for POI subtitle localization (Android native), sourced from CoMaps iOS LocalizedStrings |
 
-**Important:** POI icons require the generated atlas files `symbols.png` and `symbols.sdf` inside each DPI folder
-(e.g. `symbols/xxhdpi/light/symbols.png` and `symbols/xxhdpi/light/symbols.sdf`). These are produced by
-`tools/unix/generate_symbols.sh` and are not checked in by default.
+**Important:** POI icons require the generated atlas files `symbols.png` and
+`symbols.sdf`. The canonical atlas is validated at
+`symbols/xxhdpi/{light,dark}/symbols.{png,sdf}` and is then replicated to all
+DPI folders during build-time asset copy so every bucket has a complete atlas.
 
 ### ICU Data (Transliteration)
 
@@ -200,7 +201,11 @@ dart run tool/build.dart --no-cache
 
 7. **Generates symbols atlas** (if missing):
    - Runs `tools/unix/generate_symbols.sh`
-   - Produces `symbols.png` and `symbols.sdf` for all DPI buckets
+   - Ensures canonical atlas in `symbols/xxhdpi/{light,dark}`
+8. **Replicates atlas to all DPI buckets**:
+   - Copies `xxhdpi` atlas to `6plus`, `mdpi`, `hdpi`, `xhdpi`, `xxhdpi`,
+     `xxxhdpi` for both `light` and `dark`
+   - Done by `copyDataFiles()` in `tool/src/assets_updater.dart`
 
 ### Git Ignore Policy
 
@@ -294,11 +299,26 @@ Documents/
 └── ... (other files)
 ```
 
-If the marker file exists, extraction is skipped on subsequent app launches.
+If the marker file exists, extraction is skipped on subsequent app launches
+**only when extracted data passes completeness checks**.
+
+All supported platforms now validate the symbol atlas before trusting the
+marker cache:
+- `symbols/xxhdpi/light/symbols.png` (minimum size guard)
+- `symbols/xxhdpi/light/symbols.sdf` (minimum size guard)
+- `symbols/xxhdpi/dark/symbols.png` (minimum size guard)
+- `symbols/xxhdpi/dark/symbols.sdf` (minimum size guard)
+
+If files are missing or suspiciously small (placeholder artifacts), extraction
+is forced and stale files are overwritten from bundled assets.
 
 ### Re-Extraction Trigger
 
-Windows implements additional validation to re-extract if essential files are missing:
+All platforms implement validation before reusing extracted cache. Windows,
+Linux, Android, iOS, and macOS re-extract when required assets are missing or
+symbol atlas files are suspicious.
+
+Windows example validation:
 
 ```cpp
 // If any of these are missing, force re-extraction
@@ -310,6 +330,10 @@ const fs::path requiredFiles[] = {
     dataDir / "transit_colors.txt",
     dataDir / "countries-strings" / "en.json" / "localize.json",
     dataDir / "categories-strings" / "en.json" / "localize.json",
+   dataDir / "symbols" / "xxhdpi" / "light" / "symbols.png",
+   dataDir / "symbols" / "xxhdpi" / "light" / "symbols.sdf",
+   dataDir / "symbols" / "xxhdpi" / "dark" / "symbols.png",
+   dataDir / "symbols" / "xxhdpi" / "dark" / "symbols.sdf",
 };
 ```
 
@@ -324,6 +348,7 @@ const fs::path requiredFiles[] = {
 | **Extraction Target** | `/data/data/<package>/files/` (app-private) |
 | **Extraction Method** | `AssetManager.open()` → `FileOutputStream` |
 | **Marker File** | `/data/data/<package>/files/.comaps_data_extracted` |
+| **Validation** | Marker reuse requires symbol atlas presence + minimum size checks |
 
 **Implementation:** `android/src/main/java/.../AgusMapsFlutterPlugin.java`
 
@@ -356,6 +381,7 @@ private String extractDataFiles() throws IOException {
 | **Extraction Method** | `FileManager.copyItem()` |
 | **Marker File** | `~/Documents/.comaps_data_extracted` |
 | **iCloud Backup** | Excluded via `isExcludedFromBackup = true` |
+| **Validation** | Marker reuse requires symbol atlas presence + minimum size checks |
 
 **Implementation:** `ios/Classes/AgusMapsFlutterPlugin.swift`
 
@@ -386,6 +412,7 @@ private func extractDataFiles() throws -> String {
 | **Extraction Target** | `~/Documents/` (user's Documents directory) |
 | **Extraction Method** | Same as iOS (`FileManager.copyItem()`) |
 | **Marker File** | `~/Documents/.comaps_data_extracted` |
+| **Validation** | Marker reuse requires symbol atlas presence + minimum size checks |
 
 **Implementation:** Shares code with iOS in `ios/Classes/AgusMapsFlutterPlugin.swift` (unified Apple platforms).
 
@@ -397,7 +424,7 @@ private func extractDataFiles() throws -> String {
 | **Extraction Target** | `%USERPROFILE%/Documents/agus_maps_flutter/` |
 | **Extraction Method** | `std::filesystem::copy_file()` |
 | **Marker File** | `%USERPROFILE%/Documents/agus_maps_flutter/.comaps_data_extracted` |
-| **Validation** | Re-extracts if essential files are missing |
+| **Validation** | Re-extracts if essential files are missing or symbol atlas files are suspiciously small |
 
 **Implementation:** `windows/agus_maps_flutter_plugin.cpp`
 

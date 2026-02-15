@@ -270,6 +270,10 @@ We have successfully resolved all build blockers and the app now runs on device 
 4.  **Data File Extraction** ([android/.../AgusMapsFlutterPlugin.java](../android/src/main/java/app/agus/maps/agus_maps_flutter/AgusMapsFlutterPlugin.java)):
     -   Added `extractDataFiles()` method to recursively extract CoMaps data assets.
     -   Data files are extracted from `assets/comaps_data/` to app's files directory.
+    -   Added symbol atlas validation before marker reuse:
+        -   Requires `symbols/xxhdpi/{light,dark}/symbols.{png,sdf}`
+        -   Applies minimum-size checks to reject stale placeholder files
+        -   Forces re-extraction if validation fails
     
 5.  **Data File Bundling** (handled by `dart run tool/build.dart --no-cache` during bootstrap):
     -   Build tool copies essential CoMaps data files to example app assets.

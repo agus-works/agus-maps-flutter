@@ -395,6 +395,16 @@ build-release:
 
 ## Known Issues & Considerations
 
+### Asset Extraction Resilience (2026-02)
+
+macOS extraction now mirrors iOS hardening:
+
+- Marker reuse (`.comaps_data_extracted`) is allowed only if canonical symbol
+  atlas files exist and pass minimum-size checks at
+  `symbols/xxhdpi/{light,dark}/symbols.{png,sdf}`.
+- When re-extraction is required, existing files are overwritten to prevent
+  stale/corrupted atlas content from persisting across runs.
+
 ### Quit Hang on macOS ✅ RESOLVED
 
 **Problem:** When quitting the macOS app (Cmd+Q), macOS produced a hang report. The main thread
