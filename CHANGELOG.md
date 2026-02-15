@@ -1,3 +1,58 @@
+## 0.1.24
+
+### Core API & Architecture
+
+* **Typed native messaging via Pigeon**: Introduced a strongly-typed Dart↔platform API surface (`pigeons/agus_maps_api.dart`) with generated bindings for Android, iOS, macOS, Linux, and Windows. This replaces ad-hoc message handling for low-frequency map events and place page payloads.
+* **Structured place page contract**: Added typed place page models (feature IDs, coordinates, metadata entries, render-state events) and wired host/flutter APIs for `onMapReady`, render state changes, and place-page updates.
+* **Cross-platform native core expansion**: Added a broader C/C++ bridge in `src/` (including generated platform glue for Linux/Windows) to unify map lifecycle, event propagation, and FFI-facing structures across platforms.
+
+### Place Page & User Experience
+
+* **Place page feature implementation**: Added end-to-end place page (POI) flow from native extraction of place data to Flutter presentation in the example app (`example/lib/place_page_sheet.dart`).
+* **Cleaner Dart integration**: Updated plugin Dart APIs to expose current place page retrieval/clear operations and stream-based low-frequency events through typed models.
+* **Improved disposal behavior**: Added explicit native shutdown/cleanup integration to reduce stale state and improve teardown reliability.
+
+### Localization Overhaul
+
+* **Native localization pipeline**: Implemented a dedicated cross-platform localization module (`src/agus_localization.cpp`) for localized type names and unit strings, with runtime locale selection and fallback behavior.
+* **Platform bridges for locale support**: Added iOS/macOS localization bridge sources and integrated locale management into platform plugins.
+* **Duplicate-symbol mitigation**: Disabled conflicting default localization paths in patched CoMaps sources and adjusted pod/build configuration to avoid duplicate localization symbols.
+* **Dart-side simplification**: Removed plugin font/localization asset declarations from `pubspec.yaml` where native localization now owns the behavior.
+
+### Assets & Data Integrity
+
+* **Symbol atlas replication and validation**: Build tooling now replicates canonical symbol atlas assets across DPI folders and validates light/dark `symbols.png`/`symbols.sdf` integrity.
+* **Runtime extraction hardening**: Platform extraction checks now validate marker + essential files + symbol atlas file size before reusing extracted data, forcing re-extraction when assets are incomplete/corrupt.
+* **Asset pipeline updates**: Added new asset tooling (`tool/asset_tools.dart`, `tool/src/assets_updater.dart`) to sync localized strings, copy required CoMaps data, and keep example asset declarations in sync.
+
+### Build System & CI/CD
+
+* **CI workflow expansion and hardening**: Major `devops.yml` updates across jobs, including asset generation/validation steps, improved diagnostics, disk cleanup checkpoints, and revised Android artifact naming/cleanup.
+* **Windows asset/toolchain reliability**: Added and iterated MinGW/MSYS2/zlib/Python handling and fallback logic to make symbol generation and asset preparation more robust on Windows CI.
+* **Android build on Linux job**: Added Linux-based Android build path for speed comparison and workflow optimization; removed redundant macOS Android job.
+* **Qt module alignment in CI**: Added `qtpositioning` module setup for Linux/Windows/macOS build jobs to match native build requirements.
+
+### Android Plugin & Security Configuration
+
+* **Android native-message plumbing**: Added generated `AgusMapsApi.java`, integrated typed host API handling in `AgusMapsFlutterPlugin.java`, and improved native callback/event dispatch.
+* **ProGuard baseline for native integration**: Added `android/proguard-rules.pro` and Android build updates to support obfuscation-safe native/pigeon interop.
+
+### Tooling, Patches, and Repository Operations
+
+* **Workflow-maintenance utility**: Added `tool/delete_non_tag_workflow_runs.dart` and supporting documentation for managing non-tag GitHub Actions history.
+* **Git/submodule robustness**: Updated git operations to use safer fetch/submodule behavior (`--no-recurse-submodules` during fetch + stronger submodule error handling).
+* **Patch set refresh**: Updated CoMaps patch catalog, including new localization-control patch (`0070-libs-platform-disable-localization.patch`), removed obsolete multiprocessing patch (`0069`), and expanded patch documentation.
+
+### Documentation
+
+* **Architecture and implementation docs expanded**: Updated `GUIDE.md`, API docs, per-platform implementation docs, and CI/build notes to reflect typed messaging, localization ownership, and asset integrity workflow.
+* **New implementation references**: Added `doc/IMPLEMENTATION-LOCALISATION.md`, `doc/IMPLEMENTATION-NATIVE-MESSAGE-PASSING.md`, and `doc/IMPL-05-place-page-drawer.md`.
+* **Issue knowledge base growth**: Added/moved detailed issue analyses under `doc/issues/` (FFI, event lifecycle, place page data handling, symbol loading, Linux pixel buffer, and related performance topics).
+
+### Release Metadata
+
+* **Version bump**: Updated plugin version to `0.1.24` across podspecs, lockfiles, and package metadata.
+
 ## 0.1.23
 
 ### Android Build & Tooling
