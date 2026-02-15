@@ -337,6 +337,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             "drules_proto.bin",
             "packed_polygons.bin",
             "transit_colors.txt",
+            "symbols/xxhdpi/light/symbols.png",
+            "symbols/xxhdpi/light/symbols.sdf",
+            "symbols/xxhdpi/dark/symbols.png",
+            "symbols/xxhdpi/dark/symbols.sdf",
             "localized_types/en.lproj/LocalizableTypes.strings"  // Localized POI type names
         ]
         
@@ -351,6 +355,11 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
                     try? FileManager.default.removeItem(atPath: markerFile.path)
                     break
                 }
+            }
+            if !needsExtraction && !symbolAtlasLooksSane(baseDir: appDir) {
+                NSLog("[AgusMapsFlutter] Symbol atlas looks stale/suspicious, forcing re-extraction")
+                needsExtraction = true
+                try? FileManager.default.removeItem(atPath: markerFile.path)
             }
         }
         
@@ -398,12 +407,35 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
                     try fileManager.createDirectory(atPath: destItem, withIntermediateDirectories: true)
                     try extractDirectory(from: sourceItem, to: destItem)
                 } else {
-                    if !fileManager.fileExists(atPath: destItem) {
-                        try fileManager.copyItem(atPath: sourceItem, toPath: destItem)
+                    if fileManager.fileExists(atPath: destItem) {
+                        try fileManager.removeItem(atPath: destItem)
                     }
+                    try fileManager.copyItem(atPath: sourceItem, toPath: destItem)
                 }
             }
         }
+    }
+
+    private func symbolAtlasLooksSane(baseDir: URL) -> Bool {
+        let checks: [(String, Int64)] = [
+            ("symbols/xxhdpi/light/symbols.png", 100_000),
+            ("symbols/xxhdpi/dark/symbols.png", 100_000),
+            ("symbols/xxhdpi/light/symbols.sdf", 1_000),
+            ("symbols/xxhdpi/dark/symbols.sdf", 1_000),
+        ]
+
+        for (relativePath, minSize) in checks {
+            let filePath = baseDir.appendingPathComponent(relativePath).path
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: filePath),
+                  let size = attrs[.size] as? NSNumber else {
+                return false
+            }
+            if size.int64Value < minSize {
+                return false
+            }
+        }
+
+        return true
     }
     
     // MARK: - Map Surface Management
