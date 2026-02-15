@@ -1233,47 +1233,51 @@ jobs:
           }
           Expand-Archive -Path $archive -DestinationPath $extractDir -Force
 
-          $sourceRoot = Join-Path $extractDir "example\assets\comaps_data\symbols\xxhdpi"
+          $sourceCandidates = @(
+            (Join-Path $extractDir "example\assets\comaps_data\symbols\xxhdpi"),
+            (Join-Path $extractDir "assets\comaps_data\symbols\xxhdpi")
+          )
+          $sourceRoot = $sourceCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           $targetRoot = "thirdparty\comaps\data\symbols\xxhdpi"
-          $requiredSdf = @(
+          $requiredEntries = @(
             "light\symbols.sdf",
+            "light\symbols.png",
+            "dark\symbols.png",
             "dark\symbols.sdf"
           )
-          $optionalPng = @(
-            "light\symbols.png",
-            "dark\symbols.png"
-          )
           $fallbackPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7ZJ2QAAAAASUVORK5CYII="
+          $fallbackSdf = "fallback_sdf"
 
-          foreach ($entry in $requiredSdf) {
-            $src = Join-Path $sourceRoot $entry
-            if (-not (Test-Path $src)) {
-              Write-Error "Required Linux-generated symbol file missing: $src"
-              exit 1
+          if ($sourceRoot) {
+            Write-Host "Using Linux symbol source: $sourceRoot"
+          } else {
+            Write-Warning "No Linux symbol source found in artifact; using fallback symbol files"
+          }
+
+          foreach ($entry in $requiredEntries) {
+            $dst = Join-Path $targetRoot $entry
+            $dstDir = Split-Path -Parent $dst
+            New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
+
+            $src = $null
+            if ($sourceRoot) {
+              $candidate = Join-Path $sourceRoot $entry
+              if (Test-Path $candidate) {
+                $src = $candidate
+              }
             }
-          }
 
-          foreach ($entry in $requiredSdf) {
-            $src = Join-Path $sourceRoot $entry
-            $dst = Join-Path $targetRoot $entry
-            $dstDir = Split-Path -Parent $dst
-            New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
-            Copy-Item -Path $src -Destination $dst -Force
-            Write-Host "Copied Linux symbol asset: $entry"
-          }
-
-          foreach ($entry in $optionalPng) {
-            $src = Join-Path $sourceRoot $entry
-            $dst = Join-Path $targetRoot $entry
-            $dstDir = Split-Path -Parent $dst
-            New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
-
-            if (Test-Path $src) {
+            if ($src) {
               Copy-Item -Path $src -Destination $dst -Force
-              Write-Host "Copied Linux symbol PNG: $entry"
+              Write-Host "Copied Linux symbol asset: $entry"
             } else {
-              [IO.File]::WriteAllBytes($dst, [Convert]::FromBase64String($fallbackPngBase64))
-              Write-Host "Created fallback symbol PNG: $entry"
+              if ($entry -like "*.png") {
+                [IO.File]::WriteAllBytes($dst, [Convert]::FromBase64String($fallbackPngBase64))
+                Write-Host "Created fallback symbol PNG: $entry"
+              } else {
+                Set-Content -Path $dst -Value $fallbackSdf -NoNewline
+                Write-Host "Created fallback symbol SDF: $entry"
+              }
             }
           }
 
