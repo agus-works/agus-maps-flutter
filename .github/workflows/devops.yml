@@ -181,6 +181,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT6_VERSION }}
+          modules: qtpositioning
           cache: true
           setup-python: 'false'
 
@@ -1141,6 +1142,7 @@ jobs:
         with:
           version: ${{ env.QT6_VERSION }}
           arch: win64_mingw
+          modules: qtpositioning
           cache: true
           setup-python: 'false'
 
@@ -1692,6 +1694,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT6_VERSION }}
+          modules: qtpositioning
           cache: true
           setup-python: 'false'
 
