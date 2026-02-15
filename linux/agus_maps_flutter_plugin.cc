@@ -429,6 +429,10 @@ static bool data_dir_looks_complete(const fs::path& dir) {
     dir / "drules_proto.bin",
     dir / "packed_polygons.bin",
     dir / "transit_colors.txt",
+    dir / "symbols" / "xxhdpi" / "light" / "symbols.png",
+    dir / "symbols" / "xxhdpi" / "light" / "symbols.sdf",
+    dir / "symbols" / "xxhdpi" / "dark" / "symbols.png",
+    dir / "symbols" / "xxhdpi" / "dark" / "symbols.sdf",
     // Localized type names (e.g., "Gas Station" instead of "amenity-fuel")
     dir / "localized_types" / "en.lproj" / "LocalizableTypes.strings",
   };
@@ -439,6 +443,31 @@ static bool data_dir_looks_complete(const fs::path& dir) {
       return false;
     }
   }
+
+  struct SizedCheck {
+    fs::path path;
+    uintmax_t minBytes;
+  };
+  const SizedCheck sized_checks[] = {
+    {dir / "symbols" / "xxhdpi" / "light" / "symbols.png", 100000},
+    {dir / "symbols" / "xxhdpi" / "dark" / "symbols.png", 100000},
+    {dir / "symbols" / "xxhdpi" / "light" / "symbols.sdf", 1000},
+    {dir / "symbols" / "xxhdpi" / "dark" / "symbols.sdf", 1000},
+  };
+
+  for (const auto& check : sized_checks) {
+    std::error_code ec;
+    auto const size = fs::file_size(check.path, ec);
+    if (ec || size < check.minBytes) {
+      std::fprintf(
+          stderr,
+          "[AgusMapsFlutter] Data incomplete, suspicious symbol atlas size: %s (size=%llu)\n",
+          check.path.string().c_str(),
+          static_cast<unsigned long long>(size));
+      return false;
+    }
+  }
+
   return true;
 }
 

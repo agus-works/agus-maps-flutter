@@ -336,9 +336,19 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, AgusMapsApi.AgusMap
     File fontsDir = new File(filesDir, "fonts");
     File unicodeBlockFile = new File(fontsDir, "unicode_blocks.txt");
     File localizedTypesFile = new File(filesDir, "localized_types/en.lproj/LocalizableTypes.strings");
+    File lightSymbolsPng = new File(filesDir, "symbols/xxhdpi/light/symbols.png");
+    File lightSymbolsSdf = new File(filesDir, "symbols/xxhdpi/light/symbols.sdf");
+    File darkSymbolsPng = new File(filesDir, "symbols/xxhdpi/dark/symbols.png");
+    File darkSymbolsSdf = new File(filesDir, "symbols/xxhdpi/dark/symbols.sdf");
+
+    boolean symbolsReady =
+            lightSymbolsPng.exists() && lightSymbolsPng.length() >= 100_000L &&
+            darkSymbolsPng.exists() && darkSymbolsPng.length() >= 100_000L &&
+            lightSymbolsSdf.exists() && lightSymbolsSdf.length() >= 1_000L &&
+            darkSymbolsSdf.exists() && darkSymbolsSdf.length() >= 1_000L;
     
     // Check if data is already extracted AND essential files exist
-    if (markerFile.exists() && unicodeBlockFile.exists() && localizedTypesFile.exists()) {
+    if (markerFile.exists() && unicodeBlockFile.exists() && localizedTypesFile.exists() && symbolsReady) {
         android.util.Log.d("AgusMapsFlutter", "Data already extracted at: " + filesDir.getAbsolutePath());
         return filesDir.getAbsolutePath();
     }
