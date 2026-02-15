@@ -31,6 +31,23 @@ The render loop is "demand-driven" - the engine only renders when:
 
 When idle, CPU and GPU sleep, preserving battery life.
 
+### 4. Asset Integrity and Self-Healing
+
+CoMaps icon rendering depends on `symbols.png` + `symbols.sdf` atlas files.
+The build/runtime pipeline now applies two guardrails:
+
+1. **Build-time normalization**
+    - `tool/build.dart` copies `comaps_data` and replicates the canonical
+       `xxhdpi` atlas to all DPI folders (`6plus`, `mdpi`, `hdpi`, `xhdpi`,
+       `xxhdpi`, `xxxhdpi`) for both `light` and `dark`.
+
+2. **Runtime validation before cache reuse**
+    - Android, iOS, macOS, Linux, and Windows validate presence + minimum file
+       size of `symbols/xxhdpi/{light,dark}/symbols.{png,sdf}` before trusting
+       `.comaps_data_extracted`.
+    - If atlas files are missing/suspicious (placeholder-sized), extraction is
+       forced and stale files are overwritten from bundled `flutter_assets`.
+
 ## SDK Distribution Model
 
 ### Three Workflows

@@ -244,6 +244,12 @@ cp -r $AGUS_MAPS_HOME/example/assets/ my_flutter_app/assets/
 Copy-Item -Recurse "$env:AGUS_MAPS_HOME\example\assets" "my_flutter_app\assets"
 ```
 
+> **Asset integrity note (icons/localization):** Recent builds replicate
+> `symbols.png`/`symbols.sdf` from `xxhdpi` to all DPI buckets during
+> asset preparation and validate extracted atlas files at runtime. If stale
+> extracted data is detected, the plugin automatically re-extracts from
+> bundled assets instead of trusting old cache markers.
+
 Then add the assets to your `pubspec.yaml`. For now, there are a lot of assets that needs to be added. This is the way until we figure out a better way to do this.
 
 ```yaml

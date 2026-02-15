@@ -391,7 +391,10 @@ So each locale directory must be explicitly listed in `example/pubspec.yaml`.
 ### Repair behavior
 
 Windows extraction uses a marker file: `Documents/agus_maps_flutter/.comaps_data_extracted`.
-The plugin validates the extracted data directory; if required files are missing, it automatically re-extracts and overwrites from the bundled `flutter_assets`.
+The plugin validates the extracted data directory; if required files are missing,
+or if canonical symbol atlas files are suspiciously small
+(`symbols/xxhdpi/{light,dark}/symbols.{png,sdf}`), it automatically re-extracts
+and overwrites from the bundled `flutter_assets`.
 
 ## Windows Blank/White Map: Framebuffer Readback Mismatch
 

@@ -453,6 +453,20 @@ example/ios/
 
 ## Implementation Details
 
+### Asset Extraction Resilience (2026-02)
+
+`extractDataFiles()` now performs stronger cache validation before trusting
+`.comaps_data_extracted`:
+
+- Verifies canonical atlas files exist:
+  - `symbols/xxhdpi/light/symbols.png`
+  - `symbols/xxhdpi/light/symbols.sdf`
+  - `symbols/xxhdpi/dark/symbols.png`
+  - `symbols/xxhdpi/dark/symbols.sdf`
+- Applies minimum-size checks to reject stale placeholder artifacts.
+- If validation fails, extraction is forced and existing destination files are
+  overwritten during recursive copy.
+
 ### 1. FlutterTexture Protocol (AgusMapsFlutterPlugin.swift)
 
 ```swift

@@ -559,6 +559,15 @@ Or simply clear the data directory and let the app re-extract:
 rm -rf ~/.local/share/agus_maps_flutter
 ```
 
+### Asset Extraction Resilience (2026-02)
+
+Linux now validates symbol atlas integrity before reusing
+`.comaps_data_extracted`:
+
+- Requires `symbols/xxhdpi/{light,dark}/symbols.{png,sdf}` to exist.
+- Applies minimum-size checks to detect stale/placeholder atlas files.
+- Forces full re-extraction if validation fails.
+
 ### Issue 10: EGL_BAD_ACCESS During Plugin Initialization (Complete Deferred Init)
 
 **Symptom:** Even after fixing display selection priority, `eglMakeCurrent` still fails:
