@@ -1,6 +1,5 @@
 // Build orchestration - coordinates all build steps
 
-import 'dart:convert' show base64Decode;
 import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'config.dart' show BuildConfig, BuildMode, getComapsTag;
@@ -466,11 +465,6 @@ Future<void> _generateComapsData() async {
   final symbolsPng =
       path.join(dataDir, 'symbols', 'xxhdpi', 'light', 'symbols.png');
 
-  if (Platform.isWindows) {
-    await _ensureWindowsSymbolPngFallback(
-        symbolsSdf: symbolsSdf, symbolsPng: symbolsPng);
-  }
-
   final dataAlreadyGenerated = await File(classificatorFile).exists() &&
       await File(typesFile).exists() &&
       await File(visibilityFile).exists() &&
@@ -582,23 +576,6 @@ Future<void> _generateComapsData() async {
 
   print('Data files generated');
   print('');
-}
-
-Future<void> _ensureWindowsSymbolPngFallback({
-  required String symbolsSdf,
-  required String symbolsPng,
-}) async {
-  final hasSdf = await File(symbolsSdf).exists();
-  final hasPng = await File(symbolsPng).exists();
-  if (!hasSdf || hasPng) {
-    return;
-  }
-
-  await ensureDir(path.dirname(symbolsPng));
-  const tinyPngBase64 =
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7ZJ2QAAAAASUVORK5CYII=';
-  await File(symbolsPng).writeAsBytes(base64Decode(tinyPngBase64), flush: true);
-  print('Created fallback symbols.png for Windows bootstrap');
 }
 
 /// Copy data files to example/assets
