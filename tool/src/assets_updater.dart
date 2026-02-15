@@ -101,6 +101,8 @@ Future<void> copyDataFiles() async {
     }
   }
 
+  await _replicateSymbolsAtlasToAllDpis(destDataDir);
+
   final icuSource = path.join(comapsDataDir, 'icudt75l.dat');
   final mapsDir = path.join(repoRoot, 'example', 'assets', 'maps');
   await ensureDir(mapsDir);
@@ -112,6 +114,57 @@ Future<void> copyDataFiles() async {
 
   print('Data files copied');
   print('');
+}
+
+Future<void> _replicateSymbolsAtlasToAllDpis(String comapsDataDir) async {
+  final symbolsRoot = path.join(comapsDataDir, 'symbols');
+  final sourceRoot = path.join(symbolsRoot, 'xxhdpi');
+
+  final sourceFiles = {
+    'light/symbols.png': path.join(sourceRoot, 'light', 'symbols.png'),
+    'light/symbols.sdf': path.join(sourceRoot, 'light', 'symbols.sdf'),
+    'dark/symbols.png': path.join(sourceRoot, 'dark', 'symbols.png'),
+    'dark/symbols.sdf': path.join(sourceRoot, 'dark', 'symbols.sdf'),
+  };
+
+  final missingSources = <String>[];
+  for (final entry in sourceFiles.entries) {
+    if (!await File(entry.value).exists()) {
+      missingSources.add(entry.key);
+    }
+  }
+
+  if (missingSources.isNotEmpty) {
+    print(
+      '  Warning: symbols atlas source missing in xxhdpi: '
+      '${missingSources.join(', ')}',
+    );
+    return;
+  }
+
+  final dpiDirs = [
+    '6plus',
+    'mdpi',
+    'hdpi',
+    'xhdpi',
+    'xxhdpi',
+    'xxxhdpi',
+  ];
+
+  var replicatedCount = 0;
+  for (final dpi in dpiDirs) {
+    for (final relative in sourceFiles.keys) {
+      final destination = path.join(symbolsRoot, dpi, relative);
+      await ensureDir(path.dirname(destination));
+      await File(sourceFiles[relative]!).copy(destination);
+      replicatedCount++;
+    }
+  }
+
+  print(
+    '  Replicated symbols atlas to all DPI folders '
+    '(files updated: $replicatedCount)',
+  );
 }
 
 Future<void> updateExampleAssetsList() async {
