@@ -1402,6 +1402,20 @@ jobs:
             Write-Error "Ensure Linux assets artifact (agus-assets) was downloaded and copied successfully."
             exit 1
           }
+
+          foreach ($png in @((Join-Path $symbolsRoot "light\symbols.png"), (Join-Path $symbolsRoot "dark\symbols.png"))) {
+            if ((Get-Item $png).Length -lt 100000) {
+              Write-Error "Symbol atlas PNG appears to be placeholder/suspiciously small: $png"
+              exit 1
+            }
+          }
+          foreach ($sdf in @((Join-Path $symbolsRoot "light\symbols.sdf"), (Join-Path $symbolsRoot "dark\symbols.sdf"))) {
+            if ((Get-Item $sdf).Length -lt 1000) {
+              Write-Error "Symbol atlas SDF appears to be placeholder/suspiciously small: $sdf"
+              exit 1
+            }
+          }
+
           Write-Host "✓ Symbol atlas present in example/assets"
         shell: pwsh
 
@@ -1786,6 +1800,40 @@ jobs:
 
           echo "=== Map Assets ==="
           ls -lh "$ASSETS_DIR/"
+
+      - name: Ensure Real Symbol Atlas in Linux Assets
+        run: |
+          SRC_ROOT="thirdparty/comaps/data/symbols/xxhdpi"
+          DST_ROOT="example/assets/comaps_data/symbols/xxhdpi"
+          mkdir -p "$DST_ROOT/light" "$DST_ROOT/dark"
+
+          for theme in light dark; do
+            for ext in png sdf; do
+              src="$SRC_ROOT/$theme/symbols.$ext"
+              dst="$DST_ROOT/$theme/symbols.$ext"
+              if [ ! -f "$src" ]; then
+                echo "ERROR: Missing symbol atlas source file: $src"
+                exit 1
+              fi
+              cp "$src" "$dst"
+              echo "Copied symbol atlas: $dst"
+            done
+          done
+
+          # Guardrail: prevent shipping placeholder/tiny atlas files.
+          for theme in light dark; do
+            png="$DST_ROOT/$theme/symbols.png"
+            sdf="$DST_ROOT/$theme/symbols.sdf"
+            png_size=$(stat -c%s "$png")
+            sdf_size=$(stat -c%s "$sdf")
+            if [ "$png_size" -lt 100000 ] || [ "$sdf_size" -lt 1000 ]; then
+              echo "ERROR: Symbol atlas file size is suspiciously small for $theme (png=$png_size, sdf=$sdf_size)"
+              exit 1
+            fi
+          done
+
+          ls -lh "$DST_ROOT/light/symbols.png" "$DST_ROOT/light/symbols.sdf" \
+                 "$DST_ROOT/dark/symbols.png" "$DST_ROOT/dark/symbols.sdf"
 
       - name: Create Assets Archive
         run: |
