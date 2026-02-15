@@ -1661,6 +1661,7 @@ jobs:
             build-essential \
             cmake \
             ninja-build \
+            optipng \
             pkg-config \
             libgl-dev \
             libegl-dev \
@@ -1800,6 +1801,27 @@ jobs:
 
           echo "=== Map Assets ==="
           ls -lh "$ASSETS_DIR/"
+
+      - name: Generate Linux Symbol Atlas If Missing
+        run: |
+          SYMBOL_PNG="thirdparty/comaps/data/symbols/xxhdpi/light/symbols.png"
+          SYMBOL_SDF="thirdparty/comaps/data/symbols/xxhdpi/light/symbols.sdf"
+
+          if [ -f "$SYMBOL_PNG" ] && [ -f "$SYMBOL_SDF" ]; then
+            echo "Symbol atlas already present; skipping regeneration."
+          else
+            echo "Symbol atlas missing; generating with CoMaps script..."
+            cd thirdparty/comaps
+            bash tools/unix/generate_symbols.sh
+            cd ../..
+          fi
+
+          if [ ! -f "$SYMBOL_PNG" ] || [ ! -f "$SYMBOL_SDF" ]; then
+            echo "ERROR: Symbol atlas generation failed (missing xxhdpi light symbols)."
+            exit 1
+          fi
+
+          ls -lh "$SYMBOL_PNG" "$SYMBOL_SDF"
 
       - name: Ensure Real Symbol Atlas in Linux Assets
         run: |
