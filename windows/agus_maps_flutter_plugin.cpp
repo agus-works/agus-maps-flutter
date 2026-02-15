@@ -580,6 +580,31 @@ bool AgusMapsFlutterPlugin::DataDirLooksComplete(const fs::path& dataDir) {
             return false;
         }
     }
+
+    // Guardrail: reject stale placeholder/tiny symbol atlas files.
+    // Valid atlas files are significantly larger than placeholders.
+    struct SizedCheck {
+        fs::path path;
+        uintmax_t minBytes;
+    };
+    const SizedCheck sizedChecks[] = {
+        {dataDir / "symbols" / "xxhdpi" / "light" / "symbols.png", 100000},
+        {dataDir / "symbols" / "xxhdpi" / "dark" / "symbols.png", 100000},
+        {dataDir / "symbols" / "xxhdpi" / "light" / "symbols.sdf", 1000},
+        {dataDir / "symbols" / "xxhdpi" / "dark" / "symbols.sdf", 1000},
+    };
+
+    for (const auto& check : sizedChecks) {
+        std::error_code ec;
+        const auto size = fs::file_size(check.path, ec);
+        if (ec || size < check.minBytes) {
+            OutputDebugStringA((
+                "[AgusMapsFlutter] Data incomplete, suspicious symbol atlas size: " +
+                check.path.string() + " (size=" + std::to_string(size) + ")\n").c_str());
+            return false;
+        }
+    }
+
     return true;
 }
 
