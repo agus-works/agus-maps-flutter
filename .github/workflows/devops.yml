@@ -1390,10 +1390,10 @@ jobs:
         run: |
           $symbolsRoot = "example\assets\comaps_data\symbols\xxhdpi"
           $required = @(
-            Join-Path $symbolsRoot "light\symbols.png",
-            Join-Path $symbolsRoot "light\symbols.sdf",
-            Join-Path $symbolsRoot "dark\symbols.png",
-            Join-Path $symbolsRoot "dark\symbols.sdf"
+            (Join-Path $symbolsRoot "light\symbols.png"),
+            (Join-Path $symbolsRoot "light\symbols.sdf"),
+            (Join-Path $symbolsRoot "dark\symbols.png"),
+            (Join-Path $symbolsRoot "dark\symbols.sdf")
           )
 
           $missing = $required | Where-Object { -not (Test-Path $_) }
