@@ -46,7 +46,8 @@ class Mirror {
   }
 
   /// Convert to MirrorConfig
-  utils.MirrorConfig toConfig() => utils.MirrorConfig(name: name, baseUrl: baseUrl);
+  utils.MirrorConfig toConfig() =>
+      utils.MirrorConfig(name: name, baseUrl: baseUrl);
 
   @override
   String toString() => 'Mirror($name, ${latencyMs}ms, available=$isAvailable)';
@@ -65,16 +66,15 @@ class MirrorService {
   /// - Enhanced map colors for light/dark modes
   ///
   /// URL structure: `<base>/maps/<version>/<file>`
-  static final List<Mirror> defaultMirrors = utils.defaultMirrors
-      .map((c) => Mirror.fromConfig(c))
-      .toList();
+  static final List<Mirror> defaultMirrors =
+      utils.defaultMirrors.map((c) => Mirror.fromConfig(c)).toList();
 
   final http.Client _client;
   final List<Mirror> mirrors;
 
   MirrorService({http.Client? client, List<Mirror>? customMirrors})
-    : _client = client ?? http.Client(),
-      mirrors = customMirrors ?? List.from(defaultMirrors);
+      : _client = client ?? http.Client(),
+        mirrors = customMirrors ?? List.from(defaultMirrors);
 
   /// Measure latency to each mirror using a HEAD request.
   ///
@@ -119,7 +119,8 @@ class MirrorService {
   /// - Today and the past [daysToProbe] days
   /// - Returns list sorted newest first
   static List<String> generateCandidateVersions({int daysToProbe = 90}) {
-    return utils.MirrorService.generateCandidateVersions(daysToProbe: daysToProbe);
+    return utils.MirrorService.generateCandidateVersions(
+        daysToProbe: daysToProbe);
   }
 
   /// Get list of available snapshots from a mirror.
@@ -134,7 +135,7 @@ class MirrorService {
     // Probe candidate versions until we find one
     for (final version in candidates) {
       final testUrl = utils.MirrorService.buildDownloadUrl(
-        mirror.baseUrl, version, 'countries.txt');
+          mirror.baseUrl, version, 'countries.txt');
       try {
         final response = await _client
             .head(Uri.parse(testUrl))
@@ -155,14 +156,17 @@ class MirrorService {
     return snapshots;
   }
 
-  /// Get list of available regions in a snapshot.
+  /// Get the full countries tree for a snapshot.
   ///
   /// Fetches and parses countries.txt (JSON format) from the CoMaps CDN.
   ///
   /// URL: `<base>/maps/<version>/countries.txt`
-  Future<List<utils.MwmRegion>> getRegions(Mirror mirror, utils.Snapshot snapshot) async {
+  Future<utils.CountriesData> getCountriesData(
+    Mirror mirror,
+    utils.Snapshot snapshot,
+  ) async {
     final url = utils.MirrorService.buildDownloadUrl(
-      mirror.baseUrl, snapshot.version, 'countries.txt');
+        mirror.baseUrl, snapshot.version, 'countries.txt');
     try {
       final response = await _client
           .get(Uri.parse(url))
@@ -170,8 +174,7 @@ class MirrorService {
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
-        final countriesData = utils.CountriesData.fromJson(json);
-        return countriesData.allRegions;
+        return utils.CountriesData.fromJson(json);
       }
     } catch (e) {
       // countries.txt not available or parse error
@@ -183,12 +186,22 @@ class MirrorService {
     );
   }
 
+  /// Get only real downloadable MWM regions in a snapshot.
+  Future<List<utils.MwmRegion>> getRegions(
+    Mirror mirror,
+    utils.Snapshot snapshot,
+  ) async {
+    final countriesData = await getCountriesData(mirror, snapshot);
+    return countriesData.leafRegions;
+  }
+
   /// Build the full download URL for a region.
   ///
   /// CoMaps CDN URL structure: `<base>/maps/<version>/<file>`
-  String getDownloadUrl(Mirror mirror, utils.Snapshot snapshot, utils.MwmRegion region) {
+  String getDownloadUrl(
+      Mirror mirror, utils.Snapshot snapshot, utils.MwmRegion region) {
     return utils.MirrorService.buildDownloadUrl(
-      mirror.baseUrl, snapshot.version, region.fileName);
+        mirror.baseUrl, snapshot.version, region.fileName);
   }
 
   /// Get file size via HEAD request.
@@ -291,10 +304,13 @@ class MirrorService {
     // Generate candidate snapshots starting from today
     final candidates = generateCandidateVersions(daysToProbe: 30);
     final results = <MirrorDiscoveryResult>[];
+    final metaserverUrls =
+        await utils.MirrorService(client: _client).queryMetaserver();
+    final mirrorsToProbe = _mergeMetaserverMirrors(metaserverUrls);
 
     // Probe all mirrors in parallel for efficiency
     await Future.wait(
-      mirrors.map((mirror) async {
+      mirrorsToProbe.map((mirror) async {
         String? latestSnapshot;
         String? error;
         final stopwatch = Stopwatch()..start();
@@ -318,7 +334,7 @@ class MirrorService {
             // Only check a few candidates to minimize requests
             for (final version in candidates.take(14)) {
               final testUrl = utils.MirrorService.buildDownloadUrl(
-                mirror.baseUrl, version, 'countries.txt');
+                  mirror.baseUrl, version, 'countries.txt');
               try {
                 final snapResponse = await _client
                     .head(Uri.parse(testUrl))
@@ -366,6 +382,22 @@ class MirrorService {
     });
 
     return results;
+  }
+
+  List<Mirror> _mergeMetaserverMirrors(List<String> metaserverUrls) {
+    final configs = utils.mergeMetaserverMirrors(
+      mirrors.map((mirror) => mirror.toConfig()),
+      metaserverUrls,
+    );
+
+    return configs.map((config) {
+      for (final mirror in mirrors) {
+        if (utils.mirrorUrlsMatch(mirror.baseUrl, config.baseUrl)) {
+          return mirror;
+        }
+      }
+      return Mirror.fromConfig(config);
+    }).toList();
   }
 
   /// Dispose of the HTTP client.

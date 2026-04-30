@@ -399,7 +399,8 @@ Clear the current map selection and close any visible place page.
 
 #### `PlacePageData`
 Data model for place page details.
-- **Fields**: `title`, `subtitle`, `address`, `lat`, `lon`, `coordinates`, `metadata`, `featureId`, `objectType`, `openingMode`, `roadType`, `rawTypes`
+- **Fields**: `title`, `subtitle`, `address`, `lat`, `lon`, `coordinates`, `metadataTags`, `featureId`, `objectType`, `openingMode`, `roadType`, `rawTypes`
+- **Metadata**: iOS and macOS serialize readable OSM-style metadata tags such as `wikipedia`, `phone`, `iata`, `ele`, and `internet_access`. Flutter localizes labels from these tags.
 
 ### Helper Services
 
@@ -422,7 +423,8 @@ Service for discovering and downloading MWM files from mirror servers.
 - `measureLatencies() -> Future<void>`: Measure latency to all mirrors
 - `getFastestMirror() -> Mirror?`: Get fastest available mirror
 - `getSnapshots(Mirror mirror) -> Future<List<Snapshot>>`: Get available snapshot versions
-- `getRegions(Mirror mirror, Snapshot snapshot) -> Future<List<MwmRegion>>`: Get regions in snapshot
+- `getCountriesData(Mirror mirror, Snapshot snapshot) -> Future<CountriesData>`: Get the full CoMaps `countries.txt` hierarchy for browsing
+- `getRegions(Mirror mirror, Snapshot snapshot) -> Future<List<MwmRegion>>`: Get only leaf downloadable regions in a snapshot
 - `downloadToFile(String url, File destination, {onProgress}) -> Future<int>`: Download file with progress
 - Many more utility methods for map discovery and download
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env dart
+
 /// Mirror Availability Diagnostic Tool
 ///
 /// This tool checks all configured CoMaps CDN servers for availability.
@@ -61,24 +62,25 @@ class MirrorCheckResult {
 
   String get statusText {
     if (isFullyOperational) return 'OPERATIONAL';
-    if (baseUrlAccessible && snapshotListSuccess) return 'PARTIAL (download failed)';
+    if (baseUrlAccessible && snapshotListSuccess)
+      return 'PARTIAL (download failed)';
     if (baseUrlAccessible) return 'DEGRADED (no snapshots)';
     return 'DOWN';
   }
 
   Map<String, dynamic> toJson() => {
-    'mirror': mirror.toJson(),
-    'baseUrlAccessible': baseUrlAccessible,
-    'baseUrlLatencyMs': baseUrlLatencyMs,
-    'latestSnapshot': latestSnapshot,
-    'snapshotListSuccess': snapshotListSuccess,
-    'gibraltarDownloadSuccess': gibraltarDownloadSuccess,
-    'gibraltarSizeBytes': gibraltarSizeBytes,
-    'gibraltarDownloadMs': gibraltarDownloadMs,
-    'error': error,
-    'isFromMetaserver': isFromMetaserver,
-    'isFullyOperational': isFullyOperational,
-  };
+        'mirror': mirror.toJson(),
+        'baseUrlAccessible': baseUrlAccessible,
+        'baseUrlLatencyMs': baseUrlLatencyMs,
+        'latestSnapshot': latestSnapshot,
+        'snapshotListSuccess': snapshotListSuccess,
+        'gibraltarDownloadSuccess': gibraltarDownloadSuccess,
+        'gibraltarSizeBytes': gibraltarSizeBytes,
+        'gibraltarDownloadMs': gibraltarDownloadMs,
+        'error': error,
+        'isFromMetaserver': isFromMetaserver,
+        'isFullyOperational': isFullyOperational,
+      };
 }
 
 /// HTTP client with reasonable timeouts
@@ -116,7 +118,8 @@ Future<MirrorCheckResult> checkMirrorWithDiagnostics(
         response.statusCode == 301 ||
         response.statusCode == 302;
     baseUrlLatencyMs = stopwatch.elapsedMilliseconds;
-    print('    Base URL: ${baseUrlAccessible ? "OK" : "FAILED"} (${baseUrlLatencyMs}ms)');
+    print(
+        '    Base URL: ${baseUrlAccessible ? "OK" : "FAILED"} (${baseUrlLatencyMs}ms)');
   } catch (e) {
     error = 'Base URL check failed: $e';
     print('    Base URL: FAILED - $e');
@@ -143,7 +146,8 @@ Future<MirrorCheckResult> checkMirrorWithDiagnostics(
 
   // Step 3: Try to download Gibraltar.mwm
   if (latestSnapshot != null) {
-    final gibraltarUrl = MirrorService.buildDownloadUrl(mirror.baseUrl, latestSnapshot, 'Gibraltar.mwm');
+    final gibraltarUrl = MirrorService.buildDownloadUrl(
+        mirror.baseUrl, latestSnapshot, 'Gibraltar.mwm');
 
     try {
       final headResponse = await _client
@@ -160,8 +164,8 @@ Future<MirrorCheckResult> checkMirrorWithDiagnostics(
         request.headers['Range'] = 'bytes=0-1023';
 
         final streamedResponse = await _client.send(request).timeout(
-          const Duration(seconds: 15),
-        );
+              const Duration(seconds: 15),
+            );
 
         if (streamedResponse.statusCode == 200 ||
             streamedResponse.statusCode == 206) {
@@ -178,7 +182,8 @@ Future<MirrorCheckResult> checkMirrorWithDiagnostics(
           );
         } else {
           error = 'Gibraltar download HTTP ${streamedResponse.statusCode}';
-          print('    Gibraltar.mwm: FAILED - HTTP ${streamedResponse.statusCode}');
+          print(
+              '    Gibraltar.mwm: FAILED - HTTP ${streamedResponse.statusCode}');
         }
       } else {
         error = 'Gibraltar HEAD HTTP ${headResponse.statusCode}';
@@ -205,7 +210,8 @@ Future<MirrorCheckResult> checkMirrorWithDiagnostics(
 }
 
 /// Find the latest available snapshot on a CoMaps server.
-Future<String?> _findLatestSnapshot(MirrorConfig mirror, List<String> candidates) async {
+Future<String?> _findLatestSnapshot(
+    MirrorConfig mirror, List<String> candidates) async {
   for (final snapshot in candidates) {
     // Try to fetch countries.txt which contains version info
     final countriesUrl = '${mirror.baseUrl}maps/$snapshot/countries.txt';
@@ -221,7 +227,8 @@ Future<String?> _findLatestSnapshot(MirrorConfig mirror, List<String> candidates
     }
 
     // Fallback: try Gibraltar.mwm directly
-    final gibraltarUrl = MirrorService.buildDownloadUrl(mirror.baseUrl, snapshot, 'Gibraltar.mwm');
+    final gibraltarUrl = MirrorService.buildDownloadUrl(
+        mirror.baseUrl, snapshot, 'Gibraltar.mwm');
     try {
       final response = await _client
           .head(Uri.parse(gibraltarUrl))
@@ -332,10 +339,12 @@ void printReport(List<MirrorCheckResult> results, List<String> metaserverUrls) {
 
   if (operational.isNotEmpty) {
     final best = operational.first;
-    print('Best CoMaps CDN: ${best.mirror.name} (${best.baseUrlLatencyMs}ms latency)');
+    print(
+        'Best CoMaps CDN: ${best.mirror.name} (${best.baseUrlLatencyMs}ms latency)');
     print('  URL: ${best.mirror.baseUrl}');
     print('  Latest snapshot: ${best.latestSnapshot}');
-    print('  Download URL pattern: ${best.mirror.baseUrl}maps/<version>/<file>');
+    print(
+        '  Download URL pattern: ${best.mirror.baseUrl}maps/<version>/<file>');
     if (best.isFromMetaserver) {
       print('  📡 Listed by metaserver');
     }
@@ -358,15 +367,15 @@ void printReport(List<MirrorCheckResult> results, List<String> metaserverUrls) {
   print('  - Enhanced map colors for light/dark modes');
   print('');
   print('The CoMaps metaserver at $comapsMetaserverUrl');
-  print('returns the currently active download servers used by the CoMaps app.');
+  print(
+      'returns the currently active download servers used by the CoMaps app.');
   print('');
   print('=' * 80);
 }
 
 void _printMirrorResult(MirrorCheckResult result) {
-  final latency = result.baseUrlLatencyMs != null
-      ? '${result.baseUrlLatencyMs}ms'
-      : 'N/A';
+  final latency =
+      result.baseUrlLatencyMs != null ? '${result.baseUrlLatencyMs}ms' : 'N/A';
   final snapshot = result.latestSnapshot ?? 'N/A';
   final size = result.gibraltarSizeBytes != null
       ? '${(result.gibraltarSizeBytes! / (1024 * 1024)).toStringAsFixed(2)} MB'
@@ -396,29 +405,8 @@ Future<void> main() async {
   final metaserverUrls = await _queryMetaserver();
   print('');
 
-  // Build mirror list using shared constants from mirror_utils
-  final mirrors = <MirrorConfig>[];
-  final metaserverSet = metaserverUrls.toSet();
-
-  for (final mirror in defaultMirrors) {
-    mirrors.add(mirror);
-  }
-
-  // Add any metaserver URLs not already in static list
-  for (final url in metaserverUrls) {
-    final normalizedUrl = url.endsWith('/') ? url : '$url/';
-    final alreadyExists = mirrors.any((m) =>
-        m.baseUrl == normalizedUrl ||
-        m.baseUrl == url ||
-        normalizedUrl.contains(m.baseUrl.replaceAll('https://', '').replaceAll('/', '')));
-
-    if (!alreadyExists) {
-      mirrors.add(MirrorConfig(
-        name: 'CoMaps (from metaserver)',
-        baseUrl: normalizedUrl,
-      ));
-    }
-  }
+  // Build mirror list using shared constants from mirror_utils.
+  final mirrors = mergeMetaserverMirrors(defaultMirrors, metaserverUrls);
 
   print('Checking ${mirrors.length} CoMaps CDN servers...');
   print('');
@@ -426,11 +414,12 @@ Future<void> main() async {
   final results = <MirrorCheckResult>[];
 
   for (final mirror in mirrors) {
-    final isFromMetaserver = metaserverSet.any((url) =>
-        mirror.baseUrl.contains(url.replaceAll('https://', '').replaceAll('/', '')) ||
-        url.contains(mirror.baseUrl.replaceAll('https://', '').replaceAll('/', '')));
+    final isFromMetaserver = metaserverUrls.any(
+      (url) => mirrorUrlsMatch(url, mirror.baseUrl),
+    );
 
-    final result = await checkMirrorWithDiagnostics(mirror, candidateSnapshots, isFromMetaserver: isFromMetaserver);
+    final result = await checkMirrorWithDiagnostics(mirror, candidateSnapshots,
+        isFromMetaserver: isFromMetaserver);
     results.add(result);
     print('');
   }

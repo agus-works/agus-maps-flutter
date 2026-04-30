@@ -1,7 +1,7 @@
 # IMPL-05: Place Page (POI) Drawer for Flutter
 
 ## Goal
-Expose CoMaps place page (POI) information to Flutter and implement a cross-platform, pure-Dart UI drawer in the example app that mirrors CoMaps behavior on Android/macOS.
+Expose CoMaps place page (POI) information to Flutter and implement a cross-platform, pure-Dart UI drawer in the example app that mirrors CoMaps behavior across Android, iOS, and macOS.
 
 ## Scope
 - **Platforms**: Android, iOS, macOS, Linux, Windows
@@ -23,7 +23,9 @@ We will expose a minimal, stable JSON payload from native and parse it in Dart.
   - `wikiDescriptionHtml`
   - `rawTypes`: array of raw types
 - **Metadata**
-  - `metadata`: map of `metadataId -> value` (IDs match `indexer/feature_meta.hpp` and Android `Metadata.MetadataType`)
+  - `metadataTags`: map of readable OSM-style tags to values. Tags are produced
+    from CoMaps `feature::ToString()` metadata keys, e.g. `wikipedia`, `phone`,
+    `iata`, `ele`, and `internet_access`.
 - **Status**
   - `isRoutePoint`
   - `roadType`
@@ -37,6 +39,11 @@ Add lightweight FFI functions to fetch current place page info:
 
 These functions are implemented in all platform-native C++ entry points and rely on the existing framework selection lifecycle (`Framework::SetTapEventInfoListener` → `OnTapEvent` → `BuildPlacePageInfo`).
 
+iOS and macOS now serialize the same readable `metadataTags` payload, so tapping
+the same POI on both Apple platforms exposes comparable Flutter data. This fixes
+the earlier macOS gap where POIs displayed less information than iOS because the
+macOS bridge did not emit the metadata tag map.
+
 ## Flutter API
 Expose in Dart:
 - `PlacePageData? getCurrentPlacePage()`
@@ -49,7 +56,8 @@ Expose in Dart:
 - Implement a bottom sheet overlay in Flutter (`Stack` + `Material`) to show:
   - Title, subtitle, address
   - Coordinates (decimal)
-  - Selected metadata entries
+  - Selected metadata entries, including Wikipedia, phone, IATA, elevation, and
+    internet access when available
 - Include a close button that calls `closePlacePage()` and hides the sheet.
 
 ## Phases
@@ -60,6 +68,7 @@ Expose in Dart:
 
 ## Validation
 - Tap on map shows drawer with title/coords and metadata.
+- iOS and macOS return matching `metadataTags` for the same selected POI.
 - Tap empty map area hides drawer.
 - Works on Android, iOS, macOS, Linux, Windows.
 

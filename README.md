@@ -84,7 +84,7 @@ env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
 
 # Then verify the example apps without launching them.
 cd example
-flutter build ios --simulator --debug 2>&1 | tee ../output.log
+flutter build ios --debug --no-codesign 2>&1 | tee ../output.log
 flutter build macos --debug 2>&1 | tee ../output.log
 ```
 
@@ -746,15 +746,19 @@ The CoMaps CDN provides MWM files with enhanced features not available in older 
 
 | Server | URL | Notes |
 |--------|-----|-------|
-| **CoMaps MapGen Finland** | `https://mapgen-fi-1.comaps.app/` | Primary (listed by metaserver) |
+| **CoMaps CDN Germany** | `https://comaps.firewall-gateway.de/` | CoMaps source default |
 | **CoMaps CDN US** | `https://cdn-us-2.comaps.tech/` | |
-| **CoMaps CDN Germany** | `https://comaps.firewall-gateway.de/` | |
+| **CoMaps CDN Finland** | `https://cdn-fi-1.comaps.app/` | |
+| **CoMaps CDN France** | `https://comaps.openstreetmap.fr/` | |
+| **CoMaps CDN Italy** | `https://comaps-it1.unfoxo.it/` | |
+| **CoMaps CDN Cloud.ru** | `https://comaps-cdn.s3-website.cloud.ru/` | |
+| **CoMaps MapGen Finland** | `https://mapgen-fi-1.comaps.app/` | Listed by metaserver |
 
 **URL Structure:** `<base>/maps/<version>/<file>`
 
 Example: `https://mapgen-fi-1.comaps.app/maps/260101/Gibraltar.mwm`
 
-> **Note:** The CoMaps metaserver at `https://cdn-us-1.comaps.app/servers` returns the currently active download servers.
+> **Note:** The CoMaps metaserver at `https://cdn-us-1.comaps.app/servers` returns currently active download servers. The runtime service and diagnostic tools merge metaserver-only hosts into the source default list before probing.
 
 ### Diagnostic Tool
 
@@ -765,7 +769,9 @@ dart run tool/check_mirrors.dart
 ```
 
 ### In-App Download
-**In-app (Example)**: Use the example app's Downloads tab to browse and download regions. The app automatically selects the fastest available CoMaps CDN server.
+**In-app (Example)**: Use the example app's Downloads tab to browse and download regions. The app automatically selects the fastest available CoMaps CDN server, preserves the CoMaps `countries.txt` hierarchy, and shows expandable country/region folders before individual downloadable `.mwm` files.
+
+The downloads cache is versioned (`downloads_cache_v2`) so older flat region lists are ignored and rebuilt from the hierarchical `countries.txt` payload.
 
 The example app bundles a small Gibraltar map for testing.
 

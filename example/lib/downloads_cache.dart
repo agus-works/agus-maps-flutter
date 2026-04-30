@@ -34,12 +34,12 @@ class CachedDownloadsData {
 
   /// Convert to JSON for storage.
   Map<String, dynamic> toJson() => {
-    'mirrorName': mirrorName,
-    'mirrorBaseUrl': mirrorBaseUrl,
-    'snapshotVersion': snapshotVersion,
-    'regions': regions.map((r) => r.toJson()).toList(),
-    'cachedAt': cachedAt.toIso8601String(),
-  };
+        'mirrorName': mirrorName,
+        'mirrorBaseUrl': mirrorBaseUrl,
+        'snapshotVersion': snapshotVersion,
+        'regions': regions.map((r) => r.toJson()).toList(),
+        'cachedAt': cachedAt.toIso8601String(),
+      };
 
   /// Create from JSON.
   factory CachedDownloadsData.fromJson(Map<String, dynamic> json) {
@@ -57,7 +57,7 @@ class CachedDownloadsData {
 
 /// Service for caching downloads data to local storage.
 class DownloadsCacheService {
-  static const _cacheKey = 'downloads_cache_v1';
+  static const _cacheKey = 'downloads_cache_v2';
 
   SharedPreferences? _prefs;
 
@@ -106,7 +106,8 @@ class DownloadsCacheService {
   Future<bool> validateCache(CachedDownloadsData cache) async {
     try {
       // CoMaps CDN URL structure: <base>/maps/<version>/countries.txt
-      final uri = Uri.parse('${cache.mirrorBaseUrl}maps/${cache.snapshotVersion}/countries.txt');
+      final uri = Uri.parse(
+          '${cache.mirrorBaseUrl}maps/${cache.snapshotVersion}/countries.txt');
       final response = await http.head(uri).timeout(const Duration(seconds: 5));
       final isValid = response.statusCode == 200;
       debugPrint(

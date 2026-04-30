@@ -64,10 +64,12 @@ The `agus_maps_flutter` plugin and this example app demonstrate:
 
 The example app implements a full-featured map viewer including:
 
-- **Map Download Manager**: A complete UI to browse, search, and download offline map regions (MWM files) from mirror servers.
+- **Map Download Manager**: A complete UI to browse, search, and download offline map regions (MWM files) from CoMaps CDN mirrors.
+- **Hierarchical Regions**: The Downloads tab follows the CoMaps `countries.txt` hierarchy. The root list shows expandable country/region folders; leaf `.mwm` files appear after expansion or as direct search results.
 - **Disk Space Management**: Real-time monitoring of available storage with safety checks before downloading.
 - **Fuzzy Search**: Search for countries and regions with intelligent fuzzy matching.
-- **Local Caching**: Management of downloaded region data for instant offline access.
+- **Local Caching**: Management of downloaded region data for instant offline access. Downloads metadata cache version `downloads_cache_v2` stores hierarchical region data and intentionally ignores older flat caches.
+- **Place Pages**: Tapping POIs shows a Flutter sheet with title, localized type/subtitle, coordinates, and readable metadata tags such as Wikipedia, phone, IATA, elevation, and internet access on iOS and macOS.
 - **Interactive Map**:
   - **Zero-Copy Rendering**: Smooth 60fps rendering using the `AgusMap` widget.
   - **Gesture Support**: Pan, pinch-to-zoom, and rotation.
@@ -96,7 +98,7 @@ cd example
 flutter pub get 2>&1 | tee ../output.log
 
 # iOS simulator debug build, no launch.
-flutter build ios --simulator --debug 2>&1 | tee ../output.log
+flutter build ios --debug --no-codesign 2>&1 | tee ../output.log
 
 # macOS debug build, no launch.
 flutter build macos --debug 2>&1 | tee ../output.log
@@ -124,6 +126,7 @@ flutter run -d macos --debug 2>&1 | tee ../output.log
 ### iOS
 - Uses `IOSurface` + `Metal` for zero-copy rendering.
 - Requires a physical device or Simulator.
+- Place page metadata is serialized with readable `metadataTags`, matching macOS.
 - If Xcode reports missing `ios/Classes/AgusMapsApi.g.swift`, regenerate the
   workspace with `flutter pub get` and `pod install` under `example/ios`.
 
@@ -131,6 +134,8 @@ flutter run -d macos --debug 2>&1 | tee ../output.log
 - Proven desktop support with resize capabilities.
 - Runtime extraction validates essential CoMaps data such as `subtypes.csv`
   before trusting the extraction marker.
+- Place page metadata now matches iOS, including tags used by the Flutter sheet
+  for Wikipedia, IATA, phone, elevation, and similar POI details.
 
 ### Windows
 - Uses optimized CPU-mediated rendering (OpenGL -> D3D11).

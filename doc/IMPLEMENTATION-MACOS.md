@@ -523,6 +523,25 @@ missing.
 - `macos/Classes/AgusMapsFlutterPlugin.swift`
 - `doc/COMAPS-ASSETS.md`
 
+### Place Page Metadata Parity ✅ RESOLVED
+
+**Problem:** macOS place pages showed less POI detail than iOS. For example,
+iOS exposed readable tags such as `wikipedia`, `phone`, `iata`, `ele`, and
+`internet_access`, while macOS omitted that metadata map.
+
+**Root Cause:** The macOS place-page JSON bridge serialized the basic display
+fields but did not iterate CoMaps metadata and emit readable `metadataTags`.
+
+**Solution:** The macOS bridge now includes `indexer/feature_meta.hpp` and uses
+`feature::ToString()` when serializing metadata. Flutter receives the same
+OSM-style tag map as iOS and can render matching rich details in the place-page
+sheet.
+
+**Files Updated:**
+- `macos/Classes/agus_maps_flutter_macos.mm`
+- `doc/IMPLEMENTATION-LOCALISATION.md`
+- `doc/IMPL-05-place-page-drawer.md`
+
 ### Multiple Displays
 
 macOS supports multiple displays with different scale factors. Consider:

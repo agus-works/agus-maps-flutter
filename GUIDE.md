@@ -250,6 +250,34 @@ dart run pigeon \
 Generated files are checked into version control and must not be edited by
 hand. Update the Pigeon source file and re-run generation instead.
 
+### Place Pages
+
+Tap selection is exposed as a native JSON payload and rendered by Flutter. iOS
+and macOS both emit readable `metadataTags` using CoMaps metadata keys from
+`feature_meta.hpp`, so the Dart sheet can show the same rich POI details on
+Apple platforms: Wikipedia links, phone numbers, IATA codes, elevation,
+internet access, and similar OSM metadata.
+
+Flutter remains the single place for display localization. Native code sends raw
+type keys and metadata tags; Dart normalizes and localizes them with the copied
+CoMaps string resources in `assets/localized_types/`.
+
+### Runtime Map Downloads
+
+Runtime downloads use the CoMaps `countries.txt` hierarchy instead of a flat
+list. `MirrorService.getCountriesData()` returns the full tree for UI browsing,
+while `getRegions()` returns only leaf regions for callers that need a flat list
+of downloadable `.mwm` files.
+
+The example Downloads tab starts from top-level country/region folders, expands
+into child folders or leaf files, and resolves group download/delete actions to
+their descendant leaves. Search intentionally flattens the tree so direct
+matches can be downloaded quickly without changing the browsing model.
+
+Mirror defaults are aligned with the current CoMaps source list and merged with
+metaserver-only hosts from `https://cdn-us-1.comaps.app/servers` before probing.
+Legacy Organic Maps mirrors are not used as fallbacks.
+
 ## Performance Characteristics
 
 ### Memory Usage
