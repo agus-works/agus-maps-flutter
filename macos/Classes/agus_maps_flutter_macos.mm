@@ -858,17 +858,19 @@ static constexpr auto kMinFrameInterval = std::chrono::milliseconds(16); // ~60f
 // Throttling flag to prevent queuing too many frame notifications
 static std::atomic<bool> g_frameNotificationPending{false};
 
-// Debug: count frame notifications
+#if !defined(NDEBUG) && !defined(RELEASE)
 static std::atomic<int> g_frameNotificationCount{0};
+#endif
 
 /// Internal function to notify Flutter about a new frame
 /// Called from the DrapeEngine render thread via df::SetActiveFrameCallback
 static void notifyFlutterFrameReady(void) {
-    // Debug: log first few notifications
+#if !defined(NDEBUG) && !defined(RELEASE)
     int count = g_frameNotificationCount.fetch_add(1);
     if (count < 5 || count % 60 == 0) {
         NSLog(@"[AgusMapsFlutter] notifyFlutterFrameReady called (count=%d)", count);
     }
+#endif
     
     // Rate limiting (Option 2): Enforce 60fps max
     auto now = std::chrono::steady_clock::now();
@@ -901,11 +903,12 @@ static void notifyFlutterFrameReady(void) {
             if (pluginClass) {
                 SEL selector = NSSelectorFromString(@"notifyFrameReadyFromNative");
                 if ([pluginClass respondsToSelector:selector]) {
-                    // Debug: log successful notification
+#if !defined(NDEBUG) && !defined(RELEASE)
                     static dispatch_once_t successToken;
                     dispatch_once(&successToken, ^{
                         NSLog(@"[AgusMapsFlutter] Frame notification: class found, calling notifyFrameReadyFromNative");
                     });
+#endif
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
                     [pluginClass performSelector:selector];

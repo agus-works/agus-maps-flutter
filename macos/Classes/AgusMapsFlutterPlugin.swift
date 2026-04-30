@@ -25,16 +25,19 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
     /// Shared instance for native code to notify when frames are ready
     private static weak var sharedInstance: AgusMapsFlutterPlugin?
     
-    // Debug: count frame notifications
+#if DEBUG
     private static var frameNotificationCount: Int = 0
+#endif
     
     /// Called by native code when a frame is ready
     @objc public static func notifyFrameReadyFromNative() {
+#if DEBUG
         frameNotificationCount += 1
         if frameNotificationCount <= 5 || frameNotificationCount % 60 == 0 {
             NSLog("[AgusMapsFlutter] Swift notifyFrameReadyFromNative called (count=%d, hasInstance=%@)", 
                   frameNotificationCount, sharedInstance != nil ? "YES" : "NO")
         }
+#endif
         DispatchQueue.main.async {
             sharedInstance?.notifyFrameReady()
         }
@@ -719,16 +722,19 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
     
     // MARK: - Rendering
     
-    // Debug: count instance frame notifications
+#if DEBUG
     private var instanceFrameCount: Int = 0
+#endif
     
     /// Called by native code when a new frame is ready
     @objc public func notifyFrameReady() {
+#if DEBUG
         instanceFrameCount += 1
         if instanceFrameCount <= 5 || instanceFrameCount % 60 == 0 {
             NSLog("[AgusMapsFlutter] Swift notifyFrameReady instance method (count=%d, enabled=%@, textureId=%lld)", 
                   instanceFrameCount, isRenderingEnabled ? "YES" : "NO", textureId)
         }
+#endif
         guard isRenderingEnabled, textureId >= 0 else { return }
         textureRegistry?.textureFrameAvailable(textureId)
         if !mapReadySent {
