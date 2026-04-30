@@ -204,6 +204,12 @@ static AgusPlacePageData* BuildPlacePageData(place_page::Info const & info) {
 
 // Custom log handler that redirects to NSLog
 static void AgusLogMessage(base::LogLevel level, base::SrcPoint const & src, std::string const & msg) {
+#if defined(NDEBUG) || defined(RELEASE)
+    if (level < base::LWARNING) {
+        return;
+    }
+#endif
+
     NSString* levelStr;
     switch (level) {
         case base::LDEBUG: levelStr = @"DEBUG"; break;
