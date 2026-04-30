@@ -27,7 +27,9 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 #include <android/native_window_jni.h>
 #include <chrono>
 #include <atomic>
+#include <memory>
 #include <thread>
+#include <vector>
 
 #include "base/file_name_utils.hpp"
 #include "base/logging.hpp"
@@ -81,6 +83,31 @@ static std::string g_resourcePath;
 static std::string g_writablePath;
 static bool g_platformInitialized = false;
 static std::mutex g_placePageMutex;
+
+static bool IsMapAlreadyRegistered(std::string const & countryName, int64_t requestedVersion) {
+    if (!g_framework) {
+        return false;
+    }
+
+    auto const & dataSource = g_framework->GetDataSource();
+    std::vector<std::shared_ptr<MwmInfo>> mwms;
+    dataSource.GetMwmsInfo(mwms);
+
+    for (auto const & info : mwms) {
+        if (!info || info->GetCountryName() != countryName) {
+            continue;
+        }
+
+        int64_t const registeredVersion =
+            static_cast<int64_t>(info->GetVersion());
+        if (requestedVersion == 0 || requestedVersion == registeredVersion ||
+            countryName == "World" || countryName == "WorldCoasts") {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 static char* CopyString(std::string const & value) {
     const size_t size = value.size();
@@ -1149,6 +1176,13 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPa
         auto name = path;
         base::GetNameFromFullPath(name);
         base::GetNameWithoutExt(name);
+
+        if (IsMapAlreadyRegistered(name, version)) {
+            __android_log_print(ANDROID_LOG_INFO, "AgusMapsFlutterNative",
+                "comaps_register_single_map_with_version: %s already registered, skipping",
+                name.c_str());
+            return 0;
+        }
 
         platform::LocalCountryFile file(base::GetDirectory(path), platform::CountryFile(std::move(name)), version);
         file.SyncWithDisk();
