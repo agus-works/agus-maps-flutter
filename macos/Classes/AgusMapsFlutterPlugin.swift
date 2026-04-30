@@ -102,7 +102,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         
         AgusMapsHostApiSetup.setUp(binaryMessenger: registrar.messenger, api: instance)
         
+#if DEBUG
         NSLog("[AgusMapsFlutter] Plugin registered, density=%.2f", instance.density)
+#endif
     }
     
     // MARK: - FlutterTexture Protocol
@@ -118,7 +120,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
     
     /// Called when texture is about to be rendered
     public func onTextureUnregistered(_ texture: FlutterTexture) {
+#if DEBUG
         NSLog("[AgusMapsFlutter] Texture unregistered")
+#endif
         cleanupTexture()
     }
     
@@ -238,7 +242,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
     }
     
     private func extractMapAsset(assetPath: String) throws -> String {
+#if DEBUG
         NSLog("[AgusMapsFlutter] Extracting asset: %@", assetPath)
+#endif
         
         // On macOS, Flutter assets are in App.framework/Resources/flutter_assets/
         // We need to look in the App.framework bundle, not the main bundle
@@ -253,7 +259,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             .appendingPathComponent("App.framework/Resources/flutter_assets")
         let assetFullPath = (flutterAssetsPath as NSString).appendingPathComponent(assetPath)
         
+#if DEBUG
         NSLog("[AgusMapsFlutter] Looking for asset at: %@", assetFullPath)
+#endif
         
         guard FileManager.default.fileExists(atPath: assetFullPath) else {
             throw NSError(domain: "AgusMapsFlutter", code: 1, userInfo: [
@@ -273,14 +281,18 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         
         // Check if already extracted
         if FileManager.default.fileExists(atPath: destPath.path) {
+#if DEBUG
             NSLog("[AgusMapsFlutter] Map already exists at: %@", destPath.path)
+#endif
             return destPath.path
         }
         
         // Copy file
         try FileManager.default.copyItem(atPath: assetFullPath, toPath: destPath.path)
         
+#if DEBUG
         NSLog("[AgusMapsFlutter] Map extracted to: %@", destPath.path)
+#endif
         return destPath.path
     }
     
@@ -323,7 +335,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
     }
     
     private func extractDataFiles() throws -> String {
+#if DEBUG
         NSLog("[AgusMapsFlutter] Extracting CoMaps data files...")
+#endif
         
         let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let appDir = appSupportDir.appendingPathComponent(Bundle.main.bundleIdentifier ?? "AgusMapsFlutter")
@@ -370,7 +384,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         }
         
         if !needsExtraction {
+#if DEBUG
             NSLog("[AgusMapsFlutter] Data already extracted at: %@", appDir.path)
+#endif
             return appDir.path
         }
         
@@ -386,7 +402,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             .appendingPathComponent("App.framework/Resources/flutter_assets")
         let bundleDataPath = (flutterAssetsPath as NSString).appendingPathComponent("assets/comaps_data")
         
+#if DEBUG
         NSLog("[AgusMapsFlutter] Looking for data at: %@", bundleDataPath)
+#endif
         
         if FileManager.default.fileExists(atPath: bundleDataPath) {
             try extractDirectory(from: bundleDataPath, to: appDir.path)
@@ -397,14 +415,18 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             if !FileManager.default.fileExists(atPath: filePath) {
                 NSLog("[AgusMapsFlutter] WARNING: Essential file still missing after extraction: %@", file)
             } else {
+#if DEBUG
                 NSLog("[AgusMapsFlutter] Verified: %@", file)
+#endif
             }
         }
         
         // Create marker file
         FileManager.default.createFile(atPath: markerFile.path, contents: nil, attributes: nil)
         
+#if DEBUG
         NSLog("[AgusMapsFlutter] Data files extracted to: %@", appDir.path)
+#endif
         return appDir.path
     }
     
@@ -432,14 +454,14 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
     }
 
     private func symbolAtlasLooksSane(baseDir: URL) -> Bool {
-        let checks: [(String, Int64)] = [
+        let fileSizeChecks: [(String, Int64)] = [
             ("symbols/xxhdpi/light/symbols.png", 100_000),
             ("symbols/xxhdpi/dark/symbols.png", 100_000),
             ("symbols/xxhdpi/light/symbols.sdf", 1_000),
             ("symbols/xxhdpi/dark/symbols.sdf", 1_000),
         ]
 
-        for (relativePath, minSize) in checks {
+        for (relativePath, minSize) in fileSizeChecks {
             let filePath = baseDir.appendingPathComponent(relativePath).path
             guard let attrs = try? FileManager.default.attributesOfItem(atPath: filePath),
                   let size = attrs[.size] as? NSNumber else {
@@ -447,6 +469,20 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             }
             if size.int64Value < minSize {
                 return false
+            }
+        }
+
+        let dpiDirs = ["6plus", "mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"]
+        for dpi in dpiDirs {
+            for theme in ["light", "dark"] {
+                let relativePath = "symbols/\(dpi)/\(theme)/symbols.sdf"
+                let filePath = baseDir.appendingPathComponent(relativePath).path
+                guard let contents = try? String(contentsOfFile: filePath) else {
+                    return false
+                }
+                if !contents.contains("name=\"castle-s\"") {
+                    return false
+                }
             }
         }
 
@@ -479,7 +515,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         surfaceHeight = height
         mapReadySent = false
 
+#if DEBUG
         NSLog("[AgusMapsFlutter] createMapSurface: %dx%d density=%.2f", width, height, density)
+#endif
 
         do {
             try createPixelBuffer(width: width, height: height)
@@ -494,7 +532,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
 
             nativeSetSurface(textureId: textureId, width: Int32(width), height: Int32(height), density: Float(density))
 
+#if DEBUG
             NSLog("[AgusMapsFlutter] Texture registered: id=%lld", textureId)
+#endif
             completion(.success(textureId))
             sendRenderStateChanged(state: .active, surfaceId: textureId)
         } catch {
@@ -536,19 +576,25 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         if abs(targetDensity - density) > .ulpOfOne {
             density = targetDensity
             nativeSetVisualScale(density: Float(targetDensity))
+#if DEBUG
             NSLog("[AgusMapsFlutter] Updated visual scale: %.2f", targetDensity)
+#endif
         }
 
         // Skip if size hasn't actually changed
         guard width != surfaceWidth || height != surfaceHeight else {
+#if DEBUG
             NSLog("[AgusMapsFlutter] Resize skipped - size unchanged: %dx%d", width, height)
+#endif
             return
         }
         
         surfaceWidth = width
         surfaceHeight = height
         
+#if DEBUG
         NSLog("[AgusMapsFlutter] Performing debounced resize: %dx%d", width, height)
+#endif
         
         do {
             try createPixelBuffer(width: width, height: height)
@@ -582,7 +628,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         recognizer.isEnabled = true
         view.addGestureRecognizer(recognizer)
         magnificationRecognizer = recognizer
+#if DEBUG
         NSLog("[AgusMapsFlutter] Trackpad pinch gesture attached")
+#endif
     }
     
     @objc private func handleMagnification(_ recognizer: NSMagnificationGestureRecognizer) {
@@ -693,10 +741,12 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             }
         }
         
+#if DEBUG
         NSLog("[AgusMapsFlutter] CVPixelBuffer created: %dx%d (Metal=%@, IOSurface=%@)",
               width, height,
               CVPixelBufferGetIOSurface(buffer) != nil ? "YES" : "NO",
               metalDevice != nil ? "YES" : "NO")
+#endif
     }
     
     private func cleanupTexture() {
@@ -717,7 +767,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         
         nativeOnSurfaceDestroyed()
         
+#if DEBUG
         NSLog("[AgusMapsFlutter] Texture cleaned up")
+#endif
     }
     
     // MARK: - Rendering
@@ -798,8 +850,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         // Call the native C function to set up the rendering surface
         agus_native_set_surface(textureId, buffer, width, height, density)
         
+#if DEBUG
         NSLog("[AgusMapsFlutter] nativeSetSurface complete: texture=%lld, %dx%d, density=%.2f",
               textureId, width, height, density)
+#endif
     }
     
     private func nativeOnSizeChanged(width: Int32, height: Int32) {

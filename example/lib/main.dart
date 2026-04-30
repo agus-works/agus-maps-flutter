@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -53,12 +54,15 @@ const List<FavoriteLocation> kFavorites = [
   ),
 ];
 
-/// Default location when app starts (Philippines).
+/// Default location when app starts.
+///
+/// Keep this inside the bundled Gibraltar map so a clean install does not ask
+/// CoMaps to open country files that have not been downloaded yet.
 const FavoriteLocation kDefaultLocation = FavoriteLocation(
-  name: 'Philippines',
-  lat: 11.840743046600755,
-  lon: 123.11028882297192,
-  zoom: 6,
+  name: 'Gibraltar',
+  lat: 36.1407,
+  lon: -5.3535,
+  zoom: 14,
 );
 
 class MyApp extends StatefulWidget {
@@ -348,6 +352,15 @@ class _MyAppState extends State<MyApp> {
         // Skip bundled maps (already registered above)
         if (metadata.isBundled) continue;
 
+        if (!await File(metadata.filePath).exists()) {
+          _log(
+            'Skipping missing downloaded map ${metadata.regionName}: '
+            '${metadata.filePath}',
+          );
+          await _mwmStorage!.remove(metadata.regionName);
+          continue;
+        }
+
         _log(
             'Re-registering downloaded: ${metadata.regionName} at ${metadata.filePath}');
         final parsed = int.tryParse(metadata.snapshotVersion);
@@ -372,13 +385,13 @@ class _MyAppState extends State<MyApp> {
     _log('Forcing complete tile reload...');
     agus_maps_flutter.forceRedraw();
 
-    // Debug: List all registered MWMs and check Manila coverage
-    _log('Debug: Listing all registered MWMs...');
-    agus_maps_flutter.debugListMwms();
+    if (kDebugMode) {
+      _log('Debug: Listing all registered MWMs...');
+      agus_maps_flutter.debugListMwms();
 
-    // Check Manila, Philippines (14.5995, 120.9842)
-    _log('Debug: Checking Manila coverage...');
-    agus_maps_flutter.debugCheckPoint(14.5995, 120.9842);
+      _log('Debug: Checking Gibraltar coverage...');
+      agus_maps_flutter.debugCheckPoint(36.1407, -5.3535);
+    }
 
     if (mounted) {
       setState(() {
@@ -388,7 +401,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _log(String msg) {
-    debugPrint('[AgusDemo] $msg');
+    if (kDebugMode) {
+      debugPrint('[AgusDemo] $msg');
+    }
     if (mounted) {
       setState(() {
         _debug += '$msg\n';
