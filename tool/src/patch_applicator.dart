@@ -3,60 +3,66 @@
 import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'process_runner.dart' show runProcess;
-import 'file_operations.dart' show dirExists, fileExists;
 import 'platform_detector.dart' show getPatchesDir, getComapsDir;
 
 /// Apply all patches from patches/comaps/ directory
 Future<void> applyPatches({String? comapsDir, String? patchesDir}) async {
   final comaps = comapsDir ?? getComapsDir();
   final patches = patchesDir ?? getPatchesDir();
-  
+
   if (!await Directory(patches).exists()) {
     print('Patches directory not found: $patches');
     return;
   }
-  
+
   final patchFiles = <File>[];
   await for (final entity in Directory(patches).list()) {
     if (entity is File && entity.path.endsWith('.patch')) {
       patchFiles.add(entity);
     }
   }
-  
+  patchFiles
+      .sort((a, b) => path.basename(a.path).compareTo(path.basename(b.path)));
+
   if (patchFiles.isEmpty) {
     print('No patches found in $patches');
     return;
   }
-  
+
   print('Found ${patchFiles.length} patches to apply');
-  
+
   // Reset working tree to clean state
   print('Resetting working tree to HEAD...');
-  await runProcess('git', ['reset', 'HEAD', '--', '.'], workingDirectory: comaps);
+  await runProcess('git', ['reset', 'HEAD', '--', '.'],
+      workingDirectory: comaps);
   await runProcess('git', ['checkout', '--', '.'], workingDirectory: comaps);
   await runProcess('git', ['clean', '-fd'], workingDirectory: comaps);
-  
+
   // Reset submodules
   print('Resetting submodules...');
   try {
-    await runProcess('git', ['submodule', 'foreach', '--recursive', 'git', 'checkout', '--', '.'], workingDirectory: comaps);
-    await runProcess('git', ['submodule', 'foreach', '--recursive', 'git', 'clean', '-fd'], workingDirectory: comaps);
+    await runProcess('git',
+        ['submodule', 'foreach', '--recursive', 'git', 'checkout', '--', '.'],
+        workingDirectory: comaps);
+    await runProcess(
+        'git', ['submodule', 'foreach', '--recursive', 'git', 'clean', '-fd'],
+        workingDirectory: comaps);
   } catch (e) {
     // Submodule reset may fail if there are no submodules, ignore
     print('Note: Submodule reset had warnings (may be expected)');
   }
-  
+
   int applied = 0;
   int skipped = 0;
   int failed = 0;
-  
+
   for (final patchFile in patchFiles) {
     final patchName = path.basename(patchFile.path);
     print('Processing patch: $patchName');
-    
+
     // Try different application methods
     bool success = false;
-    
+
     // Method 1: git apply (preferred)
     try {
       final result = await runProcess(
@@ -73,7 +79,7 @@ Future<void> applyPatches({String? comapsDir, String? patchesDir}) async {
     } catch (e) {
       // Try next method
     }
-    
+
     if (!success) {
       // Method 2: git apply with 3-way merge
       try {
@@ -92,7 +98,7 @@ Future<void> applyPatches({String? comapsDir, String? patchesDir}) async {
         // Try next method
       }
     }
-    
+
     if (!success) {
       // Method 3: Check if already applied
       try {
@@ -111,7 +117,7 @@ Future<void> applyPatches({String? comapsDir, String? patchesDir}) async {
         // Not already applied
       }
     }
-    
+
     if (!success) {
       // Method 4: patch command (fallback)
       try {
@@ -130,15 +136,15 @@ Future<void> applyPatches({String? comapsDir, String? patchesDir}) async {
         // Failed
       }
     }
-    
+
     if (!success) {
       print('  Failed: $patchName');
       failed++;
     }
   }
-  
+
   print('Patch summary: Applied=$applied, Skipped=$skipped, Failed=$failed');
-  
+
   if (failed > 0) {
     print('Warning: Some patches failed - build may still succeed');
   }

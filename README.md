@@ -70,6 +70,26 @@ This project is currently in the **proof of concept stage**, demonstrating zero-
 
 Contributions for Windows ARM64 are welcome from developers with access to the required hardware!
 
+### Contributor Build Snapshot
+
+The current source workflow has been verified on Apple platforms with the Dart build tool:
+
+```bash
+# From the repository root, build native Apple binaries from source.
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform ios 2>&1 | tee ./output.log
+
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform macos 2>&1 | tee ./output.log
+
+# Then verify the example apps without launching them.
+cd example
+flutter build ios --simulator --debug 2>&1 | tee ../output.log
+flutter build macos --debug 2>&1 | tee ../output.log
+```
+
+If Xcode reports a missing `ios/Classes/AgusMapsApi.g.swift`, the workspace is stale. From the repo root, run `cd example && flutter pub get && cd ios && pod install`, then reopen `example/ios/Runner.xcworkspace`.
+
 ### Why Another Map Plugin?
 
 Most Flutter map solutions either:
@@ -680,6 +700,8 @@ Developers can add custom overlay lines by calling `AgusWglContextFactory::SetOv
 | [doc/ARCHITECTURE-ANDROID.md](doc/ARCHITECTURE-ANDROID.md) | Deep dive: memory efficiency, battery savings, how it works |
 | [doc/COMAPS-ASSETS.md](doc/COMAPS-ASSETS.md) | **CoMaps asset management:** data files, localization, MWM maps |
 | [doc/IMPLEMENTATION-NATIVE-MESSAGE-PASSING.md](doc/IMPLEMENTATION-NATIVE-MESSAGE-PASSING.md) | **Native message passing:** Pigeon + FFI APIs, models, and platform wiring |
+| [doc/BUILD-CONFIGURATION.md](doc/BUILD-CONFIGURATION.md) | Debug/Profile/Release mapping for Flutter and native binaries |
+| [doc/DART-HOOKS.md](doc/DART-HOOKS.md) | Dart build tool, hooks, and source build orchestration |
 | [doc/IMPLEMENTATION-ANDROID.md](doc/IMPLEMENTATION-ANDROID.md) | Android build instructions, debug/release modes |
 | [doc/IMPLEMENTATION-IOS.md](doc/IMPLEMENTATION-IOS.md) | iOS build instructions and Metal integration |
 | [doc/IMPLEMENTATION-MACOS.md](doc/IMPLEMENTATION-MACOS.md) | macOS build instructions, window resize handling |

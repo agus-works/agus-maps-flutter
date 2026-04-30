@@ -1,13 +1,14 @@
 diff --git a/libs/search/CMakeLists.txt b/libs/search/CMakeLists.txt
-index 94da441..98fa387 100644
+index 36b017d0c..c7499578e 100644
 --- a/libs/search/CMakeLists.txt
 +++ b/libs/search/CMakeLists.txt
-@@ -179,7 +179,7 @@ target_link_libraries(${PROJECT_NAME}
+@@ -177,7 +177,7 @@ target_link_libraries(${PROJECT_NAME}
    openlocationcode
  )
  
--if(PLATFORM_DESKTOP)
-+if(PLATFORM_DESKTOP AND NOT SKIP_TESTS)
+-if(NOT (SKIP_TOOLS AND SKIP_TESTS))
++if(NOT SKIP_TESTS)
    add_subdirectory(search_tests_support)
    add_subdirectory(search_quality)
  endif()
+-- 

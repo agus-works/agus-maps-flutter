@@ -74,6 +74,7 @@ These files are **required** for the CoMaps Framework to initialize:
 |------|---------|------|
 | `classificator.txt` | Map feature type hierarchy | ~500 KB |
 | `types.txt` | Type definitions for map features | ~30 KB |
+| `subtypes.csv` | POI subtype labels used by place-page formatting | ~20 KB |
 | `categories.txt` | Search category definitions | ~200 KB |
 | `visibility.txt` | Zoom-level visibility rules | ~50 KB |
 | `drules_proto.bin` | Binary drawing rules (default style) | ~2 MB |
@@ -154,7 +155,7 @@ dart run tool/build.dart --no-cache
 
 This will:
 1. Clone the CoMaps repository to `thirdparty/comaps/`
-2. Checkout the version specified in `$COMAPS_TAG` (default: `v2026.01.08-11`)
+2. Checkout the version specified in `$COMAPS_TAG` (default: `v2026.04.23-19`)
 3. Initialize all git submodules recursively
 4. Apply patches from `patches/comaps/`
 
@@ -185,7 +186,7 @@ dart run tool/build.dart --no-cache
 1. **Checks** that `thirdparty/comaps/data/` exists
 2. **Creates** `example/assets/comaps_data/` directory
 3. **Copies** essential files:
-   - `classificator.txt`, `types.txt`, `categories.txt`, etc.
+   - `classificator.txt`, `types.txt`, `subtypes.csv`, `categories.txt`, etc.
    - `drules_proto*.bin` drawing rules
    - `packed_polygons.bin`, `countries*.txt`
 4. **Copies** localization directories:
@@ -302,7 +303,13 @@ Documents/
 If the marker file exists, extraction is skipped on subsequent app launches
 **only when extracted data passes completeness checks**.
 
-All supported platforms now validate the symbol atlas before trusting the
+All supported platforms now validate critical files before trusting
+`.comaps_data_extracted`. This is important when a previous app version
+extracted only part of the CoMaps data set. For example, iOS/macOS place pages
+require `subtypes.csv`; if it is missing, tapping some POIs can crash inside
+the native type formatter.
+
+All supported platforms also validate the symbol atlas before trusting the
 marker cache:
 - `symbols/xxhdpi/light/symbols.png` (minimum size guard)
 - `symbols/xxhdpi/light/symbols.sdf` (minimum size guard)
@@ -325,6 +332,7 @@ Windows example validation:
 const fs::path requiredFiles[] = {
     dataDir / "classificator.txt",
     dataDir / "types.txt",
+    dataDir / "subtypes.csv",
     dataDir / "drules_proto.bin",
     dataDir / "packed_polygons.bin",
     dataDir / "transit_colors.txt",
@@ -336,6 +344,10 @@ const fs::path requiredFiles[] = {
    dataDir / "symbols" / "xxhdpi" / "dark" / "symbols.sdf",
 };
 ```
+
+iOS and macOS perform equivalent checks in their Swift plugin files before
+returning the writable data directory. If any essential file is missing, the
+plugin removes the marker and re-extracts the bundled assets.
 
 
 ## Platform-Specific Behavior
@@ -380,6 +392,7 @@ private String extractDataFiles() throws IOException {
 | **Extraction Target** | `~/Documents/` (user's Documents directory) |
 | **Extraction Method** | `FileManager.copyItem()` |
 | **Marker File** | `~/Documents/.comaps_data_extracted` |
+| **Validation** | Re-extracts if essential files such as `subtypes.csv` are missing |
 | **iCloud Backup** | Excluded via `isExcludedFromBackup = true` |
 | **Validation** | Marker reuse requires symbol atlas presence + minimum size checks |
 
@@ -389,8 +402,24 @@ private String extractDataFiles() throws IOException {
 private func extractDataFiles() throws -> String {
     let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     let markerFile = documentsDir.appendingPathComponent(".comaps_data_extracted")
+    let essentialFiles = [
+        "classificator.txt",
+        "types.txt",
+        "subtypes.csv",
+        "categories.txt",
+        "visibility.txt",
+        "symbols/xxhdpi/light/symbols.sdf",
+        "symbols/xxhdpi/dark/symbols.sdf",
+    ]
     
-    if FileManager.default.fileExists(atPath: markerFile.path) {
+    let hasMarker = FileManager.default.fileExists(atPath: markerFile.path)
+    let hasEssentialFiles = essentialFiles.allSatisfy { relativePath in
+        FileManager.default.fileExists(
+            atPath: documentsDir.appendingPathComponent(relativePath).path
+        )
+    }
+
+    if hasMarker && hasEssentialFiles {
         return documentsDir.path
     }
     
@@ -412,9 +441,9 @@ private func extractDataFiles() throws -> String {
 | **Extraction Target** | `~/Documents/` (user's Documents directory) |
 | **Extraction Method** | Same as iOS (`FileManager.copyItem()`) |
 | **Marker File** | `~/Documents/.comaps_data_extracted` |
-| **Validation** | Marker reuse requires symbol atlas presence + minimum size checks |
+| **Validation** | Re-extracts if essential files such as `subtypes.csv` are missing or symbol atlas files are suspiciously small |
 
-**Implementation:** Shares code with iOS in `ios/Classes/AgusMapsFlutterPlugin.swift` (unified Apple platforms).
+**Implementation:** `macos/Classes/AgusMapsFlutterPlugin.swift`.
 
 ### Windows
 

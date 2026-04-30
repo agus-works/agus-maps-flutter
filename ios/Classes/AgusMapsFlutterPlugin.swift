@@ -297,7 +297,8 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         // Essential files that must exist for CoMaps to work
         let essentialFiles = [
             "classificator.txt",
-            "types.txt", 
+            "types.txt",
+            "subtypes.csv",
             "categories.txt",
             "visibility.txt",
             "symbols/xxhdpi/light/symbols.png",

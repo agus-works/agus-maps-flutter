@@ -1,6 +1,6 @@
 # Build Configuration Guide
 
-This document explains the available build configurations for the `agus_maps_flutter` plugin across all supported platforms. It details how Flutter build modes (Debug, Profile, Release) map to the underlying C++ library configurations and the specific macros used in **branch `release/v0.1.11`**.
+This document explains the available build configurations for the `agus_maps_flutter` plugin across all supported platforms. It details how Flutter build modes (Debug, Profile, Release) map to the underlying C++ library configurations used by the current source build and release packaging workflows.
 
 ## General Concepts
 
@@ -19,6 +19,12 @@ The plugin relies on a shared C++ core (`comaps`). This core has strict compilat
 | `flutter run --debug` | `Debug` | `DEBUG=1`<br>`PLATFORM_IPHONE=1` | **Development**: Full logging and safety checks enabled. |
 | `flutter run --release` | `Release` | `RELEASE=1`<br>`NDEBUG=1`<br>`PLATFORM_IPHONE=1` | **Production**: Fully optimized. defines `RELEASE` to satisfy `base.hpp`. |
 | `flutter run --profile` | `Profile` | `RELEASE=1`<br>`NDEBUG=1`<br>`PLATFORM_IPHONE=1` | **Performance Analysis**: Uses Release native code for accurate timing. |
+
+The example iOS Runner target includes a dedicated
+`example/ios/Flutter/Profile.xcconfig` that imports
+`Pods-Runner.profile.xcconfig` before `Generated.xcconfig`. This keeps Xcode's
+Profile configuration aligned with CocoaPods and avoids stale generated file
+references from previous pod graphs.
 
 ### 2. macOS (`macos/agus_maps_flutter.podspec`)
 
@@ -130,6 +136,17 @@ flowchart TD
 This environment variable is **configuration-agnostic**. It tells the build scripts where to find the *dependencies* (headers and pre-compiled libraries).
 -   It must be set to the path of the downloaded SDK (e.g., `agus-maps-sdk-vX.Y.Z`).
 -   If omitted, the build scripts will attempt to fallback to in-repo source or fail if binaries are missing.
+
+For contributor builds inside this repository, prefer leaving `AGUS_MAPS_HOME`
+unset and, when needed, force source mode explicitly:
+
+```bash
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform ios
+```
+
+This ensures the Apple XCFrameworks are rebuilt from the patched
+`thirdparty/comaps` checkout instead of reusing a stale SDK artifact.
 
 
 ## 8. Summary: Platform Behavior Matrix

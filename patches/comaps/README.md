@@ -229,11 +229,13 @@ The project targets Android API 24+ which has native GLES 3.0 support. Using nat
 1. Uses `CMAKE_CURRENT_SOURCE_DIR` instead of `CMAKE_SOURCE_DIR` for subdirectory builds
 2. Adds `/bigobj` for MSVC to handle unity builds
 3. Adds multi-config generator support (Visual Studio, Xcode) with generator expressions
-4. Adds `SKIP_QT` option to skip Qt dependencies
+4. Makes Qt discovery conditional on `SKIP_QT`
 5. Fixes Boost modular header include paths
-6. Adds `SKIP_TOOLS` option to skip generator tools
-7. Adds `SKIP_ANDROID_JNI` option for Flutter Android builds
-8. Makes Python protobuf check conditional on Qt builds
+6. Honors `SKIP_TOOLS` when adding desktop generator/tool targets
+7. Honors `SKIP_ANDROID_JNI` when adding the Android SDK JNI target
+8. Makes Python protobuf version checks conditional on Qt desktop builds while preserving CoMaps' `>=3.20,<4.0` requirement
+9. Keeps the upstream Python virtualenv preference added in CoMaps `v2026.04.23-19`
+10. Disables IPO/LTO for Apple `SKIP_QT` static-library builds so XCFramework packaging receives Mach-O object members instead of LLVM bitcode wrappers
 
 **Why it's needed:**
 When CoMaps is used as a subdirectory of another project (like a Flutter plugin), many CMake assumptions break. This patch makes the build system flexible enough for embedded use.
@@ -324,7 +326,7 @@ When building for macOS without the full app context, certain platform functions
 **Purpose:** Makes search test subdirectories conditional on `SKIP_TESTS`.
 
 **What it does:**
-- Changes `if(PLATFORM_DESKTOP)` to `if(PLATFORM_DESKTOP AND NOT SKIP_TESTS)`
+- Changes `if(NOT (SKIP_TOOLS AND SKIP_TESTS))` to `if(NOT SKIP_TESTS)`
 - Prevents building search quality tools when tests are skipped
 
 **Why it's needed:**
@@ -754,6 +756,7 @@ Shader compilers may optimize out unused attributes. The original assert crashes
 **What it does:**
 - Includes `active_frame_callback.hpp`
 - Calls `NotifyActiveFrame()` when `isActiveFrame` is true
+- Refreshed against the `v2026.04.23-19` `RenderFrame()` layout
 
 **Why it's needed:**
 This is the actual integration point for the callback mechanism created in patch 0012.
@@ -939,6 +942,7 @@ Same Windows MSVC debug runtime issue.
 
 **What it does:**
 - Casts character to `unsigned char` in house number modification
+- Refreshed for the upstream `localisation::kRussianLanguageIndex` condition used in `v2026.04.23-19`
 
 **Why it's needed:**
 Same Windows MSVC debug runtime issue.
@@ -1013,14 +1017,15 @@ Unity builds combine many source files, exceeding MSVC's default object section 
 
 **What it does:**
 
-1. **iOS Fix:** Multiple changes for iOS platform
+1. **iOS Fixes:** Multiple changes for iOS platform
    - Changes `http_user_agent_ios.mm` → `http_session_manager.mm` (file renamed in CoMaps)
    - **Adds `localization.cpp` and `localization.hpp`** to `PLATFORM_IPHONE` block
    - iOS's `localization.mm` only implements 5 of 8 localization functions
    - The missing `GetLocalizedDistanceUnits`, `GetLocalizedAltitudeUnits`, `GetLocalizedSpeedUnits` are in `localization.cpp`
    - Without both files, iOS builds fail with "undefined symbol" linker errors
+   - `ed25519_apple.mm` depends on Xcode-generated `platform-Swift.h`, which is not produced by this headless CMake build
 
-2. **Android with `SKIP_ANDROID_JNI`:** (lines 86-96)
+2. **Android with `SKIP_ANDROID_JNI`:**
    ```cmake
    elseif(SKIP_ANDROID_JNI AND ${PLATFORM_ANDROID})
      # Android build without JNI (for Flutter plugin with external platform impl)
@@ -1031,6 +1036,7 @@ Unity builds combine many source files, exceeding MSVC's default object section 
        http_uploader_background_dummy.cpp
        network_policy_dummy.cpp
        secure_storage_dummy.cpp
+       crypto/ed25519_monocypher.cpp
       )
     ```
    - Used when building for Flutter Android where platform implementation is external
@@ -1038,7 +1044,7 @@ Unity builds combine many source files, exceeding MSVC's default object section 
    - External code (`agus_platform.cpp`) provides `Platform::GetReader()` etc.
    - **Localization removed:** `localization_dummy.cpp` is NOT included; localization is provided by `agus_localization.cpp` in the Flutter plugin
 
-3. **macOS with `SKIP_QT`:** (lines 104-121)
+3. **macOS with `SKIP_QT`:**
    ```cmake
    elseif(SKIP_QT AND ${PLATFORM_MAC})
      # macOS build without Qt (for Flutter plugin)
@@ -1049,14 +1055,16 @@ Unity builds combine many source files, exceeding MSVC's default object section 
        http_thread_apple.mm
        http_uploader_apple.mm
        platform_mac.mm
+       crypto/ed25519_monocypher.cpp
        ...
      )
    ```
    - Used for Flutter macOS plugin (Metal rendering via podspec)
    - Uses native Apple HTTP/networking instead of Qt
    - **Localization removed:** `localization_dummy.cpp` is NOT included; localization is provided by `agus_localization.cpp` in the Flutter plugin
+   - Uses Monocypher Ed25519 because `ed25519_apple.mm` depends on the Xcode-generated `platform-Swift.h` header, which is not produced by this headless CMake build
 
-4. **Windows with `SKIP_QT`:** (lines 122-135)
+4. **Windows with `SKIP_QT`:**
    ```cmake
    elseif(SKIP_QT AND ${PLATFORM_WIN})
      # Windows build without Qt (for Flutter plugin)
@@ -1065,6 +1073,7 @@ Unity builds combine many source files, exceeding MSVC's default object section 
        gui_thread_win.cpp
        http_client_curl.cpp
        platform_win.cpp
+       crypto/ed25519_monocypher.cpp
        ...
      )
    ```
@@ -1072,7 +1081,7 @@ Unity builds combine many source files, exceeding MSVC's default object section 
    - Uses libcurl for HTTP instead of Qt::Network
    - **Localization removed:** `localization_dummy.cpp` is NOT included; localization is provided by `agus_localization.cpp` in the Flutter plugin
 
-5. **Linux with `SKIP_QT`:** (lines 136-150) **[NEW for Linux support]**
+5. **Linux with `SKIP_QT`:** **[NEW for Linux support]**
    ```cmake
    elseif(SKIP_QT AND ${PLATFORM_LINUX})
      # Linux build without Qt (for Flutter plugin with external platform impl)
@@ -1086,6 +1095,7 @@ Unity builds combine many source files, exceeding MSVC's default object section 
        platform_unix_impl.cpp
        platform_unix_impl.hpp
        secure_storage_dummy.cpp
+       crypto/ed25519_monocypher.cpp
      )
    ```
    - Used for Flutter Linux plugin (EGL/GLES3 rendering)
@@ -1107,12 +1117,12 @@ Unity builds combine many source files, exceeding MSVC's default object section 
 
 | Platform | Condition | Key Source Files | Localization |
 |----------|-----------|------------------|--------------|
-| iOS | `PLATFORM_IPHONE` | `platform_ios.mm`, Apple HTTP, Metal | `localization.mm` + `localization.cpp` (iOS localization + unit conversions) |
-| Android (JNI) | `PLATFORM_ANDROID` | `platform_android.cpp`, JNI/APK reader | JNI localization |
-| Android (Flutter) | `SKIP_ANDROID_JNI AND PLATFORM_ANDROID` | Unix impl + curl + dummies | `agus_localization.cpp` |
-| macOS (Flutter) | `SKIP_QT AND PLATFORM_MAC` | `platform_mac.mm`, Apple HTTP | `agus_localization.cpp` |
-| Windows (Flutter) | `SKIP_QT AND PLATFORM_WIN` | `platform_win.cpp`, curl + dummies | `agus_localization.cpp` |
-| **Linux (Flutter)** | `SKIP_QT AND PLATFORM_LINUX` | Unix impl + curl + dummies | `agus_localization.cpp` |
+| iOS | `PLATFORM_IPHONE` | `platform_ios.mm`, Apple HTTP, Metal, Monocypher Ed25519 | `localization.mm` + `localization.cpp` (iOS localization + unit conversions) |
+| Android (JNI) | `PLATFORM_ANDROID` | `platform_android.cpp`, JNI/APK reader, Monocypher Ed25519 | JNI localization |
+| Android (Flutter) | `SKIP_ANDROID_JNI AND PLATFORM_ANDROID` | Unix impl + curl + dummies + Monocypher Ed25519 | `agus_localization.cpp` |
+| macOS (Flutter) | `SKIP_QT AND PLATFORM_MAC` | `platform_mac.mm`, Apple HTTP, Monocypher Ed25519 | `agus_localization.cpp` |
+| Windows (Flutter) | `SKIP_QT AND PLATFORM_WIN` | `platform_win.cpp`, curl + dummies + Monocypher Ed25519 | `agus_localization.cpp` |
+| **Linux (Flutter)** | `SKIP_QT AND PLATFORM_LINUX` | Unix impl + curl + dummies + Monocypher Ed25519 | `agus_localization.cpp` |
 | Desktop (Qt) | Default `else` | Qt-based platform, Qt::Network | `localization_dummy.cpp` |
 
 **Why it's needed:**
@@ -1125,6 +1135,7 @@ Flutter plugins cannot use Qt because:
 
 **Without this patch:**
 - iOS build fails: `http_user_agent_ios.mm: No such file or directory`
+- iOS headless CMake build fails: `platform-Swift.h` file not found from `ed25519_apple.mm`
 - Android Flutter build fails: Missing JNI symbols, wrong platform impl
 - macOS Flutter build fails: `Qt6::Core not found`
 - Windows Flutter build fails: `Qt6::Network not found`

@@ -531,6 +531,23 @@ The example app includes minimal map data for testing. For production use, you'l
 | `'platform/platform.hpp' file not found` | Clear cached headers and re-run pod install (see below) |
 | `fatal error: '...' file not found` after SDK switch | Clear cached headers and re-run pod install (see below) |
 | Build worked before but fails after changing `AGUS_MAPS_HOME` | Clear cached headers and re-run pod install (see below) |
+| `Build input file cannot be found: ios/Classes/AgusMapsApi.g.swift` | Regenerate the Flutter/CocoaPods workspace; this is a stale Xcode file reference, not a current source file |
+
+#### Clearing Stale Xcode or CocoaPods References
+
+If Xcode references a generated Swift file that no longer exists, regenerate the
+workspace:
+
+```bash
+cd your_app
+flutter clean
+flutter pub get
+cd ios
+pod install
+```
+
+Close and reopen `Runner.xcworkspace`. If Xcode still reports the stale path,
+clean the build folder or delete the app's DerivedData entry.
 
 #### Clearing Cached Headers When Switching SDK Versions
 

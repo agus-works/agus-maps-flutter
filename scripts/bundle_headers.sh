@@ -137,12 +137,20 @@ bundle_comaps_headers() {
 bundle_3party_headers() {
     log_info "Bundling third-party headers..."
     
-    # Boost (header-only library - copy the entire boost directory)
+    # Boost (header-only library - copy either generated or modular headers)
     if [[ -d "$COMAPS_DIR/3party/boost/boost" ]]; then
         log_info "  Copying Boost headers (this may take a moment)..."
         copy_headers "$COMAPS_DIR/3party/boost/boost" "comaps/3party/boost/boost"
+    elif [[ -d "$COMAPS_DIR/3party/boost/libs" ]]; then
+        log_info "  Copying modular Boost headers (this may take a moment)..."
+        local boost_include_count=0
+        while IFS= read -r include_dir; do
+            copy_headers "$include_dir" "comaps/3party/boost"
+            boost_include_count=$((boost_include_count + 1))
+        done < <(find "$COMAPS_DIR/3party/boost/libs" -path "*/include" -type d | sort)
+        log_info "  Copied $boost_include_count modular Boost include directories"
     else
-        log_warn "  Boost headers not found - run 'cd thirdparty/comaps/3party/boost && ./bootstrap.sh && ./b2 headers' first"
+        log_warn "  Boost headers not found - expected generated boost/ or modular libs/*/include layout"
     fi
     
     # GLM (header-only math library)

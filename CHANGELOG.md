@@ -1,3 +1,17 @@
+## Unreleased
+
+### Apple Build & Tooling
+
+* **macOS contributor build stability**: Native macOS builds now apply CoMaps patches in sorted order, fail fast on CMake configure/build failures, clean stale XCFramework outputs before packaging, and build Metal shaders before CocoaPods setup. The example debug app was verified with `flutter build macos --debug`.
+
+* **iOS Xcode workspace fix**: Regenerated the iOS CocoaPods workspace and added the missing Profile xcconfig wiring so Xcode no longer looks for stale generated sources such as `ios/Classes/AgusMapsApi.g.swift`. The simulator debug app was verified with `flutter build ios --simulator --debug`.
+
+* **iOS native XCFramework fix**: The CoMaps platform patch now builds iOS Ed25519 verification with Monocypher instead of `ed25519_apple.mm`, avoiding the Xcode-generated `platform-Swift.h` dependency that is unavailable in the headless CMake/XCFramework build.
+
+### Assets
+
+* **Place page data validation**: Added `subtypes.csv` to the required CoMaps data set and made iOS/macOS extraction validate essential files before trusting `.comaps_data_extracted`, preventing crashes when opening POI place pages after an incomplete asset extraction.
+
 ## 0.1.24
 
 ### Core API & Architecture

@@ -1,5 +1,5 @@
 diff --git a/libs/drape_frontend/frontend_renderer.cpp b/libs/drape_frontend/frontend_renderer.cpp
-index 37f07850a..d860aea8f 100644
+index 068f19f75..dc8e36b26 100644
 --- a/libs/drape_frontend/frontend_renderer.cpp
 +++ b/libs/drape_frontend/frontend_renderer.cpp
 @@ -1,4 +1,5 @@
@@ -8,7 +8,7 @@ index 37f07850a..d860aea8f 100644
  #include "drape_frontend/animation/interpolation_holder.hpp"
  #include "drape_frontend/animation_system.hpp"
  #include "drape_frontend/debug_rect_renderer.hpp"
-@@ -1760,6 +1761,8 @@ void FrontendRenderer::RenderFrame()
+@@ -1763,6 +1764,8 @@ void FrontendRenderer::RenderFrame()
    else
    {
      m_frameData.m_inactiveFramesCounter = 0;
@@ -17,3 +17,4 @@ index 37f07850a..d860aea8f 100644
    }
  
    bool const canSuspend = m_frameData.m_inactiveFramesCounter > FrameData::kMaxInactiveFrames;
+-- 

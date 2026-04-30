@@ -93,15 +93,19 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
       // Track iOS/macOS builds for Metal shaders and CocoaPods
       if (platform == 'ios') builtIOS = true;
       if (platform == 'macos') builtMacOS = true;
-
-      // Setup CocoaPods after iOS/macOS builds
-      if (platform == 'ios' || platform == 'macos') {
-        await _setupCocoaPods(platform);
-      }
     }
 
     if (Platform.isMacOS && (builtIOS || builtMacOS)) {
       await _buildMetalShaders();
+    }
+
+    // CocoaPods validates resource paths declared in the podspec, so install
+    // pods only after the Metal shader bundle has been copied into place.
+    if (builtIOS) {
+      await _setupCocoaPods('ios');
+    }
+    if (builtMacOS) {
+      await _setupCocoaPods('macos');
     }
   } else {
     print('');
@@ -597,6 +601,7 @@ Future<void> _copyDataFiles() async {
   final essentialFiles = [
     'classificator.txt',
     'types.txt',
+    'subtypes.csv',
     'categories.txt',
     'visibility.txt',
     'countries.txt',
