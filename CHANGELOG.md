@@ -18,6 +18,8 @@
 
 * **macOS place page localization**: macOS now localizes raw POI type tokens in place page subtitles, so strings such as `aeroway-aerodrome-international` render as user-facing labels while preserving suffix details such as IATA codes, elevation, and internet access.
 
+* **iOS place page localization parity**: iOS now applies the same raw POI type subtitle normalization as macOS, so hyphenated CoMaps type keys such as `aeroway-aerodrome` render as localized labels.
+
 * **macOS release runtime cleanup**: Release builds now suppress development-only frame/render diagnostics, expose `comaps_set_locale` for the Dart locale API, avoid duplicate native map auto-registration during surface creation, and exit the app process from the termination notification so `flutter run` can finish when the macOS app quits.
 
 ### Downloads

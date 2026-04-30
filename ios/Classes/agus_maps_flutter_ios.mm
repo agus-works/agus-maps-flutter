@@ -15,6 +15,7 @@
 #include <string>
 #include <memory>
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <vector>
@@ -22,6 +23,7 @@
 #include <sstream>
 #include <iomanip>
 #include <string_view>
+#include <cstring>
 
 // CoMaps Framework includes
 #include "base/logging.hpp"
@@ -49,6 +51,7 @@ static drape_ptr<dp::ThreadSafeFactory> g_threadSafeFactory;
 static agus::AgusMetalContextFactory* g_metalContextFactory = nullptr; // raw pointer for pixel buffer updates
 static std::string g_resourcePath;
 static std::string g_writablePath;
+static std::string g_explicitLocaleTag;
 static bool g_platformInitialized = false;
 static bool g_drapeEngineCreated = false;
 static std::mutex g_placePageMutex;
@@ -133,7 +136,30 @@ static NSString *LookupLocalizedTypeInBundle(NSBundle *bundle, NSString *key, NS
     return nil;
 }
 
+static NSString *LookupLocalizedTypeInResourcePath(NSString *key, NSString *locale) {
+    if (g_resourcePath.empty()) {
+        return nil;
+    }
+
+    NSString *resourcePath = [NSString stringWithUTF8String:g_resourcePath.c_str()];
+    NSString *localePath = [resourcePath stringByAppendingPathComponent:
+        [NSString stringWithFormat:@"localized_types/%@.lproj", locale]];
+    NSBundle *localeBundle = [NSBundle bundleWithPath:localePath];
+    if (!localeBundle) {
+        return nil;
+    }
+
+    NSString *value = NSLocalizedStringFromTableInBundle(key, @"LocalizableTypes", localeBundle, @"");
+    if (![value isEqualToString:key]) {
+        return value;
+    }
+    return nil;
+}
+
 static NSString *LookupLocalizedType(NSString *key, NSString *locale) {
+    NSString *resourceValue = LookupLocalizedTypeInResourcePath(key, locale);
+    if (resourceValue) return resourceValue;
+
     NSBundle *mainBundle = NSBundle.mainBundle;
     NSString *value = LookupLocalizedTypeInBundle(mainBundle, key, locale);
     if (value) return value;
@@ -157,8 +183,22 @@ static std::string LocalizeTypeName(std::string const & type) {
         return [value UTF8String];
     }
 
-    NSArray<NSString *> *preferred = [NSLocale preferredLanguages];
     NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    if (!g_explicitLocaleTag.empty()) {
+        NSString *explicitLocale = [NSString stringWithUTF8String:g_explicitLocaleTag.c_str()];
+        if (![candidates containsObject:explicitLocale]) {
+            [candidates addObject:explicitLocale];
+        }
+        NSRange dash = [explicitLocale rangeOfString:@"-"];
+        if (dash.location != NSNotFound) {
+            NSString *shortLang = [explicitLocale substringToIndex:dash.location];
+            if (![candidates containsObject:shortLang]) {
+                [candidates addObject:shortLang];
+            }
+        }
+    }
+
+    NSArray<NSString *> *preferred = [NSLocale preferredLanguages];
     for (NSString *language in preferred) {
         if (![candidates containsObject:language]) {
             [candidates addObject:language];
@@ -195,7 +235,7 @@ static std::string TrimWhitespace(std::string const & value) {
 }
 
 static bool IsTypeToken(std::string const & token) {
-    return token.rfind("type.", 0) == 0;
+    return token.rfind("type.", 0) == 0 || token.find('-') != std::string::npos;
 }
 
 static std::string LocalizePlacePageSubtitle(std::string const & subtitle) {
@@ -216,7 +256,10 @@ static std::string LocalizePlacePageSubtitle(std::string const & subtitle) {
         auto const trimmed = TrimWhitespace(token);
         std::string localized = token;
         if (IsTypeToken(trimmed)) {
-            localized = LocalizeTypeName(trimmed);
+            std::string const candidate = LocalizeTypeName(trimmed);
+            if (candidate != NormalizeTypeKey(trimmed)) {
+                localized = candidate;
+            }
         }
 
         if (!first) {
@@ -731,6 +774,7 @@ extern "C" void agus_localization_set_locale(const char* localeTag);
 
 FFI_PLUGIN_EXPORT void comaps_set_locale(const char* localeTag) {
     NSLog(@"[AgusMapsFlutter] comaps_set_locale: %s", localeTag ? localeTag : "(null)");
+    g_explicitLocaleTag = localeTag ? localeTag : "";
     agus_localization_set_locale(localeTag);
 }
 
