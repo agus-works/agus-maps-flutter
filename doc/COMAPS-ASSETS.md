@@ -577,7 +577,7 @@ To bundle MWM files with your Flutter app:
 
 ### Downloading MWM Files
 
-The plugin includes a download manager for fetching maps at runtime. The `MirrorService` supports both **CoMaps CDN servers** (recommended) and **Organic Maps mirrors** (legacy fallback):
+The plugin includes a download manager for fetching maps at runtime. The `MirrorService` uses the active **CoMaps CDN servers** from the CoMaps source defaults and merges any additional hosts returned by the CoMaps metaserver.
 
 #### Available Mirror Servers
 
@@ -586,18 +586,33 @@ The plugin includes a download manager for fetching maps at runtime. The `Mirror
 | **CoMaps CDN** | Finland | `https://cdn-fi-1.comaps.app/` |
 | **CoMaps CDN** | US | `https://cdn-us-2.comaps.tech/` |
 | **CoMaps CDN** | Germany | `https://comaps.firewall-gateway.de/` |
-| **CoMaps CDN** | Russia | `https://comaps-cdn.s3-website.cloud.ru/` |
+| **CoMaps CDN** | France | `https://comaps.openstreetmap.fr/` |
+| **CoMaps CDN** | Italy | `https://comaps-it1.unfoxo.it/` |
+| **CoMaps CDN** | Cloud.ru | `https://comaps-cdn.s3-website.cloud.ru/` |
 | **CoMaps CDN** | MapGen Finland | `https://mapgen-fi-1.comaps.app/` |
-| *Legacy* | WFR Software | `https://omaps.wfr.software/maps/` |
-| *Legacy* | WebFreak | `https://omaps.webfreak.org/maps/` |
 
 > **Note:** CoMaps CDN servers provide MWM files with enhanced features (improved routing, more POIs, better contour lines) since the April 2025 fork from Organic Maps.
+
+#### Region Hierarchy
+
+CoMaps publishes region metadata in `countries.txt` as a hierarchy. The Dart
+model preserves that tree:
+
+- `MirrorService.getCountriesData()` returns the full `CountriesData` tree for
+  folder-style browsing in UI.
+- `MirrorService.getRegions()` returns only leaf `MwmRegion` entries that
+  correspond to downloadable `.mwm` files.
+- Group sizes are aggregate sizes of descendant leaves, and group download/delete
+  actions should operate on those leaves.
+
+The example app cache key is `downloads_cache_v2` so old flat region caches are
+discarded automatically.
 
 ```dart
 import 'package:agus_maps_flutter/mirror_service.dart';
 import 'package:agus_maps_flutter/mwm_storage.dart';
 
-// Create mirror service - includes both CoMaps and Organic Maps mirrors
+// Create mirror service - includes CoMaps CDN defaults and metaserver hosts
 final mirrorService = MirrorService();
 
 // Measure latencies to find fastest server
@@ -608,7 +623,11 @@ final fastestMirror = mirrorService.getFastestMirror();
 final snapshots = await mirrorService.getSnapshots(fastestMirror!);
 final latestSnapshot = snapshots.first;
 
-// Get regions in snapshot
+// Get the browsable CoMaps countries tree.
+final countriesData =
+    await mirrorService.getCountriesData(fastestMirror, latestSnapshot);
+
+// Or get only downloadable leaf regions.
 final regions = await mirrorService.getRegions(fastestMirror, latestSnapshot);
 
 // Download a region

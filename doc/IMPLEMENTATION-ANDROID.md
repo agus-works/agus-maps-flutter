@@ -202,7 +202,7 @@ Environment variables:
 The example app declares and ships:
 - `example/assets/maps/Gibraltar.mwm`
 
-Data source: CoMaps CDN servers (e.g., `https://cdn-fi-1.comaps.app/`) or Organic Maps mirrors (e.g., `https://omaps.webfreak.org/maps/`) as fallback.
+Data source: CoMaps CDN servers from the CoMaps source defaults and metaserver, such as `https://cdn-fi-1.comaps.app/` and `https://mapgen-fi-1.comaps.app/`. Runtime region metadata is parsed from the hierarchical CoMaps `countries.txt`; UI browsing keeps folders/groups intact while downloads operate on leaf `.mwm` files.
 
 Android build config sets `.mwm` as **noCompress** so packaging does not compress the file (this reduces CPU overhead during extraction and avoids surprises).
 

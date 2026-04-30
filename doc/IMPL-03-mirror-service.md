@@ -15,9 +15,13 @@ The official CoMaps CDN servers host MWM files with enhanced features:
 
 | Server | URL | Notes |
 |--------|-----|-------|
-| **CoMaps MapGen Finland** | `https://mapgen-fi-1.comaps.app/` | Primary (listed by metaserver) |
+| **CoMaps CDN Germany** | `https://comaps.firewall-gateway.de/` | CoMaps default |
 | **CoMaps CDN US** | `https://cdn-us-2.comaps.tech/` | |
-| **CoMaps CDN Germany** | `https://comaps.firewall-gateway.de/` | |
+| **CoMaps CDN Finland** | `https://cdn-fi-1.comaps.app/` | |
+| **CoMaps CDN France** | `https://comaps.openstreetmap.fr/` | |
+| **CoMaps CDN Italy** | `https://comaps-it1.unfoxo.it/` | |
+| **CoMaps CDN Cloud.ru** | `https://comaps-cdn.s3-website.cloud.ru/` | |
+| **CoMaps MapGen Finland** | `https://mapgen-fi-1.comaps.app/` | Listed by metaserver |
 
 ### Metaserver
 
@@ -91,14 +95,29 @@ class MwmRegion {
   final String name;       // e.g., "Gibraltar"
   final String fileName;   // e.g., "Gibraltar.mwm"
   final int? sizeBytes;    // File size if available
+  final List<MwmRegion>? subregions;
+
+  bool get isGroup => (subregions ?? const <MwmRegion>[]).isNotEmpty;
+  bool get isLeaf => !isGroup;
+  List<MwmRegion> get leafRegions => isLeaf
+      ? <MwmRegion>[this]
+      : subregions!.expand((region) => region.leafRegions).toList();
+  int get totalDownloadSizeBytes => isLeaf
+      ? (sizeBytes ?? 0)
+      : subregions!.fold(0, (sum, region) => sum + region.totalDownloadSizeBytes);
   
   MwmRegion({
     required this.name,
     required this.fileName,
     this.sizeBytes,
+    this.subregions,
   });
 }
 ```
+
+`countries.txt` is hierarchical. `MirrorService.getCountriesData()` preserves
+that tree for folder-style browsing, while `MirrorService.getRegions()` returns
+only leaf regions that correspond to downloadable `.mwm` files.
 
 ## Implementation
 
@@ -106,11 +125,16 @@ class MwmRegion {
 
 ```dart
 class MirrorService {
-  /// CoMaps CDN servers (official, verified working)
+  /// CoMaps CDN servers from the source defaults. Metaserver-only hosts are
+  /// merged before probing, and legacy Organic Maps mirrors are not used.
   static final List<Mirror> defaultMirrors = [
-    Mirror(name: 'CoMaps MapGen Finland', baseUrl: 'https://mapgen-fi-1.comaps.app/'),
-    Mirror(name: 'CoMaps CDN US', baseUrl: 'https://cdn-us-2.comaps.tech/'),
     Mirror(name: 'CoMaps CDN Germany', baseUrl: 'https://comaps.firewall-gateway.de/'),
+    Mirror(name: 'CoMaps CDN US', baseUrl: 'https://cdn-us-2.comaps.tech/'),
+    Mirror(name: 'CoMaps CDN Finland', baseUrl: 'https://cdn-fi-1.comaps.app/'),
+    Mirror(name: 'CoMaps CDN France', baseUrl: 'https://comaps.openstreetmap.fr/'),
+    Mirror(name: 'CoMaps CDN Italy', baseUrl: 'https://comaps-it1.unfoxo.it/'),
+    Mirror(name: 'CoMaps CDN Cloud.ru', baseUrl: 'https://comaps-cdn.s3-website.cloud.ru/'),
+    Mirror(name: 'CoMaps MapGen Finland', baseUrl: 'https://mapgen-fi-1.comaps.app/'),
   ];
   
   final http.Client _client;
@@ -223,8 +247,14 @@ final activeMirror = mirrorService.mirrors
 final snapshots = await mirrorService.getSnapshots(activeMirror);
 print('Latest snapshot: ${snapshots.first.version}');
 
-// 4. Get download URL
-final gibraltarRegion = MwmRegion(name: 'Gibraltar', fileName: 'Gibraltar.mwm');
+// 4. Browse the full CoMaps hierarchy, or flatten to downloadable leaves
+final countriesData =
+    await mirrorService.getCountriesData(activeMirror, snapshots.first);
+final leafRegions = await mirrorService.getRegions(activeMirror, snapshots.first);
+
+// 5. Get download URL for a leaf region
+final gibraltarRegion =
+    leafRegions.firstWhere((region) => region.fileName == 'Gibraltar.mwm');
 final url = mirrorService.getDownloadUrl(activeMirror, snapshots.first, gibraltarRegion);
 print('Download URL: $url');
 // Output: https://mapgen-fi-1.comaps.app/maps/260101/Gibraltar.mwm

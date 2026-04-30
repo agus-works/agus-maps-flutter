@@ -4,9 +4,21 @@
 
 * **macOS contributor build stability**: Native macOS builds now apply CoMaps patches in sorted order, fail fast on CMake configure/build failures, clean stale XCFramework outputs before packaging, and build Metal shaders before CocoaPods setup. The example debug app was verified with `flutter build macos --debug`.
 
-* **iOS Xcode workspace fix**: Regenerated the iOS CocoaPods workspace and added the missing Profile xcconfig wiring so Xcode no longer looks for stale generated sources such as `ios/Classes/AgusMapsApi.g.swift`. The simulator debug app was verified with `flutter build ios --simulator --debug`.
+* **iOS Xcode workspace fix**: Regenerated the iOS CocoaPods workspace and added the missing Profile xcconfig wiring so Xcode no longer looks for stale generated sources such as `ios/Classes/AgusMapsApi.g.swift`. The iOS debug build was verified with `flutter build ios --debug --no-codesign`, and the simulator workflow remains supported with `flutter build ios --simulator --debug`.
 
 * **iOS native XCFramework fix**: The CoMaps platform patch now builds iOS Ed25519 verification with Monocypher instead of `ed25519_apple.mm`, avoiding the Xcode-generated `platform-Swift.h` dependency that is unavailable in the headless CMake/XCFramework build.
+
+* **macOS place page parity**: macOS now emits the same readable metadata tags as iOS for POI place pages, restoring details such as Wikipedia, IATA, phone, elevation, and internet access in the Flutter sheet.
+
+### Downloads
+
+* **Hierarchical regions**: The Flutter downloads UI now preserves the CoMaps `countries.txt` hierarchy, showing expandable countries/regions while downloading group selections as their underlying leaf `.mwm` files.
+
+* **Downloads layout fix**: Header status chips and the expanded mirror selector now use overflow-safe layouts, fixing the bottom `RenderFlex` overflow seen on smaller macOS windows.
+
+* **Downloads cache migration**: The downloads cache key is now `downloads_cache_v2`, forcing stale flat region caches to refresh into the hierarchical CoMaps region tree.
+
+* **CoMaps mirror alignment**: Runtime mirror defaults now match the current CoMaps source list and merge any additional metaserver hosts before probing availability.
 
 ### Assets
 

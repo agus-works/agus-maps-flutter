@@ -1,4 +1,5 @@
 #!/usr/bin/env dart
+
 /// Cross-platform MWM map file downloader for CoMaps CDN.
 ///
 /// This tool discovers available mirrors, probes for the latest snapshot,
@@ -111,25 +112,27 @@ class DownloadReport {
   });
 
   Map<String, dynamic> toJson() => {
-    'timestamp': timestamp.toIso8601String(),
-    'durationSeconds': duration.inSeconds,
-    'mirror': selectedMirror?.toJson(),
-    'snapshot': snapshot?.toJson(),
-    'countriesMetadata': {
-      'version': countriesData?.version,
-      'totalRegions': countriesData?.allRegions.length,
-      'totalSizeMB': countriesData != null
-          ? (countriesData!.totalSizeBytes / (1024 * 1024)).toStringAsFixed(2)
-          : null,
-    },
-    'downloads': downloads.map((d) => d.toJson()).toList(),
-    'summary': {
-      'total': downloads.length,
-      'successful': downloads.where((d) => d.success).length,
-      'failed': downloads.where((d) => !d.success).length,
-      'totalDownloadedBytes': downloads.fold<int>(0, (sum, d) => sum + (d.bytesDownloaded ?? 0)),
-    },
-  };
+        'timestamp': timestamp.toIso8601String(),
+        'durationSeconds': duration.inSeconds,
+        'mirror': selectedMirror?.toJson(),
+        'snapshot': snapshot?.toJson(),
+        'countriesMetadata': {
+          'version': countriesData?.version,
+          'totalRegions': countriesData?.allRegions.length,
+          'totalSizeMB': countriesData != null
+              ? (countriesData!.totalSizeBytes / (1024 * 1024))
+                  .toStringAsFixed(2)
+              : null,
+        },
+        'downloads': downloads.map((d) => d.toJson()).toList(),
+        'summary': {
+          'total': downloads.length,
+          'successful': downloads.where((d) => d.success).length,
+          'failed': downloads.where((d) => !d.success).length,
+          'totalDownloadedBytes': downloads.fold<int>(
+              0, (sum, d) => sum + (d.bytesDownloaded ?? 0)),
+        },
+      };
 }
 
 /// Result of a single file download
@@ -155,18 +158,18 @@ class DownloadResult {
   });
 
   Map<String, dynamic> toJson() => {
-    'fileName': fileName,
-    'url': url,
-    'success': success,
-    'cached': cached,
-    'bytesDownloaded': bytesDownloaded,
-    'sizeMB': bytesDownloaded != null
-        ? (bytesDownloaded! / (1024 * 1024)).toStringAsFixed(2)
-        : null,
-    'durationMs': duration?.inMilliseconds,
-    'localPath': localPath,
-    if (error != null) 'error': error,
-  };
+        'fileName': fileName,
+        'url': url,
+        'success': success,
+        'cached': cached,
+        'bytesDownloaded': bytesDownloaded,
+        'sizeMB': bytesDownloaded != null
+            ? (bytesDownloaded! / (1024 * 1024)).toStringAsFixed(2)
+            : null,
+        'durationMs': duration?.inMilliseconds,
+        'localPath': localPath,
+        if (error != null) 'error': error,
+      };
 }
 
 Future<void> main(List<String> args) async {
@@ -180,8 +183,7 @@ Future<void> main(List<String> args) async {
         defaultsTo: 'World.mwm,WorldCoasts.mwm,Gibraltar.mwm',
         help: 'Comma-separated list of MWM files to download')
     ..addOption('report',
-        abbr: 'r',
-        help: 'Generate JSON report file (optional path)')
+        abbr: 'r', help: 'Generate JSON report file (optional path)')
     ..addFlag('list-regions',
         negatable: false, help: 'List all available regions and exit')
     ..addFlag('list-mirrors',
@@ -189,8 +191,10 @@ Future<void> main(List<String> args) async {
     ..addOption('snapshot',
         abbr: 's', help: 'Use specific snapshot version (YYMMDD)')
     ..addOption('mirror', abbr: 'm', help: 'Use specific mirror URL')
-    ..addFlag('verbose', abbr: 'v', negatable: false, help: 'Enable verbose output')
-    ..addFlag('force', negatable: false, help: 'Force re-download even if file exists')
+    ..addFlag('verbose',
+        abbr: 'v', negatable: false, help: 'Enable verbose output')
+    ..addFlag('force',
+        negatable: false, help: 'Force re-download even if file exists')
     ..addFlag('help', abbr: 'h', negatable: false, help: 'Show help message');
 
   ArgResults options;
@@ -210,9 +214,12 @@ Future<void> main(List<String> args) async {
   final verbose = options['verbose'] as bool;
   final startTime = DateTime.now();
 
-  print(Colors.bold('\n╔════════════════════════════════════════════════════════════╗'));
-  print(Colors.bold('║         CoMaps MWM Map Downloader                          ║'));
-  print(Colors.bold('╚════════════════════════════════════════════════════════════╝\n'));
+  print(Colors.bold(
+      '\n╔════════════════════════════════════════════════════════════╗'));
+  print(Colors.bold(
+      '║         CoMaps MWM Map Downloader                          ║'));
+  print(Colors.bold(
+      '╚════════════════════════════════════════════════════════════╝\n'));
 
   final service = MirrorService();
 
@@ -242,7 +249,8 @@ Future<void> main(List<String> args) async {
         final mirror = MirrorConfig(name: 'Custom', baseUrl: mirrorBaseUrl);
         final found = await service.findLatestSnapshot(mirror, candidates);
         if (found == null) {
-          stderr.writeln(Colors.red('Error: No valid snapshot found on mirror'));
+          stderr
+              .writeln(Colors.red('Error: No valid snapshot found on mirror'));
           exit(1);
         }
         snapshot = found;
@@ -254,21 +262,26 @@ Future<void> main(List<String> args) async {
         exit(1);
       }
       mirrorBaseUrl = selectedMirror.mirror.baseUrl;
-      snapshot = options['snapshot'] as String? ?? selectedMirror.latestSnapshot!;
+      snapshot =
+          options['snapshot'] as String? ?? selectedMirror.latestSnapshot!;
       print('  ${Colors.green('✓')} Selected: ${selectedMirror.mirror.name}');
       print('    URL: $mirrorBaseUrl');
       print('    Latency: ${selectedMirror.latencyMs}ms');
     }
 
     final snapshotObj = Snapshot(version: snapshot);
-    print('  ${Colors.green('✓')} Snapshot: $snapshot (${snapshotObj.formattedDate})');
+    print(
+        '  ${Colors.green('✓')} Snapshot: $snapshot (${snapshotObj.formattedDate})');
 
     // Fetch countries data
     print(Colors.cyan('\n📋 Fetching region metadata...'));
-    final countriesData = await service.fetchCountriesData(mirrorBaseUrl, snapshot);
+    final countriesData =
+        await service.fetchCountriesData(mirrorBaseUrl, snapshot);
     if (countriesData != null) {
-      print('  ${Colors.green('✓')} Found ${countriesData.allRegions.length} regions');
-      print('  Total size: ${(countriesData.totalSizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB');
+      print(
+          '  ${Colors.green('✓')} Found ${countriesData.allRegions.length} regions');
+      print(
+          '  Total size: ${(countriesData.totalSizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB');
     } else {
       print('  ${Colors.yellow('⚠')} Could not fetch countries.txt');
     }
@@ -313,7 +326,8 @@ Future<void> main(List<String> args) async {
     final forceDownload = options['force'] as bool;
 
     for (final fileName in fileList) {
-      final url = MirrorService.buildDownloadUrl(mirrorBaseUrl, snapshot, fileName);
+      final url =
+          MirrorService.buildDownloadUrl(mirrorBaseUrl, snapshot, fileName);
       final destFile = File('${outputDir.path}/$fileName');
 
       print('\n  ${Colors.blue('→')} $fileName');
@@ -321,7 +335,8 @@ Future<void> main(List<String> args) async {
 
       if (!forceDownload && await destFile.exists()) {
         final cachedSize = await destFile.length();
-        print('    ${Colors.green('✓')} Using cached file (${(cachedSize / (1024 * 1024)).toStringAsFixed(2)} MB)');
+        print(
+            '    ${Colors.green('✓')} Using cached file (${(cachedSize / (1024 * 1024)).toStringAsFixed(2)} MB)');
         downloads.add(DownloadResult(
           fileName: fileName,
           url: url,
@@ -360,7 +375,8 @@ Future<void> main(List<String> args) async {
       if (success) {
         progressBar.complete();
         actualSize = await destFile.length();
-        print('    ${Colors.green('✓')} Downloaded (${(actualSize / (1024 * 1024)).toStringAsFixed(2)} MB in ${downloadDuration.inSeconds}s)');
+        print(
+            '    ${Colors.green('✓')} Downloaded (${(actualSize / (1024 * 1024)).toStringAsFixed(2)} MB in ${downloadDuration.inSeconds}s)');
       } else {
         print('    ${Colors.red('✗')} Failed to download');
       }
@@ -388,14 +404,17 @@ Future<void> main(List<String> args) async {
     }
 
     final totalBytes = downloads
-      .where((d) => !d.cached)
-      .fold<int>(0, (sum, d) => sum + (d.bytesDownloaded ?? 0));
-    print('  Total downloaded: ${(totalBytes / (1024 * 1024)).toStringAsFixed(2)} MB');
+        .where((d) => !d.cached)
+        .fold<int>(0, (sum, d) => sum + (d.bytesDownloaded ?? 0));
+    print(
+        '  Total downloaded: ${(totalBytes / (1024 * 1024)).toStringAsFixed(2)} MB');
 
     // Generate report if requested
     final reportPath = options['report'] as String?;
     if (reportPath != null || reportPath == '') {
-      final actualPath = (reportPath?.isEmpty ?? true) ? 'map_download_report.json' : reportPath!;
+      final actualPath = (reportPath?.isEmpty ?? true)
+          ? 'map_download_report.json'
+          : reportPath!;
       final report = DownloadReport(
         timestamp: startTime,
         selectedMirror: selectedMirror,
@@ -408,7 +427,8 @@ Future<void> main(List<String> args) async {
     }
 
     final endTime = DateTime.now();
-    print(Colors.dim('\nCompleted in ${endTime.difference(startTime).inSeconds}s'));
+    print(Colors.dim(
+        '\nCompleted in ${endTime.difference(startTime).inSeconds}s'));
 
     exit(failed > 0 ? 1 : 0);
   } finally {
@@ -461,7 +481,8 @@ Future<void> listMirrors(MirrorService service, bool verbose) async {
   final metaserverUrls = await service.queryMetaserver();
 
   if (metaserverUrls.isNotEmpty) {
-    print('${Colors.green('✓')} Metaserver returned ${metaserverUrls.length} servers');
+    print(
+        '${Colors.green('✓')} Metaserver returned ${metaserverUrls.length} servers');
     if (verbose) {
       for (final url in metaserverUrls) {
         print('    - $url');
@@ -470,9 +491,16 @@ Future<void> listMirrors(MirrorService service, bool verbose) async {
     print('');
   }
 
+  final mirrors = mergeMetaserverMirrors(service.mirrors, metaserverUrls);
   final results = <MirrorStatus>[];
-  for (final mirror in service.mirrors) {
-    final status = await service.checkMirror(mirror, candidateSnapshots);
+  for (final mirror in mirrors) {
+    final status = await service.checkMirror(
+      mirror,
+      candidateSnapshots,
+      isFromMetaserver: metaserverUrls.any(
+        (url) => mirrorUrlsMatch(url, mirror.baseUrl),
+      ),
+    );
     results.add(status);
 
     final icon = status.isOperational
@@ -487,7 +515,8 @@ Future<void> listMirrors(MirrorService service, bool verbose) async {
     }
     if (status.latestSnapshot != null) {
       final snap = Snapshot(version: status.latestSnapshot!);
-      print('  Latest snapshot: ${status.latestSnapshot} (${snap.formattedDate})');
+      print(
+          '  Latest snapshot: ${status.latestSnapshot} (${snap.formattedDate})');
     }
     if (status.error != null) {
       print('  ${Colors.red('Error:')} ${status.error}');
@@ -496,11 +525,12 @@ Future<void> listMirrors(MirrorService service, bool verbose) async {
   }
 
   final operational = results.where((r) => r.isOperational).length;
-  print('${Colors.cyan('Summary:')} $operational/${results.length} mirrors operational');
+  print(
+      '${Colors.cyan('Summary:')} $operational/${results.length} mirrors operational');
 }
 
 void listRegions(CountriesData data) {
-  final allRegions = data.allRegions;
+  final allRegions = data.leafRegions;
   allRegions.sort((a, b) => a.id.compareTo(b.id));
 
   print('');
@@ -512,21 +542,24 @@ void listRegions(CountriesData data) {
   }
 
   print('');
-  print('  Total: ${allRegions.length} regions');
+  print('  Total: ${allRegions.length} downloadable regions');
 }
 
-Future<void> saveReport(DownloadReport report, String path, CountriesData? countriesData) async {
+Future<void> saveReport(
+    DownloadReport report, String path, CountriesData? countriesData) async {
   final file = File(path);
 
   // Build comprehensive report with all regions if available
   final reportJson = report.toJson();
   if (countriesData != null) {
-    reportJson['allRegions'] = countriesData.allRegions.map((r) => {
-      'id': r.id,
-      'fileName': r.fileName,
-      'sizeBytes': r.sizeBytes,
-      'sizeMB': r.sizeMB,
-    }).toList();
+    reportJson['allRegions'] = countriesData.allRegions
+        .map((r) => {
+              'id': r.id,
+              'fileName': r.fileName,
+              'sizeBytes': r.sizeBytes,
+              'sizeMB': r.sizeMB,
+            })
+        .toList();
   }
 
   await file.writeAsString(

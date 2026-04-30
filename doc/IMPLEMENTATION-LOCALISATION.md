@@ -23,7 +23,9 @@ sending JSON to Flutter.
 4. **Expose metadata tags as strings** (OSM-style keys) and localize label
    text in Flutter using `Localizable.strings`.
 
-This ensures identical output across iOS/Android/macOS/Linux/Windows.
+This ensures identical output across iOS/Android/macOS/Linux/Windows. In
+particular, iOS and macOS now expose the same metadata tag map for the same
+selected place page whenever CoMaps has that metadata available.
 
 ## Native JSON Payload Changes
 ### Place page JSON construction
@@ -34,6 +36,11 @@ This ensures identical output across iOS/Android/macOS/Linux/Windows.
 - [src/agus_maps_flutter.cpp](src/agus_maps_flutter.cpp)
   - Removed `platform::GetLocalizedTypeName` use.
   - Added `metadataTags` (string keys via `feature::ToString`).
+
+**macOS path:**
+- [macos/Classes/agus_maps_flutter_macos.mm](macos/Classes/agus_maps_flutter_macos.mm)
+  - Added `metadataTags` serialization to match the iOS payload for rich POI
+    details such as Wikipedia, phone, IATA, elevation, and internet access.
 
 **Windows path:**
 - [src/agus_maps_flutter_win.cpp](src/agus_maps_flutter_win.cpp)
