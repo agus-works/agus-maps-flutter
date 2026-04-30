@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Build System & CI/CD
+
+* **CoMaps dependency refresh**: GitHub Actions and build-tool documentation now use `COMAPS_TAG` v2026.04.23-19.
+
 ### Apple Build & Tooling
 
 * **macOS contributor build stability**: Native macOS builds now apply CoMaps patches in sorted order, fail fast on CMake configure/build failures, clean stale XCFramework outputs before packaging, and build Metal shaders before CocoaPods setup. The example debug app was verified with `flutter build macos --debug`.
