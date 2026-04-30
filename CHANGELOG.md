@@ -14,6 +14,10 @@
 
 * **macOS place page parity**: macOS now emits the same readable metadata tags as iOS for POI place pages, restoring details such as Wikipedia, IATA, phone, elevation, and internet access in the Flutter sheet.
 
+* **macOS place page localization**: macOS now localizes raw POI type tokens in place page subtitles, so strings such as `aeroway-aerodrome-international` render as user-facing labels while preserving suffix details such as IATA codes, elevation, and internet access.
+
+* **macOS release runtime cleanup**: Release builds now suppress development-only frame/render diagnostics, expose `comaps_set_locale` for the Dart locale API, avoid duplicate native map auto-registration during surface creation, and exit the app process from the termination notification so `flutter run` can finish when the macOS app quits.
+
 ### Downloads
 
 * **Hierarchical regions**: The Flutter downloads UI now preserves the CoMaps `countries.txt` hierarchy, showing expandable countries/regions while downloading group selections as their underlying leaf `.mwm` files.
@@ -27,6 +31,8 @@
 ### Assets
 
 * **Place page data validation**: Added `subtypes.csv` to the required CoMaps data set and made iOS/macOS extraction validate essential files before trusting `.comaps_data_extracted`, preventing crashes when opening POI place pages after an incomplete asset extraction.
+
+* **macOS symbol atlas validation**: macOS extraction now checks required symbol entries across light/dark and DPI-specific atlases before reusing cached data, forcing re-extraction when stale atlases would otherwise produce missing-symbol render warnings.
 
 ## 0.1.24
 

@@ -12,9 +12,12 @@
 #import <AppKit/AppKit.h>
 #import <CoreVideo/CoreVideo.h>
 
+#include <stdlib.h>
+#include <unistd.h>
 #include <string>
 #include <memory>
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <sstream>
@@ -40,6 +43,12 @@
 // Our Metal context factory
 #include "AgusMetalContextFactory.h"
 
+#if defined(NDEBUG) || defined(RELEASE)
+#define AGUS_DEBUG_LOG(...) do {} while (0)
+#else
+#define AGUS_DEBUG_LOG(...) NSLog(__VA_ARGS__)
+#endif
+
 // Forward declarations for AgusPlatformMacOS (defined in AgusPlatformMacOS.mm)
 extern "C" void AgusPlatformMacOS_InitPaths(const char* resourcePath, const char* writablePath);
 extern "C" void* AgusPlatformMacOS_GetInstance(void);
@@ -51,6 +60,7 @@ static drape_ptr<dp::ThreadSafeFactory> g_threadSafeFactory;
 static agus::AgusMetalContextFactory* g_metalContextFactory = nullptr;  // Raw pointer to access SetPixelBuffer
 static std::string g_resourcePath;
 static std::string g_writablePath;
+static std::string g_explicitLocaleTag;
 static bool g_platformInitialized = false;
 static bool g_drapeEngineCreated = false;
 static std::mutex g_placePageMutex;
@@ -82,6 +92,180 @@ static char* CopyOptionalString(std::string const & value) {
         return nullptr;
     }
     return CopyString(value);
+}
+
+static std::string NormalizeTypeKey(std::string const & type) {
+    std::string key = type;
+    if (key.rfind("type.", 0) != 0) {
+        key = "type." + key;
+    }
+    std::replace(key.begin(), key.end(), '-', '.');
+    std::replace(key.begin(), key.end(), ':', '_');
+    return key;
+}
+
+static NSString *LookupLocalizedTypeInBundle(NSBundle *bundle, NSString *key, NSString *locale) {
+    if (!bundle) {
+        return nil;
+    }
+    NSBundle *localeBundle = [NSBundle bundleWithPath:[bundle pathForResource:locale
+                                                                       ofType:@"lproj"
+                                                                  inDirectory:@"Resources/LocalizedStrings"]];
+    if (localeBundle) {
+        NSString *value = NSLocalizedStringFromTableInBundle(key, @"LocalizableTypes", localeBundle, @"");
+        if (![value isEqualToString:key]) {
+            return value;
+        }
+    }
+    NSBundle *directLocaleBundle = [NSBundle bundleWithPath:[bundle pathForResource:locale
+                                                                             ofType:@"lproj"]];
+    if (directLocaleBundle) {
+        NSString *value = NSLocalizedStringFromTableInBundle(key, @"LocalizableTypes", directLocaleBundle, @"");
+        if (![value isEqualToString:key]) {
+            return value;
+        }
+    }
+    return nil;
+}
+
+static NSString *LookupLocalizedTypeInResourcePath(NSString *key, NSString *locale) {
+    if (g_resourcePath.empty()) {
+        return nil;
+    }
+
+    NSString *resourcePath = [NSString stringWithUTF8String:g_resourcePath.c_str()];
+    NSString *localePath = [resourcePath stringByAppendingPathComponent:
+        [NSString stringWithFormat:@"localized_types/%@.lproj", locale]];
+    NSBundle *localeBundle = [NSBundle bundleWithPath:localePath];
+    if (!localeBundle) {
+        return nil;
+    }
+
+    NSString *value = NSLocalizedStringFromTableInBundle(key, @"LocalizableTypes", localeBundle, @"");
+    if (![value isEqualToString:key]) {
+        return value;
+    }
+    return nil;
+}
+
+static NSString *LookupLocalizedType(NSString *key, NSString *locale) {
+    NSString *resourceValue = LookupLocalizedTypeInResourcePath(key, locale);
+    if (resourceValue) return resourceValue;
+
+    NSBundle *mainBundle = NSBundle.mainBundle;
+    NSString *value = LookupLocalizedTypeInBundle(mainBundle, key, locale);
+    if (value) return value;
+
+    Class pluginClass = NSClassFromString(@"AgusMapsFlutterPlugin");
+    if (pluginClass) {
+        NSBundle *pluginBundle = [NSBundle bundleForClass:pluginClass];
+        value = LookupLocalizedTypeInBundle(pluginBundle, key, locale);
+        if (value) return value;
+    }
+
+    return nil;
+}
+
+static std::string LocalizeTypeName(std::string const & type) {
+    std::string key = NormalizeTypeKey(type);
+    NSString *nsKey = @(key.c_str());
+
+    NSString *value = NSLocalizedStringFromTableInBundle(nsKey, @"LocalizableTypes", NSBundle.mainBundle, @"");
+    if (![value isEqualToString:nsKey]) {
+        return [value UTF8String];
+    }
+
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    if (!g_explicitLocaleTag.empty()) {
+        NSString *explicitLocale = [NSString stringWithUTF8String:g_explicitLocaleTag.c_str()];
+        if (![candidates containsObject:explicitLocale]) {
+            [candidates addObject:explicitLocale];
+        }
+        NSRange dash = [explicitLocale rangeOfString:@"-"];
+        if (dash.location != NSNotFound) {
+            NSString *shortLang = [explicitLocale substringToIndex:dash.location];
+            if (![candidates containsObject:shortLang]) {
+                [candidates addObject:shortLang];
+            }
+        }
+    }
+
+    NSArray<NSString *> *preferred = [NSLocale preferredLanguages];
+    for (NSString *language in preferred) {
+        if (![candidates containsObject:language]) {
+            [candidates addObject:language];
+        }
+        NSRange dash = [language rangeOfString:@"-"];
+        if (dash.location != NSNotFound) {
+            NSString *shortLang = [language substringToIndex:dash.location];
+            if (![candidates containsObject:shortLang]) {
+                [candidates addObject:shortLang];
+            }
+        }
+    }
+    if (![candidates containsObject:@"en"]) {
+        [candidates addObject:@"en"];
+    }
+
+    for (NSString *locale in candidates) {
+        NSString *localized = LookupLocalizedType(nsKey, locale);
+        if (localized) {
+            return [localized UTF8String];
+        }
+    }
+
+    return key;
+}
+
+static std::string TrimWhitespace(std::string const & value) {
+    auto const start = value.find_first_not_of(" \t\n\r");
+    if (start == std::string::npos) {
+        return std::string();
+    }
+    auto const end = value.find_last_not_of(" \t\n\r");
+    return value.substr(start, end - start + 1);
+}
+
+static bool IsTypeToken(std::string const & token) {
+    return token.rfind("type.", 0) == 0 || token.find('-') != std::string::npos;
+}
+
+static std::string LocalizePlacePageSubtitle(std::string const & subtitle) {
+    if (subtitle.empty()) {
+        return subtitle;
+    }
+
+    static std::string const kSeparator = " • ";
+    std::string result;
+    size_t start = 0;
+    bool first = true;
+
+    while (true) {
+        auto const pos = subtitle.find(kSeparator, start);
+        auto const token = subtitle.substr(
+            start,
+            pos == std::string::npos ? std::string::npos : pos - start);
+        auto const trimmed = TrimWhitespace(token);
+        std::string localized = token;
+        if (IsTypeToken(trimmed)) {
+            std::string const candidate = LocalizeTypeName(trimmed);
+            if (candidate != NormalizeTypeKey(trimmed)) {
+                localized = candidate;
+            }
+        }
+
+        if (!first) {
+            result.append(kSeparator);
+        }
+        result.append(localized);
+        if (pos == std::string::npos) {
+            break;
+        }
+        start = pos + kSeparator.size();
+        first = false;
+    }
+
+    return result;
 }
 
 static int GetObjectType(place_page::Info const & info) {
@@ -116,7 +300,7 @@ static AgusPlacePageData* BuildPlacePageData(place_page::Info const & info) {
     data->opening_mode = static_cast<int32_t>(info.GetOpeningMode());
     data->title = CopyString(info.GetTitle());
     data->secondary_title = CopyString(info.GetSecondaryTitle());
-    data->subtitle = CopyString(info.GetSubtitle());
+    data->subtitle = CopyString(LocalizePlacePageSubtitle(info.GetSubtitle()));
     data->address = CopyString(info.GetSecondarySubtitle());
     data->lat = ll.m_lat;
     data->lon = ll.m_lon;
@@ -208,6 +392,13 @@ static void AgusLogMessage(base::LogLevel level, base::SrcPoint const & src, std
     if (level < base::LWARNING) {
         return;
     }
+    if (msg.find("Detected using of unknown symbol  transit_") != std::string::npos ||
+        msg.find("Bad emoji code: U+2139") != std::string::npos ||
+        msg.find("Can't find World map file") != std::string::npos ||
+        msg.find("Can't load cities boundaries") != std::string::npos ||
+        msg.find("Cannot read power manager config file") != std::string::npos) {
+        return;
+    }
 #endif
 
     NSString* levelStr;
@@ -247,7 +438,7 @@ FFI_PLUGIN_EXPORT void comaps_init(const char* apkPath, const char* storagePath)
 }
 
 FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* writablePath) {
-    NSLog(@"[AgusMapsFlutter] comaps_init_paths: resource=%s, writable=%s", resourcePath, writablePath);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] comaps_init_paths: resource=%s, writable=%s", resourcePath, writablePath);
     
     // Set up custom log handler before doing anything else
     base::SetLogMessageFn(&AgusLogMessage);
@@ -276,16 +467,21 @@ FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* w
                 g_framework.reset();
                 NSLog(@"[AgusMapsFlutter] Framework destroyed");
             }
+            _exit(EXIT_SUCCESS);
         }];
     });
     
-    NSLog(@"[AgusMapsFlutter] Platform initialized, Framework deferred to surface creation");
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Platform initialized, Framework deferred to surface creation");
+}
+
+FFI_PLUGIN_EXPORT void comaps_set_locale(const char* localeTag) {
+    g_explicitLocaleTag = localeTag ? localeTag : "";
 }
 
 /// Explicitly shutdown the CoMaps framework
 /// Call this before app termination to ensure clean shutdown
 FFI_PLUGIN_EXPORT void comaps_shutdown(void) {
-    NSLog(@"[AgusMapsFlutter] comaps_shutdown called");
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] comaps_shutdown called");
     
     stopRenderKeepAliveTimer();
     
@@ -293,23 +489,23 @@ FFI_PLUGIN_EXPORT void comaps_shutdown(void) {
         g_drapeEngineCreated = false;
         g_framework.reset();
         g_platformInitialized = false;
-        NSLog(@"[AgusMapsFlutter] Framework shutdown complete");
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Framework shutdown complete");
     }
 }
 
 FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path) {
-    NSLog(@"[AgusMapsFlutter] comaps_load_map_path: %s", path);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] comaps_load_map_path: %s", path);
     
     if (g_framework) {
         g_framework->RegisterAllMaps();
-        NSLog(@"[AgusMapsFlutter] Maps registered");
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Maps registered");
     } else {
-        NSLog(@"[AgusMapsFlutter] Framework not yet initialized, maps will be loaded later");
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Framework not yet initialized, maps will be loaded later");
     }
 }
 
 FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
-    NSLog(@"[AgusMapsFlutter] comaps_set_view: lat=%.6f, lon=%.6f, zoom=%d", lat, lon, zoom);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] comaps_set_view: lat=%.6f, lon=%.6f, zoom=%d", lat, lon, zoom);
     
     if (g_framework) {
         g_framework->SetViewportCenter(m2::PointD(mercator::FromLatLon(lat, lon)), zoom);
@@ -319,14 +515,14 @@ FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
 }
 
 FFI_PLUGIN_EXPORT void comaps_invalidate(void) {
-    NSLog(@"[AgusMapsFlutter] comaps_invalidate");
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] comaps_invalidate");
     if (g_framework) {
         g_framework->InvalidateRect(g_framework->GetCurrentViewport());
     }
 }
 
 FFI_PLUGIN_EXPORT void comaps_force_redraw(void) {
-    NSLog(@"[AgusMapsFlutter] comaps_force_redraw - triggering full tile reload");
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] comaps_force_redraw - triggering full tile reload");
     if (g_framework) {
         // Step 1: Update map style - clears render groups and forces tile re-request
         MapStyle currentStyle = g_framework->GetMapStyle();
@@ -464,7 +660,7 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
 }
 
 FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPath, int64_t version) {
-    NSLog(@"[AgusMapsFlutter] comaps_register_single_map_with_version: %s (version=%lld)", fullPath, (long long)version);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] comaps_register_single_map_with_version: %s (version=%lld)", fullPath, (long long)version);
     
     if (!g_framework) {
         NSLog(@"[AgusMapsFlutter] Framework not initialized");
@@ -501,7 +697,7 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPa
         
         auto result = g_framework->RegisterMap(file);
         if (result.second == MwmSet::RegResult::Success) {
-            NSLog(@"[AgusMapsFlutter] Successfully registered %s", fullPath);
+            AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Successfully registered %s", fullPath);
             return 0;
         } else {
             NSLog(@"[AgusMapsFlutter] Failed to register %s, result=%d", 
@@ -515,7 +711,7 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPa
 }
 
 FFI_PLUGIN_EXPORT int comaps_deregister_map(const char* fullPath) {
-    NSLog(@"[AgusMapsFlutter] comaps_deregister_map: %s (not implemented)", fullPath);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] comaps_deregister_map: %s (not implemented)", fullPath);
     
     // TODO: Implement map deregistration when needed
     // Framework only exposes const DataSource, and DeregisterMap requires non-const
@@ -536,6 +732,7 @@ FFI_PLUGIN_EXPORT int comaps_get_registered_maps_count(void) {
 }
 
 FFI_PLUGIN_EXPORT void comaps_debug_list_mwms(void) {
+#if !defined(NDEBUG) && !defined(RELEASE)
     NSLog(@"[AgusMapsFlutter] === DEBUG: Listing all registered MWMs ===");
     
     if (!g_framework) {
@@ -557,9 +754,11 @@ FFI_PLUGIN_EXPORT void comaps_debug_list_mwms(void) {
                   rect.minX(), rect.minY(), rect.maxX(), rect.maxY());
         }
     }
+#endif
 }
 
 FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
+#if !defined(NDEBUG) && !defined(RELEASE)
     NSLog(@"[AgusMapsFlutter] comaps_debug_check_point: lat=%.6f, lon=%.6f", lat, lon);
     
     if (!g_framework) {
@@ -583,6 +782,7 @@ FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
     }
     
     NSLog(@"[AgusMapsFlutter] Point is NOT covered by any registered MWM");
+#endif
 }
 
 #pragma mark - Render Keep-Alive Timer
@@ -592,7 +792,7 @@ static void stopRenderKeepAliveTimer() {
     if (g_renderKeepAliveTimer) {
         dispatch_source_cancel(g_renderKeepAliveTimer);
         g_renderKeepAliveTimer = nil;
-        NSLog(@"[AgusMapsFlutter] Render keep-alive timer stopped");
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Render keep-alive timer stopped");
     }
 }
 
@@ -626,7 +826,7 @@ static void startRenderKeepAliveTimer() {
         g_renderKeepAliveCount++;
         
         if (g_renderKeepAliveCount > kRenderKeepAliveMaxCount) {
-            NSLog(@"[AgusMapsFlutter] Render keep-alive complete after %d invalidations", g_renderKeepAliveCount - 1);
+            AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Render keep-alive complete after %d invalidations", g_renderKeepAliveCount - 1);
             stopRenderKeepAliveTimer();
             return;
         }
@@ -638,14 +838,14 @@ static void startRenderKeepAliveTimer() {
             g_framework->MakeFrameActive();
             
             if (g_renderKeepAliveCount <= 5 || g_renderKeepAliveCount % 10 == 0) {
-                NSLog(@"[AgusMapsFlutter] Render keep-alive tick %d/%d (MakeFrameActive)", 
-                      g_renderKeepAliveCount, kRenderKeepAliveMaxCount);
+                AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Render keep-alive tick %d/%d (MakeFrameActive)",
+                               g_renderKeepAliveCount, kRenderKeepAliveMaxCount);
             }
         }
     });
     
     dispatch_resume(g_renderKeepAliveTimer);
-    NSLog(@"[AgusMapsFlutter] Render keep-alive timer started (max %d ticks)", kRenderKeepAliveMaxCount);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Render keep-alive timer started (max %d ticks)", kRenderKeepAliveMaxCount);
 }
 
 #pragma mark - DrapeEngine Creation
@@ -665,7 +865,7 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
     df::SetActiveFrameCallback([]() {
         notifyFlutterFrameReady();
     });
-    NSLog(@"[AgusMapsFlutter] Active frame callback registered");
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Active frame callback registered");
     
     Framework::DrapeCreationParams p;
     p.m_apiVersion = dp::ApiVersion::Metal;  // Use Metal on macOS
@@ -673,13 +873,13 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
     p.m_surfaceHeight = height;
     p.m_visualScale = density;
     
-    NSLog(@"[AgusMapsFlutter] createDrapeEngine: Creating with %dx%d, scale=%.2f, API=Metal", 
-          width, height, density);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] createDrapeEngine: Creating with %dx%d, scale=%.2f, API=Metal",
+                   width, height, density);
     
     g_framework->CreateDrapeEngine(make_ref(g_threadSafeFactory), std::move(p));
     g_drapeEngineCreated = true;
     
-    NSLog(@"[AgusMapsFlutter] DrapeEngine created successfully");
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] DrapeEngine created successfully");
     
     // Start the render keep-alive timer to ensure initial tiles are rendered
     // The CoMaps render loop suspends after a few inactive frames, but tiles
@@ -702,8 +902,8 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
     int32_t height,
     float density
 ) {
-    NSLog(@"[AgusMapsFlutter] agus_native_set_surface: texture=%lld, %dx%d, density=%.2f",
-          textureId, width, height, density);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] agus_native_set_surface: texture=%lld, %dx%d, density=%.2f",
+                   textureId, width, height, density);
     
     if (!g_platformInitialized) {
         NSLog(@"[AgusMapsFlutter] ERROR: Platform not initialized! Call comaps_init_paths first.");
@@ -717,18 +917,15 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
     
     // Create Framework on this thread if not already created
     if (!g_framework) {
-        NSLog(@"[AgusMapsFlutter] Creating Framework...");
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Creating Framework...");
         
         FrameworkParams params;
         params.m_enableDiffs = false;
         params.m_numSearchAPIThreads = 1;
         
         g_framework = std::make_unique<Framework>(params, false /* loadMaps */);
-        NSLog(@"[AgusMapsFlutter] Framework created");
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Framework created");
         
-        // Register maps
-        g_framework->RegisterAllMaps();
-        NSLog(@"[AgusMapsFlutter] Maps registered");
     }
     
     // Create Metal context factory with the CVPixelBuffer
@@ -753,13 +950,13 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
     // Enable rendering
     if (g_framework && g_drapeEngineCreated) {
         g_framework->SetRenderingEnabled(make_ref(g_threadSafeFactory));
-        NSLog(@"[AgusMapsFlutter] Rendering enabled");
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Rendering enabled");
     }
 }
 
 /// Called when Swift resizes the surface (legacy - does not update pixel buffer)
 extern "C" FFI_PLUGIN_EXPORT void agus_native_on_size_changed(int32_t width, int32_t height) {
-    NSLog(@"[AgusMapsFlutter] agus_native_on_size_changed: %dx%d", width, height);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] agus_native_on_size_changed: %dx%d", width, height);
     
     g_surfaceWidth = width;
     g_surfaceHeight = height;
@@ -781,9 +978,9 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_visual_scale(float density) {
     if (g_framework && g_drapeEngineCreated) {
         df::VisualParams::Instance().SetVisualScale(static_cast<double>(density));
         g_framework->InvalidateRendering();
-        NSLog(@"[AgusMapsFlutter] agus_native_set_visual_scale: Updated visual scale to %.2f", density);
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] agus_native_set_visual_scale: Updated visual scale to %.2f", density);
     } else {
-        NSLog(@"[AgusMapsFlutter] agus_native_set_visual_scale: Framework not ready, stored density %.2f", density);
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] agus_native_set_visual_scale: Framework not ready, stored density %.2f", density);
     }
 }
 
@@ -794,7 +991,7 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_resize_surface(
     int32_t width,
     int32_t height
 ) {
-    NSLog(@"[AgusMapsFlutter] agus_native_resize_surface: %dx%d", width, height);
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] agus_native_resize_surface: %dx%d", width, height);
     
     if (!pixelBuffer) {
         NSLog(@"[AgusMapsFlutter] ERROR: agus_native_resize_surface called with null pixelBuffer");
@@ -831,7 +1028,7 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_resize_surface(
 
 /// Called when Swift destroys the surface
 extern "C" FFI_PLUGIN_EXPORT void agus_native_on_surface_destroyed(void) {
-    NSLog(@"[AgusMapsFlutter] agus_native_on_surface_destroyed");
+    AGUS_DEBUG_LOG(@"[AgusMapsFlutter] agus_native_on_surface_destroyed");
     
     // Stop the keep-alive timer first
     stopRenderKeepAliveTimer();

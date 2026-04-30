@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'dart:ffi' hide Size;
@@ -8,6 +7,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/foundation.dart';
 import 'src/agus_maps_api.g.dart';
 
 import 'agus_maps_flutter_bindings_generated.dart';
@@ -219,7 +219,11 @@ void setLocale(String localeTag) {
   } on ArgumentError {
     // Symbol may not exist on platforms where the binary was built before this feature.
     // Native will fall back to auto-detection based on system locale.
-    debugPrint('[AgusMap] setLocale: Symbol not found, using native auto-detection');
+    if (kDebugMode) {
+      debugPrint(
+        '[AgusMap] setLocale: Symbol not found, using native auto-detection',
+      );
+    }
   } finally {
     malloc.free(localeTagPtr);
   }
