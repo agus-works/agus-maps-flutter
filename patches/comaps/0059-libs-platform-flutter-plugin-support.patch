@@ -1,5 +1,5 @@
 diff --git a/libs/platform/CMakeLists.txt b/libs/platform/CMakeLists.txt
-index a1f103743..8548e397c 100644
+index a1f103743..62b3e78cc 100644
 --- a/libs/platform/CMakeLists.txt
 +++ b/libs/platform/CMakeLists.txt
 @@ -35,8 +35,6 @@ set(SRC
@@ -107,7 +107,7 @@ index a1f103743..8548e397c 100644
    # Find bash first, on Windows it can be either in Git or in WSL
    find_program(BASH bash REQUIRED HINTS "$ENV{ProgramFiles}/Git/bin")
    # Generate version header file.
-@@ -113,6 +178,8 @@ else() # neither iPhone nor Android
+@@ -113,14 +178,16 @@ else() # neither iPhone nor Android
                    @ONLY)
  
    append(SRC
@@ -115,17 +115,41 @@ index a1f103743..8548e397c 100644
 +    localization.hpp
      localization_dummy.cpp
      network_policy_dummy.cpp
-     platform_qt.cpp
-@@ -177,7 +244,7 @@ if (PLATFORM_LINUX OR PLATFORM_WIN)
+-    platform_qt.cpp
+-    "${CMAKE_CURRENT_BINARY_DIR}/platform_qt_version.cpp"
+   )
+ 
+   if (${PLATFORM_WIN})
+     append(SRC
++      platform_qt.cpp
++      "${CMAKE_CURRENT_BINARY_DIR}/platform_qt_version.cpp"
+       gui_thread_qt.cpp
+       http_client_curl.cpp
+       http_thread_qt.cpp
+@@ -147,10 +214,12 @@ else() # neither iPhone nor Android
+       secure_storage_qt.cpp
+       socket_apple.mm
+       http_session_manager.mm
+-      crypto/ed25519_apple.mm
++      crypto/ed25519_monocypher.cpp
+     )
+   elseif(${PLATFORM_LINUX})
+     append(SRC
++      platform_qt.cpp
++      "${CMAKE_CURRENT_BINARY_DIR}/platform_qt_version.cpp"
+       gui_thread_qt.cpp
+       http_client_curl.cpp
+       http_thread_qt.cpp
+@@ -177,7 +246,7 @@ if (PLATFORM_LINUX OR PLATFORM_WIN)
    set_target_properties(${PROJECT_NAME} PROPERTIES AUTOMOC ON)
  endif()
  
 -if (NOT APPLE)
-+if (NOT APPLE OR (SKIP_QT AND (PLATFORM_IPHONE OR PLATFORM_MAC)))
++if (NOT APPLE OR PLATFORM_IPHONE OR PLATFORM_MAC)
    target_link_libraries(${PROJECT_NAME} monocypher)
  endif()
  
-@@ -185,9 +252,9 @@ target_link_libraries(${PROJECT_NAME}
+@@ -185,9 +254,9 @@ target_link_libraries(${PROJECT_NAME}
    geometry  # mercator::YToLat
    coding
    indexer # feature::*

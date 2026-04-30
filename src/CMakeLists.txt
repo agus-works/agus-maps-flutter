@@ -77,6 +77,19 @@ if(NOT USE_PREBUILT_COMAPS)
   add_compile_definitions(OMIM_DISABLE_THREAD_CHECKER)
   message(STATUS "Thread checker disabled for embedded Flutter builds")
 
+  if(ANDROID)
+    # Android links CoMaps static dependencies into the plugin shared library.
+    # ThinLTO can preserve TLS relocations from stb_image as __tls_get_addr,
+    # which is not resolvable for all Android ABIs in the NDK link.
+    string(APPEND CMAKE_C_FLAGS " -femulated-tls")
+    string(APPEND CMAKE_CXX_FLAGS " -femulated-tls")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -femulated-tls")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF CACHE BOOL "" FORCE)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO OFF CACHE BOOL "" FORCE)
+    message(STATUS "Disabled LTO and enabled emulated TLS for Android")
+  endif()
+
   # Build CoMaps
   add_subdirectory("${COMAPS_SOURCE_DIR}" build/comaps)
   

@@ -1023,7 +1023,7 @@ Unity builds combine many source files, exceeding MSVC's default object section 
    - iOS's `localization.mm` only implements 5 of 8 localization functions
    - The missing `GetLocalizedDistanceUnits`, `GetLocalizedAltitudeUnits`, `GetLocalizedSpeedUnits` are in `localization.cpp`
    - Without both files, iOS builds fail with "undefined symbol" linker errors
-   - `ed25519_apple.mm` depends on Xcode-generated `platform-Swift.h`, which is not produced by this headless CMake build
+   - `ed25519_apple.mm` depends on Xcode-generated `platform-Swift.h`, which is not produced by headless CMake builds, so Apple branches use Monocypher Ed25519 instead
 
 2. **Android with `SKIP_ANDROID_JNI`:**
    ```cmake
@@ -1104,7 +1104,9 @@ Unity builds combine many source files, exceeding MSVC's default object section 
    - Does NOT include `platform_linux.cpp` (requires Qt) - we provide our own
    - **Localization removed:** `localization_dummy.cpp` is NOT included; localization is provided by `agus_localization.cpp` in the Flutter plugin
 
-6. **Conditional Qt Linking:** (lines 237-239)
+6. **macOS Qt tool builds:** The desktop Qt macOS branch also uses `crypto/ed25519_monocypher.cpp`, because symbol/data generation invokes a Qt macOS CMake build outside Xcode. It keeps `platform_mac.mm` as the sole macOS `Platform` implementation; `platform_qt.cpp` and `platform_qt_version.cpp` are compiled only for Windows/Linux Qt builds to avoid duplicate `Platform` symbols.
+
+7. **Conditional Qt Linking:** (lines 237-239)
    ```cmake
    $<$<AND:$<BOOL:${PLATFORM_DESKTOP}>,$<NOT:$<BOOL:${SKIP_QT}>>>:Qt6::Core>
    $<$<AND:$<BOOL:${PLATFORM_LINUX}>,$<NOT:$<BOOL:${SKIP_QT}>>>:Qt6::Network>
