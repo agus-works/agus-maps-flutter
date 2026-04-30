@@ -85,9 +85,6 @@ class _MyAppState extends State<MyApp> {
   final agus_maps_flutter.AgusMapController _mapController =
       agus_maps_flutter.AgusMapController();
 
-  // Store map paths for registration after Framework is ready
-  final List<String> _mapPathsToRegister = [];
-
   // MWM storage for tracking downloaded maps
   MwmStorage? _mwmStorage;
 
@@ -170,22 +167,38 @@ class _MyAppState extends State<MyApp> {
         _log('All stored metadata is valid.');
       }
 
-      // 1. Extract map files and store paths for later registration
+      // 1. Extract ICU data for transliteration
+      _log('Extracting icudt75l.dat...');
+      await agus_maps_flutter.extractMap('assets/maps/icudt75l.dat');
+
+      // 2. Extract CoMaps data files (classificator.txt, types.txt, etc.)
+      _log('Extracting data files...');
+      String dataPath = await agus_maps_flutter.extractDataFiles();
+      _log('Data path: $dataPath');
+
+      _bundledMwmVersion = await _readBundledMwmVersion(dataPath);
+      _log('Bundled MWM version: ${_bundledMwmVersion ?? 'unknown'}');
+
+      // 3. Extract bundled maps before surface creation. CoMaps scans the
+      // writable directory during native surface creation, so country maps must
+      // be under the current version directory before RegisterAllMaps() runs.
       _log('Extracting World.mwm...');
       final worldPath =
           await agus_maps_flutter.extractMap('assets/maps/World.mwm');
-      _mapPathsToRegister.add(worldPath);
 
       _log('Extracting WorldCoasts.mwm...');
       final coastsPath =
           await agus_maps_flutter.extractMap('assets/maps/WorldCoasts.mwm');
-      _mapPathsToRegister.add(coastsPath);
 
       _log('Extracting Gibraltar.mwm...');
-      final gibraltarPath =
+      final extractedGibraltarPath =
           await agus_maps_flutter.extractMap('assets/maps/Gibraltar.mwm');
-      _mapPathsToRegister.add(gibraltarPath);
-      _log('Map paths: $_mapPathsToRegister');
+      final gibraltarPath = await _prepareBundledCountryMap(
+        extractedPath: extractedGibraltarPath,
+        dataPath: dataPath,
+        version: _bundledMwmVersion,
+      );
+      _log('Bundled map paths: [$worldPath, $coastsPath, $gibraltarPath]');
 
       // Record bundled maps in storage (if not already there)
       final worldFile = File(worldPath);
@@ -223,18 +236,6 @@ class _MyAppState extends State<MyApp> {
         ));
       }
 
-      // 2. Extract ICU data for transliteration
-      _log('Extracting icudt75l.dat...');
-      await agus_maps_flutter.extractMap('assets/maps/icudt75l.dat');
-
-      // 3. Extract CoMaps data files (classificator.txt, types.txt, etc.)
-      _log('Extracting data files...');
-      String dataPath = await agus_maps_flutter.extractDataFiles();
-      _log('Data path: $dataPath');
-
-      _bundledMwmVersion = await _readBundledMwmVersion(dataPath);
-      _log('Bundled MWM version: ${_bundledMwmVersion ?? 'unknown'}');
-
       // 4. Initialize with extracted data files
       _log('Calling initWithPaths()...');
       agus_maps_flutter.initWithPaths(dataPath, dataPath);
@@ -247,9 +248,7 @@ class _MyAppState extends State<MyApp> {
       _log('Setting locale: $localeTag');
       agus_maps_flutter.setLocale(localeTag);
 
-      // NOTE: Don't call loadMap() here - Framework isn't ready yet!
-      // Maps will be registered in _onMapReady() after surface creation.
-      _log('Maps will be registered after surface creation...');
+      _log('Bundled maps will be registered during surface creation...');
 
       if (!mounted) return;
       setState(() {
@@ -301,50 +300,12 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _onMapReadyAsync() async {
-    _log('Map surface ready! Registering maps...');
-
-    final bundledVersion = _bundledMwmVersion;
-    if (bundledVersion == null) {
-      _log('WARNING: bundled MWM version unknown; registrations may fail.');
-    }
-
-    // Register bundled maps (extracted during init).
-    // If a bundled MWM is too old for the current engine (RegResult=2),
-    // delete it and re-extract from assets (updated in repo), then retry.
-    for (final path in _mapPathsToRegister) {
-      final result = bundledVersion != null
-          ? agus_maps_flutter.registerSingleMapWithVersion(path, bundledVersion)
-          : agus_maps_flutter.registerSingleMap(path);
-      _log('Registered bundled $path: result=$result');
-
-      // 2 == MwmSet::RegResult::VersionTooOld
-      if (result == 2) {
-        final fileName = File(path).uri.pathSegments.last;
-        final assetPath = 'assets/maps/$fileName';
-        _log('Bundled $fileName is too old; re-extracting from $assetPath...');
-        try {
-          // Force re-extraction by removing the previously extracted file.
-          final f = File(path);
-          if (await f.exists()) {
-            await f.delete();
-          }
-          final newPath = await agus_maps_flutter.extractMap(assetPath);
-          final retry = bundledVersion != null
-              ? agus_maps_flutter.registerSingleMapWithVersion(
-                  newPath,
-                  bundledVersion,
-                )
-              : agus_maps_flutter.registerSingleMap(newPath);
-          _log('Re-registered bundled $newPath: result=$retry');
-        } catch (e, st) {
-          _log('Failed to re-extract/re-register $fileName: $e\n$st');
-        }
-      }
-    }
+    _log('Map surface ready. Bundled maps are already registered.');
 
     // Re-register all previously downloaded maps from MwmStorage
     // This is crucial: downloaded maps are only stored as metadata,
     // they need to be re-registered with the native engine on each app start
+    var registeredDownloadedMaps = 0;
     if (_mwmStorage != null) {
       final allMaps = _mwmStorage!.getAll();
       _log('Re-registering ${allMaps.length} maps from storage...');
@@ -371,19 +332,17 @@ class _MyAppState extends State<MyApp> {
               )
             : agus_maps_flutter.registerSingleMap(metadata.filePath);
         _log('  Result: $result');
+        registeredDownloadedMaps++;
       }
     }
 
-    // Force invalidate the map viewport after registering maps
-    // This ensures the DrapeEngine reloads tiles with the newly registered maps
-    _log('Invalidating map viewport...');
-    agus_maps_flutter.invalidateMap();
-
-    // Force a complete redraw to ensure tiles are loaded for newly registered maps
-    // This is necessary because maps are registered AFTER DrapeEngine initialization,
-    // so the engine may have calculated tile coverage before maps were available
-    _log('Forcing complete tile reload...');
-    agus_maps_flutter.forceRedraw();
+    if (registeredDownloadedMaps > 0) {
+      // Downloaded maps are registered after DrapeEngine initialization, so the
+      // viewport needs a refresh to pick up their tile coverage.
+      _log('Refreshing map viewport for downloaded maps...');
+      agus_maps_flutter.invalidateMap();
+      agus_maps_flutter.forceRedraw();
+    }
 
     if (kDebugMode) {
       _log('Debug: Listing all registered MWMs...');
@@ -409,6 +368,30 @@ class _MyAppState extends State<MyApp> {
         _debug += '$msg\n';
       });
     }
+  }
+
+  Future<String> _prepareBundledCountryMap({
+    required String extractedPath,
+    required String dataPath,
+    required int? version,
+  }) async {
+    final fileName = File(extractedPath).uri.pathSegments.last;
+    if (version == null ||
+        fileName == 'World.mwm' ||
+        fileName == 'WorldCoasts.mwm') {
+      return extractedPath;
+    }
+
+    final versionDir = Directory('$dataPath/$version');
+    await versionDir.create(recursive: true);
+
+    final source = File(extractedPath);
+    final target = File('${versionDir.path}/$fileName');
+    final targetExists = await target.exists();
+    if (!targetExists || await target.length() != await source.length()) {
+      await source.copy(target.path);
+    }
+    return target.path;
   }
 
   Future<int?> _readBundledMwmVersion(String dataPath) async {
