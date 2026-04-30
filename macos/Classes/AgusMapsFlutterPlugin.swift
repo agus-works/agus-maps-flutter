@@ -334,6 +334,9 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         let essentialFiles = [
             "classificator.txt",
             "types.txt",
+            "subtypes.csv",
+            "categories.txt",
+            "visibility.txt",
             "drules_proto.bin",
             "packed_polygons.bin",
             "transit_colors.txt",
@@ -384,6 +387,15 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         
         if FileManager.default.fileExists(atPath: bundleDataPath) {
             try extractDirectory(from: bundleDataPath, to: appDir.path)
+        }
+
+        for file in essentialFiles {
+            let filePath = appDir.appendingPathComponent(file).path
+            if !FileManager.default.fileExists(atPath: filePath) {
+                NSLog("[AgusMapsFlutter] WARNING: Essential file still missing after extraction: %@", file)
+            } else {
+                NSLog("[AgusMapsFlutter] Verified: %@", file)
+            }
         }
         
         // Create marker file

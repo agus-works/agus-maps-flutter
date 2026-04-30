@@ -77,15 +77,37 @@ The example app implements a full-featured map viewer including:
 
 ## Getting Started
 
-1.  **Get the dependencies**:
-    ```bash
-    flutter pub get
-    ```
+From the repository root, first build or install the native SDK artifacts. For
+contributors working from source, keep `AGUS_MAPS_HOME` unset and build the
+platform you are testing:
 
-2.  **Run the app**:
-    ```bash
-    flutter run
-    ```
+```bash
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform ios 2>&1 | tee ./output.log
+
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform macos 2>&1 | tee ./output.log
+```
+
+Then build the example:
+
+```bash
+cd example
+flutter pub get 2>&1 | tee ../output.log
+
+# iOS simulator debug build, no launch.
+flutter build ios --simulator --debug 2>&1 | tee ../output.log
+
+# macOS debug build, no launch.
+flutter build macos --debug 2>&1 | tee ../output.log
+```
+
+To run instead of only building:
+
+```bash
+flutter run -d "iPhone 15 Pro" --debug 2>&1 | tee ../output.log
+flutter run -d macos --debug 2>&1 | tee ../output.log
+```
 
 ## Code Structure
 
@@ -102,9 +124,13 @@ The example app implements a full-featured map viewer including:
 ### iOS
 - Uses `IOSurface` + `Metal` for zero-copy rendering.
 - Requires a physical device or Simulator.
+- If Xcode reports missing `ios/Classes/AgusMapsApi.g.swift`, regenerate the
+  workspace with `flutter pub get` and `pod install` under `example/ios`.
 
 ### macOS
 - Proven desktop support with resize capabilities.
+- Runtime extraction validates essential CoMaps data such as `subtypes.csv`
+  before trusting the extraction marker.
 
 ### Windows
 - Uses optimized CPU-mediated rendering (OpenGL -> D3D11).

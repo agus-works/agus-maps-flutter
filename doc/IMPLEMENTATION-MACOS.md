@@ -15,17 +15,19 @@
 Debug mode enables hot reload, step-through debugging, and verbose logging for both Flutter and native layers.
 
 ```bash
-# 1. Bootstrap all dependencies (first time only)
-#    This prepares macOS, iOS, and Android targets
-dart run tool/build.dart --no-cache
+# 1. Build native macOS binaries from the patched in-repo CoMaps checkout.
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform macos 2>&1 | tee ./output.log
 
-# 2. Install CocoaPods dependencies
-cd example/macos
-pod install
+# 2. Install Flutter and CocoaPods dependencies.
+cd example
+flutter pub get 2>&1 | tee ../output.log
+cd macos
+pod install 2>&1 | tee -a ../../output.log
 
 # 3. Run in debug mode
 cd ..
-flutter run -d macos --debug
+flutter run -d macos --debug 2>&1 | tee ../output.log
 
 # For verbose native logs, use Console.app
 # Filter by: process:agus_maps_flutter_example category:AgusMapsFlutter
@@ -43,14 +45,15 @@ Release mode produces an optimized build suitable for production use and accurat
 
 ```bash
 # 1. Bootstrap all dependencies (first time only)
-dart run tool/build.dart --no-cache
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform macos 2>&1 | tee ./output.log
 
 # 2. Build and run in release mode
 cd example
-flutter run -d macos --release
+flutter run -d macos --release 2>&1 | tee ../output.log
 
 # Or build a .app bundle for distribution
-flutter build macos --release
+flutter build macos --release 2>&1 | tee ../output.log
 ```
 
 **Release mode characteristics:**
@@ -193,7 +196,7 @@ If the XCFramework is not found, `pod install` will fail with an error.
 
 | Plugin Version | CoMaps Tag | XCFramework Asset |
 |----------------|------------|-------------------|
-| 0.0.1 | v2026.01.08-11 | agus-binaries-macos.tar.gz |
+| 0.0.1 | v2026.04.23-19 | agus-binaries-macos.tar.gz |
 
 
 ## File Structure
@@ -279,6 +282,10 @@ Use `dart run tool/build.dart --no-cache` to:
 - Build Boost headers
 - Build or download XCFramework (manual download for consumers)
 - Copy Metal shaders
+
+For source builds, Metal shader compilation happens before CocoaPods setup so
+the podspec resource bundle `Resources/shaders_metal.metallib` exists when
+`pod install` validates declared resources.
 
 
 ## Build Configuration
@@ -495,6 +502,27 @@ See [ISSUE-macos-resize-white-screen.md](ISSUE-macos-resize-white-screen.md) for
 **Files Updated:**
 - `macos/Classes/AgusMetalContextFactory.mm`
 
+### Missing `subtypes.csv` Place Page Crash ✅ RESOLVED
+
+**Problem:** The app could display and pan the map, but clicking some POIs
+after zooming in could terminate the process with a native
+`FileAbsentException` for `subtypes.csv`.
+
+**Root Cause:** `subtypes.csv` was not copied into
+`example/assets/comaps_data/`, and the macOS plugin trusted the
+`.comaps_data_extracted` marker even if a previous extraction was missing some
+essential files.
+
+**Solution:** `subtypes.csv` is now part of the essential CoMaps data copied by
+the Dart asset updater. The macOS plugin validates key files before trusting the
+marker and removes the marker to force re-extraction if any required file is
+missing.
+
+**Files Updated:**
+- `tool/src/assets_updater.dart`
+- `macos/Classes/AgusMapsFlutterPlugin.swift`
+- `doc/COMAPS-ASSETS.md`
+
 ### Multiple Displays
 
 macOS supports multiple displays with different scale factors. Consider:
@@ -525,4 +553,4 @@ We target **12.0** to match iOS 15.6 parity and ensure modern Metal features.
 - CoMaps macOS code: `thirdparty/comaps/platform/platform_mac.mm`
 
 
-*Last updated: January 2026*
+*Last updated: April 2026*

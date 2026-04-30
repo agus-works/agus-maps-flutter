@@ -16,10 +16,10 @@ agus_maps_flutter/
 │   ├── agus_maps_flutter.dart  # Public API
 │   └── agus_maps_flutter_bindings_generated.dart  # Auto-generated FFI bindings
 ├── android/                # Android platform integration
-├── ios/                    # iOS platform (not yet implemented)
-├── linux/                  # Linux platform (not yet implemented)
-├── macos/                  # macOS platform (not yet implemented)
-├── windows/                # Windows platform (not yet implemented)
+├── ios/                    # iOS platform integration (Metal + CocoaPods)
+├── linux/                  # Linux platform integration (GTK/EGL)
+├── macos/                  # macOS platform integration (Metal + CocoaPods)
+├── windows/                # Windows platform integration (Win32/OpenGL)
 ├── example/                # Demo Flutter application
 ├── thirdparty/             # External dependencies (CoMaps engine)
 ├── patches/                # Patches applied to CoMaps
@@ -164,6 +164,26 @@ dart run tool/build.dart --build-binaries --platform <platform>
 
 Add `--skip-patches` if you need to debug patch application.
 
+For Apple platform work, use tee logging and keep `AGUS_MAPS_HOME` unset so the
+build consumes the patched in-repo CoMaps checkout:
+
+```bash
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform ios 2>&1 | tee ./output.log
+
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform macos 2>&1 | tee ./output.log
+```
+
+After rebuilding iOS binaries, refresh the example workspace:
+
+```bash
+cd example
+flutter pub get 2>&1 | tee ../output.log
+cd ios
+pod install 2>&1 | tee -a ../../output.log
+```
+
 ### Build Script Architecture
 
 `build_all` is a thin wrapper around the Dart hooks in `tool/build.dart`. It orchestrates the CoMaps checkout, patch application, Boost headers, data generation, and native builds. Standalone bootstrap/patch scripts are no longer required.
@@ -238,6 +258,11 @@ See [GUIDE.md](../GUIDE.md) for the full architectural blueprint.
 | [API.md](./API.md) | **API Reference** - All existing APIs and roadmap for future additions |
 | [ARCHITECTURE-ANDROID.md](./ARCHITECTURE-ANDROID.md) | Deep dive into Android integration, memory/battery efficiency |
 | [IMPLEMENTATION-ANDROID.md](./IMPLEMENTATION-ANDROID.md) | Build instructions, debug/release modes |
+| [IMPLEMENTATION-IOS.md](./IMPLEMENTATION-IOS.md) | iOS build instructions, Xcode workspace notes, Metal integration |
+| [IMPLEMENTATION-MACOS.md](./IMPLEMENTATION-MACOS.md) | macOS build instructions, resize handling, Metal integration |
+| [COMAPS-ASSETS.md](./COMAPS-ASSETS.md) | CoMaps data files, extraction validation, and MWM asset handling |
+| [DART-HOOKS.md](./DART-HOOKS.md) | Dart build tool and contributor/source build orchestration |
+| [BUILD-CONFIGURATION.md](./BUILD-CONFIGURATION.md) | Flutter build modes and native configuration mapping |
 | [GUIDE.md](../GUIDE.md) | High-level plugin architecture |
 
 ### Known Issues

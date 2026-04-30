@@ -47,9 +47,19 @@ dart run tool/build.dart --build-binaries
 # Build specific platforms
 dart run tool/build.dart --build-binaries --platform android --platform ios
 
+# Apple-focused iteration with logging
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform ios 2>&1 | tee ./output.log
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform macos 2>&1 | tee ./output.log
+
 # Skip patches (for testing)
 dart run tool/build.dart --skip-patches
 ```
+
+For iOS/macOS contributors, leave `AGUS_MAPS_HOME` unset so the build uses the
+patched in-repo CoMaps checkout and regenerates `ios/Frameworks/CoMaps.xcframework`
+or `macos/Frameworks/CoMaps.xcframework` from source.
 
 ## Build Tool Structure
 
@@ -77,6 +87,12 @@ The build tool is organized into modular components in `tool/src/`:
   - `buildMacOSXCFramework()` - macOS XCFramework (universal)
   - `buildWindowsLibrary()` - Windows DLL build
   - `buildLinuxLibrary()` - Linux shared library build
+
+Apple XCFramework packaging removes stale `libcomaps.a` and
+`CoMaps.xcframework` outputs before recreating them. CMake configure/build
+steps are treated as fatal when they return a non-zero exit code, so failed
+native builds stop before CocoaPods or Flutter attempt to consume partial
+artifacts.
 
 ### SDK Management
 
@@ -182,6 +198,16 @@ The build tool automatically detects the build mode:
 - **Behavior**: Builds from source using `tool/build.dart`
 - **Requires**: CoMaps source code in `thirdparty/comaps`
 
+### Apple Build Ordering
+
+For iOS and macOS, the build runner compiles Metal shaders before running
+CocoaPods setup. The podspec declares `Resources/shaders_metal.metallib`, and
+CocoaPods validates declared resources during project generation, so the shader
+bundle must exist before `pod install` runs.
+
+Patch application is deterministic: patch files are sorted by basename before
+they are applied. This avoids filesystem-order differences between machines.
+
 **Environment Variable**:
 ```bash
 export AGUS_MAPS_BUILD_MODE=contributor  # Force contributor mode
@@ -234,7 +260,7 @@ If `dart run tool/build.dart` fails:
 Required environment variables for contributor mode:
 
 - `AGUS_MAPS_BUILD_MODE=contributor` - Force contributor mode
-- `COMAPS_TAG=v2026.01.08-11` - CoMaps version tag (optional, defaults in config)
+- `COMAPS_TAG=v2026.04.23-19` - CoMaps version tag (optional, defaults in config)
 
 Platform-specific variables (auto-detected in most cases):
 

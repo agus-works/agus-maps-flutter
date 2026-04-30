@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d0ecf6e..5c2c6de 100644
+index fe4eb10da..4ea5b5d4a 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -22,7 +22,8 @@ if (POLICY CMP0156)
@@ -21,7 +21,7 @@ index d0ecf6e..5c2c6de 100644
    add_link_options(/INCREMENTAL:NO)
  else()
    add_compile_options(-ffast-math $<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>)
-@@ -96,7 +99,14 @@ if (PLATFORM_WIN)
+@@ -96,19 +99,28 @@ if (PLATFORM_WIN)
  endif()
  
  # Built-in CMake configurations: Debug, Release, RelWithDebInfo, MinSizeRel
@@ -37,8 +37,14 @@ index d0ecf6e..5c2c6de 100644
    add_definitions(-DDEBUG)
    if (NOT MSVC)
      add_compile_options(-fno-omit-frame-pointer)
-@@ -107,7 +117,8 @@ elseif (${CMAKE_BUILD_TYPE} MATCHES "Rel")
-     add_compile_options(-O3 $<$<CXX_COMPILER_ID:GNU>:-flto=auto>)
+   endif()
+ elseif (${CMAKE_BUILD_TYPE} MATCHES "Rel")
+   add_definitions(-DRELEASE)
+-  if (NOT MSVC)
++  # xcodebuild rejects LLVM bitcode members in static archives.
++  if (NOT MSVC AND NOT (APPLE AND SKIP_QT))
+     add_compile_options(-O3)
+     set (CMAKE_INTERPROCEDURAL_OPTIMIZATION True)
    endif()
  else()
 -  message(FATAL_ERROR "Unknown build type: " ${CMAKE_BUILD_TYPE})
@@ -47,7 +53,7 @@ index d0ecf6e..5c2c6de 100644
  endif()
  
  if (${CMAKE_BUILD_TYPE} STREQUAL "RelWithDebInfo")
-@@ -150,7 +161,7 @@ find_package(Threads REQUIRED)
+@@ -137,7 +149,7 @@ find_package(Threads REQUIRED)
  
  # Scripts
  
@@ -56,7 +62,7 @@ index d0ecf6e..5c2c6de 100644
    list(APPEND qt_components Core Network)
    if (NOT SKIP_QT_GUI OR NOT SKIP_TESTS OR PYBINDINGS)
      list(APPEND qt_components Widgets)
-@@ -170,7 +181,8 @@ if (NOT PLATFORM_IPHONE AND NOT PLATFORM_ANDROID)
+@@ -157,7 +169,8 @@ if (NOT PLATFORM_IPHONE AND NOT PLATFORM_ANDROID)
  endif()
  
  # To allow #include "base/file_name.hpp" in all sources.
@@ -66,7 +72,7 @@ index d0ecf6e..5c2c6de 100644
  
  if (USE_PCH)
    message(STATUS "Precompiled headers are ON")
-@@ -200,6 +212,24 @@ endif()
+@@ -187,6 +200,24 @@ endif()
  
  find_package(ZLIB REQUIRED)
  
@@ -91,52 +97,44 @@ index d0ecf6e..5c2c6de 100644
  # Include 3party dependencies.
  add_subdirectory(3party)
  
-@@ -209,38 +239,40 @@ if (PLATFORM_DESKTOP AND NOT WITH_SYSTEM_PROVIDED_3PARTY)
+@@ -196,41 +227,43 @@ if (PLATFORM_DESKTOP AND NOT WITH_SYSTEM_PROVIDED_3PARTY)
    include_directories("${PROJECT_BINARY_DIR}/3party/gflags/include")
  endif()
  
 -# Fix for #include <boost/regex.hpp>
 -include_directories("${OMIM_ROOT}/3party/boost")
 -
--# Used in qt/ and shaders/
-+# Python3 is used in shaders/ for shader preprocessing (all platforms)
+ # without this, cmake might ignore the Python Virtual Environment when defined 
+ set(Python3_FIND_VIRTUALENV FIRST)
+ 
+ # Used in qt/ and shaders/
  find_package(Python3 REQUIRED COMPONENTS Interpreter)
  
 -execute_process(
--    COMMAND ${Python3_EXECUTABLE} -c "import google.protobuf; 
 +# Protobuf check is only needed for desktop builds with Qt (generator tools)
 +if (PLATFORM_DESKTOP AND NOT SKIP_QT)
 +  execute_process(
-+      COMMAND ${Python3_EXECUTABLE} -c "import google.protobuf; 
+     COMMAND ${Python3_EXECUTABLE} -c "import google.protobuf; 
  print(google.protobuf.__version__)"
--    RESULT_VARIABLE PROTOBUF_CHECK
--    OUTPUT_VARIABLE PROTOBUF_VERSION
--    OUTPUT_STRIP_TRAILING_WHITESPACE
--    ERROR_QUIET
+     RESULT_VARIABLE PROTOBUF_CHECK
+     OUTPUT_VARIABLE PROTOBUF_VERSION
+     OUTPUT_STRIP_TRAILING_WHITESPACE
+     ERROR_QUIET
 -)
--
--if(PROTOBUF_CHECK EQUAL 0)
--    if(PROTOBUF_VERSION VERSION_LESS "4.0.0")
--        message(STATUS "Python protobuf ${PROTOBUF_VERSION} found (< 4.0)")
--    else()
--        message(FATAL_ERROR "Python protobuf ${PROTOBUF_VERSION} found, but version < 4.0 required")
--    endif()
--else()
--    message(FATAL_ERROR "Python protobuf not found. Install version <4.0")
-+      RESULT_VARIABLE PROTOBUF_CHECK
-+      OUTPUT_VARIABLE PROTOBUF_VERSION
-+      OUTPUT_STRIP_TRAILING_WHITESPACE
-+      ERROR_QUIET
 +  )
-+
+ 
+-if(PROTOBUF_CHECK EQUAL 0)
 +  if(PROTOBUF_CHECK EQUAL 0)
-+      if(PROTOBUF_VERSION VERSION_LESS "4.0.0")
-+          message(STATUS "Python protobuf ${PROTOBUF_VERSION} found (< 4.0)")
-+      else()
-+          message(FATAL_ERROR "Python protobuf ${PROTOBUF_VERSION} found, but version < 4.0 required")
-+      endif()
+     if(PROTOBUF_VERSION VERSION_LESS "3.20.0" OR PROTOBUF_VERSION VERSION_GREATER_EQUAL "4.0.0")
+-        message(FATAL_ERROR "Python protobuf ${PROTOBUF_VERSION} found, but version (>=3.20, <4.0) is required")
++      message(FATAL_ERROR "Python protobuf ${PROTOBUF_VERSION} found, but version (>=3.20, <4.0) is required")
+     else()
+-        message(STATUS "Python protobuf ${PROTOBUF_VERSION} found (>=3.20, <4.0)")
++      message(STATUS "Python protobuf ${PROTOBUF_VERSION} found (>=3.20, <4.0)")
+     endif()
+-else()
 +  else()
-+      message(FATAL_ERROR "Python protobuf not found. Install version <4.0")
+     message(FATAL_ERROR "Python protobuf not found. Install version (>=3.20, <4.0)")
 +  endif()
  endif()
  
@@ -155,7 +153,7 @@ index d0ecf6e..5c2c6de 100644
    if (NOT SKIP_QT_GUI)
      add_subdirectory(qt)
    endif()
-@@ -252,6 +284,6 @@ endif()
+@@ -242,6 +275,6 @@ endif()
  
  omim_add_test_subdirectory(libs/qt_tstfrm)
  
@@ -163,3 +161,4 @@ index d0ecf6e..5c2c6de 100644
 +if (PLATFORM_ANDROID AND NOT SKIP_ANDROID_JNI)
    add_subdirectory(android/sdk/src/main/cpp)
  endif()
+-- 

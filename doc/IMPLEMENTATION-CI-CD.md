@@ -8,6 +8,26 @@ This document outlines the implementation plan for splitting the Android build p
 
 The CI pipeline now uses Dart hooks (`tool/build.dart`) as the primary build orchestrator. Legacy bootstrap/build scripts referenced in the historical plan below were removed; only `scripts/build_all.*` and `scripts/bundle_headers.sh` remain as wrappers around the Dart build tool. For the current CI implementation, refer to [.github/workflows/devops.yml](.github/workflows/devops.yml).
 
+### Apple Build Notes (April 2026)
+
+The iOS and macOS native builds are verified through the same Dart build tool:
+
+```bash
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform ios 2>&1 | tee ./output.log
+
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform macos 2>&1 | tee ./output.log
+```
+
+Important CI assumptions:
+
+- Patch files are applied in sorted filename order for deterministic CoMaps checkouts.
+- CMake configure/build failures stop the job immediately instead of allowing partial Apple artifacts to be packaged.
+- Existing `CoMaps.xcframework` and intermediate `libcomaps.a` outputs are removed before `xcodebuild -create-xcframework`.
+- Metal shaders are built before CocoaPods setup because the podspec declares `Resources/shaders_metal.metallib`.
+- iOS uses Monocypher Ed25519 in the headless CMake build to avoid the unavailable Xcode-generated `platform-Swift.h` dependency.
+
 ### Goals
 
 1. **Split Android build** into two stages: native library build and example app build
@@ -45,6 +65,8 @@ Most legacy bootstrap/build scripts were removed in favor of Dart hooks. CI and 
 build-headers (runs first, produces agus-headers.tar.gz)
 ├── build-ios-native (depends on build-headers)
 │   └── build-ios (depends on build-ios-native)
+├── build-macos-native (depends on build-headers)
+│   └── build-macos (depends on build-macos-native)
 ├── build-android-native (depends on build-headers)
 │   └── build-android (depends on build-android-native)
 └── release (depends on all builds)
@@ -56,12 +78,16 @@ build-headers (runs first, produces agus-headers.tar.gz)
 graph TD
     A[build-headers] --> B[build-ios-native]
     A --> C[build-android-native]
+    A --> G[build-macos-native]
     B --> D[build-ios]
     C --> E[build-android]
+    G --> H[build-macos]
     D --> F[release]
     E --> F
+    H --> F
     B --> F
     C --> F
+    G --> F
     A --> F
 ```
 
@@ -269,7 +295,7 @@ build-release:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COMAPS_TAG` | `v2026.01.08-11` | CoMaps version tag |
+| `COMAPS_TAG` | `v2026.04.23-19` | CoMaps version tag |
 | `FLUTTER_VERSION` | `3.38.9` | Flutter SDK version |
 | `NDK_VERSION` | `27.3.13750724` | Android NDK version |
 | `CMAKE_VERSION` | `4.2.1` | CMake version |

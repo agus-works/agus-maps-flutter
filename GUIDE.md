@@ -74,6 +74,21 @@ The build scripts handle:
 
 > **Important:** Do NOT set `AGUS_MAPS_HOME` when working as a contributor.
 
+For Apple platform work, prefer targeted contributor builds while iterating:
+
+```bash
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform ios 2>&1 | tee ./output.log
+
+env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
+  dart run tool/build.dart --build-binaries --platform macos 2>&1 | tee ./output.log
+```
+
+The Dart build tool now applies CoMaps patches in deterministic filename order,
+fails fast on CMake configure/build errors, removes stale Apple package outputs
+before recreating `CoMaps.xcframework`, and builds Metal shaders before running
+CocoaPods setup for iOS/macOS.
+
 #### 2. CI/CD Environment
 
 GitHub Actions builds are detected via `CI=true`. The workflow:
@@ -124,6 +139,11 @@ Uses CVPixelBuffer backed by IOSurface for true zero-copy rendering:
 2. Create MTLTexture from pixel buffer
 3. CoMaps renders to MTLTexture
 4. Flutter samples the texture directly
+
+The headless iOS/macOS XCFramework builds keep the native Apple networking and
+platform files, but use Monocypher for Ed25519 verification. CoMaps'
+`ed25519_apple.mm` imports Xcode-generated `platform-Swift.h`, which is not
+available when building the native engine through standalone CMake.
 
 ### Android (OpenGL ES)
 

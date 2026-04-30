@@ -57,6 +57,7 @@ Future<void> copyDataFiles() async {
   final essentialFiles = [
     'classificator.txt',
     'types.txt',
+    'subtypes.csv',
     'categories.txt',
     'visibility.txt',
     'countries.txt',
