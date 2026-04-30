@@ -156,6 +156,9 @@ bundle_3party_headers() {
     # GLM (header-only math library)
     copy_headers "$COMAPS_DIR/3party/glm/glm" "comaps/3party/glm/glm"
     
+    # ankerl::unordered_dense (header-only hash maps used by CoMaps base logging)
+    copy_headers "$COMAPS_DIR/3party/ankerl" "comaps/3party/ankerl"
+    
     # utfcpp (header-only UTF conversion)
     copy_headers "$COMAPS_DIR/3party/utfcpp/source" "comaps/3party/utfcpp/source"
     
@@ -213,6 +216,28 @@ bundle_3party_headers() {
     done
 }
 
+# Validate headers that are known to be referenced by public CoMaps headers.
+validate_header_bundle() {
+    log_info "Validating required bundled headers..."
+
+    local required_headers=(
+        "comaps/libs/base/internal/message.hpp"
+        "comaps/3party/ankerl/unordered_dense.h"
+    )
+
+    local missing=0
+    for header in "${required_headers[@]}"; do
+        if [[ ! -f "$STAGING_DIR/$header" ]]; then
+            log_error "Required header missing from bundle: $header"
+            missing=1
+        fi
+    done
+
+    if [[ "$missing" -ne 0 ]]; then
+        exit 1
+    fi
+}
+
 # Create the tarball
 create_tarball() {
     log_info "Creating tarball..."
@@ -252,6 +277,7 @@ main() {
     copy_toplevel_files
     bundle_comaps_headers
     bundle_3party_headers
+    validate_header_bundle
     show_stats
     create_tarball
     

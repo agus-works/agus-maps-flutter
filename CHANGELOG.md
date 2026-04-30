@@ -4,6 +4,8 @@
 
 * **CoMaps dependency refresh**: GitHub Actions and build-tool documentation now use `COMAPS_TAG` v2026.04.23-19.
 
+* **Apple CI header bundle fix**: The shared CoMaps header bundle now includes and validates `3party/ankerl/unordered_dense.h`, fixing iOS simulator CI builds that compile against prebuilt XCFrameworks after hiding the full `thirdparty` source checkout.
+
 ### Apple Build & Tooling
 
 * **macOS contributor build stability**: Native macOS builds now apply CoMaps patches in sorted order, fail fast on CMake configure/build failures, clean stale XCFramework outputs before packaging, and build Metal shaders before CocoaPods setup. The example debug app was verified with `flutter build macos --debug`.
