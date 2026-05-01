@@ -746,6 +746,8 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   bool _surfaceCreated = false;
   double _devicePixelRatio = 1.0;
   double _userScale = 1.0;
+  double _lastPanZoomRotation = 0.0;
+  double _lastPanZoomBearing = 0.0;
 
   // Track pending resize to apply when becoming visible
   Size? _pendingResizeSize;
@@ -1010,6 +1012,36 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
     }
   }
 
+  void _handlePointerPanZoomStart(PointerPanZoomStartEvent event) {
+    if (!(Platform.isWindows || Platform.isLinux)) return;
+    _lastPanZoomRotation = 0.0;
+    _lastPanZoomBearing = getCurrentBearing();
+  }
+
+  void _handlePointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
+    if (!(Platform.isWindows || Platform.isLinux)) return;
+
+    final rotationDelta = event.rotation - _lastPanZoomRotation;
+    _lastPanZoomRotation = event.rotation;
+    if (rotationDelta.abs() < 0.0005) return;
+
+    _lastPanZoomBearing = _normalizeBearingDegrees(
+      _lastPanZoomBearing + rotationDelta * 180 / pi,
+    );
+    setMapBearing(_lastPanZoomBearing, animated: false);
+  }
+
+  void _handlePointerPanZoomEnd(PointerPanZoomEndEvent event) {
+    if (!(Platform.isWindows || Platform.isLinux)) return;
+    _lastPanZoomRotation = 0.0;
+    _lastPanZoomBearing = getCurrentBearing();
+  }
+
+  double _normalizeBearingDegrees(double degrees) {
+    final normalized = degrees % 360.0;
+    return normalized < 0 ? normalized + 360.0 : normalized;
+  }
+
   void _sendTouchEvent(TouchType type, int pointerId, Offset position) {
     // Use cached pixel ratio for coordinate conversion (matches surface dimensions)
     final pixelRatio = _devicePixelRatio;
@@ -1093,6 +1125,9 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
           onPointerUp: _handlePointerUp,
           onPointerCancel: _handlePointerCancel,
           onPointerSignal: _handlePointerSignal,
+          onPointerPanZoomStart: _handlePointerPanZoomStart,
+          onPointerPanZoomUpdate: _handlePointerPanZoomUpdate,
+          onPointerPanZoomEnd: _handlePointerPanZoomEnd,
           child: SizedBox(
             width: size.width,
             height: size.height,

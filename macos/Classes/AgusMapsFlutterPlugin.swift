@@ -61,6 +61,7 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
     private var density: CGFloat = 2.0
     private weak var hostView: NSView?
     private var magnificationRecognizer: NSMagnificationGestureRecognizer?
+    private var rotationRecognizer: NSRotationGestureRecognizer?
     private var scrollEventMonitor: Any?
     
     // Rendering state
@@ -95,9 +96,10 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         if let hostView = registrar.view {
             instance.hostView = hostView
             instance.setupMagnificationGesture(on: hostView)
+            instance.setupRotationGesture(on: hostView)
             instance.setupTrackpadZoomMonitor(on: hostView)
         } else {
-            NSLog("[AgusMapsFlutter] Warning: registrar.view is nil; trackpad pinch disabled")
+            NSLog("[AgusMapsFlutter] Warning: registrar.view is nil; trackpad gestures disabled")
         }
         
         AgusMapsHostApiSetup.setUp(binaryMessenger: registrar.messenger, api: instance)
@@ -661,6 +663,42 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         
         let scaleFactor = exp(Double(delta))
         comaps_scale(scaleFactor, pixelX, pixelY, 0)
+    }
+
+    // MARK: - Trackpad Rotation (macOS)
+    private func setupRotationGesture(on view: NSView) {
+        guard rotationRecognizer == nil else { return }
+        let recognizer = NSRotationGestureRecognizer(target: self, action: #selector(handleRotation(_:)))
+        recognizer.delegate = self
+        recognizer.isEnabled = true
+        view.addGestureRecognizer(recognizer)
+        rotationRecognizer = recognizer
+#if DEBUG
+        NSLog("[AgusMapsFlutter] Trackpad rotation gesture attached")
+#endif
+    }
+
+    @objc private func handleRotation(_ recognizer: NSRotationGestureRecognizer) {
+        guard isRenderingEnabled, textureId >= 0 else { return }
+
+        switch recognizer.state {
+        case .began:
+            recognizer.rotation = 0
+            return
+        case .changed:
+            break
+        default:
+            recognizer.rotation = 0
+            return
+        }
+
+        let deltaRadians = recognizer.rotation
+        if abs(deltaRadians) < 0.0005 { return }
+        recognizer.rotation = 0
+
+        let currentBearing = comaps_get_current_bearing()
+        let deltaDegrees = Double(deltaRadians) * 180.0 / Double.pi
+        comaps_set_bearing(currentBearing + deltaDegrees, 0)
     }
 
     // MARK: - Trackpad Parallel Swipe Zoom (two-finger vertical slide)
