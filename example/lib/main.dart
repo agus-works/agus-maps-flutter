@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -13,6 +14,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'about_tab.dart';
+import 'downloads_cache.dart';
 import 'downloads_tab.dart';
 import 'settings_tab.dart';
 import 'place_page_sheet.dart';
@@ -201,6 +203,7 @@ class _MyAppState extends State<MyApp> {
   agus_maps_flutter.PlacePageData? _placePage;
 
   int? _bundledMwmVersion;
+  String? _dataPath;
   Timer? _bearingTimer;
   Timer? _searchDebounceTimer;
   Timer? _searchPollTimer;
@@ -787,7 +790,9 @@ class _MyAppState extends State<MyApp> {
       // 1. Extract CoMaps data files (classificator.txt, types.txt, etc.)
       _log('Extracting data files...');
       final dataPath = await agus_maps_flutter.extractDataFiles();
+      _dataPath = dataPath;
       _log('Data path: $dataPath');
+      await _cleanupPartialDownloads(dataPath);
 
       // 2. Extract ICU data for transliteration.
       _log('Extracting icudt75l.dat...');
@@ -798,7 +803,8 @@ class _MyAppState extends State<MyApp> {
       );
       _log('ICU data path: $icuDataPath');
 
-      _bundledMwmVersion = await _readBundledMwmVersion(dataPath);
+      _bundledMwmVersion = await _readBundledMapAssetVersion() ??
+          await _readBundledMwmVersion(dataPath);
       _log('Bundled MWM version: ${_bundledMwmVersion ?? 'unknown'}');
 
       // 3. Extract bundled maps before surface creation. CoMaps scans the
@@ -831,41 +837,9 @@ class _MyAppState extends State<MyApp> {
       );
       _log('Bundled map paths: [$worldPath, $coastsPath, $gibraltarPath]');
 
-      // Record bundled maps in storage (if not already there)
-      final worldFile = File(worldPath);
-      final coastsFile = File(coastsPath);
-      final gibraltarFile = File(gibraltarPath);
-
-      if (!_mwmStorage!.isDownloaded('World')) {
-        await _mwmStorage!.upsert(MwmMetadata(
-          regionName: 'World',
-          snapshotVersion: 'bundled',
-          fileSize: await worldFile.length(),
-          downloadDate: DateTime.now(),
-          filePath: worldPath,
-          isBundled: true,
-        ));
-      }
-      if (!_mwmStorage!.isDownloaded('WorldCoasts')) {
-        await _mwmStorage!.upsert(MwmMetadata(
-          regionName: 'WorldCoasts',
-          snapshotVersion: 'bundled',
-          fileSize: await coastsFile.length(),
-          downloadDate: DateTime.now(),
-          filePath: coastsPath,
-          isBundled: true,
-        ));
-      }
-      if (!_mwmStorage!.isDownloaded('Gibraltar')) {
-        await _mwmStorage!.upsert(MwmMetadata(
-          regionName: 'Gibraltar',
-          snapshotVersion: 'bundled',
-          fileSize: await gibraltarFile.length(),
-          downloadDate: DateTime.now(),
-          filePath: gibraltarPath,
-          isBundled: true,
-        ));
-      }
+      await _recordBundledMap('World', worldPath);
+      await _recordBundledMap('WorldCoasts', coastsPath);
+      await _recordBundledMap('Gibraltar', gibraltarPath);
 
       // 4. Initialize with extracted data files
       _log('Calling initWithPaths()...');
@@ -1512,7 +1486,60 @@ class _MyAppState extends State<MyApp> {
     if (!targetExists || await target.length() != await source.length()) {
       await source.copy(target.path);
     }
+    await _deleteStaleVersionedBundledMap(
+      dataPath: dataPath,
+      fileName: fileName,
+      keepVersion: version,
+    );
+    if (!_sameFilePath(source.path, target.path) && await source.exists()) {
+      await source.delete();
+    }
     return target.path;
+  }
+
+  Future<void> _deleteStaleVersionedBundledMap({
+    required String dataPath,
+    required String fileName,
+    required int keepVersion,
+  }) async {
+    final dataDir = Directory(dataPath);
+    if (!await dataDir.exists()) return;
+
+    await for (final entity in dataDir.list(followLinks: false)) {
+      if (entity is! Directory) continue;
+      final name = entity.uri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .lastOrNull;
+      if (name == null || int.tryParse(name) == keepVersion) continue;
+      if (!RegExp(r'^\d+$').hasMatch(name)) continue;
+
+      final staleMap = File('${entity.path}/$fileName');
+      if (await staleMap.exists()) {
+        await staleMap.delete();
+      }
+    }
+  }
+
+  Future<void> _recordBundledMap(String regionName, String filePath) async {
+    final storage = _mwmStorage;
+    if (storage == null) return;
+
+    final existing = storage.getByRegion(regionName);
+    if (existing != null && !existing.isBundled) {
+      return;
+    }
+
+    final file = File(filePath);
+    await storage.upsert(
+      MwmMetadata(
+        regionName: regionName,
+        snapshotVersion: _bundledMwmVersion?.toString() ?? 'bundled',
+        fileSize: await file.length(),
+        downloadDate: DateTime.now(),
+        filePath: filePath,
+        isBundled: true,
+      ),
+    );
   }
 
   bool _isRootCoMapsResource(String fileName) {
@@ -1568,27 +1595,37 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  Future<int?> _readBundledMapAssetVersion() async {
+    try {
+      final contents = await rootBundle.loadString('assets/maps/.mwm_version');
+      return int.tryParse(contents.trim());
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Clean up partial downloads from interrupted sessions.
   ///
   /// When the app is killed during a download, the partial .mwm.download file
   /// remains on disk. If not cleaned up, RegisterAllMaps() might crash trying
   /// to load corrupted/incomplete map files.
-  Future<void> _cleanupPartialDownloads() async {
+  Future<void> _cleanupPartialDownloads([String? dataPath]) async {
     try {
       final dir = await getApplicationDocumentsDirectory();
       int cleanedCount = 0;
 
-      // Check both the root documents and the maps subdirectory
       final dirsToCheck = [
-        dir,
         Directory('${dir.path}/agus_maps_flutter/maps'),
+        if (dataPath != null) Directory(dataPath),
       ];
 
       for (final checkDir in dirsToCheck) {
-        if (!checkDir.existsSync()) continue;
+        if (!await checkDir.exists()) continue;
 
-        final files = checkDir.listSync();
-        for (final entity in files) {
+        await for (final entity in checkDir.list(
+          recursive: true,
+          followLinks: false,
+        )) {
           if (entity is File && entity.path.endsWith('.mwm.download')) {
             _log('Removing partial download: ${entity.path}');
             await entity.delete();
@@ -1603,6 +1640,116 @@ class _MyAppState extends State<MyApp> {
     } catch (e) {
       _log('Warning: Failed to clean up partial downloads: $e');
       // Don't rethrow - cleanup failure shouldn't prevent app startup
+    }
+  }
+
+  Future<void> _clearCachedData() async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.delete_sweep_outlined, color: Colors.red),
+                SizedBox(width: 8),
+                Text('Clear Cached Data'),
+              ],
+            ),
+            content: const Text(
+              'Clear downloaded maps, cached download lists, and saved settings?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Clear'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+
+    try {
+      _log('Clearing cached maps and settings...');
+      await DownloadsCacheService().clearCache();
+      await _mwmStorage?.deleteAllDownloaded();
+      await _mwmStorage?.clear();
+      await _deleteCachedMapDirectories();
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      _mwmStorage = await MwmStorage.create();
+
+      if (!mounted) return;
+      setState(() {
+        _mapScale = 1.0;
+        _interfaceThemeMode = ThemeMode.system;
+        _mapAppearanceMode = agus_maps_flutter.MapAppearanceMode.system;
+        _mapLanguageCode = '';
+        _buildings3dEnabled = false;
+        _mapLayerState = const agus_maps_flutter.MapLayerState(
+          outdoors: false,
+          isolines: false,
+          subway: false,
+        );
+        _navigationSettings = const agus_maps_flutter.NavigationSettings();
+      });
+      _applyNativeMapSettings();
+      _applyNativeNavigationSettings();
+      _showMapMessage(
+        'Cached data cleared. Restart the app to reload bundled maps.',
+      );
+    } catch (e, stackTrace) {
+      _log('Failed to clear cached data: $e\n$stackTrace');
+      _showMapMessage('Failed to clear cached data: $e');
+    }
+  }
+
+  Future<void> _deleteCachedMapDirectories() async {
+    final documentsDir = await getApplicationDocumentsDirectory();
+    await _deleteDirectoryIfExists(
+      Directory('${documentsDir.path}/agus_maps_flutter/maps'),
+    );
+
+    final dataPath = _dataPath;
+    if (dataPath == null) return;
+
+    final dataDir = Directory(dataPath);
+    if (!await dataDir.exists()) return;
+
+    await for (final entity in dataDir.list(followLinks: false)) {
+      final name = entity.uri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .lastOrNull;
+      if (name == null) continue;
+
+      try {
+        if (entity is Directory && RegExp(r'^\d+$').hasMatch(name)) {
+          await entity.delete(recursive: true);
+        } else if (entity is File && entity.path.endsWith('.mwm.download')) {
+          await entity.delete();
+        } else if (entity is File &&
+            entity.path.endsWith('.mwm') &&
+            !_isRootCoMapsResource(name)) {
+          await entity.delete();
+        }
+      } catch (e) {
+        _log('Warning: failed to delete cached map item ${entity.path}: $e');
+      }
+    }
+  }
+
+  Future<void> _deleteDirectoryIfExists(Directory directory) async {
+    try {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    } catch (e) {
+      _log('Warning: failed to delete ${directory.path}: $e');
     }
   }
 
@@ -1659,6 +1806,7 @@ class _MyAppState extends State<MyApp> {
                     onBuildings3dChanged: _updateBuildings3d,
                     onLayerStateChanged: _updateMapLayerState,
                     onNavigationSettingsChanged: _updateNavigationSettings,
+                    onClearCachedData: _clearCachedData,
                   ),
                   const AboutTab(),
                 ],
@@ -2191,11 +2339,13 @@ class _MyAppState extends State<MyApp> {
 
   /// Full-screen downloads tab.
   Widget _buildDownloadsTab() {
-    if (_mwmStorage == null) {
+    final dataPath = _dataPath;
+    if (_mwmStorage == null || dataPath == null) {
       return const Center(child: CircularProgressIndicator());
     }
     return DownloadsTab(
       mwmStorage: _mwmStorage!,
+      dataPath: dataPath,
       isVisible: _currentTabIndex == 2, // Downloads tab is index 2
       onMapsChanged: () {
         setState(() {});

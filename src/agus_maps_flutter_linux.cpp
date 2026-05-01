@@ -531,6 +531,7 @@ FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* w
     Platform & pl = GetPlatform();
     pl.SetWritableDirForTests(writablePath);
     pl.SetResourceDir(resourcePath);
+    pl.SetSettingsDir(writablePath);
     
     g_platformInitialized = true;
     

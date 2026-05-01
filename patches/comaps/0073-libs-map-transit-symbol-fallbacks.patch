@@ -1,0 +1,25 @@
+diff --git a/libs/map/transit/transit_display.cpp b/libs/map/transit/transit_display.cpp
+index f57e1f006..266c5983e 100644
+--- a/libs/map/transit/transit_display.cpp
++++ b/libs/map/transit/transit_display.cpp
+@@ -16,11 +16,11 @@ map<TransitType, string> const kTransitSymbols = {{TransitType::Subway, "transit
+-                                                  {TransitType::Tram, "transit_tram"},
+-                                                  {TransitType::Bus, "transit_bus"},
+-                                                  {TransitType::Ferry, "transit_ferry"},
+-                                                  {TransitType::CableTram, "transit_cable_tram"},
+-                                                  {TransitType::AerialLift, "transit_aerial_lift"},
+-                                                  {TransitType::Funicular, "transit_funicular"},
+-                                                  {TransitType::Trolleybus, "transit_trolleybus"},
+-                                                  {TransitType::AirService, "transit_air_service"},
+-                                                  {TransitType::WaterService, "transit_water_service"}};
++                                                  {TransitType::Tram, "tram"},
++                                                  {TransitType::Bus, "buses"},
++                                                  {TransitType::Ferry, "ship"},
++                                                  {TransitType::CableTram, "cable-car"},
++                                                  {TransitType::AerialLift, "cable-car"},
++                                                  {TransitType::Funicular, "funicular"},
++                                                  {TransitType::Trolleybus, "buses"},
++                                                  {TransitType::AirService, "airport"},
++                                                  {TransitType::WaterService, "ship"}};
+ 
+ namespace

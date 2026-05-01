@@ -7,6 +7,9 @@ import 'platform_detector.dart' show getRepoRoot;
 import 'package:yaml/yaml.dart';
 import 'package:yaml_edit/yaml_edit.dart';
 
+const int _minSymbolsPngBytes = 100000;
+const int _minSymbolsSdfBytes = 1000;
+
 Future<void> syncLocalizedStringsAssets() async {
   final repoRoot = getRepoRoot();
   final sourceDir = path.join(
@@ -99,12 +102,18 @@ Future<void> copyDataFiles() async {
     final srcDir = path.join(comapsDataDir, dir);
     if (await Directory(srcDir).exists()) {
       final destDir = path.join(destDataDir, dir);
+      final existingDestDir = Directory(destDir);
+      if (await existingDestDir.exists()) {
+        await existingDestDir.delete(recursive: true);
+      }
       await copyPath(srcDir, destDir);
       print('  Copied: $dir/');
     }
   }
 
+  await _validateSymbolsAtlas(destDataDir);
   await _replicateSymbolsAtlasToAllDpis(destDataDir);
+  await _validateSymbolsAtlas(destDataDir);
 
   final icuSource = path.join(comapsDataDir, 'icudt75l.dat');
   final mapsDir = path.join(repoRoot, 'example', 'assets', 'maps');
@@ -132,17 +141,18 @@ Future<void> _replicateSymbolsAtlasToAllDpis(String comapsDataDir) async {
 
   final missingSources = <String>[];
   for (final entry in sourceFiles.entries) {
-    if (!await File(entry.value).exists()) {
+    final minBytes =
+        entry.key.endsWith('.png') ? _minSymbolsPngBytes : _minSymbolsSdfBytes;
+    if (!await _fileHasMinSize(entry.value, minBytes)) {
       missingSources.add(entry.key);
     }
   }
 
   if (missingSources.isNotEmpty) {
-    print(
-      '  Warning: symbols atlas source missing in xxhdpi: '
+    throw StateError(
+      'Symbols atlas source missing or too small in xxhdpi: '
       '${missingSources.join(', ')}',
     );
-    return;
   }
 
   final dpiDirs = [
@@ -158,8 +168,12 @@ Future<void> _replicateSymbolsAtlasToAllDpis(String comapsDataDir) async {
   for (final dpi in dpiDirs) {
     for (final relative in sourceFiles.keys) {
       final destination = path.join(symbolsRoot, dpi, relative);
+      final source = sourceFiles[relative]!;
+      if (path.equals(path.normalize(source), path.normalize(destination))) {
+        continue;
+      }
       await ensureDir(path.dirname(destination));
-      await File(sourceFiles[relative]!).copy(destination);
+      await File(source).copy(destination);
       replicatedCount++;
     }
   }
@@ -168,6 +182,44 @@ Future<void> _replicateSymbolsAtlasToAllDpis(String comapsDataDir) async {
     '  Replicated symbols atlas to all DPI folders '
     '(files updated: $replicatedCount)',
   );
+}
+
+Future<void> _validateSymbolsAtlas(String comapsDataDir) async {
+  final invalid = <String>[];
+  for (final style in ['light', 'dark']) {
+    final pngPath = path.join(
+      comapsDataDir,
+      'symbols',
+      'xxhdpi',
+      style,
+      'symbols.png',
+    );
+    final sdfPath = path.join(
+      comapsDataDir,
+      'symbols',
+      'xxhdpi',
+      style,
+      'symbols.sdf',
+    );
+    if (!await _fileHasMinSize(pngPath, _minSymbolsPngBytes)) {
+      invalid.add('xxhdpi/$style/symbols.png');
+    }
+    if (!await _fileHasMinSize(sdfPath, _minSymbolsSdfBytes)) {
+      invalid.add('xxhdpi/$style/symbols.sdf');
+    }
+  }
+
+  if (invalid.isEmpty) return;
+
+  throw StateError(
+    'Symbols atlas is missing or too small after copy: ${invalid.join(', ')}',
+  );
+}
+
+Future<bool> _fileHasMinSize(String filePath, int minBytes) async {
+  final file = File(filePath);
+  if (!await file.exists()) return false;
+  return await file.length() >= minBytes;
 }
 
 Future<void> updateExampleAssetsList() async {

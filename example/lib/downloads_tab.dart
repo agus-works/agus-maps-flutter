@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:agus_maps_flutter/mirror_service.dart';
 import 'package:agus_maps_flutter/mwm_storage.dart';
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus;
@@ -65,12 +64,14 @@ Future<bool> checkInternetConnectivity() async {
 /// Downloads tab widget for managing map downloads.
 class DownloadsTab extends StatefulWidget {
   final MwmStorage mwmStorage;
+  final String dataPath;
   final VoidCallback? onMapsChanged;
   final bool isVisible;
 
   const DownloadsTab({
     super.key,
     required this.mwmStorage,
+    required this.dataPath,
     this.onMapsChanged,
     this.isVisible = false,
   });
@@ -520,20 +521,21 @@ class _DownloadsTabState extends State<DownloadsTab> {
   }
 
   Future<void> _downloadGroupRegion(MwmRegion region) async {
-    final missingRegions = region.leafRegions
-        .where((leaf) => !widget.mwmStorage.isDownloaded(leaf.name))
-        .toList();
-    if (missingRegions.isEmpty) return;
+    final pendingRegions = _pendingLeafRegions(region);
+    if (pendingRegions.isEmpty) return;
+
+    final updateCount = pendingRegions.where(_isLeafOutdated).length;
+    final actionLabel = updateCount > 0 ? 'Update' : 'Download';
 
     final totalSizeMb =
-        missingRegions.fold<int>(0, (sum, r) => sum + r.sizeBytes) ~/
+        pendingRegions.fold<int>(0, (sum, r) => sum + r.sizeBytes) ~/
             (1024 * 1024);
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Download Region'),
+            title: Text('$actionLabel Region'),
             content: Text(
-              'Download ${missingRegions.length} map files for '
+              '$actionLabel ${pendingRegions.length} map files for '
               '"${region.displayName}" ($totalSizeMb MB)?',
             ),
             actions: [
@@ -543,7 +545,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Download'),
+                child: Text(actionLabel),
               ),
             ],
           ),
@@ -551,14 +553,15 @@ class _DownloadsTabState extends State<DownloadsTab> {
         false;
     if (!confirmed) return;
 
-    for (final leaf in missingRegions) {
+    for (final leaf in pendingRegions) {
       if (!mounted) return;
       await _downloadLeafRegion(leaf, showSnackBar: false);
     }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Downloaded ${region.displayName}')),
+        SnackBar(
+            content: Text('$actionLabel complete for ${region.displayName}')),
       );
     }
   }
@@ -623,6 +626,8 @@ class _DownloadsTabState extends State<DownloadsTab> {
       if (!proceed) return;
     }
 
+    final wasDownloaded = widget.mwmStorage.isDownloaded(region.name);
+
     // Start download
     setState(() {
       _downloadProgress[region.name] = 0.0;
@@ -631,9 +636,8 @@ class _DownloadsTabState extends State<DownloadsTab> {
     });
 
     try {
-      // Use the same directory as bundled maps: Documents/agus_maps_flutter/maps/
-      final dir = await getApplicationDocumentsDirectory();
-      final mapsDir = Directory('${dir.path}/agus_maps_flutter/maps');
+      final snapshot = _selectedMirrorResult!.latestSnapshot!;
+      final mapsDir = _targetDirectory(region, snapshot.version);
       await mapsDir.create(recursive: true);
       final filePath = '${mapsDir.path}/${region.fileName}';
       final tempPath =
@@ -655,6 +659,13 @@ class _DownloadsTabState extends State<DownloadsTab> {
         },
       );
 
+      if (fileSize > 0 && bytesWritten != fileSize) {
+        await tempFile.delete();
+        throw Exception(
+          'Downloaded size mismatch: expected $fileSize bytes, got $bytesWritten bytes',
+        );
+      }
+
       // Rename temp file to final .mwm only after successful download
       if (await finalFile.exists()) {
         await finalFile.delete();
@@ -662,7 +673,6 @@ class _DownloadsTabState extends State<DownloadsTab> {
       await tempFile.rename(filePath);
 
       // Save metadata
-      final snapshot = _selectedMirrorResult!.latestSnapshot!;
       await widget.mwmStorage.upsert(
         MwmMetadata(
           regionName: region.name,
@@ -695,7 +705,15 @@ class _DownloadsTabState extends State<DownloadsTab> {
         if (showSnackBar) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('Downloaded ${region.name}')));
+          ).showSnackBar(
+            SnackBar(
+              content: Text(
+                wasDownloaded
+                    ? 'Updated ${region.name}'
+                    : 'Downloaded ${region.name}',
+              ),
+            ),
+          );
         }
       }
     } catch (e) {
@@ -707,6 +725,17 @@ class _DownloadsTabState extends State<DownloadsTab> {
         });
       }
     }
+  }
+
+  Directory _targetDirectory(MwmRegion region, String snapshotVersion) {
+    if (_isRootMapFile(region.fileName)) {
+      return Directory(widget.dataPath);
+    }
+    return Directory('${widget.dataPath}/$snapshotVersion');
+  }
+
+  bool _isRootMapFile(String fileName) {
+    return fileName == 'World.mwm' || fileName == 'WorldCoasts.mwm';
   }
 
   void _showError(String message) {
@@ -1380,19 +1409,22 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
   Widget _buildRegionTile(MwmRegion region, {required int depth}) {
     final isDownloaded = _isRegionDownloaded(region);
+    final isOutdated = _isRegionOutdated(region);
     final progress = region.isLeaf ? _downloadProgress[region.name] : null;
     final error = _regionError(region);
     final isDownloading = _isRegionDownloading(region);
     final isExpanded = _expandedRegionIds.contains(region.id);
     final downloadedLeafCount = _downloadedLeafCount(region);
     final leafCount = region.leafRegions.length;
-    final statusColor = isDownloaded
-        ? Colors.green
-        : isDownloading
-            ? Colors.blue
-            : downloadedLeafCount > 0
-                ? Colors.orange
-                : Colors.grey;
+    final statusColor = isOutdated
+        ? Colors.orange
+        : isDownloaded
+            ? Colors.green
+            : isDownloading
+                ? Colors.blue
+                : downloadedLeafCount > 0
+                    ? Colors.orange
+                    : Colors.grey;
 
     return ListTile(
       dense: true,
@@ -1440,9 +1472,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
               overflow: TextOverflow.ellipsis,
             )
           : Text(
-              region.isGroup
-                  ? '$downloadedLeafCount/$leafCount maps • ${region.sizeMB} MB'
-                  : '${region.sizeMB} MB',
+              _regionSubtitle(region, downloadedLeafCount, leafCount),
               style: const TextStyle(fontSize: 11),
             ),
       trailing: _buildTrailing(region, isDownloaded, isDownloading, progress),
@@ -1472,10 +1502,61 @@ class _DownloadsTabState extends State<DownloadsTab> {
         .length;
   }
 
+  int _outdatedLeafCount(MwmRegion region) {
+    return region.leafRegions.where(_isLeafOutdated).length;
+  }
+
+  List<MwmRegion> _pendingLeafRegions(MwmRegion region) {
+    return region.leafRegions
+        .where(
+          (leaf) =>
+              !widget.mwmStorage.isDownloaded(leaf.name) ||
+              _isLeafOutdated(leaf),
+        )
+        .toList();
+  }
+
   bool _isRegionDownloaded(MwmRegion region) {
     final leaves = region.leafRegions;
     return leaves.isNotEmpty &&
         leaves.every((leaf) => widget.mwmStorage.isDownloaded(leaf.name));
+  }
+
+  bool _isRegionOutdated(MwmRegion region) {
+    return region.leafRegions.any(_isLeafOutdated);
+  }
+
+  bool _isLeafOutdated(MwmRegion region) {
+    final latest = _selectedMirrorResult?.latestSnapshot?.version;
+    if (latest == null) return false;
+    return widget.mwmStorage.hasUpdate(region.name, latest);
+  }
+
+  String _regionSubtitle(
+    MwmRegion region,
+    int downloadedLeafCount,
+    int leafCount,
+  ) {
+    if (region.isGroup) {
+      final outdatedCount = _outdatedLeafCount(region);
+      final parts = [
+        '$downloadedLeafCount/$leafCount maps',
+        '${region.sizeMB} MB',
+        if (outdatedCount > 0)
+          '$outdatedCount update${outdatedCount == 1 ? '' : 's'}',
+      ];
+      return parts.join(' • ');
+    }
+
+    final metadata = widget.mwmStorage.getByRegion(region.name);
+    final parts = ['${region.sizeMB} MB'];
+    if (metadata != null) {
+      parts.add('Version ${metadata.snapshotVersion}');
+    }
+    if (_isLeafOutdated(region)) {
+      parts.add('Update available');
+    }
+    return parts.join(' • ');
   }
 
   bool _isRegionDownloading(MwmRegion region) {
@@ -1537,6 +1618,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
     if (isDownloaded) {
       final isBundled = _isRegionBundled(region);
+      final isOutdated = _isRegionOutdated(region);
 
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -1548,13 +1630,22 @@ class _DownloadsTabState extends State<DownloadsTab> {
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
-              isBundled ? 'bundled' : 'installed',
+              _installedVersionLabel(region) ??
+                  (isBundled ? 'bundled' : 'installed'),
               style: TextStyle(
                 fontSize: 10,
                 color: isBundled ? Colors.blue.shade800 : Colors.green.shade800,
               ),
             ),
           ),
+          if (isOutdated)
+            IconButton(
+              icon: const Icon(Icons.system_update_alt, size: 20),
+              color: Colors.orange.shade700,
+              onPressed:
+                  _canStartDownload ? () => _downloadRegion(region) : null,
+              tooltip: region.isGroup ? 'Update maps' : 'Update map',
+            ),
           // Show delete button for non-bundled maps
           if (!isBundled)
             IconButton(
@@ -1580,6 +1671,21 @@ class _DownloadsTabState extends State<DownloadsTab> {
               : 'Download'
           : 'Max $kMaxConcurrentDownloads concurrent downloads',
     );
+  }
+
+  String? _installedVersionLabel(MwmRegion region) {
+    final versions = <String>{};
+    for (final leaf in region.leafRegions) {
+      final metadata = widget.mwmStorage.getByRegion(leaf.name);
+      if (metadata == null) continue;
+      versions.add(metadata.snapshotVersion);
+    }
+    if (versions.isEmpty) return null;
+    if (versions.length == 1) {
+      final version = versions.first;
+      return version == 'bundled' ? 'bundled' : 'v$version';
+    }
+    return 'mixed';
   }
 
   /// Show confirmation dialog before deleting a region.
@@ -1650,9 +1756,21 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
     final results = <DeleteResult>[];
     for (final leaf in region.leafRegions) {
-      if (widget.mwmStorage.isDownloaded(leaf.name)) {
+      final metadata = widget.mwmStorage.getByRegion(leaf.name);
+      if (metadata != null && !metadata.isBundled) {
         results.add(await widget.mwmStorage.deleteMap(leaf.name));
       }
+    }
+
+    if (results.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'No downloaded maps to delete for ${region.displayName}')),
+        );
+      }
+      return;
     }
 
     final failures = results.where((result) => !result.success).toList();

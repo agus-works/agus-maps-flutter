@@ -177,7 +177,6 @@ flutter:
     - assets/comaps_data/countries-strings/ru.json/
     - assets/comaps_data/countries-strings/sk.json/
     - assets/comaps_data/countries-strings/sr.json/
-    - assets/comaps_data/countries-strings/sr_Latn.json/
     - assets/comaps_data/countries-strings/sv.json/
     - assets/comaps_data/countries-strings/ta.json/
     - assets/comaps_data/countries-strings/th.json/
@@ -323,17 +322,23 @@ flutter:
     - assets/comaps_data/styles/vehicle/include/
     - assets/comaps_data/styles/vehicle/light/
     - assets/comaps_data/symbols/6plus/dark/
+    - assets/comaps_data/symbols/6plus/design/
     - assets/comaps_data/symbols/6plus/light/
     - assets/comaps_data/symbols/default/
     - assets/comaps_data/symbols/hdpi/dark/
+    - assets/comaps_data/symbols/hdpi/design/
     - assets/comaps_data/symbols/hdpi/light/
     - assets/comaps_data/symbols/mdpi/dark/
+    - assets/comaps_data/symbols/mdpi/design/
     - assets/comaps_data/symbols/mdpi/light/
     - assets/comaps_data/symbols/xhdpi/dark/
+    - assets/comaps_data/symbols/xhdpi/design/
     - assets/comaps_data/symbols/xhdpi/light/
     - assets/comaps_data/symbols/xxhdpi/dark/
+    - assets/comaps_data/symbols/xxhdpi/design/
     - assets/comaps_data/symbols/xxhdpi/light/
     - assets/comaps_data/symbols/xxxhdpi/dark/
+    - assets/comaps_data/symbols/xxxhdpi/design/
     - assets/comaps_data/symbols/xxxhdpi/light/
     - assets/countries-strings/en.json/
     - assets/maps/

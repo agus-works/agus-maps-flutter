@@ -1,0 +1,54 @@
+diff --git a/tools/unix/generate_symbols.sh b/tools/unix/generate_symbols.sh
+index 5f580a812..fd6baab2b 100755
+--- a/tools/unix/generate_symbols.sh
++++ b/tools/unix/generate_symbols.sh
+@@ -1,17 +1,11 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
+ 
++HAS_OPTIPNG=1
+ if ! command -v optipng &> /dev/null
+ then
+-    echo -e "\033[1;31moptipng could not be found"
+-    if [[ $OSTYPE == 'darwin'* ]]; then
+-       echo 'run command'
+-       echo 'brew install optipng'
+-       echo 'to install it'
+-       exit
+-    fi
+-    echo 'take a look to http://optipng.sourceforge.net/'
+-    exit
++  HAS_OPTIPNG=0
++  echo '[WARN] optipng could not be found; generated symbol atlases will not be optimized.'
+ fi
+ 
+ # Add env var to disable renderer on a display (renderer not working into a Github container)
+@@ -22,9 +16,14 @@ OMIM_PATH="${OMIM_PATH:-$(cd "$(dirname "$0")/../.."; pwd)}"
+ BUILD_DIR="$OMIM_PATH/build"
+ SKIN_GENERATOR="${SKIN_GENERATOR:-$BUILD_DIR/$BINARY_NAME}"
+ DATA_PATH="$OMIM_PATH/data"
++declare -a CMAKE_CONFIGURE_ARGS=()
++if [[ -n "${PYTHON3_EXECUTABLE:-}" ]]; then
++  CMAKE_CONFIGURE_ARGS+=("-DPython3_EXECUTABLE=$PYTHON3_EXECUTABLE")
++fi
++CMAKE_CONFIGURE_ARGS+=("-DSKIP_QT_POSITIONING:bool=true")
+ 
+ # cmake rebuilds skin generator binary if necessary.
+-cmake -S "$OMIM_PATH" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKIP_TESTS:bool=true
++cmake -S "$OMIM_PATH" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKIP_TESTS:bool=true "${CMAKE_CONFIGURE_ARGS[@]}"
+ cmake --build "$BUILD_DIR" --target "$BINARY_NAME"
+ 
+ 
+@@ -80,8 +79,10 @@ BuildSkin default light xxhdpi  54 light symbols
+ BuildSkin default light xxxhdpi 64 light symbols
+ 
+ for i in ${symbols_name[*]}; do
+-  optipng -zc9 -zm8 -zs0 -f0 "$DATA_PATH"/symbols/"${i}"/light/symbols.png
+-  optipng -zc9 -zm8 -zs0 -f0 "$DATA_PATH"/symbols/"${i}"/dark/symbols.png
++  if [[ "$HAS_OPTIPNG" == "1" ]]; then
++    optipng -zc9 -zm8 -zs0 -f0 "$DATA_PATH"/symbols/"${i}"/light/symbols.png
++    optipng -zc9 -zm8 -zs0 -f0 "$DATA_PATH"/symbols/"${i}"/dark/symbols.png
++  fi
+ done
+ 
+ rm -rf "$DATA_PATH"/symbols/*/design/

@@ -20,6 +20,7 @@ class SettingsTab extends StatelessWidget {
   final ValueChanged<agus_maps_flutter.MapLayerState> onLayerStateChanged;
   final ValueChanged<agus_maps_flutter.NavigationSettings>
       onNavigationSettingsChanged;
+  final Future<void> Function() onClearCachedData;
 
   const SettingsTab({
     super.key,
@@ -38,6 +39,7 @@ class SettingsTab extends StatelessWidget {
     required this.onBuildings3dChanged,
     required this.onLayerStateChanged,
     required this.onNavigationSettingsChanged,
+    required this.onClearCachedData,
   });
 
   static const double _minScale = 0.25;
@@ -321,6 +323,22 @@ class SettingsTab extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _SettingsCard(
+                icon: Icons.storage_outlined,
+                title: 'Storage',
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: onClearCachedData,
+                    icon: const Icon(Icons.delete_sweep_outlined),
+                    label: const Text('Clear cached data'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: theme.colorScheme.error,
+                    ),
+                  ),
                 ),
               ),
             ],

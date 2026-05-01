@@ -388,16 +388,33 @@ static std::string extract_map(const char* asset_path) {
   fs::path filename = fs::path(asset_path).filename();
   fs::path dest_path = data_dir_path / filename;
   
-  // Check if already extracted
-  if (fs::exists(dest_path)) {
-    std::fprintf(stderr, "[AgusMapsFlutter] Map already exists at: %s\n", dest_path.string().c_str());
-    return dest_path.string();
-  }
-  
   // Verify source exists
   if (!fs::exists(source_path)) {
     std::fprintf(stderr, "[AgusMapsFlutter] ERROR: Asset not found at: %s\n", source_path.string().c_str());
     throw std::runtime_error("Asset not found: " + source_path.string());
+  }
+
+  std::error_code source_ec;
+  auto const source_size = fs::file_size(source_path, source_ec);
+  if (source_ec || source_size == 0) {
+    throw std::runtime_error("Asset is missing or empty: " + source_path.string());
+  }
+
+  // Reuse extracted files only when they match the bundled asset size. This
+  // avoids keeping stale base maps or zero-byte assets across rebuilds.
+  if (fs::exists(dest_path)) {
+    std::error_code dest_ec;
+    auto const dest_size = fs::file_size(dest_path, dest_ec);
+    if (!dest_ec && dest_size == source_size) {
+      std::fprintf(stderr, "[AgusMapsFlutter] Map already exists at: %s\n", dest_path.string().c_str());
+      return dest_path.string();
+    }
+
+    std::fprintf(stderr,
+                 "[AgusMapsFlutter] Replacing stale extracted asset: %s (old=%llu, new=%llu)\n",
+                 dest_path.string().c_str(),
+                 static_cast<unsigned long long>(dest_ec ? 0 : dest_size),
+                 static_cast<unsigned long long>(source_size));
   }
   
   // Copy file
