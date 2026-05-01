@@ -67,8 +67,21 @@ if(DEFINED ENV{CI})
   message(STATUS "Detected CI environment")
 endif()
 
+# In-repo development should build native code from source by default. A local
+# prebuilt DLL can otherwise hide source fixes while testing the example app.
+set(FORCE_PREBUILT_WINDOWS OFF)
+if(DEFINED ENV{AGUS_MAPS_USE_PREBUILT_WINDOWS})
+  string(TOLOWER "$ENV{AGUS_MAPS_USE_PREBUILT_WINDOWS}" AGUS_MAPS_USE_PREBUILT_WINDOWS_VALUE)
+  if(AGUS_MAPS_USE_PREBUILT_WINDOWS_VALUE STREQUAL "1" OR
+     AGUS_MAPS_USE_PREBUILT_WINDOWS_VALUE STREQUAL "true" OR
+     AGUS_MAPS_USE_PREBUILT_WINDOWS_VALUE STREQUAL "yes")
+    set(FORCE_PREBUILT_WINDOWS ON)
+    message(STATUS "AGUS_MAPS_USE_PREBUILT_WINDOWS enabled; prebuilt Windows DLLs may be used")
+  endif()
+endif()
+
 # Location 1a: AGUS_MAPS_HOME (Environment Variable)
-if(DEFINED ENV{AGUS_MAPS_HOME} AND NOT PREBUILT_DIR)
+if(DEFINED ENV{AGUS_MAPS_HOME} AND NOT PREBUILT_DIR AND (NOT IS_IN_REPO OR FORCE_PREBUILT_WINDOWS))
   set(AGUS_SDK_HOME "$ENV{AGUS_MAPS_HOME}")
   # Normalize path (remove quotes etc if present)
   file(TO_CMAKE_PATH "${AGUS_SDK_HOME}" AGUS_SDK_HOME)
@@ -82,10 +95,12 @@ if(DEFINED ENV{AGUS_MAPS_HOME} AND NOT PREBUILT_DIR)
   else()
     message(STATUS "WARNING: AGUS_MAPS_HOME set but binaries not found in ${SDK_WINDOWS_PREBUILT_DIR}")
   endif()
+elseif(DEFINED ENV{AGUS_MAPS_HOME} AND IS_IN_REPO AND NOT FORCE_PREBUILT_WINDOWS)
+  message(STATUS "Ignoring AGUS_MAPS_HOME for in-repo Windows source build; set AGUS_MAPS_USE_PREBUILT_WINDOWS=1 to force prebuilts")
 endif()
 
 # Location 1b: Plugin-local prebuilt (CI builds, or plugin vendored with binaries)
-if(NOT PREBUILT_DIR AND (IS_CI OR EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64/agus_maps_flutter.dll"))
+if(NOT PREBUILT_DIR AND (FORCE_PREBUILT_WINDOWS OR IS_CI OR NOT IS_IN_REPO) AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64/agus_maps_flutter.dll")
   set(PLUGIN_PREBUILT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64")
   if(EXISTS "${PLUGIN_PREBUILT_DIR}/agus_maps_flutter.dll")
     set(PREBUILT_DIR "${PLUGIN_PREBUILT_DIR}")

@@ -90,8 +90,11 @@ if(NOT USE_PREBUILT_COMAPS)
     message(STATUS "Disabled LTO and enabled emulated TLS for Android")
   endif()
 
-  # Build CoMaps
+  # Build CoMaps. CoMaps enables CMAKE_UNITY_BUILD in the shared CMake cache;
+  # turn it back off afterwards so generated Flutter plugin targets are not
+  # forced into unity builds.
   add_subdirectory("${COMAPS_SOURCE_DIR}" build/comaps)
+  set(CMAKE_UNITY_BUILD OFF CACHE BOOL "Use unity build" FORCE)
   
   # Restore install rules after CoMaps subdirectory
   set(CMAKE_SKIP_INSTALL_RULES OFF CACHE BOOL "" FORCE)

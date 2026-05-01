@@ -223,7 +223,7 @@ void Platform::GetAllFiles(std::string const & directory, FilesList & outFiles)
     {
         for (auto const & entry : std::filesystem::directory_iterator(directory))
         {
-            if (entry.is_regular_file())
+            if (entry.is_regular_file() || entry.is_directory())
             {
                 outFiles.push_back(entry.path().filename().string());
             }
