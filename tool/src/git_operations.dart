@@ -3,14 +3,13 @@
 import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'process_runner.dart' show runProcess, commandExists;
-import 'file_operations.dart' show pathExists, dirExists;
 import 'platform_detector.dart' show getComapsDir, getThirdpartyDir;
 
 /// Clone CoMaps repository
 Future<void> cloneComaps(String tag, {String? targetDir}) async {
   final comapsDir = targetDir ?? getComapsDir();
   final thirdpartyDir = getThirdpartyDir();
-  
+
   // Check if already cloned
   if (await Directory(comapsDir).exists()) {
     final gitDir = Directory(path.join(comapsDir, '.git'));
@@ -19,20 +18,20 @@ Future<void> cloneComaps(String tag, {String? targetDir}) async {
       return;
     }
   }
-  
+
   // Ensure thirdparty directory exists
   await Directory(thirdpartyDir).create(recursive: true);
-  
+
   // Clone repository
   print('Cloning CoMaps repository...');
   await runProcess(
     'git',
     ['clone', 'https://github.com/comaps/comaps.git', comapsDir],
   );
-  
+
   // Checkout specific tag
   await checkoutComapsTag(tag, comapsDir: comapsDir);
-  
+
   // Initialize submodules
   await initSubmodules(comapsDir: comapsDir);
 }
@@ -40,35 +39,77 @@ Future<void> cloneComaps(String tag, {String? targetDir}) async {
 /// Checkout specific CoMaps tag
 Future<void> checkoutComapsTag(String tag, {String? comapsDir}) async {
   final dir = comapsDir ?? getComapsDir();
-  
+
   if (!await Directory(dir).exists()) {
     throw Exception('CoMaps directory does not exist: $dir');
   }
-  
+
   print('Checking out CoMaps tag: $tag');
-  
+
+  final status = await runProcess(
+    'git',
+    ['status', '--porcelain'],
+    workingDirectory: dir,
+    throwOnError: false,
+  );
+  if (status.exitCode == 0 && status.stdout.toString().trim().isNotEmpty) {
+    print('CoMaps working tree has local changes; resetting before checkout');
+    await resetComapsWorkingTree(comapsDir: dir);
+  }
+
   // Fetch tags
-  await runProcess('git', ['fetch', '--tags', '--prune', '--no-recurse-submodules'], workingDirectory: dir);
-  
+  await runProcess(
+      'git', ['fetch', '--tags', '--prune', '--no-recurse-submodules'],
+      workingDirectory: dir);
+
   // Checkout tag
   await runProcess('git', ['checkout', '--detach', tag], workingDirectory: dir);
+}
+
+/// Reset the managed CoMaps checkout to a clean HEAD state.
+Future<void> resetComapsWorkingTree({String? comapsDir}) async {
+  final dir = comapsDir ?? getComapsDir();
+
+  if (!await Directory(dir).exists()) {
+    throw Exception('CoMaps directory does not exist: $dir');
+  }
+
+  print('Resetting CoMaps working tree to HEAD...');
+  await runProcess('git', ['reset', '--hard', 'HEAD'], workingDirectory: dir);
+  await runProcess('git', ['clean', '-fd'], workingDirectory: dir);
+
+  print('Resetting CoMaps submodules...');
+  try {
+    await runProcess(
+      'git',
+      ['submodule', 'foreach', '--recursive', 'git', 'reset', '--hard', 'HEAD'],
+      workingDirectory: dir,
+    );
+    await runProcess(
+      'git',
+      ['submodule', 'foreach', '--recursive', 'git', 'clean', '-fd'],
+      workingDirectory: dir,
+    );
+  } catch (e) {
+    print('Note: Submodule reset had warnings (may be expected)');
+  }
 }
 
 /// Initialize submodules recursively
 Future<void> initSubmodules({String? comapsDir}) async {
   final dir = comapsDir ?? getComapsDir();
-  
+
   if (!await Directory(dir).exists()) {
     throw Exception('CoMaps directory does not exist: $dir');
   }
-  
+
   // Fix Codeberg URLs in .gitmodules if needed (use GitHub mirrors)
   print('Git submodules mirror replacements');
   final gitmodulesFile = File(path.join(dir, '.gitmodules'));
   if (await gitmodulesFile.exists()) {
     var content = await gitmodulesFile.readAsString();
     final originalContent = content;
-    
+
     // Replace Codeberg URLs with GitHub mirrors
     content = content.replaceAll(
       'https://codeberg.org/comaps/protobuf.git',
@@ -78,13 +119,13 @@ Future<void> initSubmodules({String? comapsDir}) async {
       'https://codeberg.org/comaps/kothic.git',
       'https://github.com/organicmaps/kothic.git',
     );
-    
+
     if (content != originalContent) {
       await gitmodulesFile.writeAsString(content);
       print('Updated .gitmodules to use GitHub mirrors');
     }
   }
-  
+
   // Initialize submodules
   print('Initializing submodules');
   try {
@@ -97,7 +138,8 @@ Future<void> initSubmodules({String? comapsDir}) async {
     print('Warning: Submodule update failed. Attempting to recover...');
     // Try to recover: sync URLs and force update
     try {
-      await runProcess('git', ['submodule', 'sync', '--recursive'], workingDirectory: dir);
+      await runProcess('git', ['submodule', 'sync', '--recursive'],
+          workingDirectory: dir);
       await runProcess(
         'git',
         ['submodule', 'update', '--init', '--recursive', '--force'],
@@ -109,7 +151,7 @@ Future<void> initSubmodules({String? comapsDir}) async {
       rethrow;
     }
   }
-  
+
   print('Download LFS on CoMaps');
   await runProcess(
     'git',

@@ -31,6 +31,10 @@ apply_standard_settings(${PLUGIN_NAME})
 set_target_properties(${PLUGIN_NAME} PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED YES
+  # Flutter copies plugin libraries with install(FILES), so build the copied
+  # artifact with the relative RUNPATH it needs inside bundle/lib.
+  BUILD_WITH_INSTALL_RPATH TRUE
+  INSTALL_RPATH "$ORIGIN"
 )
 
 # Source include directories
