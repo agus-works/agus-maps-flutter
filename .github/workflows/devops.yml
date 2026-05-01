@@ -176,6 +176,7 @@ jobs:
           pip install 'protobuf<4.0'
           # Add venv to PATH for subsequent steps
           echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$HOME/.protobuf-venv" >> $GITHUB_ENV
 
       - name: Install Qt 6
         uses: jurplel/install-qt-action@v4
@@ -771,6 +772,15 @@ jobs:
           pip install --upgrade pip
           pip install 'protobuf<4.0'
           echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$HOME/.protobuf-venv" >> $GITHUB_ENV
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT6_VERSION }}
+          modules: qtpositioning
+          cache: true
+          setup-python: 'false'
 
       - name: Disk Usage Checkpoint (Initial)
         run: |
@@ -1401,6 +1411,7 @@ jobs:
           $env:CXX = "$env:MSYS2_ROOT\mingw64\bin\g++.exe"
           $env:PYTHON = $env:PYTHON_EXECUTABLE
           $env:PYTHON3 = $env:PYTHON_EXECUTABLE
+          $env:PYTHON3_EXECUTABLE = $env:PYTHON_EXECUTABLE
           $env:CMAKE_C_COMPILER = $env:CC
           $env:CMAKE_CXX_COMPILER = $env:CXX
           $env:ZLIB_ROOT = "$env:MSYS2_ROOT\mingw64"
@@ -1730,6 +1741,7 @@ jobs:
           pip install 'protobuf<4.0'
           # Add venv to PATH for subsequent steps
           echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$HOME/.protobuf-venv" >> $GITHUB_ENV
 
       - name: Install Qt 6
         uses: jurplel/install-qt-action@v4
