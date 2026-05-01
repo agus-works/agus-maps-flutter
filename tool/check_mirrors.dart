@@ -53,11 +53,11 @@ class MirrorCheckResult {
   bool get isFullyOperational =>
       baseUrlAccessible && snapshotListSuccess && gibraltarDownloadSuccess;
 
-  String get statusEmoji {
-    if (isFullyOperational) return '✅';
-    if (baseUrlAccessible && snapshotListSuccess) return '⚠️';
-    if (baseUrlAccessible) return '🔶';
-    return '❌';
+  String get statusMarker {
+    if (isFullyOperational) return '[OK]';
+    if (baseUrlAccessible && snapshotListSuccess) return '[WARN]';
+    if (baseUrlAccessible) return '[DEGRADED]';
+    return '[DOWN]';
   }
 
   String get statusText {
@@ -245,7 +245,7 @@ Future<String?> _findLatestSnapshot(
 
 /// Query the CoMaps metaserver for active servers
 Future<List<String>> _queryMetaserver() async {
-  print('📡 Querying CoMaps metaserver...');
+  print('Querying CoMaps metaserver...');
   print('   URL: $comapsMetaserverUrl');
 
   try {
@@ -280,31 +280,31 @@ void printReport(List<MirrorCheckResult> results, List<String> metaserverUrls) {
   print('');
 
   // Metaserver info
-  print('📡 COMAPS METASERVER');
+  print('COMAPS METASERVER');
   print('-' * 40);
   print('URL: $comapsMetaserverUrl');
   if (metaserverUrls.isNotEmpty) {
-    print('Status: ✅ ONLINE');
+    print('Status: [OK] ONLINE');
     print('Active servers:');
     for (final url in metaserverUrls) {
       print('  - $url');
     }
   } else {
-    print('Status: ❌ OFFLINE or empty response');
+    print('Status: [FAIL] OFFLINE or empty response');
   }
   print('');
 
   // Summary counts
   final totalOperational = results.where((r) => r.isFullyOperational).length;
 
-  print('📊 SUMMARY');
+  print('SUMMARY');
   print('-' * 40);
   print('Total mirrors checked: ${results.length}');
   print('Fully operational: $totalOperational / ${results.length}');
   print('');
 
   // CoMaps CDN section
-  print('🗺️  COMAPS CDN SERVERS');
+  print('COMAPS CDN SERVERS');
   print('-' * 40);
   print('URL pattern: <base>/maps/<version>/<file>');
   print('');
@@ -316,7 +316,7 @@ void printReport(List<MirrorCheckResult> results, List<String> metaserverUrls) {
   // Detailed error report
   final failedResults = results.where((r) => !r.isFullyOperational).toList();
   if (failedResults.isNotEmpty) {
-    print('⚠️  ISSUES DETECTED');
+    print('ISSUES DETECTED');
     print('-' * 40);
     for (final result in failedResults) {
       print('${result.mirror.name}:');
@@ -329,7 +329,7 @@ void printReport(List<MirrorCheckResult> results, List<String> metaserverUrls) {
   }
 
   // Recommendations
-  print('📋 RECOMMENDATIONS');
+  print('RECOMMENDATIONS');
   print('-' * 40);
 
   final operational = results
@@ -346,15 +346,15 @@ void printReport(List<MirrorCheckResult> results, List<String> metaserverUrls) {
     print(
         '  Download URL pattern: ${best.mirror.baseUrl}maps/<version>/<file>');
     if (best.isFromMetaserver) {
-      print('  📡 Listed by metaserver');
+      print('  Listed by metaserver');
     }
   } else {
-    print('❌ No CoMaps CDN servers with map data available!');
+    print('[FAIL] No CoMaps CDN servers with map data available!');
   }
 
   print('');
   print('=' * 80);
-  print('ℹ️  NOTES');
+  print('NOTES');
   print('=' * 80);
   print('');
   print('Version discovery uses dynamic date probing (no hardcoded dates).');
@@ -380,9 +380,9 @@ void _printMirrorResult(MirrorCheckResult result) {
   final size = result.gibraltarSizeBytes != null
       ? '${(result.gibraltarSizeBytes! / (1024 * 1024)).toStringAsFixed(2)} MB'
       : 'N/A';
-  final metaTag = result.isFromMetaserver ? ' 📡' : '';
+  final metaTag = result.isFromMetaserver ? ' [metaserver]' : '';
 
-  print('${result.statusEmoji} ${result.mirror.name}$metaTag');
+  print('${result.statusMarker} ${result.mirror.name}$metaTag');
   print('   URL: ${result.mirror.baseUrl}');
   print('   Status: ${result.statusText}');
   print('   Latency: $latency | Snapshot: $snapshot | Gibraltar: $size');
@@ -391,13 +391,13 @@ void _printMirrorResult(MirrorCheckResult result) {
 
 Future<void> main() async {
   print('');
-  print('🔍 CoMaps CDN Mirror Availability Diagnostic Tool');
+  print('CoMaps CDN Mirror Availability Diagnostic Tool');
   print('=' * 50);
   print('');
 
   // Generate candidate snapshots dynamically from current date
   final candidateSnapshots = MirrorService.generateCandidateVersions();
-  print('📅 Generated ${candidateSnapshots.length} candidate versions');
+  print('Generated ${candidateSnapshots.length} candidate versions');
   print('   Range: ${candidateSnapshots.last} to ${candidateSnapshots.first}');
   print('');
 
@@ -431,7 +431,7 @@ Future<void> main() async {
   final operationalCount = results.where((r) => r.isFullyOperational).length;
   if (operationalCount == 0) {
     print('');
-    print('❌ CRITICAL: No CoMaps CDN mirrors are operational!');
+    print('[FAIL] CRITICAL: No CoMaps CDN mirrors are operational!');
     exit(1);
   }
 }
