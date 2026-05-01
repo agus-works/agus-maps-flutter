@@ -74,7 +74,7 @@ class ProgressBar {
   void _printBar(int percent) {
     final filled = (width * percent ~/ 100);
     final empty = width - filled;
-    final bar = '█' * filled + '░' * empty;
+    final bar = '#' * filled + '-' * empty;
     final sizeStr = _formatSize(_current);
     final totalStr = total > 0 ? _formatSize(total) : '?';
 
@@ -215,11 +215,10 @@ Future<void> main(List<String> args) async {
   final startTime = DateTime.now();
 
   print(Colors.bold(
-      '\n╔════════════════════════════════════════════════════════════╗'));
+      '\n============================================================'));
+  print(Colors.bold('CoMaps MWM Map Downloader'));
   print(Colors.bold(
-      '║         CoMaps MWM Map Downloader                          ║'));
-  print(Colors.bold(
-      '╚════════════════════════════════════════════════════════════╝\n'));
+      '============================================================\n'));
 
   final service = MirrorService();
 
@@ -231,7 +230,7 @@ Future<void> main(List<String> args) async {
     }
 
     // Find best mirror or use specified one
-    print(Colors.cyan('🔍 Discovering mirrors...'));
+    print(Colors.cyan('Discovering mirrors...'));
     MirrorStatus? selectedMirror;
     String mirrorBaseUrl;
     String snapshot;
@@ -264,32 +263,33 @@ Future<void> main(List<String> args) async {
       mirrorBaseUrl = selectedMirror.mirror.baseUrl;
       snapshot =
           options['snapshot'] as String? ?? selectedMirror.latestSnapshot!;
-      print('  ${Colors.green('✓')} Selected: ${selectedMirror.mirror.name}');
+      print(
+          '  ${Colors.green('[OK]')} Selected: ${selectedMirror.mirror.name}');
       print('    URL: $mirrorBaseUrl');
       print('    Latency: ${selectedMirror.latencyMs}ms');
     }
 
     final snapshotObj = Snapshot(version: snapshot);
     print(
-        '  ${Colors.green('✓')} Snapshot: $snapshot (${snapshotObj.formattedDate})');
+        '  ${Colors.green('[OK]')} Snapshot: $snapshot (${snapshotObj.formattedDate})');
 
     // Fetch countries data
-    print(Colors.cyan('\n📋 Fetching region metadata...'));
+    print(Colors.cyan('\nFetching region metadata...'));
     final countriesData =
         await service.fetchCountriesData(mirrorBaseUrl, snapshot);
     if (countriesData != null) {
       print(
-          '  ${Colors.green('✓')} Found ${countriesData.allRegions.length} regions');
+          '  ${Colors.green('[OK]')} Found ${countriesData.allRegions.length} regions');
       print(
           '  Total size: ${(countriesData.totalSizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB');
     } else {
-      print('  ${Colors.yellow('⚠')} Could not fetch countries.txt');
+      print('  ${Colors.yellow('[WARN]')} Could not fetch countries.txt');
     }
 
     // Handle list-regions mode
     if (options['list-regions'] as bool) {
       if (countriesData != null) {
-        print(Colors.cyan('\n📄 Available regions:'));
+        print(Colors.cyan('\nAvailable regions:'));
         listRegions(countriesData);
       }
 
@@ -316,7 +316,7 @@ Future<void> main(List<String> args) async {
         .where((f) => f.isNotEmpty)
         .toList();
 
-    print(Colors.cyan('\n📥 Downloading ${fileList.length} files...'));
+    print(Colors.cyan('\nDownloading ${fileList.length} files...'));
 
     final outputDir = Directory(options['output-dir'] as String);
     await outputDir.create(recursive: true);
@@ -330,13 +330,13 @@ Future<void> main(List<String> args) async {
           MirrorService.buildDownloadUrl(mirrorBaseUrl, snapshot, fileName);
       final destFile = File('${outputDir.path}/$fileName');
 
-      print('\n  ${Colors.blue('→')} $fileName');
+      print('\n  ${Colors.blue('->')} $fileName');
       if (verbose) print('    URL: $url');
 
       if (!forceDownload && await destFile.exists()) {
         final cachedSize = await destFile.length();
         print(
-            '    ${Colors.green('✓')} Using cached file (${(cachedSize / (1024 * 1024)).toStringAsFixed(2)} MB)');
+            '    ${Colors.green('[OK]')} Using cached file (${(cachedSize / (1024 * 1024)).toStringAsFixed(2)} MB)');
         downloads.add(DownloadResult(
           fileName: fileName,
           url: url,
@@ -376,9 +376,9 @@ Future<void> main(List<String> args) async {
         progressBar.complete();
         actualSize = await destFile.length();
         print(
-            '    ${Colors.green('✓')} Downloaded (${(actualSize / (1024 * 1024)).toStringAsFixed(2)} MB in ${downloadDuration.inSeconds}s)');
+            '    ${Colors.green('[OK]')} Downloaded (${(actualSize / (1024 * 1024)).toStringAsFixed(2)} MB in ${downloadDuration.inSeconds}s)');
       } else {
-        print('    ${Colors.red('✗')} Failed to download');
+        print('    ${Colors.red('[FAIL]')} Failed to download');
       }
 
       downloads.add(DownloadResult(
@@ -397,10 +397,10 @@ Future<void> main(List<String> args) async {
     final successful = downloads.where((d) => d.success).length;
     final failed = downloads.where((d) => !d.success).length;
 
-    print(Colors.cyan('\n📊 Summary:'));
-    print('  ${Colors.green('✓')} Successful: $successful');
+    print(Colors.cyan('\nSummary:'));
+    print('  ${Colors.green('[OK]')} Successful: $successful');
     if (failed > 0) {
-      print('  ${Colors.red('✗')} Failed: $failed');
+      print('  ${Colors.red('[FAIL]')} Failed: $failed');
     }
 
     final totalBytes = downloads
@@ -482,7 +482,7 @@ Future<void> listMirrors(MirrorService service, bool verbose) async {
 
   if (metaserverUrls.isNotEmpty) {
     print(
-        '${Colors.green('✓')} Metaserver returned ${metaserverUrls.length} servers');
+        '${Colors.green('[OK]')} Metaserver returned ${metaserverUrls.length} servers');
     if (verbose) {
       for (final url in metaserverUrls) {
         print('    - $url');
@@ -504,8 +504,10 @@ Future<void> listMirrors(MirrorService service, bool verbose) async {
     results.add(status);
 
     final icon = status.isOperational
-        ? Colors.green('✓')
-        : (status.isAccessible ? Colors.yellow('⚠') : Colors.red('✗'));
+        ? Colors.green('[OK]')
+        : (status.isAccessible
+            ? Colors.yellow('[WARN]')
+            : Colors.red('[FAIL]'));
 
     print('$icon ${mirror.name}');
     print('  URL: ${mirror.baseUrl}');
@@ -566,5 +568,5 @@ Future<void> saveReport(
     const JsonEncoder.withIndent('  ').convert(reportJson),
   );
 
-  print('\n${Colors.green('✓')} Report saved to: $path');
+  print('\n${Colors.green('[OK]')} Report saved to: $path');
 }

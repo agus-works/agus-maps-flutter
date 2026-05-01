@@ -19,6 +19,12 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 
@@ -29,6 +35,38 @@ function Write-LogSuccess { param([string]$msg) Write-Host "[SUCCESS] $msg" -For
 function Write-LogError { param([string]$msg) Write-Host "[ERROR] $msg" -ForegroundColor Red }
 function Write-LogWarn { param([string]$msg) Write-Host "[WARN] $msg" -ForegroundColor Yellow }
 function Write-LogInfo { param([string]$msg) Write-Host "[INFO] $msg" -ForegroundColor White }
+function Convert-ToAsciiLog {
+    param([AllowNull()][object]$value)
+
+    if ($null -eq $value) { return "" }
+
+    $text = [string]$value
+    $mojibakeBullet = [string][char]0x0393 + [string][char]0x00C7 + [string][char]0x00F3
+    $text = $text -replace [regex]::Escape($mojibakeBullet), '-'
+    $text = $text -replace [string][char]0x2022, '-'
+    $text = $text -replace [string][char]0x00A9, '(c)'
+    return $text -replace '[^\x00-\x7F]', '?'
+}
+
+function Invoke-PythonNative {
+    param(
+        [hashtable]$python,
+        [string[]]$arguments
+    )
+
+    & $python['Executable'] @($python['Arguments']) @arguments
+}
+
+function Test-PythonProtobuf {
+    param([hashtable]$python)
+
+    $null = Invoke-PythonNative `
+        -python $python `
+        -arguments @('-c', 'import google.protobuf') `
+        2>$null
+
+    return $LASTEXITCODE -eq 0
+}
 
 Write-LogHeader "BUILD ALL - Using Dart Hooks"
 
@@ -40,7 +78,7 @@ Write-LogHeader "Checking Dependencies"
 # Check Dart
 try {
     $dartVersion = dart --version 2>&1 | Select-Object -First 1
-    Write-Host "Dart: $dartVersion"
+    Write-Host "Dart: $(Convert-ToAsciiLog $dartVersion)"
 } catch {
     Write-LogError "Dart is not installed."
     Write-LogError "Install Dart: https://dart.dev/get-dart"
@@ -50,7 +88,7 @@ try {
 # Check Flutter
 try {
     $flutterVersion = flutter --version 2>&1 | Select-Object -First 1
-    Write-Host "Flutter: $flutterVersion"
+    Write-Host "Flutter: $(Convert-ToAsciiLog $flutterVersion)"
 } catch {
     Write-LogError "Flutter is not installed."
     Write-LogError "Install Flutter: https://docs.flutter.dev/get-started/install"
@@ -60,9 +98,9 @@ try {
 # Check Python + protobuf
 $pythonCmd = $null
 if (Get-Command python -ErrorAction SilentlyContinue) {
-    $pythonCmd = 'python'
+    $pythonCmd = @{ Executable = 'python'; Arguments = @() }
 } elseif (Get-Command py -ErrorAction SilentlyContinue) {
-    $pythonCmd = 'py -3'
+    $pythonCmd = @{ Executable = 'py'; Arguments = @('-3') }
 }
 
 if (-not $pythonCmd) {
@@ -71,12 +109,29 @@ if (-not $pythonCmd) {
     exit 1
 }
 
-try {
-    & $pythonCmd -c "import google.protobuf" | Out-Null
-} catch {
-    Write-LogError "Python 'protobuf' module is not installed."
-    Write-LogError "Install: py -3 -m pip install --user protobuf"
-    exit 1
+$pythonVersion = Invoke-PythonNative `
+    -python $pythonCmd `
+    -arguments @('--version') `
+    2>&1 | Select-Object -First 1
+Write-Host "Python: $(Convert-ToAsciiLog $pythonVersion)"
+
+if (-not (Test-PythonProtobuf -python $pythonCmd)) {
+    Write-LogWarn "Python 'protobuf' module is not installed. Installing it with pip..."
+    Invoke-PythonNative `
+        -python $pythonCmd `
+        -arguments @('-m', 'pip', 'install', '--user', 'protobuf')
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-LogError "Failed to install Python 'protobuf' module."
+        Write-LogError "Install manually: python -m pip install --user protobuf"
+        exit 1
+    }
+
+    if (-not (Test-PythonProtobuf -python $pythonCmd)) {
+        Write-LogError "Python 'protobuf' module is still unavailable after installation."
+        Write-LogError "Install manually: python -m pip install --user protobuf"
+        exit 1
+    }
 }
 
 Write-LogSuccess "Dependencies check passed"
