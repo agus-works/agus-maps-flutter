@@ -147,6 +147,7 @@ flutter:
     - assets/comaps_data/countries-strings/cy.json/
     - assets/comaps_data/countries-strings/da.json/
     - assets/comaps_data/countries-strings/de.json/
+    - assets/comaps_data/countries-strings/default.json/
     - assets/comaps_data/countries-strings/el.json/
     - assets/comaps_data/countries-strings/en.json/
     - assets/comaps_data/countries-strings/en_CA.json/
@@ -176,6 +177,7 @@ flutter:
     - assets/comaps_data/countries-strings/ru.json/
     - assets/comaps_data/countries-strings/sk.json/
     - assets/comaps_data/countries-strings/sr.json/
+    - assets/comaps_data/countries-strings/sr_Latn.json/
     - assets/comaps_data/countries-strings/sv.json/
     - assets/comaps_data/countries-strings/ta.json/
     - assets/comaps_data/countries-strings/th.json/
