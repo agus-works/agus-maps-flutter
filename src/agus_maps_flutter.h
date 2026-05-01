@@ -46,6 +46,40 @@ FFI_PLUGIN_EXPORT void comaps_set_locale(const char* localeTag);
 
 FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom);
 
+// Get current viewport center coordinates in WGS84.
+// Returns 1 when values were written, 0 when the framework is not ready.
+FFI_PLUGIN_EXPORT int comaps_get_viewport_center(double* lat, double* lon);
+
+// Get the current integer draw scale/zoom level, or -1 when unavailable.
+FFI_PLUGIN_EXPORT int comaps_get_current_zoom(void);
+
+// Relative zoom controls centered on the visible viewport.
+FFI_PLUGIN_EXPORT void comaps_zoom_in(int animated);
+FFI_PLUGIN_EXPORT void comaps_zoom_out(int animated);
+
+// Map bearing in degrees where 0 is north-up.
+FFI_PLUGIN_EXPORT double comaps_get_current_bearing(void);
+FFI_PLUGIN_EXPORT void comaps_set_bearing(double degrees, int animated);
+FFI_PLUGIN_EXPORT void comaps_reset_bearing(int animated);
+
+// Enable/disable 3D map mode with 3D buildings.
+FFI_PLUGIN_EXPORT void comaps_set_3d_buildings_enabled(int enabled);
+FFI_PLUGIN_EXPORT int comaps_get_3d_buildings_enabled(void);
+
+// Map theme: 0 = light, 1 = dark. Auto mode is resolved by Dart.
+FFI_PLUGIN_EXPORT void comaps_set_map_theme(int dark);
+FFI_PLUGIN_EXPORT int comaps_get_map_theme_is_dark(void);
+
+// Overlay/style layers matching CoMaps mobile behavior:
+// outdoors and isolines may be enabled together; subway/transit disables both.
+FFI_PLUGIN_EXPORT void comaps_set_outdoors_enabled(int enabled);
+FFI_PLUGIN_EXPORT void comaps_set_isolines_enabled(int enabled);
+FFI_PLUGIN_EXPORT void comaps_set_subway_enabled(int enabled);
+FFI_PLUGIN_EXPORT void comaps_get_map_layer_state(int* outdoors, int* isolines, int* subway);
+
+// Map label language code. Empty/null = auto; "default" = local/native names.
+FFI_PLUGIN_EXPORT void comaps_set_map_language(const char* languageCode);
+
 // Invalidate the current viewport to force tile reload
 FFI_PLUGIN_EXPORT void comaps_invalidate(void);
 

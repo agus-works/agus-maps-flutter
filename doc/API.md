@@ -381,8 +381,11 @@ Controller for programmatic map control.
 **Methods**:
 - `moveToLocation(double lat, double lon, int zoom)`: Move map to location (non-animated)
 - `animateToLocation(double lat, double lon, int zoom)`: Move map to location (animated) - **TODO: Not yet implemented**
-- `zoomIn()`: Zoom in by one level - **TODO: Not yet implemented**
-- `zoomOut()`: Zoom out by one level - **TODO: Not yet implemented**
+- `zoomIn({bool animated = true})`: Zoom in by one native step - **Implemented via FFI**
+- `zoomOut({bool animated = true})`: Zoom out by one native step - **Implemented via FFI**
+- `getCameraPosition()`: Read current center, zoom, and bearing - **Implemented via FFI**
+- `setBearing(double degrees, {bool animated = true})`: Rotate map - **Implemented via FFI**
+- `resetBearing({bool animated = true})`: Reset to north-up - **Implemented via FFI**
 
 ### Place Page (POI) API
 
@@ -438,12 +441,14 @@ The following APIs are candidates for future exposure to Flutter. Each is marked
 #### `getViewportCenter() -> (double lat, double lon)`
 Get current viewport center coordinates.
 - **Difficulty**: Easy (existing `GetViewportCenter()` in Framework)
+- **Implementation Status**: Implemented via `comaps_get_viewport_center()` on Android, iOS, macOS, Linux, and Windows. Dart wrapper returns `({double lat, double lon})?`.
 - **Returns**: Current center point in WGS84
 - **Use Case**: Save/restore viewport state, sync with external components
 
 #### `getCurrentZoom() -> int`
 Get current zoom level.
 - **Difficulty**: Easy (can derive from `GetDrawScale()` or `GetCurrentViewport()`)
+- **Implementation Status**: Implemented via `comaps_get_current_zoom()` on Android, iOS, macOS, Linux, and Windows. Dart wrapper returns `int?`.
 - **Returns**: Current zoom level (0-20)
 - **Use Case**: Display zoom level in UI, implement zoom controls
 
@@ -468,12 +473,14 @@ Set 3D camera tilt angle (for 3D buildings mode).
 #### `setCameraBearing(double bearing)`
 Set map rotation/bearing.
 - **Difficulty**: Easy (Framework has `Rotate()` method)
+- **Implementation Status**: Implemented as `setMapBearing()` / `AgusMapController.setBearing()` with native `comaps_set_bearing()` and `comaps_reset_bearing()`.
 - **Parameters**: Bearing in degrees (0 = north up, 90 = east up)
 - **Use Case**: Compass mode, navigation-oriented maps
 
 #### `getCurrentBearing() -> double`
 Get current map rotation/bearing.
 - **Difficulty**: Easy (can derive from `ScreenBase` model view)
+- **Implementation Status**: Implemented via viewport listener tracking in all native platform files and Dart `getCurrentBearing()`.
 - **Returns**: Current bearing in degrees
 - **Use Case**: Display compass, sync with device orientation
 
@@ -494,6 +501,7 @@ Get bounding box of currently visible viewport.
 #### `searchEverywhere(String query, {String locale, int maxResults}) -> Future<List<SearchResult>>`
 Search for places everywhere (global search).
 - **Difficulty**: Medium (Framework has `SearchEverywhere()` with async callback pattern, needs Dart Future wrapper)
+- **Implementation Status**: Native CoMaps search bridge is still TODO. The example app now includes a first-pass map search overlay that searches bundled demo locations and focuses results through the controller.
 - **Parameters**: Query string, optional locale and max results
 - **Returns**: List of search results with coordinates, names, types
 - **Use Case**: Address search, POI discovery
@@ -825,6 +833,7 @@ Remove all custom overlays.
 #### `setMapStyle(MapStyle style)`
 Change map style (default, dark, vehicle, etc.).
 - **Difficulty**: Easy (Framework has `SetMapStyle()`)
+- **Implementation Status**: Partially implemented as `setMapTheme(MapThemeMode.light/dark)` and example `MapAppearanceMode.system/light/dark`. Full public `MapStyle` enum remains TODO.
 - **Parameters**: Style enum (Default, Dark, Vehicle, Outdoor, etc.)
 - **Use Case**: Theme switching, style preferences
 
@@ -837,6 +846,7 @@ Get current map style.
 #### `enable3DBuildings(bool enable)`
 Enable/disable 3D building rendering.
 - **Difficulty**: Easy (Framework has `Allow3dMode()`)
+- **Implementation Status**: Implemented as `set3dBuildingsEnabled()` / `get3dBuildingsEnabled()` via `comaps_set_3d_buildings_enabled()` and `comaps_get_3d_buildings_enabled()`.
 - **Parameters**: Whether to show 3D buildings
 - **Use Case**: 3D visualization, performance optimization
 
@@ -861,24 +871,28 @@ Check if traffic display is enabled.
 #### `enableTransit(bool enable)`
 Show/hide transit lines and stations.
 - **Difficulty**: Medium (Framework has TransitManager, may need TransitReadManager integration)
+- **Implementation Status**: Implemented as `setSubwayEnabled()` and `MapLayerState.subway`. Enabling subway disables outdoors and isolines to match CoMaps mobile behavior.
 - **Parameters**: Whether to show transit
 - **Use Case**: Public transit planning, multimodal maps
 
 #### `enableIsolines(bool enable)`
 Show/hide isolines (elevation contours, etc.).
 - **Difficulty**: Medium (Framework has IsolinesManager)
+- **Implementation Status**: Implemented as `setIsolinesEnabled()` and `MapLayerState.isolines`.
 - **Parameters**: Whether to show isolines
 - **Use Case**: Hiking maps, elevation visualization
 
 #### `enableOutdoors(bool enable)`
 Enable outdoor/topographic map style.
 - **Difficulty**: Easy (Framework has `SaveOutdoorsEnabled()` / `LoadOutdoorsEnabled()`)
+- **Implementation Status**: Implemented as `setOutdoorsEnabled()` and `MapLayerState.outdoors`.
 - **Parameters**: Whether to use outdoor style
 - **Use Case**: Hiking, outdoor activities
 
 #### `setLanguage(String languageCode)`
 Set map language for labels and search.
-- **Difficulty**: Easy (Framework has `SetMapLanguageCode()`)
+- **Difficulty**: Easy (Framework has `SetCustomMapLanguageCode()`)
+- **Implementation Status**: Implemented as `setMapLanguage(String?)` via `comaps_set_map_language()`. Null/empty means automatic, `default` means local/native names, and language codes force a specific map label language.
 - **Parameters**: Language code (e.g., "en", "es", "fr")
 - **Use Case**: Localization, multilingual apps
 
@@ -917,6 +931,7 @@ Set location display mode (none, normal, compass, navigation).
 #### `getMyLocation() -> Location?`
 Get current device location if available.
 - **Difficulty**: Medium (Framework has `GetCurrentPosition()` but requires location provider setup)
+- **Implementation Status**: Native CoMaps location provider bridge is still TODO. The example app now uses `geolocator` to request platform location and center the map with `AgusMapController.moveToLocation()` on platforms where location is available.
 - **Returns**: Current location (lat, lon, accuracy, timestamp) or null
 - **Use Case**: Location-based features, position tracking
 

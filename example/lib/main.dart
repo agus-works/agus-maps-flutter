@@ -3,10 +3,12 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 import 'package:agus_maps_flutter/mwm_storage.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'about_tab.dart';
@@ -54,6 +56,22 @@ const List<FavoriteLocation> kFavorites = [
   ),
 ];
 
+class MapSearchResult {
+  final String title;
+  final String subtitle;
+  final double lat;
+  final double lon;
+  final int zoom;
+
+  const MapSearchResult({
+    required this.title,
+    required this.subtitle,
+    required this.lat,
+    required this.lon,
+    required this.zoom,
+  });
+}
+
 /// Default location when app starts.
 ///
 /// Keep this inside the bundled Gibraltar map so a clean install does not ask
@@ -78,9 +96,28 @@ class _MyAppState extends State<MyApp> {
   bool _dataReady = false;
   int _currentTabIndex = 0; // Start on Map tab
   double _mapScale = 1.0;
+  ThemeMode _interfaceThemeMode = ThemeMode.system;
+  agus_maps_flutter.MapAppearanceMode _mapAppearanceMode =
+      agus_maps_flutter.MapAppearanceMode.system;
+  String _mapLanguageCode = '';
+  bool _buildings3dEnabled = false;
+  agus_maps_flutter.MapLayerState _mapLayerState =
+      const agus_maps_flutter.MapLayerState(
+    outdoors: false,
+    isolines: false,
+    subway: false,
+  );
+  bool _nativeSurfaceReady = false;
+  bool _isLocating = false;
+  bool _searchOpen = false;
+  double _currentBearing = 0.0;
   agus_maps_flutter.PlacePageData? _placePage;
 
   int? _bundledMwmVersion;
+  Timer? _bearingTimer;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  List<MapSearchResult> _searchResults = const [];
 
   final agus_maps_flutter.AgusMapController _mapController =
       agus_maps_flutter.AgusMapController();
@@ -101,19 +138,90 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
+  @override
+  void dispose() {
+    _bearingTimer?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
   static const String _prefsKeyMapScale = 'map_scale_multiplier';
+  static const String _prefsKeyInterfaceTheme = 'interface_theme_mode';
+  static const String _prefsKeyMapAppearance = 'map_appearance_mode';
+  static const String _prefsKeyMapLanguage = 'map_language_code';
+  static const String _prefsKeyBuildings3d = 'buildings_3d_enabled';
+  static const String _prefsKeyLayerOutdoors = 'layer_outdoors_enabled';
+  static const String _prefsKeyLayerIsolines = 'layer_isolines_enabled';
+  static const String _prefsKeyLayerSubway = 'layer_subway_enabled';
 
   Future<void> _loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final scale = prefs.getDouble(_prefsKeyMapScale) ?? 1.0;
+      final interfaceTheme = _themeModeFromName(
+        prefs.getString(_prefsKeyInterfaceTheme),
+      );
+      final mapAppearance = _mapAppearanceFromName(
+        prefs.getString(_prefsKeyMapAppearance),
+      );
+      final mapLanguage = prefs.getString(_prefsKeyMapLanguage) ?? '';
+      final buildings3d = prefs.getBool(_prefsKeyBuildings3d) ?? false;
+      final layers = agus_maps_flutter.MapLayerState(
+        outdoors: prefs.getBool(_prefsKeyLayerOutdoors) ?? false,
+        isolines: prefs.getBool(_prefsKeyLayerIsolines) ?? false,
+        subway: prefs.getBool(_prefsKeyLayerSubway) ?? false,
+      );
       if (!mounted) return;
       setState(() {
         _mapScale = scale;
+        _interfaceThemeMode = interfaceTheme;
+        _mapAppearanceMode = mapAppearance;
+        _mapLanguageCode = mapLanguage;
+        _buildings3dEnabled = buildings3d;
+        _mapLayerState = layers;
       });
+      _applyNativeMapSettings();
     } catch (e) {
       _log('Warning: Failed to load settings: $e');
     }
+  }
+
+  ThemeMode _themeModeFromName(String? value) {
+    return ThemeMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => ThemeMode.system,
+    );
+  }
+
+  agus_maps_flutter.MapAppearanceMode _mapAppearanceFromName(String? value) {
+    return agus_maps_flutter.MapAppearanceMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => agus_maps_flutter.MapAppearanceMode.system,
+    );
+  }
+
+  agus_maps_flutter.MapThemeMode _resolveMapTheme() {
+    switch (_mapAppearanceMode) {
+      case agus_maps_flutter.MapAppearanceMode.light:
+        return agus_maps_flutter.MapThemeMode.light;
+      case agus_maps_flutter.MapAppearanceMode.dark:
+        return agus_maps_flutter.MapThemeMode.dark;
+      case agus_maps_flutter.MapAppearanceMode.system:
+        final brightness = ui.PlatformDispatcher.instance.platformBrightness;
+        return brightness == Brightness.dark
+            ? agus_maps_flutter.MapThemeMode.dark
+            : agus_maps_flutter.MapThemeMode.light;
+    }
+  }
+
+  void _applyNativeMapSettings() {
+    if (!_nativeSurfaceReady) return;
+    agus_maps_flutter.set3dBuildingsEnabled(_buildings3dEnabled);
+    agus_maps_flutter.setMapTheme(_resolveMapTheme());
+    agus_maps_flutter.setMapLanguage(_mapLanguageCode);
+    agus_maps_flutter.setMapLayerState(_mapLayerState);
+    agus_maps_flutter.invalidateMap();
   }
 
   Future<void> _updateMapScale(double value) async {
@@ -133,6 +241,65 @@ class _MyAppState extends State<MyApp> {
 
   void _resetMapScale() {
     _updateMapScale(1.0);
+  }
+
+  Future<void> _updateInterfaceThemeMode(ThemeMode mode) async {
+    if (mode == _interfaceThemeMode) return;
+    setState(() {
+      _interfaceThemeMode = mode;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsKeyInterfaceTheme, mode.name);
+  }
+
+  Future<void> _updateMapAppearanceMode(
+    agus_maps_flutter.MapAppearanceMode mode,
+  ) async {
+    if (mode == _mapAppearanceMode) return;
+    setState(() {
+      _mapAppearanceMode = mode;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsKeyMapAppearance, mode.name);
+    _applyNativeMapSettings();
+  }
+
+  Future<void> _updateMapLanguage(String languageCode) async {
+    if (languageCode == _mapLanguageCode) return;
+    setState(() {
+      _mapLanguageCode = languageCode;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsKeyMapLanguage, languageCode);
+    _applyNativeMapSettings();
+  }
+
+  Future<void> _updateBuildings3d(bool enabled) async {
+    if (enabled == _buildings3dEnabled) return;
+    setState(() {
+      _buildings3dEnabled = enabled;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsKeyBuildings3d, enabled);
+    _applyNativeMapSettings();
+  }
+
+  Future<void> _updateMapLayerState(
+    agus_maps_flutter.MapLayerState state,
+  ) async {
+    if (state.outdoors == _mapLayerState.outdoors &&
+        state.isolines == _mapLayerState.isolines &&
+        state.subway == _mapLayerState.subway) {
+      return;
+    }
+    setState(() {
+      _mapLayerState = state;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsKeyLayerOutdoors, state.outdoors);
+    await prefs.setBool(_prefsKeyLayerIsolines, state.isolines);
+    await prefs.setBool(_prefsKeyLayerSubway, state.subway);
+    _applyNativeMapSettings();
   }
 
   Future<void> _initData() async {
@@ -301,6 +468,9 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> _onMapReadyAsync() async {
     _log('Map surface ready. Bundled maps are already registered.');
+    _nativeSurfaceReady = true;
+    _applyNativeMapSettings();
+    _startBearingUpdates();
 
     // Re-register all previously downloaded maps from MwmStorage
     // This is crucial: downloaded maps are only stored as metadata,
@@ -357,6 +527,133 @@ class _MyAppState extends State<MyApp> {
         _status = 'Map ready!';
       });
     }
+  }
+
+  void _startBearingUpdates() {
+    _bearingTimer?.cancel();
+    _bearingTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
+      if (!mounted || _currentTabIndex != 0 || !_nativeSurfaceReady) return;
+      final bearing = agus_maps_flutter.getCurrentBearing();
+      if ((bearing - _currentBearing).abs() < 0.5) return;
+      setState(() {
+        _currentBearing = bearing;
+      });
+    });
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _searchOpen = !_searchOpen;
+      if (!_searchOpen) {
+        _searchController.clear();
+        _searchResults = const [];
+      }
+    });
+    if (_searchOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _searchFocusNode.requestFocus();
+      });
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    final normalized = query.trim().toLowerCase();
+    final results = normalized.isEmpty
+        ? const <MapSearchResult>[]
+        : kFavorites
+            .where(
+                (favorite) => favorite.name.toLowerCase().contains(normalized))
+            .map((favorite) => MapSearchResult(
+                  title: favorite.name,
+                  subtitle: 'Demo location',
+                  lat: favorite.lat,
+                  lon: favorite.lon,
+                  zoom: favorite.zoom,
+                ))
+            .toList();
+    setState(() {
+      _searchResults = results;
+    });
+  }
+
+  void _focusSearchResult(MapSearchResult result) {
+    _mapController.moveToLocation(result.lat, result.lon, result.zoom);
+    _searchFocusNode.unfocus();
+    setState(() {
+      _searchOpen = false;
+      _searchController.clear();
+      _searchResults = const [];
+      _currentTabIndex = 0;
+    });
+  }
+
+  void _zoomIn() {
+    _mapController.zoomIn();
+  }
+
+  void _zoomOut() {
+    _mapController.zoomOut();
+  }
+
+  void _resetNorth() {
+    _mapController.resetBearing();
+    setState(() {
+      _currentBearing = 0.0;
+    });
+  }
+
+  Future<void> _centerOnCurrentPosition() async {
+    if (_isLocating) return;
+    setState(() {
+      _isLocating = true;
+    });
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showMapMessage('Location services are disabled.');
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _showMapMessage('Location permission is not available.');
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      final zoom = agus_maps_flutter.getCurrentZoom() ?? 15;
+      _mapController.moveToLocation(
+        position.latitude,
+        position.longitude,
+        max(zoom, 15),
+      );
+    } catch (error) {
+      _log('Location failed: $error');
+      _showMapMessage('Unable to get current location.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLocating = false;
+        });
+      }
+    }
+  }
+
+  void _showMapMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   void _log(String msg) {
@@ -462,8 +759,16 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      themeMode: _interfaceThemeMode,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
         useMaterial3: true,
       ),
       home: Scaffold(
@@ -478,8 +783,18 @@ class _MyAppState extends State<MyApp> {
               _buildDownloadsTab(),
               SettingsTab(
                 mapScale: _mapScale,
+                interfaceThemeMode: _interfaceThemeMode,
+                mapAppearanceMode: _mapAppearanceMode,
+                mapLanguageCode: _mapLanguageCode,
+                buildings3dEnabled: _buildings3dEnabled,
+                layerState: _mapLayerState,
                 onMapScaleChanged: _updateMapScale,
                 onResetMapScale: _resetMapScale,
+                onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
+                onMapAppearanceModeChanged: _updateMapAppearanceMode,
+                onMapLanguageChanged: _updateMapLanguage,
+                onBuildings3dChanged: _updateBuildings3d,
+                onLayerStateChanged: _updateMapLayerState,
               ),
               const AboutTab(),
             ],
@@ -566,12 +881,140 @@ class _MyAppState extends State<MyApp> {
               _currentTabIndex == 0, // Only resize when map tab is active
           userScale: _mapScale,
         ),
+        Positioned(
+          top: 12,
+          left: 12,
+          right: 12,
+          child: _buildSearchOverlay(),
+        ),
+        Positioned(
+          right: 12,
+          bottom: _placePage == null ? 24 : 248,
+          child: _buildMapControls(),
+        ),
         if (_placePage != null)
           PlacePageSheet(
             data: _placePage!,
             onClose: _closePlacePage,
           ),
       ],
+    );
+  }
+
+  Widget _buildSearchOverlay() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surface,
+      elevation: 3,
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            onChanged: _onSearchChanged,
+            onTap: () {
+              if (!_searchOpen) _toggleSearch();
+            },
+            decoration: InputDecoration(
+              hintText: 'Search map',
+              prefixIcon: IconButton(
+                tooltip: _searchOpen ? 'Close search' : 'Open search',
+                icon: Icon(_searchOpen ? Icons.close : Icons.search),
+                onPressed: _toggleSearch,
+              ),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        _onSearchChanged('');
+                      },
+                    ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+          if (_searchOpen && _searchController.text.isNotEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: _searchResults.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'No results',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      itemCount: _searchResults.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final result = _searchResults[index];
+                        return ListTile(
+                          leading: const Icon(Icons.place_outlined),
+                          title: Text(result.title),
+                          subtitle: Text(result.subtitle),
+                          onTap: () => _focusSearchResult(result),
+                        );
+                      },
+                    ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapControls() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surface,
+      elevation: 3,
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Zoom in',
+            icon: const Icon(Icons.add),
+            onPressed: _zoomIn,
+          ),
+          const Divider(height: 1),
+          IconButton(
+            tooltip: 'Zoom out',
+            icon: const Icon(Icons.remove),
+            onPressed: _zoomOut,
+          ),
+          const Divider(height: 1),
+          IconButton(
+            tooltip: 'Reset north',
+            icon: Transform.rotate(
+              angle: _currentBearing * pi / 180,
+              child: const Icon(Icons.navigation),
+            ),
+            onPressed: _resetNorth,
+          ),
+          const Divider(height: 1),
+          IconButton(
+            tooltip: 'Current position',
+            icon: _isLocating
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location),
+            onPressed: _isLocating ? null : _centerOnCurrentPosition,
+          ),
+        ],
+      ),
     );
   }
 
