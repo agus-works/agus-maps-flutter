@@ -760,7 +760,17 @@ jobs:
             ninja-build \
             pkg-config \
             zip \
-            python3-venv
+            python3-venv \
+            optipng \
+            libgl-dev \
+            libegl-dev \
+            libgles-dev \
+            libepoxy-dev \
+            libgtk-3-dev \
+            libclang-dev \
+            clang \
+            libfreetype6-dev \
+            libharfbuzz-dev
 
           echo "CMake version:"
           cmake --version
