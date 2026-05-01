@@ -276,8 +276,10 @@ of downloadable `.mwm` files.
 
 The example Downloads tab starts from top-level country/region folders, expands
 into child folders or leaf files, and resolves group download/delete actions to
-their descendant leaves. Search intentionally flattens the tree so direct
-matches can be downloaded quickly without changing the browsing model.
+their descendant leaves. Search shows flattened fuzzy matches at the root so
+direct matches can be downloaded quickly, while matching folder rows still
+expand to their normal children in source hierarchy order. A leaf result can
+appear both as a direct search result and under its expanded parent folder.
 
 Mirror defaults are aligned with the current CoMaps source list and merged with
 metaserver-only hosts from `https://cdn-us-1.comaps.app/servers` before probing.
