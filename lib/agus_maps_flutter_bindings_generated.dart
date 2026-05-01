@@ -131,8 +131,8 @@ class AgusMapsFlutterBindings {
   late final _comaps_set_localePtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Char>)>>(
           'comaps_set_locale');
-  late final _comaps_set_locale = _comaps_set_localePtr
-      .asFunction<void Function(ffi.Pointer<ffi.Char>)>();
+  late final _comaps_set_locale =
+      _comaps_set_localePtr.asFunction<void Function(ffi.Pointer<ffi.Char>)>();
 
   void comaps_set_view(
     double lat,
@@ -152,6 +152,236 @@ class AgusMapsFlutterBindings {
       'comaps_set_view');
   late final _comaps_set_view =
       _comaps_set_viewPtr.asFunction<void Function(double, double, int)>();
+
+  /// Get current viewport center coordinates in WGS84.
+  /// Returns 1 when values were written, 0 when the framework is not ready.
+  int comaps_get_viewport_center(
+    ffi.Pointer<ffi.Double> lat,
+    ffi.Pointer<ffi.Double> lon,
+  ) {
+    return _comaps_get_viewport_center(
+      lat,
+      lon,
+    );
+  }
+
+  late final _comaps_get_viewport_centerPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int Function(ffi.Pointer<ffi.Double>,
+              ffi.Pointer<ffi.Double>)>>('comaps_get_viewport_center');
+  late final _comaps_get_viewport_center =
+      _comaps_get_viewport_centerPtr.asFunction<
+          int Function(ffi.Pointer<ffi.Double>, ffi.Pointer<ffi.Double>)>();
+
+  /// Get the current integer draw scale/zoom level, or -1 when unavailable.
+  int comaps_get_current_zoom() {
+    return _comaps_get_current_zoom();
+  }
+
+  late final _comaps_get_current_zoomPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>(
+          'comaps_get_current_zoom');
+  late final _comaps_get_current_zoom =
+      _comaps_get_current_zoomPtr.asFunction<int Function()>();
+
+  /// Relative zoom controls centered on the visible viewport.
+  void comaps_zoom_in(
+    int animated,
+  ) {
+    return _comaps_zoom_in(
+      animated,
+    );
+  }
+
+  late final _comaps_zoom_inPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>('comaps_zoom_in');
+  late final _comaps_zoom_in =
+      _comaps_zoom_inPtr.asFunction<void Function(int)>();
+
+  void comaps_zoom_out(
+    int animated,
+  ) {
+    return _comaps_zoom_out(
+      animated,
+    );
+  }
+
+  late final _comaps_zoom_outPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>(
+          'comaps_zoom_out');
+  late final _comaps_zoom_out =
+      _comaps_zoom_outPtr.asFunction<void Function(int)>();
+
+  /// Map bearing in degrees where 0 is north-up.
+  double comaps_get_current_bearing() {
+    return _comaps_get_current_bearing();
+  }
+
+  late final _comaps_get_current_bearingPtr =
+      _lookup<ffi.NativeFunction<ffi.Double Function()>>(
+          'comaps_get_current_bearing');
+  late final _comaps_get_current_bearing =
+      _comaps_get_current_bearingPtr.asFunction<double Function()>();
+
+  void comaps_set_bearing(
+    double degrees,
+    int animated,
+  ) {
+    return _comaps_set_bearing(
+      degrees,
+      animated,
+    );
+  }
+
+  late final _comaps_set_bearingPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Double, ffi.Int)>>(
+          'comaps_set_bearing');
+  late final _comaps_set_bearing =
+      _comaps_set_bearingPtr.asFunction<void Function(double, int)>();
+
+  void comaps_reset_bearing(
+    int animated,
+  ) {
+    return _comaps_reset_bearing(
+      animated,
+    );
+  }
+
+  late final _comaps_reset_bearingPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>(
+          'comaps_reset_bearing');
+  late final _comaps_reset_bearing =
+      _comaps_reset_bearingPtr.asFunction<void Function(int)>();
+
+  /// Enable/disable 3D map mode with 3D buildings.
+  void comaps_set_3d_buildings_enabled(
+    int enabled,
+  ) {
+    return _comaps_set_3d_buildings_enabled(
+      enabled,
+    );
+  }
+
+  late final _comaps_set_3d_buildings_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>(
+          'comaps_set_3d_buildings_enabled');
+  late final _comaps_set_3d_buildings_enabled =
+      _comaps_set_3d_buildings_enabledPtr.asFunction<void Function(int)>();
+
+  int comaps_get_3d_buildings_enabled() {
+    return _comaps_get_3d_buildings_enabled();
+  }
+
+  late final _comaps_get_3d_buildings_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>(
+          'comaps_get_3d_buildings_enabled');
+  late final _comaps_get_3d_buildings_enabled =
+      _comaps_get_3d_buildings_enabledPtr.asFunction<int Function()>();
+
+  /// Map theme: 0 = light, 1 = dark. Auto mode is resolved by Dart.
+  void comaps_set_map_theme(
+    int dark,
+  ) {
+    return _comaps_set_map_theme(
+      dark,
+    );
+  }
+
+  late final _comaps_set_map_themePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>(
+          'comaps_set_map_theme');
+  late final _comaps_set_map_theme =
+      _comaps_set_map_themePtr.asFunction<void Function(int)>();
+
+  int comaps_get_map_theme_is_dark() {
+    return _comaps_get_map_theme_is_dark();
+  }
+
+  late final _comaps_get_map_theme_is_darkPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>(
+          'comaps_get_map_theme_is_dark');
+  late final _comaps_get_map_theme_is_dark =
+      _comaps_get_map_theme_is_darkPtr.asFunction<int Function()>();
+
+  /// Overlay/style layers matching CoMaps mobile behavior:
+  /// outdoors and isolines may be enabled together; subway/transit disables both.
+  void comaps_set_outdoors_enabled(
+    int enabled,
+  ) {
+    return _comaps_set_outdoors_enabled(
+      enabled,
+    );
+  }
+
+  late final _comaps_set_outdoors_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>(
+          'comaps_set_outdoors_enabled');
+  late final _comaps_set_outdoors_enabled =
+      _comaps_set_outdoors_enabledPtr.asFunction<void Function(int)>();
+
+  void comaps_set_isolines_enabled(
+    int enabled,
+  ) {
+    return _comaps_set_isolines_enabled(
+      enabled,
+    );
+  }
+
+  late final _comaps_set_isolines_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>(
+          'comaps_set_isolines_enabled');
+  late final _comaps_set_isolines_enabled =
+      _comaps_set_isolines_enabledPtr.asFunction<void Function(int)>();
+
+  void comaps_set_subway_enabled(
+    int enabled,
+  ) {
+    return _comaps_set_subway_enabled(
+      enabled,
+    );
+  }
+
+  late final _comaps_set_subway_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>(
+          'comaps_set_subway_enabled');
+  late final _comaps_set_subway_enabled =
+      _comaps_set_subway_enabledPtr.asFunction<void Function(int)>();
+
+  void comaps_get_map_layer_state(
+    ffi.Pointer<ffi.Int> outdoors,
+    ffi.Pointer<ffi.Int> isolines,
+    ffi.Pointer<ffi.Int> subway,
+  ) {
+    return _comaps_get_map_layer_state(
+      outdoors,
+      isolines,
+      subway,
+    );
+  }
+
+  late final _comaps_get_map_layer_statePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Int>, ffi.Pointer<ffi.Int>,
+              ffi.Pointer<ffi.Int>)>>('comaps_get_map_layer_state');
+  late final _comaps_get_map_layer_state =
+      _comaps_get_map_layer_statePtr.asFunction<
+          void Function(ffi.Pointer<ffi.Int>, ffi.Pointer<ffi.Int>,
+              ffi.Pointer<ffi.Int>)>();
+
+  /// Map label language code. Empty/null = auto; "default" = local/native names.
+  void comaps_set_map_language(
+    ffi.Pointer<ffi.Char> languageCode,
+  ) {
+    return _comaps_set_map_language(
+      languageCode,
+    );
+  }
+
+  late final _comaps_set_map_languagePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Char>)>>(
+          'comaps_set_map_language');
+  late final _comaps_set_map_language = _comaps_set_map_languagePtr
+      .asFunction<void Function(ffi.Pointer<ffi.Char>)>();
 
   /// Invalidate the current viewport to force tile reload
   void comaps_invalidate() {

@@ -46,6 +46,59 @@ class PlacePageChangedEvent {
   const PlacePageChangedEvent(this.placePage);
 }
 
+/// Resolved native map appearance.
+enum MapThemeMode {
+  light,
+  dark,
+}
+
+/// Flutter-facing appearance preference for the example app and controllers.
+enum MapAppearanceMode {
+  system,
+  light,
+  dark,
+}
+
+/// Current native map camera state.
+class MapCameraPosition {
+  final double lat;
+  final double lon;
+  final int zoom;
+  final double bearing;
+
+  const MapCameraPosition({
+    required this.lat,
+    required this.lon,
+    required this.zoom,
+    required this.bearing,
+  });
+}
+
+/// CoMaps overlay/style layer state.
+class MapLayerState {
+  final bool outdoors;
+  final bool isolines;
+  final bool subway;
+
+  const MapLayerState({
+    required this.outdoors,
+    required this.isolines,
+    required this.subway,
+  });
+
+  MapLayerState copyWith({
+    bool? outdoors,
+    bool? isolines,
+    bool? subway,
+  }) {
+    return MapLayerState(
+      outdoors: outdoors ?? this.outdoors,
+      isolines: isolines ?? this.isolines,
+      subway: subway ?? this.subway,
+    );
+  }
+}
+
 /// Broadcast streams for low-frequency native notifications.
 class AgusMapsFlutterEvents {
   AgusMapsFlutterEvents._() {
@@ -303,6 +356,180 @@ void setView(double lat, double lon, int zoom) {
   _bindings.comaps_set_view(lat, lon, zoom);
 }
 
+/// Return the current native viewport center, or null if the map is not ready.
+({double lat, double lon})? getViewportCenter() {
+  final latPtr = calloc<Double>();
+  final lonPtr = calloc<Double>();
+  try {
+    final result = _bindings.comaps_get_viewport_center(latPtr, lonPtr);
+    if (result == 0) {
+      return null;
+    }
+    return (lat: latPtr.value, lon: lonPtr.value);
+  } finally {
+    calloc.free(latPtr);
+    calloc.free(lonPtr);
+  }
+}
+
+/// Return the current native draw scale/zoom, or null if unavailable.
+int? getCurrentZoom() {
+  final zoom = _bindings.comaps_get_current_zoom();
+  return zoom < 0 ? null : zoom;
+}
+
+/// Return the current native camera state, or null if the map is not ready.
+MapCameraPosition? getCameraPosition() {
+  final center = getViewportCenter();
+  final zoom = getCurrentZoom();
+  if (center == null || zoom == null) {
+    return null;
+  }
+  return MapCameraPosition(
+    lat: center.lat,
+    lon: center.lon,
+    zoom: zoom,
+    bearing: getCurrentBearing(),
+  );
+}
+
+/// Return the current native camera state, or null if the map is not ready.
+MapCameraPosition? getMapCameraPosition() => getCameraPosition();
+
+/// Zoom in by one native step, centered on the viewport.
+void zoomInMap({bool animated = true}) {
+  _bindings.comaps_zoom_in(animated ? 1 : 0);
+}
+
+/// Zoom in by one native step, centered on the viewport.
+void zoomIn({bool animated = true}) => zoomInMap(animated: animated);
+
+/// Zoom out by one native step, centered on the viewport.
+void zoomOutMap({bool animated = true}) {
+  _bindings.comaps_zoom_out(animated ? 1 : 0);
+}
+
+/// Zoom out by one native step, centered on the viewport.
+void zoomOut({bool animated = true}) => zoomOutMap(animated: animated);
+
+/// Return the current bearing in degrees where 0 is north-up.
+double getCurrentBearing() {
+  return _bindings.comaps_get_current_bearing();
+}
+
+/// Rotate the map to [degrees], where 0 is north-up.
+void setMapBearing(double degrees, {bool animated = true}) {
+  _bindings.comaps_set_bearing(degrees, animated ? 1 : 0);
+}
+
+/// Rotate the map to [degrees], where 0 is north-up.
+void setBearing(double degrees, {bool animated = true}) {
+  setMapBearing(degrees, animated: animated);
+}
+
+/// Reset the map bearing to north-up.
+void resetMapBearing({bool animated = true}) {
+  _bindings.comaps_reset_bearing(animated ? 1 : 0);
+}
+
+/// Reset the map bearing to north-up.
+void resetBearing({bool animated = true}) {
+  resetMapBearing(animated: animated);
+}
+
+/// Enable or disable 3D buildings and 3D map mode.
+void set3dBuildingsEnabled(bool enabled) {
+  _bindings.comaps_set_3d_buildings_enabled(enabled ? 1 : 0);
+}
+
+/// Return whether 3D buildings were enabled through this plugin API.
+bool get3dBuildingsEnabled() {
+  return _bindings.comaps_get_3d_buildings_enabled() != 0;
+}
+
+/// Apply a resolved light or dark native map theme.
+void setMapTheme(MapThemeMode theme) {
+  _bindings.comaps_set_map_theme(theme == MapThemeMode.dark ? 1 : 0);
+}
+
+/// Return the currently active native map theme.
+MapThemeMode getMapTheme() {
+  return _bindings.comaps_get_map_theme_is_dark() != 0
+      ? MapThemeMode.dark
+      : MapThemeMode.light;
+}
+
+/// Enable or disable the outdoors map style layer.
+void setOutdoorsEnabled(bool enabled) {
+  _bindings.comaps_set_outdoors_enabled(enabled ? 1 : 0);
+}
+
+/// Enable or disable contour lines.
+void setIsolinesEnabled(bool enabled) {
+  _bindings.comaps_set_isolines_enabled(enabled ? 1 : 0);
+}
+
+/// Enable or disable the subway/transit layer.
+void setSubwayEnabled(bool enabled) {
+  _bindings.comaps_set_subway_enabled(enabled ? 1 : 0);
+}
+
+/// Apply CoMaps layer state.
+///
+/// Subway/transit is mutually exclusive with outdoors and isolines, matching
+/// CoMaps mobile behavior. When [state.subway] is true, outdoors and isolines
+/// are disabled even if their fields are also true.
+void setMapLayerState(MapLayerState state) {
+  if (state.subway) {
+    setOutdoorsEnabled(false);
+    setIsolinesEnabled(false);
+    setSubwayEnabled(true);
+    return;
+  }
+
+  setSubwayEnabled(false);
+  setOutdoorsEnabled(state.outdoors);
+  setIsolinesEnabled(state.isolines);
+}
+
+/// Return the currently active CoMaps layer state.
+MapLayerState getMapLayerState() {
+  final outdoorsPtr = calloc<Int>();
+  final isolinesPtr = calloc<Int>();
+  final subwayPtr = calloc<Int>();
+  try {
+    _bindings.comaps_get_map_layer_state(
+      outdoorsPtr,
+      isolinesPtr,
+      subwayPtr,
+    );
+    return MapLayerState(
+      outdoors: outdoorsPtr.value != 0,
+      isolines: isolinesPtr.value != 0,
+      subway: subwayPtr.value != 0,
+    );
+  } finally {
+    calloc.free(outdoorsPtr);
+    calloc.free(isolinesPtr);
+    calloc.free(subwayPtr);
+  }
+}
+
+/// Set map label language.
+///
+/// Pass null or an empty string for automatic language selection. Pass
+/// `'default'` for local/native place names, or a language code such as `en`,
+/// `es`, `de`, `fr`, `ja`, or `zh` for a specific map label language.
+void setMapLanguage(String? languageCode) {
+  final normalizedCode = languageCode?.trim() ?? '';
+  final languageCodePtr = normalizedCode.toNativeUtf8().cast<Char>();
+  try {
+    _bindings.comaps_set_map_language(languageCodePtr);
+  } finally {
+    malloc.free(languageCodePtr);
+  }
+}
+
 /// Invalidate the current viewport to force tile reload.
 /// Call this after registering maps to ensure tiles are refreshed.
 void invalidateMap() {
@@ -423,16 +650,29 @@ class AgusMapController {
     setView(lat, lon, zoom);
   }
 
-  /// Zoom in by one level.
-  void zoomIn() {
-    // TODO: Implement zoom level tracking and relative zoom
-    debugPrint('[AgusMapController] zoomIn not yet implemented');
+  /// Zoom in by one native step.
+  void zoomIn({bool animated = true}) {
+    zoomInMap(animated: animated);
   }
 
-  /// Zoom out by one level.
-  void zoomOut() {
-    // TODO: Implement zoom level tracking and relative zoom
-    debugPrint('[AgusMapController] zoomOut not yet implemented');
+  /// Zoom out by one native step.
+  void zoomOut({bool animated = true}) {
+    zoomOutMap(animated: animated);
+  }
+
+  /// Return the latest camera state reported by native code.
+  MapCameraPosition? getCameraPosition() {
+    return getMapCameraPosition();
+  }
+
+  /// Rotate the map to [degrees], where 0 is north-up.
+  void setBearing(double degrees, {bool animated = true}) {
+    setMapBearing(degrees, animated: animated);
+  }
+
+  /// Reset the map bearing to north-up.
+  void resetBearing({bool animated = true}) {
+    resetMapBearing(animated: animated);
   }
 }
 
@@ -744,8 +984,9 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
 
   void _handlePointerSignal(PointerSignalEvent event) {
     if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
-    if (_activePointers.isNotEmpty)
+    if (_activePointers.isNotEmpty) {
       return; // don't interfere with real drag/pinch
+    }
 
     if (event is PointerScrollEvent) {
       // Use direct scale API similar to Qt CoMaps implementation

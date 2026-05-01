@@ -26,6 +26,8 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Show your current position on the map.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

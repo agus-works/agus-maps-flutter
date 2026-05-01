@@ -24,21 +24,25 @@
 #include <iomanip>
 #include <string_view>
 #include <cstring>
+#include <cmath>
 
 // CoMaps Framework includes
 #include <vector>
 #include <utility>
 
 #include "base/logging.hpp"
+#include "base/localisation.hpp"
 #include "map/framework.hpp"
 #include "map/place_page_info.hpp"
 #include "indexer/feature_meta.hpp"
+#include "indexer/map_style.hpp"
 #include "platform/local_country_file.hpp"
 #include "drape/graphics_context_factory.hpp"
 #include "drape_frontend/visual_params.hpp"
 #include "drape_frontend/user_event_stream.hpp"
 #include "drape_frontend/active_frame_callback.hpp"
 #include "geometry/mercator.hpp"
+#include "geometry/screenbase.hpp"
 
 // Our Metal context factory
 #include "AgusMetalContextFactory.h"
@@ -64,6 +68,8 @@ static std::string g_explicitLocaleTag;
 static bool g_platformInitialized = false;
 static bool g_drapeEngineCreated = false;
 static std::mutex g_placePageMutex;
+static double g_currentBearingDegrees = 0.0;
+static bool g_3dBuildingsEnabled = false;
 // Render keep-alive to push a few extra frames while tiles/fonts load
 static dispatch_source_t g_renderKeepAliveTimer = nil;
 static int g_renderKeepAliveCount = 0;
@@ -73,6 +79,81 @@ static const int kRenderKeepAliveMaxCount = 20; // ~0.66s at 30Hz
 static void notifyFlutterFrameReady(void);
 static void startRenderKeepAliveTimer(void);
 static void stopRenderKeepAliveTimer(void);
+
+namespace
+{
+double constexpr kDegreesPerRadian = 180.0 / 3.14159265358979323846;
+double constexpr kRadiansPerDegree = 3.14159265358979323846 / 180.0;
+
+double NormalizeBearingDegrees(double degrees) {
+    double normalized = std::fmod(degrees, 360.0);
+    if (normalized < 0.0) {
+        normalized += 360.0;
+    }
+    return normalized >= 359.999 ? 0.0 : normalized;
+}
+
+bool IsOutdoorsStyle(MapStyle style) {
+    return style == MapStyleOutdoorsLight || style == MapStyleOutdoorsDark;
+}
+
+void WakeRenderer() {
+    if (!g_framework) {
+        return;
+    }
+    g_framework->InvalidateRendering();
+    g_framework->InvalidateRect(g_framework->GetCurrentViewport());
+    if (g_drapeEngineCreated) {
+        g_framework->MakeFrameActive();
+    }
+}
+
+void SetViewportTracking() {
+    if (!g_framework) {
+        return;
+    }
+    g_framework->SetViewportListener([](ScreenBase const & screen) {
+        g_currentBearingDegrees = NormalizeBearingDegrees(
+            screen.GetAngle() * kDegreesPerRadian);
+    });
+}
+
+void SetOutdoorsEnabledInternal(bool enabled) {
+    if (!g_framework) {
+        return;
+    }
+
+    auto const currentStyle = g_framework->GetMapStyle();
+    bool const dark = MapStyleIsDark(currentStyle);
+    g_framework->SaveOutdoorsEnabled(enabled);
+
+    if (enabled) {
+        g_framework->SetMapStyle(dark ? MapStyleOutdoorsDark : MapStyleOutdoorsLight);
+    } else if (IsOutdoorsStyle(currentStyle)) {
+        g_framework->SetMapStyle(dark ? MapStyleDefaultDark : MapStyleDefaultLight);
+    }
+}
+
+void SetIsolinesEnabledInternal(bool enabled) {
+    if (!g_framework) {
+        return;
+    }
+    g_framework->GetIsolinesManager().SetEnabled(enabled);
+    g_framework->SaveIsolinesEnabled(enabled);
+}
+
+void SetSubwayEnabledInternal(bool enabled) {
+    if (!g_framework) {
+        return;
+    }
+    if (enabled) {
+        SetOutdoorsEnabledInternal(false);
+        SetIsolinesEnabledInternal(false);
+    }
+    g_framework->GetTransitManager().EnableTransitSchemeMode(enabled);
+    g_framework->SaveTransitSchemeEnabled(enabled);
+}
+}  // namespace
 
 static char* CopyString(std::string const & value) {
     size_t const size = value.size();
@@ -514,6 +595,141 @@ FFI_PLUGIN_EXPORT void comaps_set_view(double lat, double lon, int zoom) {
     }
 }
 
+FFI_PLUGIN_EXPORT int comaps_get_viewport_center(double* lat, double* lon) {
+    if (!g_framework || !lat || !lon) {
+        return 0;
+    }
+    auto const ll = mercator::ToLatLon(g_framework->GetViewportCenter());
+    *lat = ll.m_lat;
+    *lon = ll.m_lon;
+    return 1;
+}
+
+FFI_PLUGIN_EXPORT int comaps_get_current_zoom(void) {
+    if (!g_framework) {
+        return -1;
+    }
+    return g_framework->GetDrawScale();
+}
+
+FFI_PLUGIN_EXPORT void comaps_zoom_in(int animated) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    g_framework->Scale(Framework::SCALE_MAG_LIGHT, animated != 0);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT void comaps_zoom_out(int animated) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    g_framework->Scale(Framework::SCALE_MIN_LIGHT, animated != 0);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT double comaps_get_current_bearing(void) {
+    return g_currentBearingDegrees;
+}
+
+FFI_PLUGIN_EXPORT void comaps_set_bearing(double degrees, int animated) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    g_currentBearingDegrees = NormalizeBearingDegrees(degrees);
+    g_framework->Rotate(g_currentBearingDegrees * kRadiansPerDegree, animated != 0);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT void comaps_reset_bearing(int animated) {
+    comaps_set_bearing(0.0, animated);
+}
+
+FFI_PLUGIN_EXPORT void comaps_set_3d_buildings_enabled(int enabled) {
+    g_3dBuildingsEnabled = enabled != 0;
+    if (!g_framework) {
+        return;
+    }
+    g_framework->Save3dMode(g_3dBuildingsEnabled, g_3dBuildingsEnabled);
+    g_framework->Allow3dMode(g_3dBuildingsEnabled, g_3dBuildingsEnabled);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT int comaps_get_3d_buildings_enabled(void) {
+    return g_3dBuildingsEnabled ? 1 : 0;
+}
+
+FFI_PLUGIN_EXPORT void comaps_set_map_theme(int dark) {
+    if (!g_framework) {
+        return;
+    }
+    auto const currentStyle = g_framework->GetMapStyle();
+    g_framework->SetMapStyle(dark != 0
+        ? GetDarkMapStyleVariant(currentStyle)
+        : GetLightMapStyleVariant(currentStyle));
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT int comaps_get_map_theme_is_dark(void) {
+    if (!g_framework) {
+        return 0;
+    }
+    return MapStyleIsDark(g_framework->GetMapStyle()) ? 1 : 0;
+}
+
+FFI_PLUGIN_EXPORT void comaps_set_outdoors_enabled(int enabled) {
+    if (!g_framework) {
+        return;
+    }
+    if (enabled) {
+        SetSubwayEnabledInternal(false);
+    }
+    SetOutdoorsEnabledInternal(enabled != 0);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT void comaps_set_isolines_enabled(int enabled) {
+    if (!g_framework) {
+        return;
+    }
+    if (enabled) {
+        SetSubwayEnabledInternal(false);
+    }
+    SetIsolinesEnabledInternal(enabled != 0);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT void comaps_set_subway_enabled(int enabled) {
+    SetSubwayEnabledInternal(enabled != 0);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT void comaps_get_map_layer_state(int* outdoors, int* isolines, int* subway) {
+    if (outdoors) {
+        *outdoors = (g_framework && IsOutdoorsStyle(g_framework->GetMapStyle())) ? 1 : 0;
+    }
+    if (isolines) {
+        *isolines = (g_framework && g_framework->LoadIsolinesEnabled()) ? 1 : 0;
+    }
+    if (subway) {
+        *subway = (g_framework && g_framework->LoadTransitSchemeEnabled()) ? 1 : 0;
+    }
+}
+
+FFI_PLUGIN_EXPORT void comaps_set_map_language(const char* languageCode) {
+    if (!g_framework) {
+        return;
+    }
+    if (!languageCode || !*languageCode) {
+        g_framework->SetCustomMapLanguageCode();
+    } else {
+        g_framework->SetCustomMapLanguageCode(
+            localisation::LanguageCode(languageCode));
+    }
+    g_framework->RefreshMapLanguage();
+    WakeRenderer();
+}
+
 FFI_PLUGIN_EXPORT void comaps_invalidate(void) {
     AGUS_DEBUG_LOG(@"[AgusMapsFlutter] comaps_invalidate");
     if (g_framework) {
@@ -924,6 +1140,7 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
         params.m_numSearchAPIThreads = 1;
         
         g_framework = std::make_unique<Framework>(params, false /* loadMaps */);
+        SetViewportTracking();
         AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Framework created");
         
     }
