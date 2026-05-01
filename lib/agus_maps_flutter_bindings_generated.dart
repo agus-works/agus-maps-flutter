@@ -566,6 +566,311 @@ class AgusMapsFlutterBindings {
   late final _comaps_search_cancel =
       _comaps_search_cancelPtr.asFunction<void Function()>();
 
+  int comaps_navigation_set_router(
+    int routerType,
+  ) {
+    return _comaps_navigation_set_router(
+      routerType,
+    );
+  }
+
+  late final _comaps_navigation_set_routerPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Int32)>>(
+          'comaps_navigation_set_router');
+  late final _comaps_navigation_set_router =
+      _comaps_navigation_set_routerPtr.asFunction<int Function(int)>();
+
+  int comaps_navigation_get_router() {
+    return _comaps_navigation_get_router();
+  }
+
+  late final _comaps_navigation_get_routerPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_get_router');
+  late final _comaps_navigation_get_router =
+      _comaps_navigation_get_routerPtr.asFunction<int Function()>();
+
+  int comaps_navigation_add_route_point(
+    int markType,
+    ffi.Pointer<ffi.Char> title,
+    ffi.Pointer<ffi.Char> subtitle,
+    double lat,
+    double lon,
+    int intermediateIndex,
+    int isMyPosition,
+    int reorderIntermediatePoints,
+  ) {
+    return _comaps_navigation_add_route_point(
+      markType,
+      title,
+      subtitle,
+      lat,
+      lon,
+      intermediateIndex,
+      isMyPosition,
+      reorderIntermediatePoints,
+    );
+  }
+
+  late final _comaps_navigation_add_route_pointPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.Int32,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Double,
+              ffi.Double,
+              ffi.Int32,
+              ffi.Int32,
+              ffi.Int32)>>('comaps_navigation_add_route_point');
+  late final _comaps_navigation_add_route_point =
+      _comaps_navigation_add_route_pointPtr.asFunction<
+          int Function(int, ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>,
+              double, double, int, int, int)>();
+
+  void comaps_navigation_remove_route_point(
+    int markType,
+    int intermediateIndex,
+  ) {
+    return _comaps_navigation_remove_route_point(
+      markType,
+      intermediateIndex,
+    );
+  }
+
+  late final _comaps_navigation_remove_route_pointPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int32, ffi.Int32)>>(
+          'comaps_navigation_remove_route_point');
+  late final _comaps_navigation_remove_route_point =
+      _comaps_navigation_remove_route_pointPtr
+          .asFunction<void Function(int, int)>();
+
+  void comaps_navigation_clear_route_points() {
+    return _comaps_navigation_clear_route_points();
+  }
+
+  late final _comaps_navigation_clear_route_pointsPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>(
+          'comaps_navigation_clear_route_points');
+  late final _comaps_navigation_clear_route_points =
+      _comaps_navigation_clear_route_pointsPtr.asFunction<void Function()>();
+
+  int comaps_navigation_build_route() {
+    return _comaps_navigation_build_route();
+  }
+
+  late final _comaps_navigation_build_routePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_build_route');
+  late final _comaps_navigation_build_route =
+      _comaps_navigation_build_routePtr.asFunction<int Function()>();
+
+  int comaps_navigation_follow_route() {
+    return _comaps_navigation_follow_route();
+  }
+
+  late final _comaps_navigation_follow_routePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_follow_route');
+  late final _comaps_navigation_follow_route =
+      _comaps_navigation_follow_routePtr.asFunction<int Function()>();
+
+  void comaps_navigation_close_route(
+    int removeRoutePoints,
+  ) {
+    return _comaps_navigation_close_route(
+      removeRoutePoints,
+    );
+  }
+
+  late final _comaps_navigation_close_routePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int32)>>(
+          'comaps_navigation_close_route');
+  late final _comaps_navigation_close_route =
+      _comaps_navigation_close_routePtr.asFunction<void Function(int)>();
+
+  int comaps_navigation_is_active() {
+    return _comaps_navigation_is_active();
+  }
+
+  late final _comaps_navigation_is_activePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_is_active');
+  late final _comaps_navigation_is_active =
+      _comaps_navigation_is_activePtr.asFunction<int Function()>();
+
+  int comaps_navigation_is_built() {
+    return _comaps_navigation_is_built();
+  }
+
+  late final _comaps_navigation_is_builtPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_is_built');
+  late final _comaps_navigation_is_built =
+      _comaps_navigation_is_builtPtr.asFunction<int Function()>();
+
+  int comaps_navigation_is_building() {
+    return _comaps_navigation_is_building();
+  }
+
+  late final _comaps_navigation_is_buildingPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_is_building');
+  late final _comaps_navigation_is_building =
+      _comaps_navigation_is_buildingPtr.asFunction<int Function()>();
+
+  int comaps_navigation_is_following() {
+    return _comaps_navigation_is_following();
+  }
+
+  late final _comaps_navigation_is_followingPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_is_following');
+  late final _comaps_navigation_is_following =
+      _comaps_navigation_is_followingPtr.asFunction<int Function()>();
+
+  ffi.Pointer<AgusNavigationStatus> comaps_navigation_copy_status() {
+    return _comaps_navigation_copy_status();
+  }
+
+  late final _comaps_navigation_copy_statusPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<AgusNavigationStatus> Function()>>(
+          'comaps_navigation_copy_status');
+  late final _comaps_navigation_copy_status = _comaps_navigation_copy_statusPtr
+      .asFunction<ffi.Pointer<AgusNavigationStatus> Function()>();
+
+  void comaps_navigation_status_free(
+    ffi.Pointer<AgusNavigationStatus> status,
+  ) {
+    return _comaps_navigation_status_free(
+      status,
+    );
+  }
+
+  late final _comaps_navigation_status_freePtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Void Function(ffi.Pointer<AgusNavigationStatus>)>>(
+      'comaps_navigation_status_free');
+  late final _comaps_navigation_status_free = _comaps_navigation_status_freePtr
+      .asFunction<void Function(ffi.Pointer<AgusNavigationStatus>)>();
+
+  void comaps_navigation_set_measurement_units(
+    int units,
+  ) {
+    return _comaps_navigation_set_measurement_units(
+      units,
+    );
+  }
+
+  late final _comaps_navigation_set_measurement_unitsPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int32)>>(
+          'comaps_navigation_set_measurement_units');
+  late final _comaps_navigation_set_measurement_units =
+      _comaps_navigation_set_measurement_unitsPtr
+          .asFunction<void Function(int)>();
+
+  int comaps_navigation_get_measurement_units() {
+    return _comaps_navigation_get_measurement_units();
+  }
+
+  late final _comaps_navigation_get_measurement_unitsPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_get_measurement_units');
+  late final _comaps_navigation_get_measurement_units =
+      _comaps_navigation_get_measurement_unitsPtr.asFunction<int Function()>();
+
+  void comaps_navigation_set_turn_notifications_enabled(
+    int enabled,
+  ) {
+    return _comaps_navigation_set_turn_notifications_enabled(
+      enabled,
+    );
+  }
+
+  late final _comaps_navigation_set_turn_notifications_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int32)>>(
+          'comaps_navigation_set_turn_notifications_enabled');
+  late final _comaps_navigation_set_turn_notifications_enabled =
+      _comaps_navigation_set_turn_notifications_enabledPtr
+          .asFunction<void Function(int)>();
+
+  int comaps_navigation_get_turn_notifications_enabled() {
+    return _comaps_navigation_get_turn_notifications_enabled();
+  }
+
+  late final _comaps_navigation_get_turn_notifications_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_get_turn_notifications_enabled');
+  late final _comaps_navigation_get_turn_notifications_enabled =
+      _comaps_navigation_get_turn_notifications_enabledPtr
+          .asFunction<int Function()>();
+
+  void comaps_navigation_set_turn_notifications_locale(
+    ffi.Pointer<ffi.Char> locale,
+  ) {
+    return _comaps_navigation_set_turn_notifications_locale(
+      locale,
+    );
+  }
+
+  late final _comaps_navigation_set_turn_notifications_localePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Char>)>>(
+          'comaps_navigation_set_turn_notifications_locale');
+  late final _comaps_navigation_set_turn_notifications_locale =
+      _comaps_navigation_set_turn_notifications_localePtr
+          .asFunction<void Function(ffi.Pointer<ffi.Char>)>();
+
+  void comaps_navigation_set_speed_camera_mode(
+    int mode,
+  ) {
+    return _comaps_navigation_set_speed_camera_mode(
+      mode,
+    );
+  }
+
+  late final _comaps_navigation_set_speed_camera_modePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int32)>>(
+          'comaps_navigation_set_speed_camera_mode');
+  late final _comaps_navigation_set_speed_camera_mode =
+      _comaps_navigation_set_speed_camera_modePtr
+          .asFunction<void Function(int)>();
+
+  int comaps_navigation_get_speed_camera_mode() {
+    return _comaps_navigation_get_speed_camera_mode();
+  }
+
+  late final _comaps_navigation_get_speed_camera_modePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_get_speed_camera_mode');
+  late final _comaps_navigation_get_speed_camera_mode =
+      _comaps_navigation_get_speed_camera_modePtr.asFunction<int Function()>();
+
+  void comaps_navigation_set_avoid_routing_options(
+    int mask,
+  ) {
+    return _comaps_navigation_set_avoid_routing_options(
+      mask,
+    );
+  }
+
+  late final _comaps_navigation_set_avoid_routing_optionsPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int32)>>(
+          'comaps_navigation_set_avoid_routing_options');
+  late final _comaps_navigation_set_avoid_routing_options =
+      _comaps_navigation_set_avoid_routing_optionsPtr
+          .asFunction<void Function(int)>();
+
+  int comaps_navigation_get_avoid_routing_options() {
+    return _comaps_navigation_get_avoid_routing_options();
+  }
+
+  late final _comaps_navigation_get_avoid_routing_optionsPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'comaps_navigation_get_avoid_routing_options');
+  late final _comaps_navigation_get_avoid_routing_options =
+      _comaps_navigation_get_avoid_routing_optionsPtr
+          .asFunction<int Function()>();
+
   /// Scale (zoom) the map by a factor, centered on a specific pixel point.
   /// factor: Zoom factor (>1 zooms in, <1 zooms out). Use exp(scrollDelta) for smooth zooming.
   /// pixelX, pixelY: Screen coordinates to zoom towards (in physical pixels)
@@ -988,6 +1293,92 @@ final class AgusSearchResults extends ffi.Struct {
   external int result_count;
 
   external ffi.Pointer<AgusSearchResult> results;
+}
+
+/// Navigation route point types mirrored from RouteMarkType:
+/// 0=Start, 1=Intermediate, 2=Finish.
+/// Router types mirror routing::RouterType: 0=Vehicle, 1=Pedestrian,
+/// 2=Bicycle, 3=Transit, 4=Ruler.
+/// Measurement units mirror measurement_utils::Units: 0=Metric, 1=Imperial.
+/// Speed camera modes mirror routing::SpeedCameraManagerMode:
+/// 0=Auto, 1=Always, 2=Never.
+/// Avoid route options are a bitmask of routing::RoutingOptions::Road values:
+/// Toll=2, Motorway=4, Ferry=8, Dirty/unpaved=16.
+final class AgusNavigationStatus extends ffi.Struct {
+  @ffi.Int32()
+  external int is_active;
+
+  @ffi.Int32()
+  external int is_built;
+
+  @ffi.Int32()
+  external int is_building;
+
+  @ffi.Int32()
+  external int is_following;
+
+  @ffi.Int32()
+  external int is_valid;
+
+  @ffi.Int32()
+  external int has_following_info;
+
+  @ffi.Int32()
+  external int router_type;
+
+  @ffi.Int32()
+  external int route_session_state;
+
+  @ffi.Int32()
+  external int turn;
+
+  @ffi.Int32()
+  external int next_turn;
+
+  @ffi.Int32()
+  external int pedestrian_turn;
+
+  @ffi.Int32()
+  external int exit_number;
+
+  @ffi.Int32()
+  external int total_time_seconds;
+
+  @ffi.Double()
+  external double completion_percent;
+
+  @ffi.Double()
+  external double speed_limit_mps;
+
+  @ffi.Double()
+  external double distance_to_target;
+
+  @ffi.Int32()
+  external int distance_to_target_units;
+
+  @ffi.Double()
+  external double distance_to_turn;
+
+  @ffi.Int32()
+  external int distance_to_turn_units;
+
+  @ffi.Double()
+  external double distance_to_next_stop;
+
+  @ffi.Int32()
+  external int distance_to_next_stop_units;
+
+  @ffi.Int32()
+  external int time_to_next_stop_seconds;
+
+  @ffi.Int32()
+  external int index_of_next_stop;
+
+  external ffi.Pointer<ffi.Char> current_street;
+
+  external ffi.Pointer<ffi.Char> next_street;
+
+  external ffi.Pointer<ffi.Char> next_next_street;
 }
 
 typedef FrameReadyCallbackFunction = ffi.Void Function();

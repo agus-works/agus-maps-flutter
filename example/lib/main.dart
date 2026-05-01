@@ -131,6 +131,30 @@ class _LocationFix {
   });
 }
 
+class _RouteDestination {
+  final String title;
+  final String subtitle;
+  final double lat;
+  final double lon;
+
+  const _RouteDestination({
+    required this.title,
+    required this.subtitle,
+    required this.lat,
+    required this.lon,
+  });
+}
+
+class _NavigationPlan {
+  final _RouteDestination destination;
+  final String startLabel;
+
+  const _NavigationPlan({
+    required this.destination,
+    required this.startLabel,
+  });
+}
+
 /// Default location when app starts.
 ///
 /// Keep this inside the bundled Gibraltar map so a clean install does not ask
@@ -168,6 +192,8 @@ class _MyAppState extends State<MyApp> {
     isolines: false,
     subway: false,
   );
+  agus_maps_flutter.NavigationSettings _navigationSettings =
+      const agus_maps_flutter.NavigationSettings();
   bool _nativeSurfaceReady = false;
   bool _isLocating = false;
   bool _searchOpen = false;
@@ -178,12 +204,16 @@ class _MyAppState extends State<MyApp> {
   Timer? _bearingTimer;
   Timer? _searchDebounceTimer;
   Timer? _searchPollTimer;
+  Timer? _navigationPollTimer;
   int _activeSearchGeneration = 0;
   DateTime? _activeSearchStartedAt;
   bool _nativeSearchRunning = false;
+  bool _navigationActionInProgress = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   List<MapSearchResult> _searchResults = const [];
+  _NavigationPlan? _navigationPlan;
+  agus_maps_flutter.NavigationStatus? _navigationStatus;
 
   final agus_maps_flutter.AgusMapController _mapController =
       agus_maps_flutter.AgusMapController();
@@ -209,6 +239,7 @@ class _MyAppState extends State<MyApp> {
     _bearingTimer?.cancel();
     _searchDebounceTimer?.cancel();
     _searchPollTimer?.cancel();
+    _navigationPollTimer?.cancel();
     agus_maps_flutter.cancelNativeSearch();
     _currentBearing.dispose();
     _searchController.dispose();
@@ -225,6 +256,21 @@ class _MyAppState extends State<MyApp> {
   static const String _prefsKeyLayerOutdoors = 'layer_outdoors_enabled';
   static const String _prefsKeyLayerIsolines = 'layer_isolines_enabled';
   static const String _prefsKeyLayerSubway = 'layer_subway_enabled';
+  static const String _prefsKeyNavigationUnits = 'navigation_units';
+  static const String _prefsKeyNavigationVoice = 'navigation_voice_enabled';
+  static const String _prefsKeyNavigationStreetNames =
+      'navigation_street_names_enabled';
+  static const String _prefsKeyNavigationSpeedLimit =
+      'navigation_speed_limit_enabled';
+  static const String _prefsKeyNavigationSpeedCameras =
+      'navigation_speed_camera_mode';
+  static const String _prefsKeyNavigationAvoidTolls = 'navigation_avoid_tolls';
+  static const String _prefsKeyNavigationAvoidMotorways =
+      'navigation_avoid_motorways';
+  static const String _prefsKeyNavigationAvoidFerries =
+      'navigation_avoid_ferries';
+  static const String _prefsKeyNavigationAvoidUnpaved =
+      'navigation_avoid_unpaved';
 
   Future<void> _loadSettings() async {
     try {
@@ -243,6 +289,27 @@ class _MyAppState extends State<MyApp> {
         isolines: prefs.getBool(_prefsKeyLayerIsolines) ?? false,
         subway: prefs.getBool(_prefsKeyLayerSubway) ?? false,
       );
+      final navigationSettings = agus_maps_flutter.NavigationSettings(
+        measurementUnits: _navigationUnitsFromName(
+          prefs.getString(_prefsKeyNavigationUnits),
+        ),
+        turnNotificationsEnabled:
+            prefs.getBool(_prefsKeyNavigationVoice) ?? true,
+        announceStreetNames:
+            prefs.getBool(_prefsKeyNavigationStreetNames) ?? true,
+        showSpeedLimit: prefs.getBool(_prefsKeyNavigationSpeedLimit) ?? true,
+        speedCameraMode: _speedCameraModeFromName(
+          prefs.getString(_prefsKeyNavigationSpeedCameras),
+        ),
+        routingOptions: agus_maps_flutter.NavigationRoutingOptions(
+          avoidTolls: prefs.getBool(_prefsKeyNavigationAvoidTolls) ?? false,
+          avoidMotorways:
+              prefs.getBool(_prefsKeyNavigationAvoidMotorways) ?? false,
+          avoidFerries: prefs.getBool(_prefsKeyNavigationAvoidFerries) ?? false,
+          avoidUnpavedRoads:
+              prefs.getBool(_prefsKeyNavigationAvoidUnpaved) ?? false,
+        ),
+      );
       if (!mounted) return;
       setState(() {
         _mapScale = scale;
@@ -251,8 +318,10 @@ class _MyAppState extends State<MyApp> {
         _mapLanguageCode = mapLanguage;
         _buildings3dEnabled = buildings3d;
         _mapLayerState = layers;
+        _navigationSettings = navigationSettings;
       });
       _applyNativeMapSettings();
+      _applyNativeNavigationSettings();
     } catch (e) {
       _log('Warning: Failed to load settings: $e');
     }
@@ -269,6 +338,24 @@ class _MyAppState extends State<MyApp> {
     return agus_maps_flutter.MapAppearanceMode.values.firstWhere(
       (mode) => mode.name == value,
       orElse: () => agus_maps_flutter.MapAppearanceMode.system,
+    );
+  }
+
+  agus_maps_flutter.NavigationMeasurementUnits _navigationUnitsFromName(
+    String? value,
+  ) {
+    return agus_maps_flutter.NavigationMeasurementUnits.values.firstWhere(
+      (units) => units.name == value,
+      orElse: () => agus_maps_flutter.NavigationMeasurementUnits.metric,
+    );
+  }
+
+  agus_maps_flutter.NavigationSpeedCameraMode _speedCameraModeFromName(
+    String? value,
+  ) {
+    return agus_maps_flutter.NavigationSpeedCameraMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => agus_maps_flutter.NavigationSpeedCameraMode.auto,
     );
   }
 
@@ -293,6 +380,251 @@ class _MyAppState extends State<MyApp> {
     agus_maps_flutter.setMapLanguage(_mapLanguageCode);
     agus_maps_flutter.setMapLayerState(_mapLayerState);
     agus_maps_flutter.invalidateMap();
+  }
+
+  void _applyNativeNavigationSettings() {
+    if (!_nativeSurfaceReady) return;
+    agus_maps_flutter.applyNavigationSettings(
+      _navigationSettings,
+      turnLocale: ui.PlatformDispatcher.instance.locale.toLanguageTag(),
+    );
+  }
+
+  Future<void> _previewRouteToPlace(
+    agus_maps_flutter.PlacePageData place,
+  ) async {
+    await _previewRouteToDestination(
+      _RouteDestination(
+        title: place.title.isNotEmpty ? place.title : 'Map point',
+        subtitle: place.address.isNotEmpty ? place.address : place.subtitle,
+        lat: place.lat,
+        lon: place.lon,
+      ),
+    );
+  }
+
+  Future<void> _previewRouteToSearchResult(MapSearchResult result) async {
+    if (result.isSuggestion) return;
+    await _previewRouteToDestination(
+      _RouteDestination(
+        title: result.title,
+        subtitle: result.subtitle,
+        lat: result.lat,
+        lon: result.lon,
+      ),
+    );
+  }
+
+  Future<void> _previewRouteToDestination(
+    _RouteDestination destination,
+  ) async {
+    if (!_nativeSurfaceReady) {
+      _showMapMessage('Map is still starting.');
+      return;
+    }
+    if (_navigationActionInProgress) return;
+    if (!_isValidCoordinate(destination.lat, destination.lon)) {
+      _showMapMessage('This place does not have routeable coordinates.');
+      return;
+    }
+
+    setState(() {
+      _navigationActionInProgress = true;
+    });
+
+    try {
+      _applyNativeNavigationSettings();
+      final start = _routePreviewStart(destination);
+      final startLabel = _routeStartLabel(start, destination);
+
+      agus_maps_flutter.closeNavigationRoute(removeRoutePoints: true);
+      agus_maps_flutter.clearNavigationRoutePoints();
+      agus_maps_flutter.setNavigationRouter(
+        agus_maps_flutter.NavigationRouterType.vehicle,
+      );
+
+      final startResult = agus_maps_flutter.addNavigationRoutePoint(
+        type: agus_maps_flutter.NavigationRoutePointType.start,
+        title: startLabel,
+        subtitle: 'Route preview start',
+        lat: start.lat,
+        lon: start.lon,
+      );
+      final finishResult = agus_maps_flutter.addNavigationRoutePoint(
+        type: agus_maps_flutter.NavigationRoutePointType.finish,
+        title: destination.title,
+        subtitle: destination.subtitle,
+        lat: destination.lat,
+        lon: destination.lon,
+      );
+
+      if (startResult < 0 || finishResult < 0) {
+        _showMapMessage('Unable to set route points.');
+        return;
+      }
+
+      final buildResult = agus_maps_flutter.buildNavigationRoute();
+      if (buildResult < 0) {
+        _showMapMessage('Unable to start route calculation.');
+        return;
+      }
+
+      agus_maps_flutter.closePlacePage();
+      setState(() {
+        _navigationPlan = _NavigationPlan(
+          destination: destination,
+          startLabel: startLabel,
+        );
+        _navigationStatus = agus_maps_flutter.getNavigationStatus();
+        _placePage = null;
+        _searchOpen = false;
+        _clearSearchState();
+        _currentTabIndex = 0;
+      });
+      _startNavigationStatusPolling();
+      _showMapMessage('Building route from $startLabel.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _navigationActionInProgress = false;
+        });
+      }
+    }
+  }
+
+  _LocationFix _routePreviewStart(_RouteDestination destination) {
+    final center = agus_maps_flutter.getViewportCenter();
+    if (center != null &&
+        _isValidCoordinate(center.lat, center.lon) &&
+        _distanceMeters(
+              center.lat,
+              center.lon,
+              destination.lat,
+              destination.lon,
+            ) >
+            150) {
+      return _LocationFix(
+        lat: center.lat,
+        lon: center.lon,
+        zoom: agus_maps_flutter.getCurrentZoom() ?? 14,
+      );
+    }
+
+    if (_distanceMeters(
+          kDefaultLocation.lat,
+          kDefaultLocation.lon,
+          destination.lat,
+          destination.lon,
+        ) >
+        150) {
+      return _LocationFix(
+        lat: kDefaultLocation.lat,
+        lon: kDefaultLocation.lon,
+        zoom: kDefaultLocation.zoom,
+      );
+    }
+
+    return _LocationFix(
+      lat: destination.lat + 0.01,
+      lon: destination.lon,
+      zoom: 14,
+    );
+  }
+
+  String _routeStartLabel(
+    _LocationFix start,
+    _RouteDestination destination,
+  ) {
+    final center = agus_maps_flutter.getViewportCenter();
+    if (center != null &&
+        _distanceMeters(start.lat, start.lon, center.lat, center.lon) < 5 &&
+        _distanceMeters(
+              center.lat,
+              center.lon,
+              destination.lat,
+              destination.lon,
+            ) >
+            150) {
+      return 'map center';
+    }
+    if (_distanceMeters(
+          start.lat,
+          start.lon,
+          kDefaultLocation.lat,
+          kDefaultLocation.lon,
+        ) <
+        5) {
+      return kDefaultLocation.name;
+    }
+    return 'nearby point';
+  }
+
+  bool _isValidCoordinate(double lat, double lon) {
+    return lat.isFinite && lon.isFinite && lat.abs() <= 90 && lon.abs() <= 180;
+  }
+
+  double _distanceMeters(
+    double startLat,
+    double startLon,
+    double finishLat,
+    double finishLon,
+  ) {
+    const earthRadiusMeters = 6371000.0;
+    final startLatRadians = startLat * pi / 180;
+    final finishLatRadians = finishLat * pi / 180;
+    final deltaLatRadians = (finishLat - startLat) * pi / 180;
+    final deltaLonRadians = (finishLon - startLon) * pi / 180;
+    final halfChordLength =
+        sin(deltaLatRadians / 2) * sin(deltaLatRadians / 2) +
+            cos(startLatRadians) *
+                cos(finishLatRadians) *
+                sin(deltaLonRadians / 2) *
+                sin(deltaLonRadians / 2);
+    final angularDistance = 2 *
+        atan2(
+          sqrt(halfChordLength),
+          sqrt(1 - halfChordLength),
+        );
+    return earthRadiusMeters * angularDistance;
+  }
+
+  void _startNavigationStatusPolling() {
+    _navigationPollTimer?.cancel();
+    _navigationPollTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _refreshNavigationStatus(),
+    );
+    _refreshNavigationStatus();
+  }
+
+  void _refreshNavigationStatus() {
+    if (!_nativeSurfaceReady || !mounted) return;
+    setState(() {
+      _navigationStatus = agus_maps_flutter.getNavigationStatus();
+    });
+  }
+
+  void _startRouteFollowing() {
+    if (_navigationActionInProgress) return;
+    final result = agus_maps_flutter.followNavigationRoute();
+    _refreshNavigationStatus();
+    if (result > 0) {
+      _showMapMessage('Guidance started.');
+    } else {
+      _showMapMessage('Guidance needs a built route and location updates.');
+    }
+  }
+
+  void _clearNavigationRoute() {
+    _navigationPollTimer?.cancel();
+    agus_maps_flutter.closeNavigationRoute(removeRoutePoints: true);
+    if (!mounted) return;
+    setState(() {
+      _navigationPlan = null;
+      _navigationStatus = null;
+      _navigationActionInProgress = false;
+    });
+    _showMapMessage('Route cleared.');
   }
 
   Future<void> _updateMapScale(double value) async {
@@ -371,6 +703,53 @@ class _MyAppState extends State<MyApp> {
     await prefs.setBool(_prefsKeyLayerIsolines, state.isolines);
     await prefs.setBool(_prefsKeyLayerSubway, state.subway);
     _applyNativeMapSettings();
+  }
+
+  Future<void> _updateNavigationSettings(
+    agus_maps_flutter.NavigationSettings settings,
+  ) async {
+    setState(() {
+      _navigationSettings = settings;
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _prefsKeyNavigationUnits,
+      settings.measurementUnits.name,
+    );
+    await prefs.setBool(
+      _prefsKeyNavigationVoice,
+      settings.turnNotificationsEnabled,
+    );
+    await prefs.setBool(
+      _prefsKeyNavigationStreetNames,
+      settings.announceStreetNames,
+    );
+    await prefs.setBool(
+      _prefsKeyNavigationSpeedLimit,
+      settings.showSpeedLimit,
+    );
+    await prefs.setString(
+      _prefsKeyNavigationSpeedCameras,
+      settings.speedCameraMode.name,
+    );
+    await prefs.setBool(
+      _prefsKeyNavigationAvoidTolls,
+      settings.routingOptions.avoidTolls,
+    );
+    await prefs.setBool(
+      _prefsKeyNavigationAvoidMotorways,
+      settings.routingOptions.avoidMotorways,
+    );
+    await prefs.setBool(
+      _prefsKeyNavigationAvoidFerries,
+      settings.routingOptions.avoidFerries,
+    );
+    await prefs.setBool(
+      _prefsKeyNavigationAvoidUnpaved,
+      settings.routingOptions.avoidUnpavedRoads,
+    );
+    _applyNativeNavigationSettings();
   }
 
   Future<void> _initData() async {
@@ -541,6 +920,7 @@ class _MyAppState extends State<MyApp> {
     _log('Map surface ready. Bundled maps are already registered.');
     _nativeSurfaceReady = true;
     _applyNativeMapSettings();
+    _applyNativeNavigationSettings();
     _startBearingUpdates();
 
     // Re-register all previously downloaded maps from MwmStorage
@@ -1218,6 +1598,7 @@ class _MyAppState extends State<MyApp> {
                     mapLanguageCode: _mapLanguageCode,
                     buildings3dEnabled: _buildings3dEnabled,
                     layerState: _mapLayerState,
+                    navigationSettings: _navigationSettings,
                     onMapScaleChanged: _updateMapScale,
                     onResetMapScale: _resetMapScale,
                     onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
@@ -1225,6 +1606,7 @@ class _MyAppState extends State<MyApp> {
                     onMapLanguageChanged: _updateMapLanguage,
                     onBuildings3dChanged: _updateBuildings3d,
                     onLayerStateChanged: _updateMapLayerState,
+                    onNavigationSettingsChanged: _updateNavigationSettings,
                   ),
                   const AboutTab(),
                 ],
@@ -1304,6 +1686,13 @@ class _MyAppState extends State<MyApp> {
       );
     }
 
+    final routePanelVisible = _navigationPlan != null;
+    final controlsBottom = routePanelVisible
+        ? 168.0
+        : _placePage == null
+            ? 24.0
+            : 248.0;
+
     return Stack(
       children: [
         agus_maps_flutter.AgusMap(
@@ -1326,13 +1715,22 @@ class _MyAppState extends State<MyApp> {
         ),
         Positioned(
           right: 12,
-          bottom: _placePage == null ? 24 : 248,
+          bottom: controlsBottom,
           child: _buildMapControls(context),
         ),
+        if (_navigationPlan != null)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: _buildNavigationPanel(context),
+          ),
         if (_placePage != null)
           PlacePageSheet(
             data: _placePage!,
             onClose: _closePlacePage,
+            onRouteTo: () => unawaited(_previewRouteToPlace(_placePage!)),
+            routeInProgress: _navigationActionInProgress,
           ),
       ],
     );
@@ -1407,6 +1805,19 @@ class _MyAppState extends State<MyApp> {
                           leading: Icon(_searchResultIcon(result)),
                           title: Text(result.title),
                           subtitle: Text(result.subtitle),
+                          trailing: result.isSuggestion
+                              ? null
+                              : IconButton(
+                                  tooltip: 'Route',
+                                  icon: const Icon(Icons.alt_route),
+                                  onPressed: _navigationActionInProgress
+                                      ? null
+                                      : () => unawaited(
+                                            _previewRouteToSearchResult(
+                                              result,
+                                            ),
+                                          ),
+                                ),
                           onTap: () => _focusSearchResult(result),
                         );
                       },
@@ -1475,6 +1886,202 @@ class _MyAppState extends State<MyApp> {
         ],
       ),
     );
+  }
+
+  Widget _buildNavigationPanel(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final plan = _navigationPlan;
+    if (plan == null) return const SizedBox.shrink();
+
+    final status = _navigationStatus;
+    final canStart = status != null &&
+        status.isBuilt &&
+        status.isValid &&
+        !status.isFollowing &&
+        !_navigationActionInProgress;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620),
+        child: Material(
+          color: colorScheme.surface,
+          elevation: 6,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final summary = Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: colorScheme.primaryContainer,
+                      child: Icon(
+                        status?.isFollowing == true
+                            ? Icons.navigation
+                            : Icons.alt_route,
+                        color: colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            plan.destination.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium,
+                          ),
+                          Text(
+                            _navigationStatusText(status, plan),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+
+                final actions = Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    IconButton(
+                      tooltip: 'Refresh route status',
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _refreshNavigationStatus,
+                    ),
+                    FilledButton.icon(
+                      onPressed: canStart ? _startRouteFollowing : null,
+                      icon: const Icon(Icons.navigation),
+                      label: const Text('Start'),
+                    ),
+                    IconButton(
+                      tooltip: 'Clear route',
+                      icon: const Icon(Icons.close),
+                      onPressed: _clearNavigationRoute,
+                    ),
+                  ],
+                );
+
+                if (constraints.maxWidth < 430) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      summary,
+                      const SizedBox(height: 8),
+                      Align(alignment: Alignment.centerRight, child: actions),
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(child: summary),
+                    const SizedBox(width: 8),
+                    actions,
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _navigationStatusText(
+    agus_maps_flutter.NavigationStatus? status,
+    _NavigationPlan plan,
+  ) {
+    if (_navigationActionInProgress) return 'Preparing route...';
+    if (status == null) return 'Route requested from ${plan.startLabel}';
+    if (status.isBuilding) return 'Building route from ${plan.startLabel}...';
+    if (status.isFollowing) {
+      return _appendRouteSummary('Guidance active', status);
+    }
+    if (status.isBuilt && status.isValid) {
+      return _appendRouteSummary('Route ready from ${plan.startLabel}', status);
+    }
+    if (status.isActive && !status.isValid) {
+      return 'No valid route for these points';
+    }
+    return _navigationSessionText(status.sessionState);
+  }
+
+  String _appendRouteSummary(
+    String prefix,
+    agus_maps_flutter.NavigationStatus status,
+  ) {
+    final details = <String>[];
+    final distance = _formatNavigationDistance(status.distanceToTarget);
+    if (distance.isNotEmpty) details.add(distance);
+    final duration = _formatNavigationDuration(status.totalTimeSeconds);
+    if (duration.isNotEmpty) details.add(duration);
+    if (details.isEmpty) return prefix;
+    return '$prefix - ${details.join(' - ')}';
+  }
+
+  String _formatNavigationDistance(
+    agus_maps_flutter.NavigationDistance distance,
+  ) {
+    if (!distance.value.isFinite || distance.value <= 0) return '';
+    final suffix = switch (distance.unit) {
+      agus_maps_flutter.NavigationDistanceUnit.meters => 'm',
+      agus_maps_flutter.NavigationDistanceUnit.kilometers => 'km',
+      agus_maps_flutter.NavigationDistanceUnit.feet => 'ft',
+      agus_maps_flutter.NavigationDistanceUnit.miles => 'mi',
+    };
+    final value = switch (distance.unit) {
+      agus_maps_flutter.NavigationDistanceUnit.meters ||
+      agus_maps_flutter.NavigationDistanceUnit.feet =>
+        distance.value.round().toString(),
+      agus_maps_flutter.NavigationDistanceUnit.kilometers ||
+      agus_maps_flutter.NavigationDistanceUnit.miles =>
+        distance.value.toStringAsFixed(distance.value >= 10 ? 0 : 1),
+    };
+    return '$value $suffix';
+  }
+
+  String _formatNavigationDuration(int totalSeconds) {
+    if (totalSeconds <= 0) return '';
+    final duration = Duration(seconds: totalSeconds);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    if (hours > 0) return '${hours}h ${minutes}m';
+    return '${max(1, duration.inMinutes)}m';
+  }
+
+  String _navigationSessionText(
+    agus_maps_flutter.NavigationSessionState sessionState,
+  ) {
+    return switch (sessionState) {
+      agus_maps_flutter.NavigationSessionState.noValidRoute =>
+        'Waiting for route',
+      agus_maps_flutter.NavigationSessionState.routeBuilding =>
+        'Building route...',
+      agus_maps_flutter.NavigationSessionState.routeNotStarted => 'Route ready',
+      agus_maps_flutter.NavigationSessionState.onRoute => 'On route',
+      agus_maps_flutter.NavigationSessionState.routeNeedsRebuild =>
+        'Route needs rebuild',
+      agus_maps_flutter.NavigationSessionState.routeFinished =>
+        'Route finished',
+      agus_maps_flutter.NavigationSessionState.routeNoFollowing =>
+        'Route preview ready',
+      agus_maps_flutter.NavigationSessionState.routeRebuilding =>
+        'Rebuilding route...',
+    };
   }
 
   /// Full-screen favorites tab.

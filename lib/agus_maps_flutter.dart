@@ -178,6 +178,246 @@ class NativeSearchSnapshot {
   bool get isRunning => status == NativeSearchStatus.running;
 }
 
+/// Native CoMaps router engine type.
+enum NavigationRouterType {
+  vehicle,
+  pedestrian,
+  bicycle,
+  transit,
+  ruler;
+
+  static NavigationRouterType fromNative(int value) {
+    if (value < 0 || value >= NavigationRouterType.values.length) {
+      return NavigationRouterType.vehicle;
+    }
+    return NavigationRouterType.values[value];
+  }
+}
+
+/// Native CoMaps route point role.
+enum NavigationRoutePointType {
+  start,
+  intermediate,
+  finish;
+
+  static NavigationRoutePointType fromNative(int value) {
+    if (value < 0 || value >= NavigationRoutePointType.values.length) {
+      return NavigationRoutePointType.start;
+    }
+    return NavigationRoutePointType.values[value];
+  }
+}
+
+/// Distance unit system used by native routing and formatted distances.
+enum NavigationMeasurementUnits {
+  metric,
+  imperial;
+
+  static NavigationMeasurementUnits fromNative(int value) {
+    return value == NavigationMeasurementUnits.imperial.index
+        ? NavigationMeasurementUnits.imperial
+        : NavigationMeasurementUnits.metric;
+  }
+}
+
+/// Speed camera warning behavior used by CoMaps routing.
+enum NavigationSpeedCameraMode {
+  auto,
+  always,
+  never;
+
+  static NavigationSpeedCameraMode fromNative(int value) {
+    if (value < 0 || value >= NavigationSpeedCameraMode.values.length) {
+      return NavigationSpeedCameraMode.auto;
+    }
+    return NavigationSpeedCameraMode.values[value];
+  }
+}
+
+/// Native routing session state.
+enum NavigationSessionState {
+  noValidRoute,
+  routeBuilding,
+  routeNotStarted,
+  onRoute,
+  routeNeedsRebuild,
+  routeFinished,
+  routeNoFollowing,
+  routeRebuilding;
+
+  static NavigationSessionState fromNative(int value) {
+    if (value < 0 || value >= NavigationSessionState.values.length) {
+      return NavigationSessionState.noValidRoute;
+    }
+    return NavigationSessionState.values[value];
+  }
+}
+
+/// Units for a distance value already formatted by CoMaps rules.
+enum NavigationDistanceUnit {
+  meters,
+  kilometers,
+  feet,
+  miles;
+
+  static NavigationDistanceUnit fromNative(int value) {
+    if (value < 0 || value >= NavigationDistanceUnit.values.length) {
+      return NavigationDistanceUnit.meters;
+    }
+    return NavigationDistanceUnit.values[value];
+  }
+}
+
+/// A numeric distance and unit from native routing.
+class NavigationDistance {
+  const NavigationDistance({required this.value, required this.unit});
+
+  final double value;
+  final NavigationDistanceUnit unit;
+}
+
+/// Car routing road types that CoMaps should avoid when calculating routes.
+class NavigationRoutingOptions {
+  const NavigationRoutingOptions({
+    this.avoidTolls = false,
+    this.avoidMotorways = false,
+    this.avoidFerries = false,
+    this.avoidUnpavedRoads = false,
+  });
+
+  static const int _tollMask = 1 << 1;
+  static const int _motorwayMask = 1 << 2;
+  static const int _ferryMask = 1 << 3;
+  static const int _unpavedMask = 1 << 4;
+
+  final bool avoidTolls;
+  final bool avoidMotorways;
+  final bool avoidFerries;
+  final bool avoidUnpavedRoads;
+
+  int get mask =>
+      (avoidTolls ? _tollMask : 0) |
+      (avoidMotorways ? _motorwayMask : 0) |
+      (avoidFerries ? _ferryMask : 0) |
+      (avoidUnpavedRoads ? _unpavedMask : 0);
+
+  static NavigationRoutingOptions fromMask(int mask) {
+    return NavigationRoutingOptions(
+      avoidTolls: (mask & _tollMask) != 0,
+      avoidMotorways: (mask & _motorwayMask) != 0,
+      avoidFerries: (mask & _ferryMask) != 0,
+      avoidUnpavedRoads: (mask & _unpavedMask) != 0,
+    );
+  }
+
+  NavigationRoutingOptions copyWith({
+    bool? avoidTolls,
+    bool? avoidMotorways,
+    bool? avoidFerries,
+    bool? avoidUnpavedRoads,
+  }) {
+    return NavigationRoutingOptions(
+      avoidTolls: avoidTolls ?? this.avoidTolls,
+      avoidMotorways: avoidMotorways ?? this.avoidMotorways,
+      avoidFerries: avoidFerries ?? this.avoidFerries,
+      avoidUnpavedRoads: avoidUnpavedRoads ?? this.avoidUnpavedRoads,
+    );
+  }
+}
+
+/// Example-app navigation preferences backed by native CoMaps settings.
+class NavigationSettings {
+  const NavigationSettings({
+    this.measurementUnits = NavigationMeasurementUnits.metric,
+    this.turnNotificationsEnabled = true,
+    this.announceStreetNames = true,
+    this.showSpeedLimit = true,
+    this.speedCameraMode = NavigationSpeedCameraMode.auto,
+    this.routingOptions = const NavigationRoutingOptions(),
+  });
+
+  final NavigationMeasurementUnits measurementUnits;
+  final bool turnNotificationsEnabled;
+  final bool announceStreetNames;
+  final bool showSpeedLimit;
+  final NavigationSpeedCameraMode speedCameraMode;
+  final NavigationRoutingOptions routingOptions;
+
+  NavigationSettings copyWith({
+    NavigationMeasurementUnits? measurementUnits,
+    bool? turnNotificationsEnabled,
+    bool? announceStreetNames,
+    bool? showSpeedLimit,
+    NavigationSpeedCameraMode? speedCameraMode,
+    NavigationRoutingOptions? routingOptions,
+  }) {
+    return NavigationSettings(
+      measurementUnits: measurementUnits ?? this.measurementUnits,
+      turnNotificationsEnabled:
+          turnNotificationsEnabled ?? this.turnNotificationsEnabled,
+      announceStreetNames: announceStreetNames ?? this.announceStreetNames,
+      showSpeedLimit: showSpeedLimit ?? this.showSpeedLimit,
+      speedCameraMode: speedCameraMode ?? this.speedCameraMode,
+      routingOptions: routingOptions ?? this.routingOptions,
+    );
+  }
+}
+
+/// Current native navigation status snapshot.
+class NavigationStatus {
+  const NavigationStatus({
+    required this.isActive,
+    required this.isBuilt,
+    required this.isBuilding,
+    required this.isFollowing,
+    required this.isValid,
+    required this.hasFollowingInfo,
+    required this.routerType,
+    required this.sessionState,
+    required this.turn,
+    required this.nextTurn,
+    required this.pedestrianTurn,
+    required this.exitNumber,
+    required this.totalTimeSeconds,
+    required this.completionPercent,
+    required this.speedLimitMps,
+    required this.distanceToTarget,
+    required this.distanceToTurn,
+    required this.distanceToNextStop,
+    required this.timeToNextStopSeconds,
+    required this.indexOfNextStop,
+    required this.currentStreet,
+    required this.nextStreet,
+    required this.nextNextStreet,
+  });
+
+  final bool isActive;
+  final bool isBuilt;
+  final bool isBuilding;
+  final bool isFollowing;
+  final bool isValid;
+  final bool hasFollowingInfo;
+  final NavigationRouterType routerType;
+  final NavigationSessionState sessionState;
+  final int turn;
+  final int nextTurn;
+  final int pedestrianTurn;
+  final int exitNumber;
+  final int totalTimeSeconds;
+  final double completionPercent;
+  final double speedLimitMps;
+  final NavigationDistance distanceToTarget;
+  final NavigationDistance distanceToTurn;
+  final NavigationDistance distanceToNextStop;
+  final int timeToNextStopSeconds;
+  final int indexOfNextStop;
+  final String currentStreet;
+  final String nextStreet;
+  final String nextNextStreet;
+
+  bool get hasSpeedLimit => speedLimitMps >= 0;
+}
+
 /// Broadcast streams for low-frequency native notifications.
 class AgusMapsFlutterEvents {
   AgusMapsFlutterEvents._() {
@@ -364,6 +604,321 @@ void cancelNativeSearch() {
     if (kDebugMode) {
       debugPrint('[AgusMap] Native search cancel is unavailable: $error');
     }
+  }
+}
+
+/// Select the native CoMaps router engine.
+int setNavigationRouter(NavigationRouterType routerType) {
+  try {
+    return _bindings.comaps_navigation_set_router(routerType.index);
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Navigation router is unavailable: $error');
+    }
+    return -1;
+  }
+}
+
+/// Return the currently selected native CoMaps router engine.
+NavigationRouterType getNavigationRouter() {
+  try {
+    return NavigationRouterType.fromNative(
+      _bindings.comaps_navigation_get_router(),
+    );
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Navigation router query failed: $error');
+    }
+    return NavigationRouterType.vehicle;
+  }
+}
+
+/// Add or replace a native route point.
+int addNavigationRoutePoint({
+  required NavigationRoutePointType type,
+  required double lat,
+  required double lon,
+  String title = '',
+  String subtitle = '',
+  int intermediateIndex = 0,
+  bool isMyPosition = false,
+  bool reorderIntermediatePoints = true,
+}) {
+  final titlePtr = title.toNativeUtf8().cast<Char>();
+  final subtitlePtr = subtitle.toNativeUtf8().cast<Char>();
+  try {
+    return _bindings.comaps_navigation_add_route_point(
+      type.index,
+      titlePtr,
+      subtitlePtr,
+      lat,
+      lon,
+      intermediateIndex,
+      isMyPosition ? 1 : 0,
+      reorderIntermediatePoints ? 1 : 0,
+    );
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Add route point is unavailable: $error');
+    }
+    return -1;
+  } finally {
+    malloc.free(titlePtr);
+    malloc.free(subtitlePtr);
+  }
+}
+
+/// Remove a native route point.
+void removeNavigationRoutePoint(
+  NavigationRoutePointType type, {
+  int intermediateIndex = 0,
+}) {
+  try {
+    _bindings.comaps_navigation_remove_route_point(
+      type.index,
+      intermediateIndex,
+    );
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Remove route point is unavailable: $error');
+    }
+  }
+}
+
+/// Clear all native route points.
+void clearNavigationRoutePoints() {
+  try {
+    _bindings.comaps_navigation_clear_route_points();
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Clear route points is unavailable: $error');
+    }
+  }
+}
+
+/// Ask native CoMaps to calculate a route from the current route points.
+int buildNavigationRoute() {
+  try {
+    return _bindings.comaps_navigation_build_route();
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Build route is unavailable: $error');
+    }
+    return -1;
+  }
+}
+
+/// Enter native route-following mode after a route has been built.
+int followNavigationRoute() {
+  try {
+    return _bindings.comaps_navigation_follow_route();
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Follow route is unavailable: $error');
+    }
+    return -1;
+  }
+}
+
+/// Close native routing and optionally remove route points.
+void closeNavigationRoute({bool removeRoutePoints = true}) {
+  try {
+    _bindings.comaps_navigation_close_route(removeRoutePoints ? 1 : 0);
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Close route is unavailable: $error');
+    }
+  }
+}
+
+/// Return a snapshot of the native navigation state.
+NavigationStatus? getNavigationStatus() {
+  Pointer<AgusNavigationStatus> statusPtr;
+  try {
+    statusPtr = _bindings.comaps_navigation_copy_status();
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Navigation status is unavailable: $error');
+    }
+    return null;
+  }
+
+  if (statusPtr == nullptr) {
+    return null;
+  }
+
+  try {
+    final status = statusPtr.ref;
+    return NavigationStatus(
+      isActive: status.is_active != 0,
+      isBuilt: status.is_built != 0,
+      isBuilding: status.is_building != 0,
+      isFollowing: status.is_following != 0,
+      isValid: status.is_valid != 0,
+      hasFollowingInfo: status.has_following_info != 0,
+      routerType: NavigationRouterType.fromNative(status.router_type),
+      sessionState: NavigationSessionState.fromNative(
+        status.route_session_state,
+      ),
+      turn: status.turn,
+      nextTurn: status.next_turn,
+      pedestrianTurn: status.pedestrian_turn,
+      exitNumber: status.exit_number,
+      totalTimeSeconds: status.total_time_seconds,
+      completionPercent: status.completion_percent,
+      speedLimitMps: status.speed_limit_mps,
+      distanceToTarget: NavigationDistance(
+        value: status.distance_to_target,
+        unit: NavigationDistanceUnit.fromNative(
+          status.distance_to_target_units,
+        ),
+      ),
+      distanceToTurn: NavigationDistance(
+        value: status.distance_to_turn,
+        unit: NavigationDistanceUnit.fromNative(status.distance_to_turn_units),
+      ),
+      distanceToNextStop: NavigationDistance(
+        value: status.distance_to_next_stop,
+        unit: NavigationDistanceUnit.fromNative(
+          status.distance_to_next_stop_units,
+        ),
+      ),
+      timeToNextStopSeconds: status.time_to_next_stop_seconds,
+      indexOfNextStop: status.index_of_next_stop,
+      currentStreet: _nativeSearchString(status.current_street),
+      nextStreet: _nativeSearchString(status.next_street),
+      nextNextStreet: _nativeSearchString(status.next_next_street),
+    );
+  } finally {
+    _bindings.comaps_navigation_status_free(statusPtr);
+  }
+}
+
+/// Apply native navigation preferences.
+void applyNavigationSettings(
+  NavigationSettings settings, {
+  String? turnLocale,
+}) {
+  setNavigationMeasurementUnits(settings.measurementUnits);
+  setNavigationTurnNotificationsEnabled(settings.turnNotificationsEnabled);
+  if (turnLocale != null) {
+    setNavigationTurnNotificationsLocale(turnLocale);
+  }
+  setNavigationSpeedCameraMode(settings.speedCameraMode);
+  setNavigationRoutingOptions(settings.routingOptions);
+}
+
+/// Set metric or imperial units for native distance formatting.
+void setNavigationMeasurementUnits(NavigationMeasurementUnits units) {
+  try {
+    _bindings.comaps_navigation_set_measurement_units(units.index);
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Measurement units are unavailable: $error');
+    }
+  }
+}
+
+/// Return native measurement units.
+NavigationMeasurementUnits getNavigationMeasurementUnits() {
+  try {
+    return NavigationMeasurementUnits.fromNative(
+      _bindings.comaps_navigation_get_measurement_units(),
+    );
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Measurement units query failed: $error');
+    }
+    return NavigationMeasurementUnits.metric;
+  }
+}
+
+/// Enable or disable native turn notification generation.
+void setNavigationTurnNotificationsEnabled(bool enabled) {
+  try {
+    _bindings.comaps_navigation_set_turn_notifications_enabled(
+      enabled ? 1 : 0,
+    );
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Turn notifications are unavailable: $error');
+    }
+  }
+}
+
+/// Return whether native turn notifications are enabled.
+bool getNavigationTurnNotificationsEnabled() {
+  try {
+    return _bindings.comaps_navigation_get_turn_notifications_enabled() != 0;
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Turn notification query failed: $error');
+    }
+    return false;
+  }
+}
+
+/// Set the locale used by native turn notification text generation.
+void setNavigationTurnNotificationsLocale(String locale) {
+  final localePtr = locale.toNativeUtf8().cast<Char>();
+  try {
+    _bindings.comaps_navigation_set_turn_notifications_locale(localePtr);
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Turn notification locale is unavailable: $error');
+    }
+  } finally {
+    malloc.free(localePtr);
+  }
+}
+
+/// Set speed camera warning behavior for native navigation.
+void setNavigationSpeedCameraMode(NavigationSpeedCameraMode mode) {
+  try {
+    _bindings.comaps_navigation_set_speed_camera_mode(mode.index);
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Speed camera mode is unavailable: $error');
+    }
+  }
+}
+
+/// Return the current native speed camera warning mode.
+NavigationSpeedCameraMode getNavigationSpeedCameraMode() {
+  try {
+    return NavigationSpeedCameraMode.fromNative(
+      _bindings.comaps_navigation_get_speed_camera_mode(),
+    );
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Speed camera mode query failed: $error');
+    }
+    return NavigationSpeedCameraMode.auto;
+  }
+}
+
+/// Set road types that native car routing should avoid.
+void setNavigationRoutingOptions(NavigationRoutingOptions options) {
+  try {
+    _bindings.comaps_navigation_set_avoid_routing_options(options.mask);
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Routing options are unavailable: $error');
+    }
+  }
+}
+
+/// Return road types that native car routing avoids.
+NavigationRoutingOptions getNavigationRoutingOptions() {
+  try {
+    return NavigationRoutingOptions.fromMask(
+      _bindings.comaps_navigation_get_avoid_routing_options(),
+    );
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Routing options query failed: $error');
+    }
+    return const NavigationRoutingOptions();
   }
 }
 

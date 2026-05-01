@@ -51,6 +51,7 @@
 #include "geometry/mercator.hpp"
 #include "geometry/screenbase.hpp"
 #include "indexer/feature_meta.hpp"
+#include "agus_navigation_bridge.hpp"
 #include "agus_search_bridge.hpp"
 
 // Forward declarations for Windows platform (defined in agus_platform_win.cpp)
@@ -734,6 +735,116 @@ FFI_PLUGIN_EXPORT void comaps_set_map_language(const char* languageCode) {
     }
     g_framework->RefreshMapLanguage();
     WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_set_router(int32_t routerType) {
+    auto const result = agus::navigation::SetRouter(g_framework.get(), routerType);
+    if (result > 0) WakeRenderer();
+    return result;
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_router(void) {
+    return agus::navigation::GetRouter(g_framework.get());
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_add_route_point(
+    int32_t markType, const char* title, const char* subtitle, double lat,
+    double lon, int32_t intermediateIndex, int32_t isMyPosition,
+    int32_t reorderIntermediatePoints) {
+    auto const result = agus::navigation::AddRoutePoint(
+        g_framework.get(), markType, title, subtitle, lat, lon,
+        intermediateIndex, isMyPosition, reorderIntermediatePoints);
+    if (result > 0) WakeRenderer();
+    return result;
+}
+
+FFI_PLUGIN_EXPORT void comaps_navigation_remove_route_point(
+    int32_t markType, int32_t intermediateIndex) {
+    agus::navigation::RemoveRoutePoint(g_framework.get(), markType, intermediateIndex);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT void comaps_navigation_clear_route_points(void) {
+    agus::navigation::ClearRoutePoints(g_framework.get());
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_build_route(void) {
+    auto const result = agus::navigation::BuildRoute(g_framework.get());
+    if (result > 0) WakeRenderer();
+    return result;
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_follow_route(void) {
+    auto const result = agus::navigation::FollowRoute(g_framework.get());
+    if (result > 0) WakeRenderer();
+    return result;
+}
+
+FFI_PLUGIN_EXPORT void comaps_navigation_close_route(int32_t removeRoutePoints) {
+    agus::navigation::CloseRoute(g_framework.get(), removeRoutePoints);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_is_active(void) {
+    return agus::navigation::IsActive(g_framework.get());
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_is_built(void) {
+    return agus::navigation::IsBuilt(g_framework.get());
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_is_building(void) {
+    return agus::navigation::IsBuilding(g_framework.get());
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_is_following(void) {
+    return agus::navigation::IsFollowing(g_framework.get());
+}
+
+FFI_PLUGIN_EXPORT AgusNavigationStatus* comaps_navigation_copy_status(void) {
+    return agus::navigation::CopyStatus(g_framework.get());
+}
+
+FFI_PLUGIN_EXPORT void comaps_navigation_status_free(AgusNavigationStatus* status) {
+    agus::navigation::FreeStatus(status);
+}
+
+FFI_PLUGIN_EXPORT void comaps_navigation_set_measurement_units(int32_t units) {
+    agus::navigation::SetMeasurementUnits(g_framework.get(), units);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_measurement_units(void) {
+    return agus::navigation::GetMeasurementUnits();
+}
+
+FFI_PLUGIN_EXPORT void comaps_navigation_set_turn_notifications_enabled(int32_t enabled) {
+    agus::navigation::SetTurnNotificationsEnabled(g_framework.get(), enabled);
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_turn_notifications_enabled(void) {
+    return agus::navigation::GetTurnNotificationsEnabled(g_framework.get());
+}
+
+FFI_PLUGIN_EXPORT void comaps_navigation_set_turn_notifications_locale(const char* locale) {
+    agus::navigation::SetTurnNotificationsLocale(g_framework.get(), locale);
+}
+
+FFI_PLUGIN_EXPORT void comaps_navigation_set_speed_camera_mode(int32_t mode) {
+    agus::navigation::SetSpeedCameraMode(g_framework.get(), mode);
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_speed_camera_mode(void) {
+    return agus::navigation::GetSpeedCameraMode(g_framework.get());
+}
+
+FFI_PLUGIN_EXPORT void comaps_navigation_set_avoid_routing_options(int32_t mask) {
+    agus::navigation::SetAvoidRoutingOptions(mask);
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_avoid_routing_options(void) {
+    return agus::navigation::GetAvoidRoutingOptions();
 }
 
 FFI_PLUGIN_EXPORT void comaps_invalidate(void) {
