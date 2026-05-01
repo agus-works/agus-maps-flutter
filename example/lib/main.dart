@@ -1198,79 +1198,85 @@ class _MyAppState extends State<MyApp> {
         ),
         useMaterial3: true,
       ),
-      home: Scaffold(
-        body: SafeArea(
-          // Use IndexedStack to keep all tabs alive (especially the map)
-          // This prevents the map from being unmounted/remounted when switching tabs
-          child: IndexedStack(
-            index: _currentTabIndex,
-            children: [
-              _buildMapTab(),
-              _buildFavoritesTab(),
-              _buildDownloadsTab(),
-              SettingsTab(
-                mapScale: _mapScale,
-                interfaceThemeMode: _interfaceThemeMode,
-                mapAppearanceMode: _mapAppearanceMode,
-                mapLanguageCode: _mapLanguageCode,
-                buildings3dEnabled: _buildings3dEnabled,
-                layerState: _mapLayerState,
-                onMapScaleChanged: _updateMapScale,
-                onResetMapScale: _resetMapScale,
-                onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
-                onMapAppearanceModeChanged: _updateMapAppearanceMode,
-                onMapLanguageChanged: _updateMapLanguage,
-                onBuildings3dChanged: _updateBuildings3d,
-                onLayerStateChanged: _updateMapLayerState,
+      home: Builder(
+        builder: (context) {
+          return Scaffold(
+            body: SafeArea(
+              // Use IndexedStack to keep all tabs alive (especially the map)
+              // This prevents the map from being unmounted/remounted when switching tabs
+              child: IndexedStack(
+                index: _currentTabIndex,
+                children: [
+                  _buildMapTab(context),
+                  _buildFavoritesTab(context),
+                  _buildDownloadsTab(),
+                  SettingsTab(
+                    mapScale: _mapScale,
+                    interfaceThemeMode: _interfaceThemeMode,
+                    mapAppearanceMode: _mapAppearanceMode,
+                    mapLanguageCode: _mapLanguageCode,
+                    buildings3dEnabled: _buildings3dEnabled,
+                    layerState: _mapLayerState,
+                    onMapScaleChanged: _updateMapScale,
+                    onResetMapScale: _resetMapScale,
+                    onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
+                    onMapAppearanceModeChanged: _updateMapAppearanceMode,
+                    onMapLanguageChanged: _updateMapLanguage,
+                    onBuildings3dChanged: _updateBuildings3d,
+                    onLayerStateChanged: _updateMapLayerState,
+                  ),
+                  const AboutTab(),
+                ],
               ),
-              const AboutTab(),
-            ],
-          ),
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _currentTabIndex,
-          onDestinationSelected: (index) {
-            setState(() {
-              _currentTabIndex = index;
-            });
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.map_outlined),
-              selectedIcon: Icon(Icons.map),
-              label: 'Map',
             ),
-            NavigationDestination(
-              icon: Icon(Icons.favorite_border),
-              selectedIcon: Icon(Icons.favorite),
-              label: 'Favorites',
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: _currentTabIndex,
+              onDestinationSelected: (index) {
+                setState(() {
+                  _currentTabIndex = index;
+                });
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map),
+                  label: 'Map',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.favorite_border),
+                  selectedIcon: Icon(Icons.favorite),
+                  label: 'Favorites',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.download_outlined),
+                  selectedIcon: Icon(Icons.download),
+                  label: 'Downloads',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.settings_outlined),
+                  selectedIcon: Icon(Icons.settings),
+                  label: 'Settings',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.info_outline),
+                  selectedIcon: Icon(Icons.info),
+                  label: 'About',
+                ),
+              ],
             ),
-            NavigationDestination(
-              icon: Icon(Icons.download_outlined),
-              selectedIcon: Icon(Icons.download),
-              label: 'Downloads',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: 'Settings',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.info_outline),
-              selectedIcon: Icon(Icons.info),
-              label: 'About',
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
   /// Full-screen map tab.
-  Widget _buildMapTab() {
+  Widget _buildMapTab(BuildContext context) {
     if (!_dataReady) {
+      final theme = Theme.of(context);
+      final colorScheme = theme.colorScheme;
       return Container(
-        color: Colors.grey[200],
+        color: colorScheme.surface,
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1284,8 +1290,10 @@ class _MyAppState extends State<MyApp> {
                   padding: const EdgeInsets.all(16),
                   child: Text(
                     _debug,
-                    style:
-                        const TextStyle(fontSize: 10, fontFamily: 'monospace'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontFamily: 'monospace',
+                    ),
                   ),
                 ),
               ),
@@ -1312,12 +1320,12 @@ class _MyAppState extends State<MyApp> {
           top: 12,
           left: 12,
           right: 12,
-          child: _buildSearchOverlay(),
+          child: _buildSearchOverlay(context),
         ),
         Positioned(
           right: 12,
           bottom: _placePage == null ? 24 : 248,
-          child: _buildMapControls(),
+          child: _buildMapControls(context),
         ),
         if (_placePage != null)
           PlacePageSheet(
@@ -1328,8 +1336,9 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  Widget _buildSearchOverlay() {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildSearchOverlay(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Material(
       color: colorScheme.surface,
       elevation: 3,
@@ -1375,7 +1384,7 @@ class _MyAppState extends State<MyApp> {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           _nativeSearchRunning ? 'Searching...' : 'No results',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: theme.textTheme.bodyMedium,
                         ),
                       ),
                     )
@@ -1409,7 +1418,7 @@ class _MyAppState extends State<MyApp> {
     };
   }
 
-  Widget _buildMapControls() {
+  Widget _buildMapControls(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
       color: colorScheme.surface,
@@ -1461,26 +1470,27 @@ class _MyAppState extends State<MyApp> {
   }
 
   /// Full-screen favorites tab.
-  Widget _buildFavoritesTab() {
+  Widget _buildFavoritesTab(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Column(
       children: [
         // Header
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            color: colorScheme.surfaceContainerHighest,
             border: Border(
-              bottom: BorderSide(color: Theme.of(context).dividerColor),
+              bottom: BorderSide(color: theme.dividerColor),
             ),
           ),
           child: Row(
             children: [
-              Icon(Icons.favorite,
-                  color: Theme.of(context).colorScheme.primary),
+              Icon(Icons.favorite, color: colorScheme.primary),
               const SizedBox(width: 8),
               Text(
                 'Favorites',
-                style: Theme.of(context).textTheme.titleLarge,
+                style: theme.textTheme.titleLarge,
               ),
             ],
           ),
@@ -1501,7 +1511,7 @@ class _MyAppState extends State<MyApp> {
                 ),
                 trailing: Text(
                   'Zoom ${favorite.zoom}',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: theme.textTheme.bodySmall,
                 ),
                 onTap: () => _onFavoriteSelected(favorite),
               );
