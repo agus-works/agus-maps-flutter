@@ -546,20 +546,19 @@ Future<void> _generateComapsData() async {
 
     // Generate symbols atlas (symbols.png + symbols.sdf)
     if (!await _symbolsAtlasesReady(dataDir)) {
-      final generateSymbolsScript =
-          path.join(comapsDir, 'tools', 'unix', 'generate_symbols.sh');
-      if (await File(generateSymbolsScript).exists()) {
-        print('Generating symbols atlas (symbols.png/symbols.sdf)...');
+      print('Generating symbols atlas using Dart skin generator...');
+      final skinGeneratorDir = path.join(getRepoRoot(), 'tool', 'skin_generator_tool');
+      if (await Directory(skinGeneratorDir).exists()) {
         await runProcess(
-          'bash',
-          [generateSymbolsScript],
-          workingDirectory: comapsDir,
+          'flutter',
+          ['test', 'test/generate_test.dart'],
+          workingDirectory: skinGeneratorDir,
           environment: env,
         );
         await _validateSymbolsAtlases(dataDir);
       } else {
         throw StateError(
-          'generate_symbols.sh not found; symbols atlas cannot be generated',
+          'Dart skin generator not found at $skinGeneratorDir',
         );
       }
     } else {
