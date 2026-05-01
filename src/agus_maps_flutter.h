@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -161,6 +163,54 @@ FFI_PLUGIN_EXPORT void comaps_place_page_free(AgusPlacePageData* data);
 
 // Clear the current place page selection
 FFI_PLUGIN_EXPORT void comaps_place_page_clear_selection(void);
+
+// Search result types mirrored from search::Result::Type.
+// 0=Feature, 1=LatLon, 2=PureSuggest, 3=SuggestFromFeature, 4=Postcode.
+typedef struct {
+	int32_t index;
+	int32_t result_type;
+	int32_t is_suggestion;
+	int32_t has_point;
+	const char* title;
+	const char* subtitle;
+	const char* address;
+	const char* suggestion;
+	double lat;
+	double lon;
+} AgusSearchResult;
+
+// Search snapshot status values:
+// 0=idle, 1=running, 2=completed, 3=cancelled, 4=error.
+typedef struct {
+	int32_t generation;
+	int32_t status;
+	int32_t result_count;
+	AgusSearchResult* results;
+} AgusSearchResults;
+
+// Start native CoMaps search. Returns the search generation, or a negative
+// value if the framework/query is not ready. When interactive is non-zero,
+// CoMaps also starts search-in-viewport for native map result marks.
+FFI_PLUGIN_EXPORT int32_t comaps_search_start(
+	const char* query,
+	const char* locale,
+	int32_t interactive,
+	int32_t isCategory);
+
+// Returns a heap-allocated snapshot of the latest native search state.
+// Call comaps_search_results_free when done.
+FFI_PLUGIN_EXPORT AgusSearchResults* comaps_search_copy_results(void);
+
+// Frees a snapshot allocated by comaps_search_copy_results.
+FFI_PLUGIN_EXPORT void comaps_search_results_free(AgusSearchResults* data);
+
+// Selects a non-suggestion result from the latest native search result list.
+// Returns 1 on success, 0 if the index points to a suggestion, or negative on
+// invalid state/index.
+FFI_PLUGIN_EXPORT int32_t comaps_search_show_result(int32_t index);
+
+// Cancels active native search requests and clears cached search results.
+FFI_PLUGIN_EXPORT void comaps_search_cancel(void);
 
 // Scale (zoom) the map by a factor, centered on a specific pixel point.
 // factor: Zoom factor (>1 zooms in, <1 zooms out). Use exp(scrollDelta) for smooth zooming.

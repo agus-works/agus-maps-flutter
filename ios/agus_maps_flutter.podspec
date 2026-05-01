@@ -206,6 +206,7 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
   s.source_files = [
     'Classes/**/*.{h,m,mm,swift}',
     '../src/agus_maps_flutter.h',
+    '../src/agus_search_bridge.hpp',
   ]
   
   # Public headers for FFI - only C-compatible headers!
@@ -218,7 +219,8 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
   
   # Private headers - C++ headers that should not be in umbrella header
   s.private_header_files = [
-    'Classes/AgusMetalContextFactory.h'
+    'Classes/AgusMetalContextFactory.h',
+    '../src/agus_search_bridge.hpp'
   ]
 
   # Resource bundles for Metal shaders

@@ -99,6 +99,85 @@ class MapLayerState {
   }
 }
 
+/// Native CoMaps search lifecycle state.
+enum NativeSearchStatus {
+  idle,
+  running,
+  completed,
+  cancelled,
+  error;
+
+  static NativeSearchStatus fromNative(int value) {
+    if (value < 0 || value >= NativeSearchStatus.values.length) {
+      return NativeSearchStatus.error;
+    }
+    return NativeSearchStatus.values[value];
+  }
+}
+
+/// Native CoMaps search result type.
+enum NativeSearchResultType {
+  feature,
+  latLon,
+  pureSuggest,
+  suggestFromFeature,
+  postcode;
+
+  static NativeSearchResultType fromNative(int value) {
+    if (value < 0 || value >= NativeSearchResultType.values.length) {
+      return NativeSearchResultType.feature;
+    }
+    return NativeSearchResultType.values[value];
+  }
+}
+
+/// One row from the native CoMaps search engine.
+class NativeSearchResult {
+  const NativeSearchResult({
+    required this.index,
+    required this.type,
+    required this.isSuggestion,
+    required this.hasPoint,
+    required this.title,
+    required this.subtitle,
+    required this.address,
+    required this.suggestion,
+    required this.lat,
+    required this.lon,
+  });
+
+  final int index;
+  final NativeSearchResultType type;
+  final bool isSuggestion;
+  final bool hasPoint;
+  final String title;
+  final String subtitle;
+  final String address;
+  final String suggestion;
+  final double lat;
+  final double lon;
+}
+
+/// A point-in-time snapshot of native CoMaps search results.
+class NativeSearchSnapshot {
+  const NativeSearchSnapshot({
+    required this.generation,
+    required this.status,
+    required this.results,
+  });
+
+  const NativeSearchSnapshot.empty()
+      : generation = 0,
+        status = NativeSearchStatus.idle,
+        results = const <NativeSearchResult>[];
+
+  final int generation;
+  final NativeSearchStatus status;
+  final List<NativeSearchResult> results;
+
+  bool get isRunning => status == NativeSearchStatus.running;
+}
+
 /// Broadcast streams for low-frequency native notifications.
 class AgusMapsFlutterEvents {
   AgusMapsFlutterEvents._() {
@@ -176,6 +255,123 @@ Future<PlacePageData?> getCurrentPlacePage() async {
 
 void closePlacePage() {
   AgusMapsHostApi().clearPlacePageSelection();
+}
+
+/// Start a native CoMaps search and return its generation id.
+///
+/// When [interactive] is true, native CoMaps also runs viewport search so
+/// results visible in the current map viewport are marked on the map.
+int startNativeSearch(
+  String query, {
+  String locale = 'en',
+  bool interactive = true,
+  bool isCategory = false,
+}) {
+  final trimmedQuery = query.trim();
+  if (trimmedQuery.isEmpty) {
+    cancelNativeSearch();
+    return -1;
+  }
+
+  final queryPtr = trimmedQuery.toNativeUtf8().cast<Char>();
+  final localePtr = locale.toNativeUtf8().cast<Char>();
+  try {
+    return _bindings.comaps_search_start(
+      queryPtr,
+      localePtr,
+      interactive ? 1 : 0,
+      isCategory ? 1 : 0,
+    );
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Native search is unavailable: $error');
+    }
+    return -2;
+  } finally {
+    malloc.free(queryPtr);
+    malloc.free(localePtr);
+  }
+}
+
+/// Return the latest native CoMaps search snapshot.
+NativeSearchSnapshot getNativeSearchSnapshot() {
+  Pointer<AgusSearchResults> snapshotPtr;
+  try {
+    snapshotPtr = _bindings.comaps_search_copy_results();
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Native search snapshot is unavailable: $error');
+    }
+    return const NativeSearchSnapshot.empty();
+  }
+
+  if (snapshotPtr == nullptr) {
+    return const NativeSearchSnapshot.empty();
+  }
+
+  try {
+    final snapshot = snapshotPtr.ref;
+    final results = <NativeSearchResult>[];
+    final resultCount = snapshot.result_count;
+    final rowsPtr = snapshot.results;
+    if (resultCount > 0 && rowsPtr != nullptr) {
+      for (var i = 0; i < resultCount; i++) {
+        final row = (rowsPtr + i).ref;
+        results.add(
+          NativeSearchResult(
+            index: row.index,
+            type: NativeSearchResultType.fromNative(row.result_type),
+            isSuggestion: row.is_suggestion != 0,
+            hasPoint: row.has_point != 0,
+            title: _nativeSearchString(row.title),
+            subtitle: _nativeSearchString(row.subtitle),
+            address: _nativeSearchString(row.address),
+            suggestion: _nativeSearchString(row.suggestion),
+            lat: row.lat,
+            lon: row.lon,
+          ),
+        );
+      }
+    }
+
+    return NativeSearchSnapshot(
+      generation: snapshot.generation,
+      status: NativeSearchStatus.fromNative(snapshot.status),
+      results: List<NativeSearchResult>.unmodifiable(results),
+    );
+  } finally {
+    _bindings.comaps_search_results_free(snapshotPtr);
+  }
+}
+
+/// Select a native CoMaps search result by index.
+int showNativeSearchResult(int index) {
+  try {
+    return _bindings.comaps_search_show_result(index);
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Native search selection is unavailable: $error');
+    }
+    return -1;
+  }
+}
+
+/// Cancel native CoMaps search and clear cached native results.
+void cancelNativeSearch() {
+  try {
+    _bindings.comaps_search_cancel();
+  } on ArgumentError catch (error) {
+    if (kDebugMode) {
+      debugPrint('[AgusMap] Native search cancel is unavailable: $error');
+    }
+  }
+}
+
+String _nativeSearchString(Pointer<Char> pointer) {
+  if (pointer == nullptr) {
+    return '';
+  }
+  return pointer.cast<Utf8>().toDartString();
 }
 
 /// A very short-lived native function.
