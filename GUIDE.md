@@ -27,9 +27,14 @@ The MWM (MapsWithMe) format is memory-mapped via `mmap()`. Only currently-visibl
 The render loop is "demand-driven" - the engine only renders when:
 - User interacts with the map (pan, zoom, rotate)
 - Animations are in progress
-- View state changes (resize, DPI change)
+- Real view state changes (orientation, split-screen/window resize, DPI change)
 
 When idle, CPU and GPU sleep, preserving battery life.
+
+Keyboard and search UI are treated as overlays above a stable map viewport on
+mobile platforms. Showing the keyboard must not resize the native map surface;
+only overlay controls, result panels, or future camera/content padding should
+adapt to keyboard occlusion.
 
 ### 4. Asset Integrity and Self-Healing
 
