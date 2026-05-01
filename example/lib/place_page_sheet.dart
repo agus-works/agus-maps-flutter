@@ -8,6 +8,8 @@ class PlacePageSheet extends StatelessWidget {
   const PlacePageSheet({
     required this.data,
     required this.onClose,
+    this.onRouteTo,
+    this.routeInProgress = false,
     super.key,
   });
 
@@ -16,6 +18,12 @@ class PlacePageSheet extends StatelessWidget {
 
   /// Callback invoked when the sheet is dismissed.
   final VoidCallback onClose;
+
+  /// Callback invoked when route planning should target this place.
+  final VoidCallback? onRouteTo;
+
+  /// Whether a route action is currently being prepared.
+  final bool routeInProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -103,6 +111,19 @@ class PlacePageSheet extends StatelessWidget {
                         ),
                       ),
                     ),
+                  if (onRouteTo != null) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: routeInProgress ? null : onRouteTo,
+                      icon: routeInProgress
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.alt_route),
+                      label: Text(routeInProgress ? 'Routing' : 'Route'),
+                    ),
+                  ],
                   if (metadataEntries.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Divider(color: colorScheme.outlineVariant),

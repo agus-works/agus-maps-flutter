@@ -364,6 +364,7 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             "symbols/xxhdpi/light/symbols.sdf",
             "symbols/xxhdpi/dark/symbols.png",
             "symbols/xxhdpi/dark/symbols.sdf",
+            "sound-strings/en.json/localize.json",
             "localized_types/en.lproj/LocalizableTypes.strings"  // Localized POI type names
         ]
         

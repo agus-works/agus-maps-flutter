@@ -263,6 +263,52 @@ flutter:
     - assets/comaps_data/localized_types/vi.lproj/
     - assets/comaps_data/localized_types/zh-Hans.lproj/
     - assets/comaps_data/localized_types/zh-Hant.lproj/
+    - assets/comaps_data/sound-strings/ar.json/
+    - assets/comaps_data/sound-strings/be.json/
+    - assets/comaps_data/sound-strings/bg.json/
+    - assets/comaps_data/sound-strings/ca.json/
+    - assets/comaps_data/sound-strings/cs.json/
+    - assets/comaps_data/sound-strings/da.json/
+    - assets/comaps_data/sound-strings/de.json/
+    - assets/comaps_data/sound-strings/el.json/
+    - assets/comaps_data/sound-strings/en.json/
+    - assets/comaps_data/sound-strings/en_CA.json/
+    - assets/comaps_data/sound-strings/es-MX.json/
+    - assets/comaps_data/sound-strings/es.json/
+    - assets/comaps_data/sound-strings/es_419.json/
+    - assets/comaps_data/sound-strings/et.json/
+    - assets/comaps_data/sound-strings/eu.json/
+    - assets/comaps_data/sound-strings/fa.json/
+    - assets/comaps_data/sound-strings/fi.json/
+    - assets/comaps_data/sound-strings/fr.json/
+    - assets/comaps_data/sound-strings/hi.json/
+    - assets/comaps_data/sound-strings/hr.json/
+    - assets/comaps_data/sound-strings/hu.json/
+    - assets/comaps_data/sound-strings/id.json/
+    - assets/comaps_data/sound-strings/it.json/
+    - assets/comaps_data/sound-strings/ja.json/
+    - assets/comaps_data/sound-strings/ko.json/
+    - assets/comaps_data/sound-strings/lt.json/
+    - assets/comaps_data/sound-strings/lv.json/
+    - assets/comaps_data/sound-strings/mr.json/
+    - assets/comaps_data/sound-strings/nb.json/
+    - assets/comaps_data/sound-strings/nl.json/
+    - assets/comaps_data/sound-strings/pl.json/
+    - assets/comaps_data/sound-strings/pt-BR.json/
+    - assets/comaps_data/sound-strings/pt.json/
+    - assets/comaps_data/sound-strings/ro.json/
+    - assets/comaps_data/sound-strings/ru.json/
+    - assets/comaps_data/sound-strings/sk.json/
+    - assets/comaps_data/sound-strings/sr.json/
+    - assets/comaps_data/sound-strings/sv.json/
+    - assets/comaps_data/sound-strings/sw.json/
+    - assets/comaps_data/sound-strings/ta.json/
+    - assets/comaps_data/sound-strings/th.json/
+    - assets/comaps_data/sound-strings/tr.json/
+    - assets/comaps_data/sound-strings/uk.json/
+    - assets/comaps_data/sound-strings/vi.json/
+    - assets/comaps_data/sound-strings/zh-Hans.json/
+    - assets/comaps_data/sound-strings/zh-Hant.json/
     - assets/comaps_data/styles/default/dark/
     - assets/comaps_data/styles/default/dark/symbols-ad/
     - assets/comaps_data/styles/default/dark/symbols/

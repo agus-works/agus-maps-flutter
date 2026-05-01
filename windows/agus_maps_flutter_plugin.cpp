@@ -571,6 +571,7 @@ bool AgusMapsFlutterPlugin::DataDirLooksComplete(const fs::path& dataDir) {
         dataDir / "symbols" / "xxhdpi" / "dark" / "symbols.png",
         dataDir / "countries-strings" / "en.json" / "localize.json",
         dataDir / "categories-strings" / "en.json" / "localize.json",
+        dataDir / "sound-strings" / "en.json" / "localize.json",
         // Localized type names (e.g., "Gas Station" instead of "amenity-fuel")
         dataDir / "localized_types" / "en.lproj" / "LocalizableTypes.strings",
     };

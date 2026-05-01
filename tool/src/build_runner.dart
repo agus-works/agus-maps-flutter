@@ -636,6 +636,7 @@ Future<void> _copyDataFiles() async {
     'categories-strings',
     'countries-strings',
     'fonts',
+    'sound-strings',
     'symbols',
     'styles'
   ];

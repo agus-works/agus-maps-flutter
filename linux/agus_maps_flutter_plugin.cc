@@ -434,6 +434,7 @@ static bool data_dir_looks_complete(const fs::path& dir) {
     dir / "symbols" / "xxhdpi" / "light" / "symbols.sdf",
     dir / "symbols" / "xxhdpi" / "dark" / "symbols.png",
     dir / "symbols" / "xxhdpi" / "dark" / "symbols.sdf",
+    dir / "sound-strings" / "en.json" / "localize.json",
     // Localized type names (e.g., "Gas Station" instead of "amenity-fuel")
     dir / "localized_types" / "en.lproj" / "LocalizableTypes.strings",
   };

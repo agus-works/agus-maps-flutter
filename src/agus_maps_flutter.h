@@ -212,6 +212,79 @@ FFI_PLUGIN_EXPORT int32_t comaps_search_show_result(int32_t index);
 // Cancels active native search requests and clears cached search results.
 FFI_PLUGIN_EXPORT void comaps_search_cancel(void);
 
+// Navigation route point types mirrored from RouteMarkType:
+// 0=Start, 1=Intermediate, 2=Finish.
+// Router types mirror routing::RouterType: 0=Vehicle, 1=Pedestrian,
+// 2=Bicycle, 3=Transit, 4=Ruler.
+// Measurement units mirror measurement_utils::Units: 0=Metric, 1=Imperial.
+// Speed camera modes mirror routing::SpeedCameraManagerMode:
+// 0=Auto, 1=Always, 2=Never.
+// Avoid route options are a bitmask of routing::RoutingOptions::Road values:
+// Toll=2, Motorway=4, Ferry=8, Dirty/unpaved=16.
+typedef struct {
+	int32_t is_active;
+	int32_t is_built;
+	int32_t is_building;
+	int32_t is_following;
+	int32_t is_valid;
+	int32_t has_following_info;
+	int32_t router_type;
+	int32_t route_session_state;
+	int32_t turn;
+	int32_t next_turn;
+	int32_t pedestrian_turn;
+	int32_t exit_number;
+	int32_t total_time_seconds;
+	double completion_percent;
+	double speed_limit_mps;
+	double distance_to_target;
+	int32_t distance_to_target_units;
+	double distance_to_turn;
+	int32_t distance_to_turn_units;
+	double distance_to_next_stop;
+	int32_t distance_to_next_stop_units;
+	int32_t time_to_next_stop_seconds;
+	int32_t index_of_next_stop;
+	const char* current_street;
+	const char* next_street;
+	const char* next_next_street;
+} AgusNavigationStatus;
+
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_set_router(int32_t routerType);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_router(void);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_add_route_point(
+	int32_t markType,
+	const char* title,
+	const char* subtitle,
+	double lat,
+	double lon,
+	int32_t intermediateIndex,
+	int32_t isMyPosition,
+	int32_t reorderIntermediatePoints);
+FFI_PLUGIN_EXPORT void comaps_navigation_remove_route_point(
+	int32_t markType,
+	int32_t intermediateIndex);
+FFI_PLUGIN_EXPORT void comaps_navigation_clear_route_points(void);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_build_route(void);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_follow_route(void);
+FFI_PLUGIN_EXPORT void comaps_navigation_close_route(int32_t removeRoutePoints);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_is_active(void);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_is_built(void);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_is_building(void);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_is_following(void);
+FFI_PLUGIN_EXPORT AgusNavigationStatus* comaps_navigation_copy_status(void);
+FFI_PLUGIN_EXPORT void comaps_navigation_status_free(AgusNavigationStatus* status);
+
+FFI_PLUGIN_EXPORT void comaps_navigation_set_measurement_units(int32_t units);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_measurement_units(void);
+FFI_PLUGIN_EXPORT void comaps_navigation_set_turn_notifications_enabled(int32_t enabled);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_turn_notifications_enabled(void);
+FFI_PLUGIN_EXPORT void comaps_navigation_set_turn_notifications_locale(const char* locale);
+FFI_PLUGIN_EXPORT void comaps_navigation_set_speed_camera_mode(int32_t mode);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_speed_camera_mode(void);
+FFI_PLUGIN_EXPORT void comaps_navigation_set_avoid_routing_options(int32_t mask);
+FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_avoid_routing_options(void);
+
 // Scale (zoom) the map by a factor, centered on a specific pixel point.
 // factor: Zoom factor (>1 zooms in, <1 zooms out). Use exp(scrollDelta) for smooth zooming.
 // pixelX, pixelY: Screen coordinates to zoom towards (in physical pixels)

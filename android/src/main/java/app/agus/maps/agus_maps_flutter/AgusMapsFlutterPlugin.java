@@ -355,6 +355,7 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, AgusMapsApi.AgusMap
     File unicodeBlockFile = new File(fontsDir, "unicode_blocks.txt");
     File localizedTypesFile = new File(filesDir, "localized_types/en.lproj/LocalizableTypes.strings");
     File categoriesBrandsFile = new File(filesDir, "categories_brands.txt");
+    File soundStringsFile = new File(filesDir, "sound-strings/en.json/localize.json");
     File lightSymbolsPng = new File(filesDir, "symbols/xxhdpi/light/symbols.png");
     File lightSymbolsSdf = new File(filesDir, "symbols/xxhdpi/light/symbols.sdf");
     File darkSymbolsPng = new File(filesDir, "symbols/xxhdpi/dark/symbols.png");
@@ -367,7 +368,7 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, AgusMapsApi.AgusMap
             darkSymbolsSdf.exists() && darkSymbolsSdf.length() >= 1_000L;
     
     // Check if data is already extracted AND essential files exist
-    if (markerFile.exists() && unicodeBlockFile.exists() && localizedTypesFile.exists() && categoriesBrandsFile.exists() && symbolsReady) {
+    if (markerFile.exists() && unicodeBlockFile.exists() && localizedTypesFile.exists() && categoriesBrandsFile.exists() && soundStringsFile.exists() && symbolsReady) {
         android.util.Log.d("AgusMapsFlutter", "Data already extracted at: " + filesDir.getAbsolutePath());
         return filesDir.getAbsolutePath();
     }

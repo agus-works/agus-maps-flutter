@@ -9,6 +9,7 @@ class SettingsTab extends StatelessWidget {
   final String mapLanguageCode;
   final bool buildings3dEnabled;
   final agus_maps_flutter.MapLayerState layerState;
+  final agus_maps_flutter.NavigationSettings navigationSettings;
   final ValueChanged<double> onMapScaleChanged;
   final VoidCallback onResetMapScale;
   final ValueChanged<ThemeMode> onInterfaceThemeModeChanged;
@@ -17,6 +18,8 @@ class SettingsTab extends StatelessWidget {
   final ValueChanged<String> onMapLanguageChanged;
   final ValueChanged<bool> onBuildings3dChanged;
   final ValueChanged<agus_maps_flutter.MapLayerState> onLayerStateChanged;
+  final ValueChanged<agus_maps_flutter.NavigationSettings>
+      onNavigationSettingsChanged;
 
   const SettingsTab({
     super.key,
@@ -26,6 +29,7 @@ class SettingsTab extends StatelessWidget {
     required this.mapLanguageCode,
     required this.buildings3dEnabled,
     required this.layerState,
+    required this.navigationSettings,
     required this.onMapScaleChanged,
     required this.onResetMapScale,
     required this.onInterfaceThemeModeChanged,
@@ -33,6 +37,7 @@ class SettingsTab extends StatelessWidget {
     required this.onMapLanguageChanged,
     required this.onBuildings3dChanged,
     required this.onLayerStateChanged,
+    required this.onNavigationSettingsChanged,
   });
 
   static const double _minScale = 0.25;
@@ -173,6 +178,121 @@ class SettingsTab extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _SettingsCard(
+                icon: Icons.navigation_outlined,
+                title: 'Navigation',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _MeasurementSegments(
+                      selected: navigationSettings.measurementUnits,
+                      onChanged: (units) => onNavigationSettingsChanged(
+                        navigationSettings.copyWith(measurementUnits: units),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Voice guidance'),
+                      secondary: const Icon(Icons.record_voice_over_outlined),
+                      value: navigationSettings.turnNotificationsEnabled,
+                      onChanged: (enabled) => onNavigationSettingsChanged(
+                        navigationSettings.copyWith(
+                          turnNotificationsEnabled: enabled,
+                        ),
+                      ),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Street names in voice'),
+                      secondary: const Icon(Icons.signpost_outlined),
+                      value: navigationSettings.announceStreetNames,
+                      onChanged: navigationSettings.turnNotificationsEnabled
+                          ? (enabled) => onNavigationSettingsChanged(
+                                navigationSettings.copyWith(
+                                  announceStreetNames: enabled,
+                                ),
+                              )
+                          : null,
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Speed limit'),
+                      secondary: const Icon(Icons.speed_outlined),
+                      value: navigationSettings.showSpeedLimit,
+                      onChanged: (enabled) => onNavigationSettingsChanged(
+                        navigationSettings.copyWith(showSpeedLimit: enabled),
+                      ),
+                    ),
+                    const Divider(),
+                    _SpeedCameraSegments(
+                      selected: navigationSettings.speedCameraMode,
+                      onChanged: (mode) => onNavigationSettingsChanged(
+                        navigationSettings.copyWith(speedCameraMode: mode),
+                      ),
+                    ),
+                    const Divider(),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Avoid tolls'),
+                      secondary: const Icon(Icons.payments_outlined),
+                      value: navigationSettings.routingOptions.avoidTolls,
+                      onChanged: (enabled) => onNavigationSettingsChanged(
+                        navigationSettings.copyWith(
+                          routingOptions:
+                              navigationSettings.routingOptions.copyWith(
+                            avoidTolls: enabled ?? false,
+                          ),
+                        ),
+                      ),
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Avoid motorways'),
+                      secondary: const Icon(Icons.alt_route_outlined),
+                      value: navigationSettings.routingOptions.avoidMotorways,
+                      onChanged: (enabled) => onNavigationSettingsChanged(
+                        navigationSettings.copyWith(
+                          routingOptions:
+                              navigationSettings.routingOptions.copyWith(
+                            avoidMotorways: enabled ?? false,
+                          ),
+                        ),
+                      ),
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Avoid ferries'),
+                      secondary: const Icon(Icons.directions_boat_outlined),
+                      value: navigationSettings.routingOptions.avoidFerries,
+                      onChanged: (enabled) => onNavigationSettingsChanged(
+                        navigationSettings.copyWith(
+                          routingOptions:
+                              navigationSettings.routingOptions.copyWith(
+                            avoidFerries: enabled ?? false,
+                          ),
+                        ),
+                      ),
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Avoid unpaved roads'),
+                      secondary: const Icon(Icons.grass_outlined),
+                      value:
+                          navigationSettings.routingOptions.avoidUnpavedRoads,
+                      onChanged: (enabled) => onNavigationSettingsChanged(
+                        navigationSettings.copyWith(
+                          routingOptions:
+                              navigationSettings.routingOptions.copyWith(
+                            avoidUnpavedRoads: enabled ?? false,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _SettingsCard(
                 icon: Icons.text_fields,
                 title: 'Map label scale',
                 trailing:
@@ -247,6 +367,87 @@ class _SettingsCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MeasurementSegments extends StatelessWidget {
+  final agus_maps_flutter.NavigationMeasurementUnits selected;
+  final ValueChanged<agus_maps_flutter.NavigationMeasurementUnits> onChanged;
+
+  const _MeasurementSegments({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Units', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
+        SegmentedButton<agus_maps_flutter.NavigationMeasurementUnits>(
+          segments: const [
+            ButtonSegment(
+              value: agus_maps_flutter.NavigationMeasurementUnits.metric,
+              label: Text('Metric'),
+              icon: Icon(Icons.straighten),
+            ),
+            ButtonSegment(
+              value: agus_maps_flutter.NavigationMeasurementUnits.imperial,
+              label: Text('Imperial'),
+              icon: Icon(Icons.square_foot),
+            ),
+          ],
+          selected: {selected},
+          showSelectedIcon: false,
+          onSelectionChanged: (selection) => onChanged(selection.first),
+        ),
+      ],
+    );
+  }
+}
+
+class _SpeedCameraSegments extends StatelessWidget {
+  final agus_maps_flutter.NavigationSpeedCameraMode selected;
+  final ValueChanged<agus_maps_flutter.NavigationSpeedCameraMode> onChanged;
+
+  const _SpeedCameraSegments({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Speed cameras', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
+        SegmentedButton<agus_maps_flutter.NavigationSpeedCameraMode>(
+          segments: const [
+            ButtonSegment(
+              value: agus_maps_flutter.NavigationSpeedCameraMode.auto,
+              label: Text('Auto'),
+              icon: Icon(Icons.speed),
+            ),
+            ButtonSegment(
+              value: agus_maps_flutter.NavigationSpeedCameraMode.always,
+              label: Text('Always'),
+              icon: Icon(Icons.notifications_active_outlined),
+            ),
+            ButtonSegment(
+              value: agus_maps_flutter.NavigationSpeedCameraMode.never,
+              label: Text('Never'),
+              icon: Icon(Icons.notifications_off_outlined),
+            ),
+          ],
+          selected: {selected},
+          showSelectedIcon: false,
+          onSelectionChanged: (selection) => onChanged(selection.first),
+        ),
+      ],
     );
   }
 }
