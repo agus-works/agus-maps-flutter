@@ -51,6 +51,7 @@
 #include "geometry/mercator.hpp"
 #include "geometry/screenbase.hpp"
 #include "indexer/feature_meta.hpp"
+#include "agus_search_bridge.hpp"
 
 // Forward declarations for Windows platform (defined in agus_platform_win.cpp)
 extern "C" void AgusPlatformWin_InitPaths(const char* resourcePath, const char* writablePath);
@@ -881,6 +882,31 @@ FFI_PLUGIN_EXPORT void comaps_place_page_clear_selection(void) {
         return;
     }
     g_framework->DeactivateMapSelection();
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_search_start(const char* query, const char* locale,
+                                              int32_t interactive, int32_t isCategory) {
+    return agus_search_bridge::StartSearch(g_framework.get(), query, locale, interactive, isCategory);
+}
+
+FFI_PLUGIN_EXPORT AgusSearchResults* comaps_search_copy_results(void) {
+    return agus_search_bridge::CopyResults();
+}
+
+FFI_PLUGIN_EXPORT void comaps_search_results_free(AgusSearchResults* data) {
+    agus_search_bridge::FreeResults(data);
+}
+
+FFI_PLUGIN_EXPORT int32_t comaps_search_show_result(int32_t index) {
+    int32_t const status = agus_search_bridge::ShowResult(g_framework.get(), index);
+    if (status > 0) {
+        WakeRenderer();
+    }
+    return status;
+}
+
+FFI_PLUGIN_EXPORT void comaps_search_cancel(void) {
+    agus_search_bridge::Cancel(g_framework.get());
 }
 
 // Helper function to normalize path separators (convert / to \ on Windows)

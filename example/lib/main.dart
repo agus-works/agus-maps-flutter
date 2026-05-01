@@ -57,6 +57,12 @@ const List<FavoriteLocation> kFavorites = [
   ),
 ];
 
+enum MapSearchResultSource {
+  native,
+  coordinate,
+  favorite,
+}
+
 class MapSearchResult {
   final String title;
   final String subtitle;
@@ -64,6 +70,10 @@ class MapSearchResult {
   final double lon;
   final int zoom;
   final List<String> keywords;
+  final MapSearchResultSource source;
+  final int? nativeIndex;
+  final bool isSuggestion;
+  final String suggestion;
 
   const MapSearchResult({
     required this.title,
@@ -72,7 +82,13 @@ class MapSearchResult {
     required this.lon,
     required this.zoom,
     this.keywords = const [],
+    this.source = MapSearchResultSource.favorite,
+    this.nativeIndex,
+    this.isSuggestion = false,
+    this.suggestion = '',
   });
+
+  bool get isNative => source == MapSearchResultSource.native;
 
   bool matches(List<String> terms) {
     final searchText = '$title $subtitle ${keywords.join(' ')}'.toLowerCase();
@@ -114,185 +130,6 @@ class _LocationFix {
     this.message,
   });
 }
-
-const List<MapSearchResult> kSearchIndex = [
-  MapSearchResult(
-    title: 'Gibraltar International Airport',
-    subtitle: 'Airport, Gibraltar',
-    lat: 36.1512,
-    lon: -5.3497,
-    zoom: 16,
-    keywords: ['runway', 'terminal', 'gib', 'travel'],
-  ),
-  MapSearchResult(
-    title: 'Rock of Gibraltar',
-    subtitle: 'Landmark, Gibraltar Nature Reserve',
-    lat: 36.1430,
-    lon: -5.3430,
-    zoom: 15,
-    keywords: ['rock', 'nature', 'reserve', 'viewpoint', 'tourism'],
-  ),
-  MapSearchResult(
-    title: 'Europa Point',
-    subtitle: 'Lighthouse and viewpoint, Gibraltar',
-    lat: 36.1093,
-    lon: -5.3459,
-    zoom: 15,
-    keywords: ['lighthouse', 'viewpoint', 'south', 'tourism'],
-  ),
-  MapSearchResult(
-    title: 'Main Street',
-    subtitle: 'Shopping street, Gibraltar',
-    lat: 36.1405,
-    lon: -5.3536,
-    zoom: 17,
-    keywords: ['shops', 'shopping', 'restaurant', 'cafe', 'food'],
-  ),
-  MapSearchResult(
-    title: 'Grand Casemates Square',
-    subtitle: 'Restaurants and plaza, Gibraltar',
-    lat: 36.1442,
-    lon: -5.3533,
-    zoom: 17,
-    keywords: ['restaurant', 'cafe', 'food', 'plaza', 'square'],
-  ),
-  MapSearchResult(
-    title: 'Ocean Village',
-    subtitle: 'Marina, restaurants, Gibraltar',
-    lat: 36.1474,
-    lon: -5.3544,
-    zoom: 16,
-    keywords: ['marina', 'restaurant', 'food', 'hotel', 'casino'],
-  ),
-  MapSearchResult(
-    title: 'Cable Car Station',
-    subtitle: 'Upper Rock access, Gibraltar',
-    lat: 36.1348,
-    lon: -5.3497,
-    zoom: 17,
-    keywords: ['cable car', 'tourism', 'rock', 'viewpoint'],
-  ),
-  MapSearchResult(
-    title: 'Moorish Castle',
-    subtitle: 'Historic site, Gibraltar',
-    lat: 36.1456,
-    lon: -5.3508,
-    zoom: 16,
-    keywords: ['castle', 'history', 'tourism', 'landmark'],
-  ),
-  MapSearchResult(
-    title: 'Catalan Bay',
-    subtitle: 'Beach, Gibraltar',
-    lat: 36.1395,
-    lon: -5.3385,
-    zoom: 16,
-    keywords: ['beach', 'restaurant', 'village', 'east side'],
-  ),
-  MapSearchResult(
-    title: 'St Bernard\'s Hospital',
-    subtitle: 'Hospital, Gibraltar',
-    lat: 36.1438,
-    lon: -5.3611,
-    zoom: 16,
-    keywords: ['health', 'medical', 'emergency'],
-  ),
-  MapSearchResult(
-    title: 'Frontier Border Crossing',
-    subtitle: 'Gibraltar - Spain border',
-    lat: 36.1550,
-    lon: -5.3479,
-    zoom: 16,
-    keywords: ['border', 'frontier', 'customs', 'spain'],
-  ),
-  MapSearchResult(
-    title: 'Davao City',
-    subtitle: 'Mindanao, Philippines',
-    lat: 7.1907,
-    lon: 125.4553,
-    zoom: 12,
-    keywords: ['city', 'mindanao', 'philippines'],
-  ),
-  MapSearchResult(
-    title: 'Francisco Bangoy International Airport',
-    subtitle: 'Airport, Davao City',
-    lat: 7.1255,
-    lon: 125.6458,
-    zoom: 15,
-    keywords: ['davao airport', 'airport', 'travel'],
-  ),
-  MapSearchResult(
-    title: 'Cagayan de Oro',
-    subtitle: 'Northern Mindanao, Philippines',
-    lat: 8.4542,
-    lon: 124.6319,
-    zoom: 12,
-    keywords: ['cdo', 'city', 'mindanao'],
-  ),
-  MapSearchResult(
-    title: 'General Santos',
-    subtitle: 'South Cotabato, Philippines',
-    lat: 6.1164,
-    lon: 125.1716,
-    zoom: 12,
-    keywords: ['gensan', 'city', 'mindanao'],
-  ),
-  MapSearchResult(
-    title: 'Zamboanga City',
-    subtitle: 'Zamboanga Peninsula, Philippines',
-    lat: 6.9214,
-    lon: 122.0790,
-    zoom: 12,
-    keywords: ['city', 'mindanao', 'peninsula'],
-  ),
-  MapSearchResult(
-    title: 'Butuan',
-    subtitle: 'Caraga, Philippines',
-    lat: 8.9475,
-    lon: 125.5406,
-    zoom: 12,
-    keywords: ['city', 'mindanao', 'caraga'],
-  ),
-  MapSearchResult(
-    title: 'Iligan',
-    subtitle: 'Lanao del Norte, Philippines',
-    lat: 8.2280,
-    lon: 124.2452,
-    zoom: 12,
-    keywords: ['city', 'mindanao', 'waterfalls'],
-  ),
-  MapSearchResult(
-    title: 'Mount Apo',
-    subtitle: 'National park, Mindanao',
-    lat: 6.9876,
-    lon: 125.2706,
-    zoom: 11,
-    keywords: ['mountain', 'hiking', 'volcano', 'park'],
-  ),
-  MapSearchResult(
-    title: 'Siargao Island',
-    subtitle: 'Surigao del Norte, Philippines',
-    lat: 9.8482,
-    lon: 126.0458,
-    zoom: 11,
-    keywords: ['island', 'surfing', 'beach', 'tourism'],
-  ),
-  MapSearchResult(
-    title: 'Manila',
-    subtitle: 'Metro Manila, Philippines',
-    lat: 14.5995,
-    lon: 120.9842,
-    zoom: 11,
-    keywords: ['capital', 'city', 'philippines'],
-  ),
-  MapSearchResult(
-    title: 'Cebu City',
-    subtitle: 'Central Visayas, Philippines',
-    lat: 10.3157,
-    lon: 123.8854,
-    zoom: 12,
-    keywords: ['cebu', 'city', 'visayas'],
-  ),
-];
 
 /// Default location when app starts.
 ///
@@ -339,6 +176,10 @@ class _MyAppState extends State<MyApp> {
 
   int? _bundledMwmVersion;
   Timer? _bearingTimer;
+  Timer? _searchDebounceTimer;
+  Timer? _searchPollTimer;
+  int _activeSearchGeneration = 0;
+  bool _nativeSearchRunning = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   List<MapSearchResult> _searchResults = const [];
@@ -365,6 +206,9 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _bearingTimer?.cancel();
+    _searchDebounceTimer?.cancel();
+    _searchPollTimer?.cancel();
+    agus_maps_flutter.cancelNativeSearch();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -769,8 +613,7 @@ class _MyAppState extends State<MyApp> {
     setState(() {
       _searchOpen = !_searchOpen;
       if (!_searchOpen) {
-        _searchController.clear();
-        _searchResults = const [];
+        _clearSearchState();
       }
     });
     if (_searchOpen) {
@@ -783,40 +626,162 @@ class _MyAppState extends State<MyApp> {
   void _onSearchChanged(String query) {
     final terms = _searchTerms(query);
     if (terms.isEmpty) {
+      _searchDebounceTimer?.cancel();
+      _searchPollTimer?.cancel();
+      agus_maps_flutter.cancelNativeSearch();
       setState(() {
         _searchResults = const [];
+        _nativeSearchRunning = false;
       });
       return;
     }
 
+    setState(() {
+      _searchResults = _buildSupplementalSearchResults(query, terms);
+      _nativeSearchRunning = _nativeSurfaceReady;
+    });
+
+    _searchDebounceTimer?.cancel();
+    if (!_nativeSurfaceReady) return;
+
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 250), () {
+      _startNativeSearch(query);
+    });
+  }
+
+  void _clearSearchState() {
+    _searchDebounceTimer?.cancel();
+    _searchPollTimer?.cancel();
+    agus_maps_flutter.cancelNativeSearch();
+    _searchFocusNode.unfocus();
+    _searchController.clear();
+    _searchResults = const [];
+    _nativeSearchRunning = false;
+    _activeSearchGeneration = 0;
+  }
+
+  void _startNativeSearch(String query) {
+    final trimmedQuery = query.trim();
+    if (!mounted || trimmedQuery.isEmpty) return;
+    if (_searchController.text.trim() != trimmedQuery) return;
+
+    final generation = agus_maps_flutter.startNativeSearch(
+      trimmedQuery,
+      locale: ui.PlatformDispatcher.instance.locale.toLanguageTag(),
+      interactive: true,
+    );
+
+    if (generation < 0) {
+      if (!mounted) return;
+      setState(() {
+        _nativeSearchRunning = false;
+      });
+      return;
+    }
+
+    _activeSearchGeneration = generation;
+    _searchPollTimer?.cancel();
+    _searchPollTimer = Timer.periodic(
+      const Duration(milliseconds: 200),
+      (_) => _pollNativeSearch(trimmedQuery, generation),
+    );
+    _pollNativeSearch(trimmedQuery, generation);
+  }
+
+  void _pollNativeSearch(String query, int generation) {
+    if (generation != _activeSearchGeneration) return;
+    if (!mounted || !_searchOpen || _searchController.text.trim() != query) {
+      _searchPollTimer?.cancel();
+      return;
+    }
+
+    final snapshot = agus_maps_flutter.getNativeSearchSnapshot();
+    if (snapshot.generation != generation) return;
+
+    final terms = _searchTerms(query);
+    final nativeResults = snapshot.results
+        .map(_nativeSearchResultToExampleResult)
+        .where((result) => result.title.isNotEmpty)
+        .toList(growable: false);
+    final supplementalResults = _buildSupplementalSearchResults(query, terms);
+    final mergedResults = _dedupeSearchResults([
+      ...supplementalResults.where(
+        (result) => result.source == MapSearchResultSource.coordinate,
+      ),
+      ...nativeResults,
+      ...supplementalResults.where(
+        (result) => result.source != MapSearchResultSource.coordinate,
+      ),
+    ]).take(20).toList(growable: false);
+
+    setState(() {
+      _searchResults = mergedResults;
+      _nativeSearchRunning = snapshot.isRunning;
+    });
+
+    if (!snapshot.isRunning) {
+      _searchPollTimer?.cancel();
+    }
+  }
+
+  MapSearchResult _nativeSearchResultToExampleResult(
+    agus_maps_flutter.NativeSearchResult result,
+  ) {
+    final title = result.title.isNotEmpty ? result.title : result.suggestion;
+    final subtitleParts = <String>[
+      if (result.subtitle.isNotEmpty) result.subtitle,
+      if (result.address.isNotEmpty && result.address != result.subtitle)
+        result.address,
+    ];
+    final subtitle = result.isSuggestion
+        ? 'Suggestion'
+        : subtitleParts.isEmpty
+            ? 'Map result'
+            : subtitleParts.join(' - ');
+
+    return MapSearchResult(
+      title: title,
+      subtitle: subtitle,
+      lat: result.lat,
+      lon: result.lon,
+      zoom: result.type == agus_maps_flutter.NativeSearchResultType.latLon
+          ? 15
+          : 17,
+      source: MapSearchResultSource.native,
+      nativeIndex: result.index,
+      isSuggestion: result.isSuggestion,
+      suggestion: result.suggestion,
+    );
+  }
+
+  List<MapSearchResult> _buildSupplementalSearchResults(
+    String query,
+    List<String> terms,
+  ) {
     final results = <MapSearchResult>[];
     final coordinateResult = _coordinateSearchResult(query);
     if (coordinateResult != null) {
       results.add(coordinateResult);
     }
 
-    results.addAll(
-      kFavorites
-          .map(
-            (favorite) => MapSearchResult(
-              title: favorite.name,
-              subtitle: 'Saved map target',
-              lat: favorite.lat,
-              lon: favorite.lon,
-              zoom: favorite.zoom,
-              keywords: ['favorite', 'region'],
-            ),
-          )
-          .where((result) => result.matches(terms)),
-    );
-
-    results.addAll(kSearchIndex.where((result) => result.matches(terms)));
-
-    final uniqueResults = _dedupeSearchResults(results)
+    final favoriteResults = kFavorites
+        .map(
+          (favorite) => MapSearchResult(
+            title: favorite.name,
+            subtitle: 'Saved map target',
+            lat: favorite.lat,
+            lon: favorite.lon,
+            zoom: favorite.zoom,
+            keywords: const ['favorite', 'region'],
+            source: MapSearchResultSource.favorite,
+          ),
+        )
+        .where((result) => result.matches(terms))
+        .toList(growable: false)
       ..sort((a, b) => a.score(terms).compareTo(b.score(terms)));
-    setState(() {
-      _searchResults = uniqueResults.take(12).toList(growable: false);
-    });
+
+    results.addAll(favoriteResults);
+    return _dedupeSearchResults(results).take(6).toList(growable: false);
   }
 
   List<String> _searchTerms(String query) => query
@@ -844,6 +809,7 @@ class _MyAppState extends State<MyApp> {
       lon: lon,
       zoom: 15,
       keywords: const ['coordinates', 'lat lon', 'latitude longitude'],
+      source: MapSearchResultSource.coordinate,
     );
   }
 
@@ -851,7 +817,9 @@ class _MyAppState extends State<MyApp> {
     final seen = <String>{};
     final unique = <MapSearchResult>[];
     for (final result in results) {
-      final key = '${result.title}|${result.lat}|${result.lon}'.toLowerCase();
+      final key = result.nativeIndex == null
+          ? '${result.title}|${result.lat}|${result.lon}'.toLowerCase()
+          : 'native:${result.nativeIndex}';
       if (seen.add(key)) {
         unique.add(result);
       }
@@ -860,13 +828,32 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _focusSearchResult(MapSearchResult result) {
-    _mapController.moveToLocation(result.lat, result.lon, result.zoom);
-    _searchFocusNode.unfocus();
+    if (result.isSuggestion) {
+      final suggestion =
+          result.suggestion.isNotEmpty ? result.suggestion : result.title;
+      _searchController.value = TextEditingValue(
+        text: suggestion,
+        selection: TextSelection.collapsed(offset: suggestion.length),
+      );
+      _onSearchChanged(suggestion);
+      _searchFocusNode.requestFocus();
+      return;
+    }
+
+    var selectedNativeResult = false;
+    if (result.isNative && result.nativeIndex != null) {
+      selectedNativeResult =
+          agus_maps_flutter.showNativeSearchResult(result.nativeIndex!) > 0;
+    }
+
+    if (!selectedNativeResult) {
+      _mapController.moveToLocation(result.lat, result.lon, result.zoom);
+    }
+
     setState(() {
       _searchOpen = false;
-      _searchController.clear();
-      _searchResults = const [];
       _currentTabIndex = 0;
+      _clearSearchState();
     });
   }
 
@@ -1360,7 +1347,7 @@ class _MyAppState extends State<MyApp> {
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'No results',
+                          _nativeSearchRunning ? 'Searching...' : 'No results',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ),
@@ -1373,7 +1360,7 @@ class _MyAppState extends State<MyApp> {
                       itemBuilder: (context, index) {
                         final result = _searchResults[index];
                         return ListTile(
-                          leading: const Icon(Icons.place_outlined),
+                          leading: Icon(_searchResultIcon(result)),
                           title: Text(result.title),
                           subtitle: Text(result.subtitle),
                           onTap: () => _focusSearchResult(result),
@@ -1384,6 +1371,15 @@ class _MyAppState extends State<MyApp> {
         ],
       ),
     );
+  }
+
+  IconData _searchResultIcon(MapSearchResult result) {
+    if (result.isSuggestion) return Icons.north_west;
+    return switch (result.source) {
+      MapSearchResultSource.coordinate => Icons.my_location_outlined,
+      MapSearchResultSource.favorite => Icons.favorite_border,
+      MapSearchResultSource.native => Icons.place_outlined,
+    };
   }
 
   Widget _buildMapControls() {

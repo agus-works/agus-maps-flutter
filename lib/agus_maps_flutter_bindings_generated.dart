@@ -487,6 +487,85 @@ class AgusMapsFlutterBindings {
   late final _comaps_place_page_clear_selection =
       _comaps_place_page_clear_selectionPtr.asFunction<void Function()>();
 
+  /// Start native CoMaps search. Returns the search generation, or a negative
+  /// value if the framework/query is not ready. When interactive is non-zero,
+  /// CoMaps also starts search-in-viewport for native map result marks.
+  int comaps_search_start(
+    ffi.Pointer<ffi.Char> query,
+    ffi.Pointer<ffi.Char> locale,
+    int interactive,
+    int isCategory,
+  ) {
+    return _comaps_search_start(
+      query,
+      locale,
+      interactive,
+      isCategory,
+    );
+  }
+
+  late final _comaps_search_startPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>,
+              ffi.Int32, ffi.Int32)>>('comaps_search_start');
+  late final _comaps_search_start = _comaps_search_startPtr.asFunction<
+      int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>, int, int)>();
+
+  /// Returns a heap-allocated snapshot of the latest native search state.
+  /// Call comaps_search_results_free when done.
+  ffi.Pointer<AgusSearchResults> comaps_search_copy_results() {
+    return _comaps_search_copy_results();
+  }
+
+  late final _comaps_search_copy_resultsPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<AgusSearchResults> Function()>>(
+          'comaps_search_copy_results');
+  late final _comaps_search_copy_results = _comaps_search_copy_resultsPtr
+      .asFunction<ffi.Pointer<AgusSearchResults> Function()>();
+
+  /// Frees a snapshot allocated by comaps_search_copy_results.
+  void comaps_search_results_free(
+    ffi.Pointer<AgusSearchResults> data,
+  ) {
+    return _comaps_search_results_free(
+      data,
+    );
+  }
+
+  late final _comaps_search_results_freePtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Void Function(ffi.Pointer<AgusSearchResults>)>>(
+      'comaps_search_results_free');
+  late final _comaps_search_results_free = _comaps_search_results_freePtr
+      .asFunction<void Function(ffi.Pointer<AgusSearchResults>)>();
+
+  /// Selects a non-suggestion result from the latest native search result list.
+  /// Returns 1 on success, 0 if the index points to a suggestion, or negative on
+  /// invalid state/index.
+  int comaps_search_show_result(
+    int index,
+  ) {
+    return _comaps_search_show_result(
+      index,
+    );
+  }
+
+  late final _comaps_search_show_resultPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Int32)>>(
+          'comaps_search_show_result');
+  late final _comaps_search_show_result =
+      _comaps_search_show_resultPtr.asFunction<int Function(int)>();
+
+  /// Cancels active native search requests and clears cached search results.
+  void comaps_search_cancel() {
+    return _comaps_search_cancel();
+  }
+
+  late final _comaps_search_cancelPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('comaps_search_cancel');
+  late final _comaps_search_cancel =
+      _comaps_search_cancelPtr.asFunction<void Function()>();
+
   /// Scale (zoom) the map by a factor, centered on a specific pixel point.
   /// factor: Zoom factor (>1 zooms in, <1 zooms out). Use exp(scrollDelta) for smooth zooming.
   /// pixelX, pixelY: Screen coordinates to zoom towards (in physical pixels)
@@ -864,6 +943,51 @@ final class AgusPlacePageData extends ffi.Struct {
 
   @ffi.Int64()
   external int track_id;
+}
+
+/// Search result types mirrored from search::Result::Type.
+/// 0=Feature, 1=LatLon, 2=PureSuggest, 3=SuggestFromFeature, 4=Postcode.
+final class AgusSearchResult extends ffi.Struct {
+  @ffi.Int32()
+  external int index;
+
+  @ffi.Int32()
+  external int result_type;
+
+  @ffi.Int32()
+  external int is_suggestion;
+
+  @ffi.Int32()
+  external int has_point;
+
+  external ffi.Pointer<ffi.Char> title;
+
+  external ffi.Pointer<ffi.Char> subtitle;
+
+  external ffi.Pointer<ffi.Char> address;
+
+  external ffi.Pointer<ffi.Char> suggestion;
+
+  @ffi.Double()
+  external double lat;
+
+  @ffi.Double()
+  external double lon;
+}
+
+/// Search snapshot status values:
+/// 0=idle, 1=running, 2=completed, 3=cancelled, 4=error.
+final class AgusSearchResults extends ffi.Struct {
+  @ffi.Int32()
+  external int generation;
+
+  @ffi.Int32()
+  external int status;
+
+  @ffi.Int32()
+  external int result_count;
+
+  external ffi.Pointer<AgusSearchResult> results;
 }
 
 typedef FrameReadyCallbackFunction = ffi.Void Function();
