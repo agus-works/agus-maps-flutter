@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'process_runner.dart' show runProcess;
 import 'platform_detector.dart' show getPatchesDir, getComapsDir;
+import 'git_operations.dart' show resetComapsWorkingTree;
 
 /// Apply all patches from patches/comaps/ directory
 Future<void> applyPatches({String? comapsDir, String? patchesDir}) async {
@@ -31,26 +32,7 @@ Future<void> applyPatches({String? comapsDir, String? patchesDir}) async {
 
   print('Found ${patchFiles.length} patches to apply');
 
-  // Reset working tree to clean state
-  print('Resetting working tree to HEAD...');
-  await runProcess('git', ['reset', 'HEAD', '--', '.'],
-      workingDirectory: comaps);
-  await runProcess('git', ['checkout', '--', '.'], workingDirectory: comaps);
-  await runProcess('git', ['clean', '-fd'], workingDirectory: comaps);
-
-  // Reset submodules
-  print('Resetting submodules...');
-  try {
-    await runProcess('git',
-        ['submodule', 'foreach', '--recursive', 'git', 'checkout', '--', '.'],
-        workingDirectory: comaps);
-    await runProcess(
-        'git', ['submodule', 'foreach', '--recursive', 'git', 'clean', '-fd'],
-        workingDirectory: comaps);
-  } catch (e) {
-    // Submodule reset may fail if there are no submodules, ignore
-    print('Note: Submodule reset had warnings (may be expected)');
-  }
+  await resetComapsWorkingTree(comapsDir: comaps);
 
   int applied = 0;
   int skipped = 0;
