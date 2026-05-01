@@ -195,6 +195,10 @@ The example search box should behave like CoMaps:
 9. Tapping a suggestion replaces the query and searches again.
 10. Tapping a native map result calls `showNativeSearchResult(index)`.
 11. Tapping a local coordinate/favorite result moves the controller directly.
+12. Opening the keyboard must not resize the native map surface. The search
+    field, results dropdown, place page, and keyboard are overlays above a
+    stable map viewport. If the keyboard would cover search results, constrain
+    or reposition only the dropdown, not the map renderer.
 
 ### Platform Coverage
 

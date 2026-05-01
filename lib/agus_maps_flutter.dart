@@ -872,6 +872,20 @@ class AgusMapController {
   }
 }
 
+/// Controls how [AgusMap] reacts to Flutter layout size changes.
+enum AgusMapResizePolicy {
+  /// Preserve the native map surface during mobile keyboard occlusion.
+  ///
+  /// This keeps the renderer stable while search fields, result panels, and
+  /// keyboards are layered above the map. Real viewport changes such as
+  /// rotation, split-screen resizing, and device-pixel-ratio changes still
+  /// resize the surface.
+  stableViewport,
+
+  /// Resize the native map surface whenever Flutter layout constraints change.
+  resizeWithLayout,
+}
+
 /// A Flutter widget that displays a CoMaps map.
 ///
 /// The widget handles initialization, sizing, and gesture events.
@@ -912,6 +926,9 @@ class AgusMap extends StatefulWidget {
   /// This does not change zoom; it adjusts visual scale only.
   final double userScale;
 
+  /// Policy for native surface resizing when Flutter layout changes.
+  final AgusMapResizePolicy resizePolicy;
+
   const AgusMap({
     super.key,
     this.initialLat,
@@ -922,6 +939,7 @@ class AgusMap extends StatefulWidget {
     this.controller,
     this.isVisible = true,
     this.userScale = 1.0,
+    this.resizePolicy = AgusMapResizePolicy.stableViewport,
   });
 
   @override
@@ -939,9 +957,12 @@ class _TapState {
 class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   int? _textureId;
   Size? _currentSize; // Logical size
+  int? _currentPhysicalWidth;
+  int? _currentPhysicalHeight;
   bool _surfaceCreated = false;
   double _devicePixelRatio = 1.0;
   double _userScale = 1.0;
+  double _visualScale = 1.0;
   double _lastPanZoomRotation = 0.0;
   double _lastPanZoomBearing = 0.0;
 
@@ -977,30 +998,31 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
       final size = renderObject.size;
       if (size.width <= 0 || size.height <= 0) return;
 
+      final resizeSize = _effectiveResizeSize(size);
       final pixelRatio = View.of(context).devicePixelRatio;
       final userScale = widget.userScale;
 
       if (!_surfaceCreated) {
         if (widget.isVisible) {
-          _createSurface(size, pixelRatio, userScale);
+          _createSurface(resizeSize, pixelRatio, userScale);
         } else {
-          _pendingResizeSize = size;
+          _pendingResizeSize = resizeSize;
           _pendingResizePixelRatio = pixelRatio;
           _pendingResizeUserScale = userScale;
         }
         return;
       }
 
-      if (_currentSize == size &&
+      if (_currentSize == resizeSize &&
           _devicePixelRatio == pixelRatio &&
           _userScale == userScale) {
         return;
       }
 
       if (widget.isVisible) {
-        _handleResize(size, pixelRatio, userScale);
+        _handleResize(resizeSize, pixelRatio, userScale);
       } else {
-        _pendingResizeSize = size;
+        _pendingResizeSize = resizeSize;
         _pendingResizePixelRatio = pixelRatio;
         _pendingResizeUserScale = userScale;
       }
@@ -1048,6 +1070,9 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
         : (logicalSize.height * pixelRatio).toInt();
 
     final visualScale = pixelRatio * userScale;
+    _currentPhysicalWidth = physicalWidth;
+    _currentPhysicalHeight = physicalHeight;
+    _visualScale = visualScale;
     debugPrint(
       '[AgusMap] Creating surface: ${logicalSize.width.toInt()}x${logicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical (ratio: $pixelRatio, userScale: ${userScale.toStringAsFixed(2)}, visual: ${visualScale.toStringAsFixed(3)})',
     );
@@ -1091,9 +1116,6 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
     }
     if (_textureId == null) return;
 
-    _devicePixelRatio = pixelRatio;
-    _userScale = userScale;
-
     // Convert logical pixels to physical pixels
     final physicalWidth = Platform.isWindows
         ? (newLogicalSize.width * pixelRatio).round()
@@ -1105,6 +1127,21 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
     if (physicalWidth <= 0 || physicalHeight <= 0) return;
 
     final visualScale = pixelRatio * userScale;
+    final sizeUnchanged = physicalWidth == _currentPhysicalWidth &&
+        physicalHeight == _currentPhysicalHeight;
+    final scaleUnchanged = _sameVisualScale(visualScale, _visualScale);
+
+    _currentSize = newLogicalSize;
+    _currentPhysicalWidth = physicalWidth;
+    _currentPhysicalHeight = physicalHeight;
+    _devicePixelRatio = pixelRatio;
+    _userScale = userScale;
+    _visualScale = visualScale;
+
+    if (sizeUnchanged && scaleUnchanged) {
+      return;
+    }
+
     debugPrint(
       '[AgusMap] Resizing: ${newLogicalSize.width.toInt()}x${newLogicalSize.height.toInt()} logical, ${physicalWidth}x$physicalHeight physical (ratio: $pixelRatio, userScale: ${userScale.toStringAsFixed(2)}, visual: ${visualScale.toStringAsFixed(3)})',
     );
@@ -1118,10 +1155,35 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
     await resizeMapSurface(physicalWidth, physicalHeight, density: visualScale);
 
     if (mounted) {
-      setState(() {
-        _currentSize = newLogicalSize;
-      });
+      setState(() {});
     }
+  }
+
+  bool _sameVisualScale(double left, double right) {
+    return (left - right).abs() < 0.0001;
+  }
+
+  bool _preservesViewportDuringKeyboard() {
+    return widget.resizePolicy == AgusMapResizePolicy.stableViewport &&
+        (Platform.isAndroid || Platform.isIOS);
+  }
+
+  Size _effectiveResizeSize(Size layoutSize) {
+    if (!_preservesViewportDuringKeyboard()) return layoutSize;
+
+    final currentSize = _currentSize;
+    if (currentSize == null) return layoutSize;
+
+    final keyboardVisible = View.of(context).viewInsets.bottom > 0;
+    if (!keyboardVisible) return layoutSize;
+
+    final sameWidth = (layoutSize.width - currentSize.width).abs() < 0.5;
+    final heightShrank = layoutSize.height < currentSize.height;
+    if (sameWidth && heightShrank) {
+      return currentSize;
+    }
+
+    return layoutSize;
   }
 
   // Track active pointers for multitouch
@@ -1280,32 +1342,33 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final size = Size(constraints.maxWidth, constraints.maxHeight);
+        final layoutSize = Size(constraints.maxWidth, constraints.maxHeight);
+        final resizeSize = _effectiveResizeSize(layoutSize);
         final pixelRatio = MediaQuery.of(context).devicePixelRatio;
         final userScale = widget.userScale;
 
         // Create surface on first layout (only if visible)
-        if (!_surfaceCreated && size.width > 0 && size.height > 0) {
+        if (!_surfaceCreated && resizeSize.width > 0 && resizeSize.height > 0) {
           if (widget.isVisible) {
             // Use post-frame callback to avoid calling during build
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _createSurface(size, pixelRatio, userScale);
+              _createSurface(resizeSize, pixelRatio, userScale);
             });
           }
         } else if (_surfaceCreated &&
-            (_currentSize != size ||
+            (_currentSize != resizeSize ||
                 _devicePixelRatio != pixelRatio ||
                 _userScale != userScale)) {
           // Handle resize or pixel ratio change
           if (widget.isVisible) {
             // Apply resize immediately when visible
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _handleResize(size, pixelRatio, userScale);
+              _handleResize(resizeSize, pixelRatio, userScale);
             });
           } else {
             // Defer resize until visible to avoid unnecessary memory allocations
             // (e.g., keyboard open/close causing CVPixelBuffer recreation on iOS)
-            _pendingResizeSize = size;
+            _pendingResizeSize = resizeSize;
             _pendingResizePixelRatio = pixelRatio;
             _pendingResizeUserScale = userScale;
           }
@@ -1325,8 +1388,8 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
           onPointerPanZoomUpdate: _handlePointerPanZoomUpdate,
           onPointerPanZoomEnd: _handlePointerPanZoomEnd,
           child: SizedBox(
-            width: size.width,
-            height: size.height,
+            width: layoutSize.width,
+            height: layoutSize.height,
             child: Texture(
               textureId: _textureId!,
               filterQuality:

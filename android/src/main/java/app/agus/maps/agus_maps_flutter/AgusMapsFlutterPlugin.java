@@ -182,13 +182,31 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, AgusMapsApi.AgusMap
         Double densityArg = request.getDensity();
 
         if (width > 0 && height > 0) {
-            surfaceWidth = width;
-            surfaceHeight = height;
-            surfaceProducer.setSize(width, height);
-            nativeOnSizeChanged(width, height);
+            float requestedDensity = density;
             if (densityArg != null && densityArg > 0) {
-                nativeSetVisualScale(densityArg.floatValue());
+                requestedDensity = densityArg.floatValue();
             }
+
+            boolean sizeUnchanged = width == surfaceWidth && height == surfaceHeight;
+            boolean densityUnchanged = Math.abs(requestedDensity - density) < 0.0001f;
+
+            if (sizeUnchanged && densityUnchanged) {
+                result.success(true);
+                return;
+            }
+
+            if (!sizeUnchanged) {
+                surfaceWidth = width;
+                surfaceHeight = height;
+                surfaceProducer.setSize(width, height);
+                nativeOnSizeChanged(width, height);
+            }
+
+            if (!densityUnchanged) {
+                density = requestedDensity;
+                nativeSetVisualScale(density);
+            }
+
             result.success(true);
         } else {
             result.error(new AgusMapsApi.FlutterError(

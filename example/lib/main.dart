@@ -1201,6 +1201,7 @@ class _MyAppState extends State<MyApp> {
       home: Builder(
         builder: (context) {
           return Scaffold(
+            resizeToAvoidBottomInset: _currentTabIndex != 0,
             body: SafeArea(
               // Use IndexedStack to keep all tabs alive (especially the map)
               // This prevents the map from being unmounted/remounted when switching tabs
@@ -1315,6 +1316,7 @@ class _MyAppState extends State<MyApp> {
           isVisible:
               _currentTabIndex == 0, // Only resize when map tab is active
           userScale: _mapScale,
+          resizePolicy: agus_maps_flutter.AgusMapResizePolicy.stableViewport,
         ),
         Positioned(
           top: 12,
@@ -1339,6 +1341,12 @@ class _MyAppState extends State<MyApp> {
   Widget _buildSearchOverlay(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final resultPanelMaxHeight = max(
+      120.0,
+      min(220.0, screenHeight - viewInsets.bottom - 140.0),
+    );
     return Material(
       color: colorScheme.surface,
       elevation: 3,
@@ -1376,7 +1384,7 @@ class _MyAppState extends State<MyApp> {
           ),
           if (_searchOpen && _searchController.text.isNotEmpty)
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
+              constraints: BoxConstraints(maxHeight: resultPanelMaxHeight),
               child: _searchResults.isEmpty
                   ? Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
