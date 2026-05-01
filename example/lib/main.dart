@@ -62,6 +62,7 @@ class MapSearchResult {
   final double lat;
   final double lon;
   final int zoom;
+  final List<String> keywords;
 
   const MapSearchResult({
     required this.title,
@@ -69,8 +70,214 @@ class MapSearchResult {
     required this.lat,
     required this.lon,
     required this.zoom,
+    this.keywords = const [],
   });
+
+  bool matches(List<String> terms) {
+    final searchText = '$title $subtitle ${keywords.join(' ')}'.toLowerCase();
+    return terms.every(searchText.contains);
+  }
+
+  int score(List<String> terms) {
+    final normalizedTitle = title.toLowerCase();
+    final normalizedSubtitle = subtitle.toLowerCase();
+    final normalizedKeywords = keywords.join(' ').toLowerCase();
+    var score = title.length;
+    for (final term in terms) {
+      if (normalizedTitle == term) {
+        score -= 40;
+      } else if (normalizedTitle.startsWith(term)) {
+        score -= 25;
+      } else if (normalizedTitle.contains(term)) {
+        score -= 15;
+      } else if (normalizedSubtitle.contains(term)) {
+        score -= 8;
+      } else if (normalizedKeywords.contains(term)) {
+        score -= 4;
+      }
+    }
+    return score;
+  }
 }
+
+const List<MapSearchResult> kSearchIndex = [
+  MapSearchResult(
+    title: 'Gibraltar International Airport',
+    subtitle: 'Airport, Gibraltar',
+    lat: 36.1512,
+    lon: -5.3497,
+    zoom: 16,
+    keywords: ['runway', 'terminal', 'gib', 'travel'],
+  ),
+  MapSearchResult(
+    title: 'Rock of Gibraltar',
+    subtitle: 'Landmark, Gibraltar Nature Reserve',
+    lat: 36.1430,
+    lon: -5.3430,
+    zoom: 15,
+    keywords: ['rock', 'nature', 'reserve', 'viewpoint', 'tourism'],
+  ),
+  MapSearchResult(
+    title: 'Europa Point',
+    subtitle: 'Lighthouse and viewpoint, Gibraltar',
+    lat: 36.1093,
+    lon: -5.3459,
+    zoom: 15,
+    keywords: ['lighthouse', 'viewpoint', 'south', 'tourism'],
+  ),
+  MapSearchResult(
+    title: 'Main Street',
+    subtitle: 'Shopping street, Gibraltar',
+    lat: 36.1405,
+    lon: -5.3536,
+    zoom: 17,
+    keywords: ['shops', 'shopping', 'restaurant', 'cafe', 'food'],
+  ),
+  MapSearchResult(
+    title: 'Grand Casemates Square',
+    subtitle: 'Restaurants and plaza, Gibraltar',
+    lat: 36.1442,
+    lon: -5.3533,
+    zoom: 17,
+    keywords: ['restaurant', 'cafe', 'food', 'plaza', 'square'],
+  ),
+  MapSearchResult(
+    title: 'Ocean Village',
+    subtitle: 'Marina, restaurants, Gibraltar',
+    lat: 36.1474,
+    lon: -5.3544,
+    zoom: 16,
+    keywords: ['marina', 'restaurant', 'food', 'hotel', 'casino'],
+  ),
+  MapSearchResult(
+    title: 'Cable Car Station',
+    subtitle: 'Upper Rock access, Gibraltar',
+    lat: 36.1348,
+    lon: -5.3497,
+    zoom: 17,
+    keywords: ['cable car', 'tourism', 'rock', 'viewpoint'],
+  ),
+  MapSearchResult(
+    title: 'Moorish Castle',
+    subtitle: 'Historic site, Gibraltar',
+    lat: 36.1456,
+    lon: -5.3508,
+    zoom: 16,
+    keywords: ['castle', 'history', 'tourism', 'landmark'],
+  ),
+  MapSearchResult(
+    title: 'Catalan Bay',
+    subtitle: 'Beach, Gibraltar',
+    lat: 36.1395,
+    lon: -5.3385,
+    zoom: 16,
+    keywords: ['beach', 'restaurant', 'village', 'east side'],
+  ),
+  MapSearchResult(
+    title: 'St Bernard\'s Hospital',
+    subtitle: 'Hospital, Gibraltar',
+    lat: 36.1438,
+    lon: -5.3611,
+    zoom: 16,
+    keywords: ['health', 'medical', 'emergency'],
+  ),
+  MapSearchResult(
+    title: 'Frontier Border Crossing',
+    subtitle: 'Gibraltar - Spain border',
+    lat: 36.1550,
+    lon: -5.3479,
+    zoom: 16,
+    keywords: ['border', 'frontier', 'customs', 'spain'],
+  ),
+  MapSearchResult(
+    title: 'Davao City',
+    subtitle: 'Mindanao, Philippines',
+    lat: 7.1907,
+    lon: 125.4553,
+    zoom: 12,
+    keywords: ['city', 'mindanao', 'philippines'],
+  ),
+  MapSearchResult(
+    title: 'Francisco Bangoy International Airport',
+    subtitle: 'Airport, Davao City',
+    lat: 7.1255,
+    lon: 125.6458,
+    zoom: 15,
+    keywords: ['davao airport', 'airport', 'travel'],
+  ),
+  MapSearchResult(
+    title: 'Cagayan de Oro',
+    subtitle: 'Northern Mindanao, Philippines',
+    lat: 8.4542,
+    lon: 124.6319,
+    zoom: 12,
+    keywords: ['cdo', 'city', 'mindanao'],
+  ),
+  MapSearchResult(
+    title: 'General Santos',
+    subtitle: 'South Cotabato, Philippines',
+    lat: 6.1164,
+    lon: 125.1716,
+    zoom: 12,
+    keywords: ['gensan', 'city', 'mindanao'],
+  ),
+  MapSearchResult(
+    title: 'Zamboanga City',
+    subtitle: 'Zamboanga Peninsula, Philippines',
+    lat: 6.9214,
+    lon: 122.0790,
+    zoom: 12,
+    keywords: ['city', 'mindanao', 'peninsula'],
+  ),
+  MapSearchResult(
+    title: 'Butuan',
+    subtitle: 'Caraga, Philippines',
+    lat: 8.9475,
+    lon: 125.5406,
+    zoom: 12,
+    keywords: ['city', 'mindanao', 'caraga'],
+  ),
+  MapSearchResult(
+    title: 'Iligan',
+    subtitle: 'Lanao del Norte, Philippines',
+    lat: 8.2280,
+    lon: 124.2452,
+    zoom: 12,
+    keywords: ['city', 'mindanao', 'waterfalls'],
+  ),
+  MapSearchResult(
+    title: 'Mount Apo',
+    subtitle: 'National park, Mindanao',
+    lat: 6.9876,
+    lon: 125.2706,
+    zoom: 11,
+    keywords: ['mountain', 'hiking', 'volcano', 'park'],
+  ),
+  MapSearchResult(
+    title: 'Siargao Island',
+    subtitle: 'Surigao del Norte, Philippines',
+    lat: 9.8482,
+    lon: 126.0458,
+    zoom: 11,
+    keywords: ['island', 'surfing', 'beach', 'tourism'],
+  ),
+  MapSearchResult(
+    title: 'Manila',
+    subtitle: 'Metro Manila, Philippines',
+    lat: 14.5995,
+    lon: 120.9842,
+    zoom: 11,
+    keywords: ['capital', 'city', 'philippines'],
+  ),
+  MapSearchResult(
+    title: 'Cebu City',
+    subtitle: 'Central Visayas, Philippines',
+    lat: 10.3157,
+    lon: 123.8854,
+    zoom: 12,
+    keywords: ['cebu', 'city', 'visayas'],
+  ),
+];
 
 /// Default location when app starts.
 ///
@@ -91,6 +298,8 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
   String _status = 'Initializing...';
   String _debug = '';
   bool _dataReady = false;
@@ -531,10 +740,10 @@ class _MyAppState extends State<MyApp> {
 
   void _startBearingUpdates() {
     _bearingTimer?.cancel();
-    _bearingTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
+    _bearingTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (!mounted || _currentTabIndex != 0 || !_nativeSurfaceReady) return;
       final bearing = agus_maps_flutter.getCurrentBearing();
-      if ((bearing - _currentBearing).abs() < 0.5) return;
+      if ((bearing - _currentBearing).abs() < 0.25) return;
       setState(() {
         _currentBearing = bearing;
       });
@@ -557,23 +766,82 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _onSearchChanged(String query) {
-    final normalized = query.trim().toLowerCase();
-    final results = normalized.isEmpty
-        ? const <MapSearchResult>[]
-        : kFavorites
-            .where(
-                (favorite) => favorite.name.toLowerCase().contains(normalized))
-            .map((favorite) => MapSearchResult(
-                  title: favorite.name,
-                  subtitle: 'Demo location',
-                  lat: favorite.lat,
-                  lon: favorite.lon,
-                  zoom: favorite.zoom,
-                ))
-            .toList();
+    final terms = _searchTerms(query);
+    if (terms.isEmpty) {
+      setState(() {
+        _searchResults = const [];
+      });
+      return;
+    }
+
+    final results = <MapSearchResult>[];
+    final coordinateResult = _coordinateSearchResult(query);
+    if (coordinateResult != null) {
+      results.add(coordinateResult);
+    }
+
+    results.addAll(
+      kFavorites
+          .map(
+            (favorite) => MapSearchResult(
+              title: favorite.name,
+              subtitle: 'Saved map target',
+              lat: favorite.lat,
+              lon: favorite.lon,
+              zoom: favorite.zoom,
+              keywords: ['favorite', 'region'],
+            ),
+          )
+          .where((result) => result.matches(terms)),
+    );
+
+    results.addAll(kSearchIndex.where((result) => result.matches(terms)));
+
+    final uniqueResults = _dedupeSearchResults(results)
+      ..sort((a, b) => a.score(terms).compareTo(b.score(terms)));
     setState(() {
-      _searchResults = results;
+      _searchResults = uniqueResults.take(12).toList(growable: false);
     });
+  }
+
+  List<String> _searchTerms(String query) => query
+      .trim()
+      .toLowerCase()
+      .split(RegExp(r'\s+'))
+      .where((term) => term.isNotEmpty)
+      .toList(growable: false);
+
+  MapSearchResult? _coordinateSearchResult(String query) {
+    final match = RegExp(
+      r'^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$',
+    ).firstMatch(query);
+    if (match == null) return null;
+
+    final lat = double.tryParse(match.group(1)!);
+    final lon = double.tryParse(match.group(2)!);
+    if (lat == null || lon == null) return null;
+    if (lat.abs() > 90 || lon.abs() > 180) return null;
+
+    return MapSearchResult(
+      title: '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}',
+      subtitle: 'Coordinates',
+      lat: lat,
+      lon: lon,
+      zoom: 15,
+      keywords: const ['coordinates', 'lat lon', 'latitude longitude'],
+    );
+  }
+
+  List<MapSearchResult> _dedupeSearchResults(List<MapSearchResult> results) {
+    final seen = <String>{};
+    final unique = <MapSearchResult>[];
+    for (final result in results) {
+      final key = '${result.title}|${result.lat}|${result.lon}'.toLowerCase();
+      if (seen.add(key)) {
+        unique.add(result);
+      }
+    }
+    return unique;
   }
 
   void _focusSearchResult(MapSearchResult result) {
@@ -651,7 +919,7 @@ class _MyAppState extends State<MyApp> {
 
   void _showMapMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    _scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(content: Text(message)),
     );
   }
@@ -759,6 +1027,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      scaffoldMessengerKey: _scaffoldMessengerKey,
       themeMode: _interfaceThemeMode,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
@@ -997,7 +1266,7 @@ class _MyAppState extends State<MyApp> {
           IconButton(
             tooltip: 'Reset north',
             icon: Transform.rotate(
-              angle: _currentBearing * pi / 180,
+              angle: -_currentBearing * pi / 180,
               child: const Icon(Icons.navigation),
             ),
             onPressed: _resetNorth,

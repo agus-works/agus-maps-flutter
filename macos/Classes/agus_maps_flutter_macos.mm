@@ -1142,6 +1142,9 @@ extern "C" FFI_PLUGIN_EXPORT void agus_native_set_surface(
         g_framework = std::make_unique<Framework>(params, false /* loadMaps */);
         SetViewportTracking();
         AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Framework created");
+
+        g_framework->RegisterAllMaps();
+        AGUS_DEBUG_LOG(@"[AgusMapsFlutter] Maps registered");
         
     }
     

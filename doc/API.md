@@ -373,7 +373,7 @@ Main Flutter widget that displays a CoMaps map.
 - `isVisible`: Whether map is currently visible (for `IndexedStack` optimization)
 - `userScale`: Visual scale multiplier for labels (combined with device pixel ratio)
 
-**Implementation**: Fully implemented with gesture handling, surface management, and visibility optimization
+**Implementation**: Fully implemented with gesture handling, surface management, and visibility optimization. Desktop builds handle scroll-wheel zoom. Windows and Linux handle pointer pan-zoom rotation where Flutter exposes the gesture; macOS installs native AppKit pinch and rotation recognizers for trackpads.
 
 #### `AgusMapController` Class
 Controller for programmatic map control.
@@ -473,7 +473,7 @@ Set 3D camera tilt angle (for 3D buildings mode).
 #### `setCameraBearing(double bearing)`
 Set map rotation/bearing.
 - **Difficulty**: Easy (Framework has `Rotate()` method)
-- **Implementation Status**: Implemented as `setMapBearing()` / `AgusMapController.setBearing()` with native `comaps_set_bearing()` and `comaps_reset_bearing()`.
+- **Implementation Status**: Implemented as `setMapBearing()` / `AgusMapController.setBearing()` with native `comaps_set_bearing()` and `comaps_reset_bearing()`. The `AgusMap` widget maps Windows/Linux pointer pan-zoom rotation to bearing changes on platforms that emit rotation updates, and macOS has a native trackpad rotation recognizer.
 - **Parameters**: Bearing in degrees (0 = north up, 90 = east up)
 - **Use Case**: Compass mode, navigation-oriented maps
 
@@ -501,7 +501,7 @@ Get bounding box of currently visible viewport.
 #### `searchEverywhere(String query, {String locale, int maxResults}) -> Future<List<SearchResult>>`
 Search for places everywhere (global search).
 - **Difficulty**: Medium (Framework has `SearchEverywhere()` with async callback pattern, needs Dart Future wrapper)
-- **Implementation Status**: Native CoMaps search bridge is still TODO. The example app now includes a first-pass map search overlay that searches bundled demo locations and focuses results through the controller.
+- **Implementation Status**: Native CoMaps search bridge is still TODO. The example app includes a local searchable place catalogue for bundled/demo regions, favorite map targets, and direct latitude/longitude input, then focuses results through the controller.
 - **Parameters**: Query string, optional locale and max results
 - **Returns**: List of search results with coordinates, names, types
 - **Use Case**: Address search, POI discovery

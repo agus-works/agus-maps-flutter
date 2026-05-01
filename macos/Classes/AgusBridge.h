@@ -134,6 +134,12 @@ void agus_render_frame(void);
 /// Scale the map around a focal point (desktop zoom)
 void comaps_scale(double factor, double pixelX, double pixelY, int animated);
 
+/// Get the current map bearing in degrees, where 0 is north-up.
+double comaps_get_current_bearing(void);
+
+/// Rotate the map to a bearing in degrees, where 0 is north-up.
+void comaps_set_bearing(double degrees, int animated);
+
 #ifdef __cplusplus
 }
 #endif
