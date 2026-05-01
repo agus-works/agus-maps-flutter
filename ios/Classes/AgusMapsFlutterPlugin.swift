@@ -300,6 +300,7 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             "types.txt",
             "subtypes.csv",
             "categories.txt",
+            "categories_brands.txt",
             "visibility.txt",
             "symbols/xxhdpi/light/symbols.png",
             "symbols/xxhdpi/light/symbols.sdf",  // Symbol textures required for rendering

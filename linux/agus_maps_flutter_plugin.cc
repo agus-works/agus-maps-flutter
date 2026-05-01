@@ -426,6 +426,7 @@ static bool data_dir_looks_complete(const fs::path& dir) {
   const fs::path required_files[] = {
     dir / "classificator.txt",
     dir / "types.txt",
+    dir / "categories_brands.txt",
     dir / "drules_proto.bin",
     dir / "packed_polygons.bin",
     dir / "transit_colors.txt",

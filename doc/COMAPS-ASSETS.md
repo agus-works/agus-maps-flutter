@@ -167,7 +167,7 @@ ls thirdparty/comaps/data/
 
 # Expected output:
 # categories-strings/  countries.txt  drules_proto.bin  ...
-# categories.txt       countries_meta.txt  fonts/  ...
+# categories.txt       categories_brands.txt  countries_meta.txt  fonts/  ...
 ```
 
 
@@ -308,6 +308,9 @@ All supported platforms now validate critical files before trusting
 extracted only part of the CoMaps data set. For example, iOS/macOS place pages
 require `subtypes.csv`; if it is missing, tapping some POIs can crash inside
 the native type formatter.
+
+Native search also requires `categories_brands.txt`; if it is missing, CoMaps
+ranking can throw while loading brand metadata for a query.
 
 All supported platforms also validate the symbol atlas before trusting the
 marker cache:
@@ -711,10 +714,11 @@ Ensure dependencies are installed for the symbols generator:
 
 ### "Search returns no results"
 
-**Cause:** Localization files missing or not extracted.
+**Cause:** Search data or localization files missing or not extracted.
 
 **Solution:**
-1. Verify `categories-strings/` and `countries-strings/` directories exist
+1. Verify `categories_brands.txt`, `categories-strings/`, and
+   `countries-strings/` exist under `example/assets/comaps_data/`
 2. Check that each locale is listed in `pubspec.yaml`:
    ```yaml
    - assets/comaps_data/categories-strings/en.json/

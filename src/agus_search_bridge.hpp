@@ -8,6 +8,10 @@
 
 #include "geometry/mercator.hpp"
 
+#include "base/logging.hpp"
+#include "defines.hpp"
+#include "platform/platform.hpp"
+
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -150,6 +154,20 @@ void MarkStatus(int32_t generation, SearchStatus status)
   if (generation == g_searchState.generation)
     g_searchState.status = status;
 }
+
+bool RequiredSearchResourcesAvailable()
+{
+  try
+  {
+    auto reader = GetPlatform().GetReader(SEARCH_BRAND_CATEGORIES_FILE_NAME);
+    return reader != nullptr;
+  }
+  catch (...)
+  {
+    LOG(LERROR, ("Agus search required resource missing:", SEARCH_BRAND_CATEGORIES_FILE_NAME));
+    return false;
+  }
+}
 }  // namespace
 
 static inline int32_t StartSearch(Framework * framework, char const * query, char const * locale, int32_t interactive,
@@ -172,6 +190,12 @@ static inline int32_t StartSearch(Framework * framework, char const * query, cha
 
   try
   {
+    if (!RequiredSearchResourcesAvailable())
+    {
+      MarkStatus(generation, SearchStatus::Error);
+      return -3;
+    }
+
     if (interactive != 0)
     {
       search::ViewportSearchParams viewportParams{queryString,

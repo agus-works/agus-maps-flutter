@@ -59,6 +59,7 @@ Future<void> copyDataFiles() async {
     'types.txt',
     'subtypes.csv',
     'categories.txt',
+    'categories_brands.txt',
     'visibility.txt',
     'countries.txt',
     'countries_meta.txt',

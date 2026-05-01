@@ -561,6 +561,7 @@ bool AgusMapsFlutterPlugin::DataDirLooksComplete(const fs::path& dataDir) {
     const fs::path requiredFiles[] = {
         dataDir / "classificator.txt",
         dataDir / "types.txt",
+        dataDir / "categories_brands.txt",
         dataDir / "drules_proto.bin",
         dataDir / "packed_polygons.bin",
         dataDir / "transit_colors.txt",
