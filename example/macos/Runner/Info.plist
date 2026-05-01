@@ -28,6 +28,8 @@
 	<string>MainMenu</string>
 	<key>NSLocationUsageDescription</key>
 	<string>Show your current position on the map.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Allow Agus Maps to estimate your position and center the map.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>
