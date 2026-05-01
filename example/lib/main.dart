@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -98,6 +99,20 @@ class MapSearchResult {
     }
     return score;
   }
+}
+
+class _LocationFix {
+  final double lat;
+  final double lon;
+  final int zoom;
+  final String? message;
+
+  const _LocationFix({
+    required this.lat,
+    required this.lon,
+    required this.zoom,
+    this.message,
+  });
 }
 
 const List<MapSearchResult> kSearchIndex = [
@@ -877,43 +892,172 @@ class _MyAppState extends State<MyApp> {
     });
 
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        _showMapMessage('Location services are disabled.');
+      final deviceLocation = await _getDeviceLocation();
+      if (deviceLocation != null) {
+        _focusLocation(deviceLocation);
         return;
       }
 
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        _showMapMessage('Location permission is not available.');
+      final estimatedLocation = await _getNetworkEstimatedLocation();
+      if (estimatedLocation != null) {
+        _focusLocation(estimatedLocation);
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
-      final zoom = agus_maps_flutter.getCurrentZoom() ?? 15;
-      _mapController.moveToLocation(
-        position.latitude,
-        position.longitude,
-        max(zoom, 15),
-      );
+      _showMapMessage('Unable to estimate current location.');
     } catch (error) {
       _log('Location failed: $error');
-      _showMapMessage('Unable to get current location.');
+      _showMapMessage('Unable to estimate current location.');
     } finally {
       if (mounted) {
         setState(() {
           _isLocating = false;
         });
       }
+    }
+  }
+
+  Future<_LocationFix?> _getDeviceLocation() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled().timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => false,
+    );
+    if (!serviceEnabled) {
+      _log('Location services are disabled; falling back to estimate.');
+      return null;
+    }
+
+    var permission = await Geolocator.checkPermission().timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => LocationPermission.denied,
+    );
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => LocationPermission.denied,
+      );
+    }
+
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      _log('Location permission is not available: $permission');
+      return null;
+    }
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      return _LocationFix(
+        lat: position.latitude,
+        lon: position.longitude,
+        zoom: 15,
+      );
+    } catch (error) {
+      _log('Precise location failed: $error');
+    }
+
+    try {
+      final position = await Geolocator.getLastKnownPosition().timeout(
+        const Duration(seconds: 2),
+      );
+      if (position != null) {
+        return _LocationFix(
+          lat: position.latitude,
+          lon: position.longitude,
+          zoom: 14,
+          message: 'Using last known device location.',
+        );
+      }
+    } catch (error) {
+      _log('Last known location failed: $error');
+    }
+
+    return null;
+  }
+
+  Future<_LocationFix?> _getNetworkEstimatedLocation() async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+
+    try {
+      final request = await client
+          .getUrl(Uri.parse('https://ipapi.co/json/'))
+          .timeout(const Duration(seconds: 4));
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set(HttpHeaders.userAgentHeader, 'agus-maps-example');
+
+      final response = await request.close().timeout(
+            const Duration(seconds: 6),
+          );
+      if (response.statusCode != HttpStatus.ok) {
+        _log('Network location returned HTTP ${response.statusCode}');
+        return null;
+      }
+
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 4));
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic> || decoded['error'] == true) {
+        return null;
+      }
+
+      final lat =
+          _jsonDouble(decoded['latitude']) ?? _jsonDouble(decoded['lat']);
+      final lon =
+          _jsonDouble(decoded['longitude']) ?? _jsonDouble(decoded['lon']);
+      if (lat == null || lon == null || lat.abs() > 90 || lon.abs() > 180) {
+        return null;
+      }
+
+      final placeParts = <Object?>[
+        decoded['city'],
+        decoded['region'],
+        decoded['country_name'] ?? decoded['country'],
+      ]
+          .whereType<String>()
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toList();
+      final place = placeParts.take(2).join(', ');
+
+      return _LocationFix(
+        lat: lat,
+        lon: lon,
+        zoom: 11,
+        message: place.isEmpty
+            ? 'Using approximate network location.'
+            : 'Using approximate network location near $place.',
+      );
+    } catch (error) {
+      _log('Network location estimate failed: $error');
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  double? _jsonDouble(Object? value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  void _focusLocation(_LocationFix location) {
+    final zoom = agus_maps_flutter.getCurrentZoom() ?? location.zoom;
+    _mapController.moveToLocation(
+      location.lat,
+      location.lon,
+      max(zoom, location.zoom),
+    );
+
+    final message = location.message;
+    if (message != null) {
+      _showMapMessage(message);
     }
   }
 

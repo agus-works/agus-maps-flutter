@@ -585,6 +585,27 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Prepare Large Android Build Volume
+        run: |
+          LARGE_DISK_ROOT="/mnt/agus-maps-ci"
+          if [ ! -d "/mnt" ]; then
+            LARGE_DISK_ROOT="${RUNNER_TEMP}/agus-maps-ci"
+          fi
+
+          sudo mkdir -p \
+            "$LARGE_DISK_ROOT/gradle-home" \
+            "$LARGE_DISK_ROOT/tmp" \
+            "$LARGE_DISK_ROOT/example-build" \
+            "$LARGE_DISK_ROOT/example-android-gradle"
+          sudo chown -R "$(id -u):$(id -g)" "$LARGE_DISK_ROOT"
+
+          echo "AGUS_CI_LARGE_DISK=$LARGE_DISK_ROOT" >> $GITHUB_ENV
+          echo "GRADLE_USER_HOME=$LARGE_DISK_ROOT/gradle-home" >> $GITHUB_ENV
+          echo "TMPDIR=$LARGE_DISK_ROOT/tmp" >> $GITHUB_ENV
+
+          echo "=== Large Build Volume ==="
+          df -h "$LARGE_DISK_ROOT"
+
       # ======================================================================
       # CoMaps Source Cache (Azure Blob Storage)
       # ======================================================================
@@ -834,13 +855,20 @@ jobs:
           echo "Cleaning large intermediate build directories before Flutter packaging..."
           rm -rf build/android-arm64-v8a build/android-armeabi-v7a build/android-x86_64
           rm -rf thirdparty/comaps/.git
-          rm -rf ~/.gradle/caches/transforms-* ~/.gradle/caches/*/transforms-* 2>/dev/null || true
+
+          GRADLE_CACHE_DIR="${GRADLE_USER_HOME:-$HOME/.gradle}/caches"
+          rm -rf "$GRADLE_CACHE_DIR"/transforms-* "$GRADLE_CACHE_DIR"/*/transforms-* 2>/dev/null || true
+
+          rm -rf example/build example/android/.gradle
+          mkdir -p "$AGUS_CI_LARGE_DISK/example-build" "$AGUS_CI_LARGE_DISK/example-android-gradle"
+          ln -s "$AGUS_CI_LARGE_DISK/example-build" example/build
+          ln -s "$AGUS_CI_LARGE_DISK/example-android-gradle" example/android/.gradle
 
           echo "=== Disk Usage (After Cleanup) ==="
           df -h
           echo ""
           echo "=== Workspace Usage (After Cleanup) ==="
-          du -sh thirdparty/comaps build build/agus-binaries-android example/build ~/.gradle/caches 2>/dev/null || true
+          du -sh thirdparty/comaps build build/agus-binaries-android example/build "$GRADLE_CACHE_DIR" 2>/dev/null || true
 
       # ======================================================================
       # Build Android Example App
@@ -888,11 +916,21 @@ jobs:
           echo "=== Map Assets ==="
           ls -lh "$ASSETS_DIR/"
 
+      - name: Force Android Pre-built Packaging
+        run: |
+          echo "AGUS_MAPS_HOME=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+          echo "Removing CoMaps source checkout before Flutter packaging..."
+          rm -rf thirdparty/comaps
+
+          echo "=== Disk Usage (Before Flutter Packaging) ==="
+          df -h
+          du -sh android/prebuilt example/build "$GRADLE_USER_HOME/caches" "$AGUS_CI_LARGE_DISK" 2>/dev/null || true
+
       - name: Build Android App Bundle (AAB)
         run: |
           echo "=== Disk Usage (Before AAB) ==="
           df -h
-          du -sh thirdparty/comaps build example/build ~/.gradle/caches 2>/dev/null || true
+          du -sh android/prebuilt build example/build "$GRADLE_USER_HOME/caches" "$AGUS_CI_LARGE_DISK" 2>/dev/null || true
           cd example
           flutter build appbundle --release \
             --build-name=1.0.0 \
@@ -900,6 +938,9 @@ jobs:
 
       - name: Build Android APK
         run: |
+          echo "=== Disk Usage (Before APK) ==="
+          df -h
+          du -sh android/prebuilt build example/build "$GRADLE_USER_HOME/caches" "$AGUS_CI_LARGE_DISK" 2>/dev/null || true
           cd example
           flutter build apk --release \
             --build-name=1.0.0 \
