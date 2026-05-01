@@ -330,34 +330,45 @@ Future<void> main(List<String> args) async {
           MirrorService.buildDownloadUrl(mirrorBaseUrl, snapshot, fileName);
       final destFile = File('${outputDir.path}/$fileName');
 
-      print('\n  ${Colors.blue('->')} $fileName');
-      if (verbose) print('    URL: $url');
-
-      if (!forceDownload && await destFile.exists()) {
-        final cachedSize = await destFile.length();
-        print(
-            '    ${Colors.green('[OK]')} Using cached file (${(cachedSize / (1024 * 1024)).toStringAsFixed(2)} MB)');
-        downloads.add(DownloadResult(
-          fileName: fileName,
-          url: url,
-          success: true,
-          cached: true,
-          bytesDownloaded: cachedSize,
-          duration: Duration.zero,
-          localPath: destFile.path,
-        ));
-        continue;
-      }
-
-      final downloadStart = DateTime.now();
-
-      // Get file size first
+      // Get file size first so cached files can be validated against the
+      // selected snapshot instead of blindly reusing stale assets.
       int? expectedSize;
       if (countriesData != null) {
         final regionId = fileName.replaceAll('.mwm', '');
         final region = countriesData.findRegion(regionId);
         expectedSize = region?.sizeBytes;
       }
+
+      print('\n  ${Colors.blue('->')} $fileName');
+      if (verbose) print('    URL: $url');
+
+      if (!forceDownload && await destFile.exists()) {
+        final cachedSize = await destFile.length();
+        final cacheMatchesSnapshot = expectedSize == null ||
+            expectedSize == 0 ||
+            cachedSize == expectedSize;
+        if (cacheMatchesSnapshot) {
+          print(
+              '    ${Colors.green('[OK]')} Using cached file (${(cachedSize / (1024 * 1024)).toStringAsFixed(2)} MB)');
+          downloads.add(DownloadResult(
+            fileName: fileName,
+            url: url,
+            success: true,
+            cached: true,
+            bytesDownloaded: cachedSize,
+            duration: Duration.zero,
+            localPath: destFile.path,
+          ));
+          continue;
+        }
+
+        print(
+          '    ${Colors.yellow('[WARN]')} Cached size ${_formatBytes(cachedSize)} '
+          'does not match snapshot size ${_formatBytes(expectedSize)}; re-downloading.',
+        );
+      }
+
+      final downloadStart = DateTime.now();
 
       final progressBar = ProgressBar(expectedSize ?? 0);
 
@@ -409,6 +420,11 @@ Future<void> main(List<String> args) async {
     print(
         '  Total downloaded: ${(totalBytes / (1024 * 1024)).toStringAsFixed(2)} MB');
 
+    if (failed == 0) {
+      await File('${outputDir.path}/.mwm_version').writeAsString(snapshot);
+      print('  Snapshot marker: $snapshot');
+    }
+
     // Generate report if requested
     final reportPath = options['report'] as String?;
     if (reportPath != null || reportPath == '') {
@@ -434,6 +450,13 @@ Future<void> main(List<String> args) async {
   } finally {
     service.dispose();
   }
+}
+
+String _formatBytes(int? bytes) {
+  if (bytes == null) return 'unknown';
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
 }
 
 void printUsage(ArgParser parser) {

@@ -21,6 +21,18 @@ import 'cmake_build.dart'
         buildLinuxLibrary;
 import 'archive_manager.dart' show createTarGz, extractTarGz;
 
+const int _minSymbolsPngBytes = 100000;
+const int _minSymbolsSdfBytes = 1000;
+const List<String> _symbolsDpiFolders = [
+  '6plus',
+  'mdpi',
+  'hdpi',
+  'xhdpi',
+  'xxhdpi',
+  'xxxhdpi',
+];
+const List<String> _symbolsStyleFolders = ['light', 'dark'];
+
 /// Build runner configuration
 class BuildRunnerConfig {
   final BuildMode mode;
@@ -464,18 +476,12 @@ Future<void> _generateComapsData() async {
   final visibilityFile = path.join(dataDir, 'visibility.txt');
   final categoriesFile = path.join(dataDir, 'categories.txt');
 
-  final symbolsSdf =
-      path.join(dataDir, 'symbols', 'xxhdpi', 'light', 'symbols.sdf');
-  final symbolsPng =
-      path.join(dataDir, 'symbols', 'xxhdpi', 'light', 'symbols.png');
-
   final dataAlreadyGenerated = await File(classificatorFile).exists() &&
       await File(typesFile).exists() &&
       await File(visibilityFile).exists() &&
       await File(categoriesFile).exists();
 
-  final symbolsReady =
-      await File(symbolsSdf).exists() && await File(symbolsPng).exists();
+  final symbolsReady = await _symbolsAtlasesReady(dataDir);
 
   if (dataAlreadyGenerated && symbolsReady) {
     print('Data files already generated');
@@ -490,6 +496,7 @@ Future<void> _generateComapsData() async {
   env['DATA_PATH'] = dataDir;
   env['PYTHONUTF8'] = '1';
   env['PYTHONIOENCODING'] = 'utf-8';
+  await _configurePythonForComapsCmake(env);
 
   Future<void> runUnixDataScripts() async {
     // Generate drawing rules
@@ -538,11 +545,7 @@ Future<void> _generateComapsData() async {
     }
 
     // Generate symbols atlas (symbols.png + symbols.sdf)
-    final symbolsSdf =
-        path.join(dataDir, 'symbols', 'xxhdpi', 'light', 'symbols.sdf');
-    final symbolsPng =
-        path.join(dataDir, 'symbols', 'xxhdpi', 'light', 'symbols.png');
-    if (!await File(symbolsSdf).exists() || !await File(symbolsPng).exists()) {
+    if (!await _symbolsAtlasesReady(dataDir)) {
       final generateSymbolsScript =
           path.join(comapsDir, 'tools', 'unix', 'generate_symbols.sh');
       if (await File(generateSymbolsScript).exists()) {
@@ -553,9 +556,11 @@ Future<void> _generateComapsData() async {
           workingDirectory: comapsDir,
           environment: env,
         );
+        await _validateSymbolsAtlases(dataDir);
       } else {
-        print(
-            'Warning: generate_symbols.sh not found; symbols atlas may be missing');
+        throw StateError(
+          'generate_symbols.sh not found; symbols atlas cannot be generated',
+        );
       }
     } else {
       print('Symbols atlas already generated');
@@ -580,6 +585,88 @@ Future<void> _generateComapsData() async {
 
   print('Data files generated');
   print('');
+}
+
+Future<bool> _symbolsAtlasesReady(String dataDir) async {
+  final invalid = await _findInvalidSymbolsAtlases(dataDir);
+  return invalid.isEmpty;
+}
+
+Future<void> _validateSymbolsAtlases(String dataDir) async {
+  final invalid = await _findInvalidSymbolsAtlases(dataDir);
+  if (invalid.isEmpty) return;
+
+  throw StateError(
+    'Generated symbols atlas is missing or too small: ${invalid.join(', ')}',
+  );
+}
+
+Future<List<String>> _findInvalidSymbolsAtlases(String dataDir) async {
+  final invalid = <String>[];
+  for (final dpi in _symbolsDpiFolders) {
+    for (final style in _symbolsStyleFolders) {
+      final pngPath = path.join(dataDir, 'symbols', dpi, style, 'symbols.png');
+      final sdfPath = path.join(dataDir, 'symbols', dpi, style, 'symbols.sdf');
+      if (!await _fileHasMinSize(pngPath, _minSymbolsPngBytes)) {
+        invalid.add(path.relative(pngPath, from: dataDir));
+      }
+      if (!await _fileHasMinSize(sdfPath, _minSymbolsSdfBytes)) {
+        invalid.add(path.relative(sdfPath, from: dataDir));
+      }
+    }
+  }
+  return invalid;
+}
+
+Future<bool> _fileHasMinSize(String filePath, int minBytes) async {
+  final file = File(filePath);
+  if (!await file.exists()) return false;
+  return await file.length() >= minBytes;
+}
+
+Future<void> _configurePythonForComapsCmake(Map<String, String> env) async {
+  final python = await _findCompatiblePythonProtobuf();
+  if (python == null) {
+    throw StateError(
+      'CoMaps data generation requires Python protobuf >=3.20 and <4.0. '
+      'Create .venv with protobuf 3.x or install a compatible system package.',
+    );
+  }
+
+  env['PYTHON3_EXECUTABLE'] = python;
+  print('Using Python for CoMaps CMake: $python');
+}
+
+Future<String?> _findCompatiblePythonProtobuf() async {
+  final repoRoot = getRepoRoot();
+  final venvPython = Platform.isWindows
+      ? path.join(repoRoot, '.venv', 'Scripts', 'python.exe')
+      : path.join(repoRoot, '.venv', 'bin', 'python');
+  final candidates = <String>[
+    if (await File(venvPython).exists()) venvPython,
+    if (await commandExists('python3')) 'python3',
+    if (await commandExists('python')) 'python',
+  ];
+
+  for (final candidate in candidates) {
+    final result = await runProcess(
+      candidate,
+      [
+        '-c',
+        'import sys\n'
+            'try:\n'
+            ' import google.protobuf as p\n'
+            ' parts = tuple(int(x) for x in p.__version__.split(".")[:2])\n'
+            ' sys.exit(0 if (3, 20) <= parts < (4, 0) else 2)\n'
+            'except Exception:\n'
+            ' sys.exit(1)\n',
+      ],
+      throwOnError: false,
+    );
+    if (result.exitCode == 0) return candidate;
+  }
+
+  return null;
 }
 
 /// Copy data files to example/assets

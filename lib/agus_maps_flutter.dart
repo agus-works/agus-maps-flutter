@@ -860,7 +860,8 @@ bool getNavigationTurnNotificationsEnabled() {
 
 /// Set the locale used by native turn notification text generation.
 void setNavigationTurnNotificationsLocale(String locale) {
-  final localePtr = locale.toNativeUtf8().cast<Char>();
+  final localePtr =
+      _turnNotificationsSoundLocale(locale).toNativeUtf8().cast<Char>();
   try {
     _bindings.comaps_navigation_set_turn_notifications_locale(localePtr);
   } on ArgumentError catch (error) {
@@ -870,6 +871,18 @@ void setNavigationTurnNotificationsLocale(String locale) {
   } finally {
     malloc.free(localePtr);
   }
+}
+
+String _turnNotificationsSoundLocale(String locale) {
+  final normalized = locale.trim().replaceAll('_', '-');
+  if (normalized.isEmpty) return normalized;
+
+  const supportedRegionalLocales = {'pt-BR', 'es-MX', 'zh-Hans', 'zh-Hant'};
+  if (supportedRegionalLocales.contains(normalized)) return normalized;
+
+  final separator = normalized.indexOf('-');
+  if (separator <= 0) return normalized;
+  return normalized.substring(0, separator);
 }
 
 /// Set speed camera warning behavior for native navigation.

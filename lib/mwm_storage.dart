@@ -50,24 +50,25 @@ class MwmMetadata {
   }) : filePath = _normalizePath(filePath);
 
   Map<String, dynamic> toJson() => {
-    'regionName': regionName,
-    'snapshotVersion': snapshotVersion,
-    'fileSize': fileSize,
-    'downloadDate': downloadDate.toIso8601String(),
-    'filePath': filePath,
-    'sha256': sha256,
-    'isBundled': isBundled,
-  };
+        'regionName': regionName,
+        'snapshotVersion': snapshotVersion,
+        'fileSize': fileSize,
+        'downloadDate': downloadDate.toIso8601String(),
+        'filePath': filePath,
+        'sha256': sha256,
+        'isBundled': isBundled,
+      };
 
   factory MwmMetadata.fromJson(Map<String, dynamic> json) => MwmMetadata(
-    regionName: json['regionName'] as String,
-    snapshotVersion: json['snapshotVersion'] as String,
-    fileSize: json['fileSize'] as int,
-    downloadDate: DateTime.parse(json['downloadDate'] as String),
-    filePath: json['filePath'] as String,  // Will be normalized in constructor
-    sha256: json['sha256'] as String?,
-    isBundled: json['isBundled'] as bool? ?? false,
-  );
+        regionName: json['regionName'] as String,
+        snapshotVersion: json['snapshotVersion'] as String,
+        fileSize: json['fileSize'] as int,
+        downloadDate: DateTime.parse(json['downloadDate'] as String),
+        filePath:
+            json['filePath'] as String, // Will be normalized in constructor
+        sha256: json['sha256'] as String?,
+        isBundled: json['isBundled'] as bool? ?? false,
+      );
 
   @override
   String toString() =>
@@ -153,13 +154,16 @@ class MwmStorage {
   /// Check if an update is available for a region.
   ///
   /// Compares the stored snapshot version with the latest available version.
-  /// Returns false for bundled files (they don't get updated).
   bool hasUpdate(String regionName, String latestSnapshotVersion) {
     final current = getByRegion(regionName);
     if (current == null) return false;
-    if (current.isBundled) {
-      return false; // Don't suggest updates for bundled files
+
+    final currentVersion = int.tryParse(current.snapshotVersion);
+    final latestVersion = int.tryParse(latestSnapshotVersion);
+    if (currentVersion != null && latestVersion != null) {
+      return currentVersion < latestVersion;
     }
+
     return current.snapshotVersion != latestSnapshotVersion;
   }
 
@@ -320,7 +324,7 @@ class MwmStorage {
   /// Returns [DeleteResult] with success status and any error message.
   Future<DeleteResult> deleteMap(String regionName) async {
     final metadata = getByRegion(regionName);
-    
+
     if (metadata == null) {
       return DeleteResult(
         regionName: regionName,
@@ -339,17 +343,17 @@ class MwmStorage {
 
     try {
       final file = File(metadata.filePath);
-      
+
       // Delete the file if it exists
       if (await file.exists()) {
         await file.delete();
         debugPrint('[MwmStorage] Deleted file: ${metadata.filePath}');
       }
-      
+
       // Remove metadata
       await remove(regionName);
       debugPrint('[MwmStorage] Removed metadata for: $regionName');
-      
+
       return DeleteResult(
         regionName: regionName,
         success: true,
@@ -409,7 +413,7 @@ class DeleteResult {
   @override
   String toString() {
     if (success) {
-      final mb = deletedBytes != null 
+      final mb = deletedBytes != null
           ? ' (${(deletedBytes! / (1024 * 1024)).toStringAsFixed(1)} MB freed)'
           : '';
       return 'DeleteResult($regionName: success$mb)';

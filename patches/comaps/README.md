@@ -1404,3 +1404,103 @@ implementation can be linked.
 **Without this patch:**
 - iOS/macOS builds can fail at link time with duplicate localization symbols.
 - Localization may be sourced from the wrong implementation.
+
+
+### 0071-tools-unix-generate-symbols-without-optipng.patch
+
+**File Modified:** `tools/unix/generate_symbols.sh`
+
+**Category:** Build Tooling / Asset Generation
+
+**Purpose:** Allows symbol atlas generation to continue when `optipng` is not
+installed.
+
+**What it does:**
+- Changes the `optipng` dependency from mandatory to optional.
+- Emits a warning when `optipng` is missing.
+- Skips only the PNG optimization pass while still generating `symbols.png` and
+  `symbols.sdf` for all DPI/style folders.
+- Passes `PYTHON3_EXECUTABLE` through to CMake when the Flutter build runner
+  selects a compatible local Python environment.
+- Passes `SKIP_QT_POSITIONING=true` during the symbol-generator configure so
+  QtPositioning is not required for atlas generation.
+
+**Why it's needed:**
+The Flutter build workflow needs valid CoMaps symbol atlases for map rendering.
+`optipng` only optimizes generated PNG files, but the upstream script exited
+before running the generator when `optipng` was absent. That allowed stale or
+zero-byte atlas assets to survive in `example/assets` and caused runtime
+texture creation errors. CoMaps also requires Python `protobuf >=3.20, <4.0`
+during CMake configure, so the script must accept the build runner’s selected
+Python interpreter instead of always using the system interpreter. The symbol
+generator does not use desktop location services, so it should not require the
+QtPositioning development package just because the top-level CoMaps configure
+includes `libs/platform`.
+
+**Without this patch:**
+- Contributor builds on machines without `optipng` fail to regenerate symbol
+  atlases.
+- Empty or missing `symbols.png` / `symbols.sdf` files can be copied into the
+  Flutter bundle.
+- The map renderer logs symbol texture errors and many style/icon lookup
+  failures at startup.
+- Systems with Python protobuf 4.x fail CMake configure even when a compatible
+  project virtual environment exists.
+- Systems without `qt6-positioning-dev` fail while building an unrelated
+  location service target.
+
+
+### 0072-libs-platform-location-service-skip-qt-positioning.patch
+
+**File Modified:** `libs/platform/location_service/CMakeLists.txt`
+
+**Category:** Build Tooling / Optional Qt Components
+
+**Purpose:** Allows tool-only CoMaps configures to skip the QtPositioning-backed
+desktop location service.
+
+**What it does:**
+- Adds a `SKIP_QT_POSITIONING` guard around the Linux QtPositioning branch.
+- Leaves the fallback `location_service` target buildable without QtPositioning
+  sources or link libraries when that flag is set.
+
+**Why it's needed:**
+The symbol atlas generator needs Qt Widgets/SVG/XML, but it does not use the
+desktop location service. CoMaps configures the full `libs/platform` tree before
+building `skin_generator_tool`, so a missing QtPositioning development package
+can otherwise block unrelated asset generation.
+
+**Without this patch:**
+- `generate_symbols.sh` can fail during CMake configure with
+  `Failed to find required Qt component "Positioning"`.
+- Valid symbol atlas generation would require installing an unnecessary
+  QtPositioning development package.
+
+
+### 0073-libs-map-transit-symbol-fallbacks.patch
+
+**File Modified:** `libs/map/transit/transit_display.cpp`
+
+**Category:** Runtime Rendering / Symbol Atlas Compatibility
+
+**Purpose:** Requests transit route symbols that exist in the current CoMaps
+icon atlas.
+
+**What it does:**
+- Maps transit route types whose `transit_*` icon names are absent from the
+  generated atlas to equivalent existing icons such as `tram`, `buses`,
+  `ship`, `cable-car`, `funicular`, and `airport`.
+- Keeps the existing atlas-backed names for subway, light rail, monorail, and
+  train.
+
+**Why it's needed:**
+The renderer requests all transit route symbol sizes during DrapeEngine
+initialization. Several upstream symbol names referenced by native transit code
+are not present in the current generated CoMaps icon pack, producing repeated
+`Detected using of unknown symbol` warnings on startup even when the symbol
+atlas was generated and loaded correctly.
+
+**Without this patch:**
+- Linux startup logs contain repeated unknown-symbol warnings for transit route
+  icons.
+- The logs make valid asset-loading problems harder to identify.
