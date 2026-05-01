@@ -27,6 +27,7 @@
 #include <memory>
 #include <atomic>
 #include <chrono>
+#include <cstdarg>
 #include <cstdio>
 #include <mutex>
 #include <vector>
@@ -56,6 +57,33 @@
 
 // Forward declarations for Windows platform (defined in agus_platform_win.cpp)
 extern "C" void AgusPlatformWin_InitPaths(const char* resourcePath, const char* writablePath);
+
+#if defined(NDEBUG) || defined(RELEASE)
+#define AGUS_RELEASE_BUILD 1
+#else
+#define AGUS_RELEASE_BUILD 0
+#endif
+
+static void AgusWriteLog(char const * message) {
+    OutputDebugStringA(message);
+    std::fprintf(stderr, "%s", message);
+    std::fflush(stderr);
+}
+
+static void AgusLogPrintf(char const * format, ...) {
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+    std::vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    AgusWriteLog(buffer);
+}
+
+#if AGUS_RELEASE_BUILD
+#define AGUS_DEBUG_LOG(...) do {} while (0)
+#else
+#define AGUS_DEBUG_LOG(...) AgusLogPrintf(__VA_ARGS__)
+#endif
 
 #pragma region Crash Dump Handler
 
@@ -397,6 +425,22 @@ static AgusPlacePageData* BuildPlacePageData(place_page::Info const & info) {
 
 /// Custom log handler that redirects to OutputDebugString and stderr
 static void AgusLogMessage(base::LogLevel level, base::SrcPoint const & src, std::string const & msg) {
+#if AGUS_RELEASE_BUILD
+    if (level < base::LWARNING) {
+        return;
+    }
+    if (msg.find("Detected using of unknown symbol") != std::string::npos ||
+        msg.find("Style error. Symbol name must be valid") != std::string::npos ||
+        msg.find("Bad emoji code: U+2139") != std::string::npos ||
+        msg.find("Can't find World map file") != std::string::npos ||
+        msg.find("Can't load cities boundaries") != std::string::npos ||
+        msg.find("Can't open en-US localization file: sound-strings") != std::string::npos ||
+        msg.find("Inconsistent MWM and version for LocalCountryFile") != std::string::npos ||
+        msg.find("Cannot read power manager config file") != std::string::npos) {
+        return;
+    }
+#endif
+
     const char* levelStr;
     switch (level) {
         case base::LDEBUG: levelStr = "DEBUG"; break;
@@ -408,14 +452,11 @@ static void AgusLogMessage(base::LogLevel level, base::SrcPoint const & src, std
     }
     
     std::string out = "[CoMaps " + std::string(levelStr) + "] " + DebugPrint(src) + msg + "\n";
-    
-    OutputDebugStringA(out.c_str());
-    std::fprintf(stderr, "%s", out.c_str());
-    std::fflush(stderr);
+    AgusWriteLog(out.c_str());
     
     // Only abort on CRITICAL, not ERROR
     if (level >= base::LCRITICAL) {
-        OutputDebugStringA("[CoMaps CRITICAL] Aborting...\n");
+        AgusWriteLog("[CoMaps CRITICAL] Aborting...\n");
         std::abort();
     }
 }
@@ -429,9 +470,7 @@ static void ensureLoggingConfigured() {
         // Install crash handler for better diagnostics
         installCrashHandler();
         
-        OutputDebugStringA("[AgusMapsFlutter] Logging initialized\n");
-        std::fprintf(stderr, "[AgusMapsFlutter] Logging initialized\n");
-        std::fflush(stderr);
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Logging initialized\n");
     }
 }
 
@@ -481,7 +520,7 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
     }
     
     if (width <= 0 || height <= 0) {
-        OutputDebugStringA("[AgusMapsFlutter] createDrapeEngine: Invalid dimensions\n");
+        AgusWriteLog("[AgusMapsFlutter] createDrapeEngine: Invalid dimensions\n");
         return;
     }
     
@@ -489,7 +528,7 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
     df::SetActiveFrameCallback([]() {
         notifyFlutterFrameReady();
     });
-    OutputDebugStringA("[AgusMapsFlutter] Active frame callback registered\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Active frame callback registered\n");
     
     Framework::DrapeCreationParams p;
     p.m_apiVersion = dp::ApiVersion::OpenGLES3;  // Use OpenGL on Windows
@@ -497,19 +536,13 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
     p.m_surfaceHeight = height;
     p.m_visualScale = density;
     
-    char msg[256];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Creating DrapeEngine: %dx%d, scale=%.2f, API=OpenGL\n",
-             width, height, density);
-    OutputDebugStringA(msg);
-    std::fprintf(stderr, "%s", msg);
-    std::fflush(stderr);
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Creating DrapeEngine: %dx%d, scale=%.2f, API=OpenGL\n",
+                   width, height, density);
     
     g_framework->CreateDrapeEngine(make_ref(g_threadSafeFactory), std::move(p));
     g_drapeEngineCreated = true;
     
-    OutputDebugStringA("[AgusMapsFlutter] DrapeEngine created successfully\n");
-    std::fprintf(stderr, "[AgusMapsFlutter] DrapeEngine created successfully\n");
-    std::fflush(stderr);
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] DrapeEngine created successfully\n");
 }
 
 #pragma endregion
@@ -532,13 +565,9 @@ FFI_PLUGIN_EXPORT void comaps_init(const char* apkPath, const char* storagePath)
 
 FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* writablePath) {
     ensureLoggingConfigured();
-    
-    char msg[512];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_init_paths: resource=%s, writable=%s\n",
-             resourcePath, writablePath);
-    OutputDebugStringA(msg);
-    std::fprintf(stderr, "%s", msg);
-    std::fflush(stderr);
+
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] comaps_init_paths: resource=%s, writable=%s\n",
+                   resourcePath, writablePath);
     
     // Store paths
     g_resourcePath = resourcePath ? resourcePath : "";
@@ -548,19 +577,17 @@ FFI_PLUGIN_EXPORT void comaps_init_paths(const char* resourcePath, const char* w
     AgusPlatformWin_InitPaths(resourcePath, writablePath);
     g_platformInitialized = true;
     
-    OutputDebugStringA("[AgusMapsFlutter] Platform initialized, Framework deferred to surface creation\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Platform initialized, Framework deferred to surface creation\n");
 }
 
 FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path) {
-    char msg[512];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_load_map_path: %s\n", path);
-    OutputDebugStringA(msg);
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] comaps_load_map_path: %s\n", path);
     
     if (g_framework) {
         g_framework->RegisterAllMaps();
-        OutputDebugStringA("[AgusMapsFlutter] Maps registered\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Maps registered\n");
     } else {
-        OutputDebugStringA("[AgusMapsFlutter] Framework not yet initialized, maps will be loaded later\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Framework not yet initialized, maps will be loaded later\n");
     }
 }
 
@@ -568,18 +595,13 @@ FFI_PLUGIN_EXPORT void comaps_load_map_path(const char* path) {
 extern "C" void agus_localization_set_locale(const char* localeTag);
 
 FFI_PLUGIN_EXPORT void comaps_set_locale(const char* localeTag) {
-    char msg[512];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_set_locale: %s\n", localeTag ? localeTag : "(null)");
-    OutputDebugStringA(msg);
-    std::fprintf(stderr, "%s", msg);
-    std::fflush(stderr);
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] comaps_set_locale: %s\n", localeTag ? localeTag : "(null)");
     
     if (localeTag && *localeTag) {
         agus_localization_set_locale(localeTag);
-        snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Locale set to '%s'\n", localeTag);
-        OutputDebugStringA(msg);
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Locale set to '%s'\n", localeTag);
     } else {
-        OutputDebugStringA("[AgusMapsFlutter] Empty locale tag, using auto-detect\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Empty locale tag, using auto-detect\n");
     }
 }
 
@@ -1039,10 +1061,10 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map(const char* fullPath) {
     
     snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_register_single_map: %s (normalized: %s)\n", 
              fullPath, normalizedPath.c_str());
-    OutputDebugStringA(msg);
+    AGUS_DEBUG_LOG("%s", msg);
     
     if (!g_framework) {
-        OutputDebugStringA("[AgusMapsFlutter] Framework not initialized\n");
+        AgusWriteLog("[AgusMapsFlutter] Framework not initialized\n");
         return -1;
     }
     
@@ -1061,16 +1083,16 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPa
 
     snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_register_single_map_with_version: %s (normalized: %s, version=%lld)\n",
         fullPath, normalizedPath, static_cast<long long>(version));
-    OutputDebugStringA(msg);
+    AGUS_DEBUG_LOG("%s", msg);
 
     if (!g_framework) {
-        OutputDebugStringA("[AgusMapsFlutter] comaps_register_single_map_with_version: Framework not initialized\n");
+        AgusWriteLog("[AgusMapsFlutter] comaps_register_single_map_with_version: Framework not initialized\n");
         return -1;
     }
 
     std::string path(normalizedPath);
     if (path.empty()) {
-        OutputDebugStringA("[AgusMapsFlutter] comaps_register_single_map_with_version: Empty path\n");
+        AgusWriteLog("[AgusMapsFlutter] comaps_register_single_map_with_version: Empty path\n");
         return -2;
     }
 
@@ -1085,20 +1107,18 @@ FFI_PLUGIN_EXPORT int comaps_register_single_map_with_version(const char* fullPa
     auto result = g_framework->RegisterMap(file);
     if (result.second == MwmSet::RegResult::Success) {
         snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_register_single_map_with_version: Successfully registered %s\n", fullPath);
-        OutputDebugStringA(msg);
+        AGUS_DEBUG_LOG("%s", msg);
         return 0;
     } else {
         snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_register_single_map_with_version: Failed to register %s, result=%d\n",
             fullPath, static_cast<int>(result.second));
-        OutputDebugStringA(msg);
+        AgusWriteLog(msg);
         return static_cast<int>(result.second);
     }
 }
 
 FFI_PLUGIN_EXPORT void comaps_shutdown(void) {
-    OutputDebugStringA("[AgusMapsFlutter] comaps_shutdown called\n");
-    std::fprintf(stderr, "[AgusMapsFlutter] comaps_shutdown called\n");
-    std::fflush(stderr);
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] comaps_shutdown called\n");
     
     std::lock_guard<std::mutex> lock(g_mutex);
     
@@ -1116,11 +1136,11 @@ FFI_PLUGIN_EXPORT void comaps_shutdown(void) {
     g_drapeEngineCreated = false;
     g_platformInitialized = false;
     
-    OutputDebugStringA("[AgusMapsFlutter] Shutdown complete\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Shutdown complete\n");
 }
 
 FFI_PLUGIN_EXPORT int comaps_deregister_map(const char* fullPath) {
-    OutputDebugStringA("[AgusMapsFlutter] comaps_deregister_map: not implemented\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] comaps_deregister_map: not implemented\n");
     return -1;
 }
 
@@ -1136,10 +1156,11 @@ FFI_PLUGIN_EXPORT int comaps_get_registered_maps_count(void) {
 }
 
 FFI_PLUGIN_EXPORT void comaps_debug_list_mwms(void) {
-    OutputDebugStringA("[AgusMapsFlutter] === DEBUG: Listing all registered MWMs ===\n");
+#if !AGUS_RELEASE_BUILD
+    AgusWriteLog("[AgusMapsFlutter] === DEBUG: Listing all registered MWMs ===\n");
     
     if (!g_framework) {
-        OutputDebugStringA("[AgusMapsFlutter] Framework not initialized\n");
+        AgusWriteLog("[AgusMapsFlutter] Framework not initialized\n");
         return;
     }
     
@@ -1149,7 +1170,7 @@ FFI_PLUGIN_EXPORT void comaps_debug_list_mwms(void) {
     
     char msg[256];
     snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Total MWMs registered: %zu\n", mwms.size());
-    OutputDebugStringA(msg);
+    AgusWriteLog(msg);
     
     for (auto const & mwmInfo : mwms) {
         if (mwmInfo) {
@@ -1157,24 +1178,26 @@ FFI_PLUGIN_EXPORT void comaps_debug_list_mwms(void) {
             snprintf(msg, sizeof(msg), "[AgusMapsFlutter]   MWM: %s, bounds: [%.4f, %.4f] - [%.4f, %.4f]\n",
                      mwmInfo->GetCountryName().c_str(),
                      rect.minX(), rect.minY(), rect.maxX(), rect.maxY());
-            OutputDebugStringA(msg);
+            AgusWriteLog(msg);
         }
     }
+#endif
 }
 
 FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
+#if !AGUS_RELEASE_BUILD
     char msg[256];
     snprintf(msg, sizeof(msg), "[AgusMapsFlutter] comaps_debug_check_point: lat=%.6f, lon=%.6f\n", lat, lon);
-    OutputDebugStringA(msg);
+    AgusWriteLog(msg);
     
     if (!g_framework) {
-        OutputDebugStringA("[AgusMapsFlutter] Framework not initialized\n");
+        AgusWriteLog("[AgusMapsFlutter] Framework not initialized\n");
         return;
     }
     
     m2::PointD const mercatorPt = mercator::FromLatLon(lat, lon);
     snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Mercator coords: (%.4f, %.4f)\n", mercatorPt.x, mercatorPt.y);
-    OutputDebugStringA(msg);
+    AgusWriteLog(msg);
     
     auto const & dataSource = g_framework->GetDataSource();
     std::vector<std::shared_ptr<MwmInfo>> mwms;
@@ -1184,12 +1207,13 @@ FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
         if (mwmInfo && mwmInfo->m_bordersRect.IsPointInside(mercatorPt)) {
             snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Point IS covered by MWM: %s\n",
                      mwmInfo->GetCountryName().c_str());
-            OutputDebugStringA(msg);
+            AgusWriteLog(msg);
             return;
         }
     }
     
-    OutputDebugStringA("[AgusMapsFlutter] Point is NOT covered by any registered MWM\n");
+    AgusWriteLog("[AgusMapsFlutter] Point is NOT covered by any registered MWM\n");
+#endif
 }
 
 #pragma endregion
@@ -1199,7 +1223,7 @@ FFI_PLUGIN_EXPORT void comaps_debug_check_point(double lat, double lon) {
 /// Set the frame ready callback
 FFI_PLUGIN_EXPORT void agus_set_frame_ready_callback(FrameReadyCallback callback) {
     g_frameReadyCallback = callback;
-    OutputDebugStringA("[AgusMapsFlutter] Frame ready callback set\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Frame ready callback set\n");
 }
 
 /// Called when the native surface is created
@@ -1208,16 +1232,12 @@ FFI_PLUGIN_EXPORT void agus_set_frame_ready_callback(FrameReadyCallback callback
 /// @param density Screen density / DPI scale
 FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height, float density) {
     ensureLoggingConfigured();
-    
-    char msg[256];
-    snprintf(msg, sizeof(msg), "[AgusMapsFlutter] agus_native_create_surface: %dx%d, density=%.2f\n",
-             width, height, density);
-    OutputDebugStringA(msg);
-    std::fprintf(stderr, "%s", msg);
-    std::fflush(stderr);
+
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] agus_native_create_surface: %dx%d, density=%.2f\n",
+                   width, height, density);
     
     if (!g_platformInitialized) {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: Platform not initialized! Call comaps_init_paths first.\n");
+        AgusWriteLog("[AgusMapsFlutter] ERROR: Platform not initialized! Call comaps_init_paths first.\n");
         return;
     }
     
@@ -1229,7 +1249,7 @@ FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height,
     
     // Create Framework on this thread if not already created
     if (!g_framework) {
-        OutputDebugStringA("[AgusMapsFlutter] Creating Framework...\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Creating Framework...\n");
         
         FrameworkParams params;
         params.m_enableDiffs = false;
@@ -1237,18 +1257,18 @@ FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height,
         
         g_framework = std::make_unique<Framework>(params, false /* loadMaps */);
         SetViewportTracking();
-        OutputDebugStringA("[AgusMapsFlutter] Framework created\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Framework created\n");
         
         // Register maps
         g_framework->RegisterAllMaps();
-        OutputDebugStringA("[AgusMapsFlutter] Maps registered\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Maps registered\n");
     }
     
     // Create WGL context factory for OpenGL rendering
     g_wglFactory = new agus::AgusWglContextFactory(width, height);
     
     if (!g_wglFactory->GetDrawContext()) {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to create WGL context factory\n");
+        AgusWriteLog("[AgusMapsFlutter] ERROR: Failed to create WGL context factory\n");
         delete g_wglFactory;
         g_wglFactory = nullptr;
         return;
@@ -1258,7 +1278,7 @@ FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height,
     g_wglFactory->SetFrameCallback([]() {
         notifyFlutterFrameReady();
     });
-    OutputDebugStringA("[AgusMapsFlutter] WGL factory frame callback set\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] WGL factory frame callback set\n");
     
     // Set keep-alive callback to prevent render loop from suspending during tile loading.
     // This calls Framework::MakeFrameActive() which sends an ActiveFrameEvent to keep
@@ -1269,7 +1289,7 @@ FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height,
             g_framework->MakeFrameActive();
         }
     });
-    OutputDebugStringA("[AgusMapsFlutter] WGL factory keep-alive callback set\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] WGL factory keep-alive callback set\n");
     
     // Wrap in ThreadSafeFactory for thread-safe context access
     g_threadSafeFactory = make_unique_dp<dp::ThreadSafeFactory>(g_wglFactory);
@@ -1280,7 +1300,7 @@ FFI_PLUGIN_EXPORT void agus_native_create_surface(int32_t width, int32_t height,
     // Enable rendering
     if (g_framework && g_drapeEngineCreated) {
         g_framework->SetRenderingEnabled(make_ref(g_threadSafeFactory));
-        OutputDebugStringA("[AgusMapsFlutter] Rendering enabled\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Rendering enabled\n");
     }
 }
 
@@ -1329,7 +1349,7 @@ FFI_PLUGIN_EXPORT void agus_native_set_visual_scale(float density) {
 
 /// Called when the surface is destroyed
 FFI_PLUGIN_EXPORT void agus_native_on_surface_destroyed(void) {
-    OutputDebugStringA("[AgusMapsFlutter] agus_native_on_surface_destroyed\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] agus_native_on_surface_destroyed\n");
     
     if (g_framework) {
         g_framework->SetRenderingDisabled(true /* destroySurface */);
