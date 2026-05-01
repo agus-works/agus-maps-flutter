@@ -355,6 +355,7 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
             "types.txt",
             "subtypes.csv",
             "categories.txt",
+            "categories_brands.txt",
             "visibility.txt",
             "drules_proto.bin",
             "packed_polygons.bin",

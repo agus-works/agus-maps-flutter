@@ -109,6 +109,13 @@ void WakeRenderer() {
     }
 }
 
+void KeepCameraFrameActive() {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    g_framework->MakeFrameActive();
+}
+
 void SetViewportTracking() {
     if (!g_framework) {
         return;
@@ -639,7 +646,7 @@ FFI_PLUGIN_EXPORT void comaps_set_bearing(double degrees, int animated) {
     }
     g_currentBearingDegrees = NormalizeBearingDegrees(degrees);
     g_framework->Rotate(g_currentBearingDegrees * kRadiansPerDegree, animated != 0);
-    WakeRenderer();
+    KeepCameraFrameActive();
 }
 
 FFI_PLUGIN_EXPORT void comaps_reset_bearing(int animated) {

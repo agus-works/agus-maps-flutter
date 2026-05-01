@@ -106,6 +106,20 @@ Important fields/methods:
 Results are already ranked and deduplicated by the native engine. The Flutter UI
 must preserve the native order.
 
+### Required Search Resources
+
+CoMaps search is not map-data-only. During ranking, `indexer::GetDefaultBrands()`
+loads `SEARCH_BRAND_CATEGORIES_FILE_NAME`, which is `categories_brands.txt`.
+That file must be present in the CoMaps resource/writable path before native
+search starts. If it is missing, the CoMaps search worker can throw from
+`Platform::ReadPathForFile()` while ranking results, which may terminate the app
+on desktop platforms.
+
+The example bundles it under `assets/comaps_data/categories_brands.txt` and each
+platform extraction path treats it as an essential file. Existing installs with a
+stale `.comaps_data_extracted` marker re-extract data because the completeness
+check now verifies this file.
+
 ### Selecting Results
 
 Real map results must be selected with `Framework::ShowSearchResult(result)`,
@@ -202,6 +216,8 @@ so behavior remains consistent across platforms.
   renders plain text until a richer highlighted text widget is added.
 - Viewport search markers depend on the native framework's current viewport;
   searching before the map surface is ready should be ignored or delayed by Dart.
+- The example search UI applies a native-search timeout so failed or stalled
+  worker callbacks cannot leave the search panel showing `Searching...` forever.
 - The checked-in Android prebuilts under `android/prebuilt` predate this search
   bridge and do not export the `comaps_search_*` symbols. In-repo Android
   validation should build without `AGUS_MAPS_HOME`, or the prebuilts must be

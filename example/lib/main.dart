@@ -171,7 +171,7 @@ class _MyAppState extends State<MyApp> {
   bool _nativeSurfaceReady = false;
   bool _isLocating = false;
   bool _searchOpen = false;
-  double _currentBearing = 0.0;
+  final ValueNotifier<double> _currentBearing = ValueNotifier<double>(0.0);
   agus_maps_flutter.PlacePageData? _placePage;
 
   int? _bundledMwmVersion;
@@ -179,6 +179,7 @@ class _MyAppState extends State<MyApp> {
   Timer? _searchDebounceTimer;
   Timer? _searchPollTimer;
   int _activeSearchGeneration = 0;
+  DateTime? _activeSearchStartedAt;
   bool _nativeSearchRunning = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -209,6 +210,7 @@ class _MyAppState extends State<MyApp> {
     _searchDebounceTimer?.cancel();
     _searchPollTimer?.cancel();
     agus_maps_flutter.cancelNativeSearch();
+    _currentBearing.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -218,6 +220,7 @@ class _MyAppState extends State<MyApp> {
   static const String _prefsKeyInterfaceTheme = 'interface_theme_mode';
   static const String _prefsKeyMapAppearance = 'map_appearance_mode';
   static const String _prefsKeyMapLanguage = 'map_language_code';
+  static const Duration _nativeSearchTimeout = Duration(seconds: 12);
   static const String _prefsKeyBuildings3d = 'buildings_3d_enabled';
   static const String _prefsKeyLayerOutdoors = 'layer_outdoors_enabled';
   static const String _prefsKeyLayerIsolines = 'layer_isolines_enabled';
@@ -602,10 +605,8 @@ class _MyAppState extends State<MyApp> {
     _bearingTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (!mounted || _currentTabIndex != 0 || !_nativeSurfaceReady) return;
       final bearing = agus_maps_flutter.getCurrentBearing();
-      if ((bearing - _currentBearing).abs() < 0.25) return;
-      setState(() {
-        _currentBearing = bearing;
-      });
+      if ((bearing - _currentBearing.value).abs() < 0.25) return;
+      _currentBearing.value = bearing;
     });
   }
 
@@ -658,6 +659,7 @@ class _MyAppState extends State<MyApp> {
     _searchResults = const [];
     _nativeSearchRunning = false;
     _activeSearchGeneration = 0;
+    _activeSearchStartedAt = null;
   }
 
   void _startNativeSearch(String query) {
@@ -673,13 +675,17 @@ class _MyAppState extends State<MyApp> {
 
     if (generation < 0) {
       if (!mounted) return;
+      _searchPollTimer?.cancel();
       setState(() {
         _nativeSearchRunning = false;
+        _activeSearchGeneration = 0;
+        _activeSearchStartedAt = null;
       });
       return;
     }
 
     _activeSearchGeneration = generation;
+    _activeSearchStartedAt = DateTime.now();
     _searchPollTimer?.cancel();
     _searchPollTimer = Timer.periodic(
       const Duration(milliseconds: 200),
@@ -697,6 +703,10 @@ class _MyAppState extends State<MyApp> {
 
     final snapshot = agus_maps_flutter.getNativeSearchSnapshot();
     if (snapshot.generation != generation) return;
+
+    final startedAt = _activeSearchStartedAt;
+    final timedOut = startedAt != null &&
+        DateTime.now().difference(startedAt) > _nativeSearchTimeout;
 
     final terms = _searchTerms(query);
     final nativeResults = snapshot.results
@@ -716,10 +726,17 @@ class _MyAppState extends State<MyApp> {
 
     setState(() {
       _searchResults = mergedResults;
-      _nativeSearchRunning = snapshot.isRunning;
+      _nativeSearchRunning = snapshot.isRunning && !timedOut;
     });
 
-    if (!snapshot.isRunning) {
+    if (!snapshot.isRunning || timedOut) {
+      if (timedOut) {
+        _log('Native search timed out for "$query" after '
+            '${_nativeSearchTimeout.inSeconds}s');
+        agus_maps_flutter.cancelNativeSearch();
+        _activeSearchGeneration = 0;
+        _activeSearchStartedAt = null;
+      }
       _searchPollTimer?.cancel();
     }
   }
@@ -867,9 +884,7 @@ class _MyAppState extends State<MyApp> {
 
   void _resetNorth() {
     _mapController.resetBearing();
-    setState(() {
-      _currentBearing = 0.0;
-    });
+    _currentBearing.value = 0.0;
   }
 
   Future<void> _centerOnCurrentPosition() async {
@@ -879,6 +894,18 @@ class _MyAppState extends State<MyApp> {
     });
 
     try {
+      if (Platform.isMacOS) {
+        final estimatedLocation = await _getNetworkEstimatedLocation();
+        if (estimatedLocation != null) {
+          _focusLocation(estimatedLocation);
+          return;
+        }
+
+        _showMapMessage(
+            'Unable to estimate current location from the network.');
+        return;
+      }
+
       final deviceLocation = await _getDeviceLocation();
       if (deviceLocation != null) {
         _focusLocation(deviceLocation);
@@ -1405,9 +1432,15 @@ class _MyAppState extends State<MyApp> {
           const Divider(height: 1),
           IconButton(
             tooltip: 'Reset north',
-            icon: Transform.rotate(
-              angle: -_currentBearing * pi / 180,
+            icon: ValueListenableBuilder<double>(
+              valueListenable: _currentBearing,
               child: const Icon(Icons.navigation),
+              builder: (context, bearing, child) {
+                return Transform.rotate(
+                  angle: -bearing * pi / 180,
+                  child: child,
+                );
+              },
             ),
             onPressed: _resetNorth,
           ),

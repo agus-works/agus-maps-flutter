@@ -1209,13 +1209,13 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   }
 
   void _handlePointerPanZoomStart(PointerPanZoomStartEvent event) {
-    if (!(Platform.isWindows || Platform.isLinux)) return;
+    if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
     _lastPanZoomRotation = 0.0;
     _lastPanZoomBearing = getCurrentBearing();
   }
 
   void _handlePointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
-    if (!(Platform.isWindows || Platform.isLinux)) return;
+    if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
 
     final rotationDelta = event.rotation - _lastPanZoomRotation;
     _lastPanZoomRotation = event.rotation;
@@ -1228,7 +1228,7 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   }
 
   void _handlePointerPanZoomEnd(PointerPanZoomEndEvent event) {
-    if (!(Platform.isWindows || Platform.isLinux)) return;
+    if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
     _lastPanZoomRotation = 0.0;
     _lastPanZoomBearing = getCurrentBearing();
   }
