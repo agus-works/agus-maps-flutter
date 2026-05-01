@@ -13,7 +13,7 @@ enum BuildMode {
 /// Configuration constants
 class BuildConfig {
   static const String defaultComapsTag = 'v2026.04.23-19';
-  static const String flutterVersion = '3.38.9';
+  static const String flutterVersion = '3.41.8';
   static const String cmakeVersion = '4.2.1';
   static const String ndkVersion = '29.0.14206865';
   static const String buildType = 'Release';
