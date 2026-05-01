@@ -93,7 +93,7 @@ The ICU library needs its data file for transliteration support. When resources 
    - `glUnmapBuffer`, `glMapBufferRange`, `glFlushMappedBufferRange`
    - `glGetStringi`
 2. **Windows:** Improves WGL extension loading with OES/EXT/ARB suffix fallbacks
-3. Adds shader debugging infrastructure with environment variable controls (`AGUS_VERBOSE_SHADER`, `AGUS_DUMP_SHADERS`)
+3. Adds shader debugging infrastructure with environment variable controls (`AGUS_VERBOSE_SHADER`, `AGUS_DUMP_SHADERS`); noisy WGL context/shader ID diagnostics only print when verbose shader logging is enabled
 4. Adds `glGetShaderSource` function pointer for shader debugging
 5. Adds comprehensive error handling and logging for shader compilation
 6. Stores shader sources for debugging purposes
@@ -843,18 +843,21 @@ Same Windows MSVC debug runtime issue.
 
 **File Modified:** `libs/platform/platform_win.cpp`
 
-**Category:** Windows Build / Name Resolution
+**Category:** Windows Build / Name Resolution / Release Logging
 
-**Purpose:** Fixes `bind` to use `std::bind` explicitly.
+**Purpose:** Fixes `bind` to use `std::bind` explicitly and keeps early Windows platform path diagnostics debug-only.
 
 **What it does:**
 - Changes `bind(&CloseHandle, hFile)` to `std::bind(&CloseHandle, hFile)`
+- Wraps startup `Resources/Writable/Tmp/Settings Directory` `INFO` logs in a debug-only guard so release builds do not print them before the plugin log handler is installed
 
 **Why it's needed:**
 Without the `std::` prefix, the compiler might find wrong `bind` overloads depending on includes and namespace usage.
+The platform path diagnostics are useful while debugging startup paths, but noisy in release because they run before the Windows plugin can install its CoMaps log filter.
 
 **Without this patch:**
 - Potential compilation errors or wrong function binding
+- Release Windows apps print early platform path diagnostics to stderr
 
 
 ### 0047-libs-routing-lanes-lanes_parser-cpp.patch

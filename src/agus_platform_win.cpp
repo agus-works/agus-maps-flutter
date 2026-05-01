@@ -49,7 +49,9 @@ public:
     AgusGuiThreadWin()
     {
         m_mainThreadId = GetCurrentThreadId();
+#if !defined(NDEBUG) && !defined(RELEASE)
         LOG(LINFO, ("AgusGuiThreadWin created on thread:", m_mainThreadId));
+#endif
     }
     
     PushResult Push(Task && task) override
@@ -126,9 +128,11 @@ public:
         // Create tmp directory if it doesn't exist
         _mkdir(m_tmpDir.c_str());
         
+#if !defined(NDEBUG) && !defined(RELEASE)
         LOG(LINFO, ("AgusPlatformWin initialized:",
                     "resources =", m_resourcesDir,
                     "writable =", m_writableDir));
+#endif
     }
 };
 

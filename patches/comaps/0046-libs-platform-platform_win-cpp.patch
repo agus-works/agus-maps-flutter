@@ -1,8 +1,21 @@
 diff --git a/libs/platform/platform_win.cpp b/libs/platform/platform_win.cpp
-index 7becc89..ac8b043 100644
+index 7becc89e9..89d5e5c49 100644
 --- a/libs/platform/platform_win.cpp
 +++ b/libs/platform/platform_win.cpp
-@@ -198,7 +198,7 @@ bool Platform::GetFileSizeByFullPath(std::string const & filePath, uint64_t & si
+@@ -98,10 +98,12 @@ Platform::Platform()
+ 
+   m_guiThread = std::make_unique<platform::GuiThread>();
+ 
++#if !defined(NDEBUG) && !defined(RELEASE)
+   LOG(LINFO, ("Resources Directory:", m_resourcesDir));
+   LOG(LINFO, ("Writable Directory:", m_writableDir));
+   LOG(LINFO, ("Tmp Directory:", m_tmpDir));
+   LOG(LINFO, ("Settings Directory:", m_settingsDir));
++#endif
+ }
+ 
+ bool Platform::IsFileExistsByFullPath(std::string const & filePath)
+@@ -198,7 +200,7 @@ bool Platform::GetFileSizeByFullPath(std::string const & filePath, uint64_t & si
        CreateFileA(filePath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
    if (hFile != INVALID_HANDLE_VALUE)
    {
@@ -11,7 +24,7 @@ index 7becc89..ac8b043 100644
      LARGE_INTEGER fileSize;
      if (0 != GetFileSizeEx(hFile, &fileSize))
      {
-@@ -225,7 +225,7 @@ time_t GetFileTime(std::string const & path, FileTimeType fileTimeType)
+@@ -225,7 +227,7 @@ time_t GetFileTime(std::string const & path, FileTimeType fileTimeType)
      return 0;  // TODO(AB): Refactor to return std::optional<time_t>.
    }
  

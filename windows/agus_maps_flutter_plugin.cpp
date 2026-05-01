@@ -17,6 +17,7 @@
 #include <windows.h>
 
 #include <cmath>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -61,6 +62,28 @@ static SetFrameReadyCallbackFn g_fnSetFrameReadyCallback = nullptr;
 
 static AgusMapsFlutterPlugin* g_pluginInstance = nullptr;
 
+static void AgusWriteLog(const char* message) {
+    OutputDebugStringA(message);
+    std::fprintf(stderr, "%s", message);
+    std::fflush(stderr);
+}
+
+#if defined(NDEBUG) || defined(RELEASE)
+#define AGUS_DEBUG_LOG(...) do {} while (0)
+#define AGUS_DEBUG_STRING(message) do {} while (0)
+#else
+static void AgusDebugLog(const char* format, ...) {
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+    std::vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    AgusWriteLog(buffer);
+}
+#define AGUS_DEBUG_LOG(...) AgusDebugLog(__VA_ARGS__)
+#define AGUS_DEBUG_STRING(message) AgusWriteLog(message)
+#endif
+
 static bool LoadFfiLibrary() {
     if (g_ffiLoaded) {
         return g_ffiModule != nullptr;
@@ -69,7 +92,7 @@ static bool LoadFfiLibrary() {
     g_ffiLoaded = true;
     g_ffiModule = GetNativeLibraryHandle();
     if (!g_ffiModule) {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to load agus_maps_flutter.dll\n");
+        AgusWriteLog("[AgusMapsFlutter] ERROR: Failed to load agus_maps_flutter.dll\n");
         return false;
     }
 
@@ -93,13 +116,13 @@ static bool LoadFfiLibrary() {
         GetProcAddress(g_ffiModule, "agus_set_frame_ready_callback"));
 
     if (!g_fnCreateSurface) {
-        OutputDebugStringA("[AgusMapsFlutter] WARN: Missing agus_native_create_surface\n");
+        AgusWriteLog("[AgusMapsFlutter] WARN: Missing agus_native_create_surface\n");
     }
     if (!g_fnOnSizeChanged) {
-        OutputDebugStringA("[AgusMapsFlutter] WARN: Missing agus_native_on_size_changed\n");
+        AgusWriteLog("[AgusMapsFlutter] WARN: Missing agus_native_on_size_changed\n");
     }
     if (!g_fnGetSharedTextureHandle) {
-        OutputDebugStringA("[AgusMapsFlutter] WARN: Missing agus_get_shared_texture_handle\n");
+        AgusWriteLog("[AgusMapsFlutter] WARN: Missing agus_get_shared_texture_handle\n");
     }
 
     return true;
@@ -393,7 +416,7 @@ void AgusMapsFlutterPlugin::RegisterWithRegistrar(
 
     registrar->AddPlugin(std::move(plugin));
     
-    OutputDebugStringA("[AgusMapsFlutter] Windows plugin registered\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Windows plugin registered\n");
 }
 
 AgusMapsFlutterPlugin::AgusMapsFlutterPlugin(
@@ -401,7 +424,7 @@ AgusMapsFlutterPlugin::AgusMapsFlutterPlugin(
     : registrar_(registrar)
     , texture_registrar_(registrar->texture_registrar()) {
     flutter_api_ = std::make_unique<AgusMapsFlutterApi>(registrar->messenger());
-    OutputDebugStringA("[AgusMapsFlutter] Plugin constructed\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Plugin constructed\n");
 }
 
 AgusMapsFlutterPlugin::~AgusMapsFlutterPlugin() {
@@ -417,7 +440,7 @@ AgusMapsFlutterPlugin::~AgusMapsFlutterPlugin() {
     
     g_pluginInstance = nullptr;
     
-    OutputDebugStringA("[AgusMapsFlutter] Plugin destroyed\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Plugin destroyed\n");
 }
 
 void AgusMapsFlutterPlugin::OnFrameReady() {
@@ -430,7 +453,7 @@ void AgusMapsFlutterPlugin::OnFrameReady() {
                 texture_id_,
                 []() {},
                 [](const FlutterError& error) {
-                    OutputDebugStringA("[AgusMapsFlutter] onMapReady failed\n");
+                    AgusWriteLog("[AgusMapsFlutter] onMapReady failed\n");
                 });
         }
     }
@@ -447,7 +470,7 @@ void AgusMapsFlutterPlugin::ExtractMap(
 }
 
 std::string AgusMapsFlutterPlugin::ExtractMapAsset(const std::string& assetPath) {
-    OutputDebugStringA(("[AgusMapsFlutter] Extracting asset: " + assetPath + "\n").c_str());
+    AGUS_DEBUG_STRING(("[AgusMapsFlutter] Extracting asset: " + assetPath + "\n").c_str());
 
     // Get executable directory (where flutter_assets is located)
     std::string exeDir = GetExecutableDir();
@@ -480,7 +503,7 @@ std::string AgusMapsFlutterPlugin::ExtractMapAsset(const std::string& assetPath)
 
     // Check if already extracted
     if (fs::exists(destPath)) {
-        OutputDebugStringA(("[AgusMapsFlutter] Map already exists at: " + destPath.string() + "\n").c_str());
+        AGUS_DEBUG_STRING(("[AgusMapsFlutter] Map already exists at: " + destPath.string() + "\n").c_str());
         return destPath.string();
     }
 
@@ -492,7 +515,7 @@ std::string AgusMapsFlutterPlugin::ExtractMapAsset(const std::string& assetPath)
     // Copy file
     fs::copy_file(sourcePath, destPath, fs::copy_options::overwrite_existing);
 
-    OutputDebugStringA(("[AgusMapsFlutter] Map extracted to: " + destPath.string() + "\n").c_str());
+    AGUS_DEBUG_STRING(("[AgusMapsFlutter] Map extracted to: " + destPath.string() + "\n").c_str());
     return destPath.string();
 }
 
@@ -507,7 +530,7 @@ void AgusMapsFlutterPlugin::ExtractDataFiles(
 }
 
 std::string AgusMapsFlutterPlugin::ExtractAllDataFiles() {
-    OutputDebugStringA("[AgusMapsFlutter] Extracting CoMaps data files...\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Extracting CoMaps data files...\n");
 
     // Destination: Documents/agus_maps_flutter
     fs::path documentsDir = fs::path(GetDocumentsPath());
@@ -520,7 +543,7 @@ std::string AgusMapsFlutterPlugin::ExtractAllDataFiles() {
     // If we previously extracted but the directory is missing required files
     // (common when assets list changes), re-extract.
     if (fs::exists(markerFile) && DataDirLooksComplete(dataDir)) {
-        OutputDebugStringA(("[AgusMapsFlutter] Data already extracted at: " + dataDir.string() + "\n").c_str());
+        AGUS_DEBUG_STRING(("[AgusMapsFlutter] Data already extracted at: " + dataDir.string() + "\n").c_str());
         return dataDir.string();
     }
 
@@ -544,7 +567,7 @@ std::string AgusMapsFlutterPlugin::ExtractAllDataFiles() {
     std::ofstream marker(markerFile);
     marker.close();
 
-    OutputDebugStringA(("[AgusMapsFlutter] Data files extracted to: " + dataDir.string() + "\n").c_str());
+    AGUS_DEBUG_STRING(("[AgusMapsFlutter] Data files extracted to: " + dataDir.string() + "\n").c_str());
     return dataDir.string();
 }
 
@@ -586,7 +609,7 @@ bool AgusMapsFlutterPlugin::DataDirLooksComplete(const fs::path& dataDir) {
 
     for (const auto& p : requiredFiles) {
         if (!fs::exists(p)) {
-            OutputDebugStringA(("[AgusMapsFlutter] Data incomplete, missing: " + p.string() + "\n").c_str());
+            AgusWriteLog(("[AgusMapsFlutter] Data incomplete, missing: " + p.string() + "\n").c_str());
             return false;
         }
     }
@@ -608,7 +631,7 @@ bool AgusMapsFlutterPlugin::DataDirLooksComplete(const fs::path& dataDir) {
         std::error_code ec;
         const auto size = fs::file_size(check.path, ec);
         if (ec || size < check.minBytes) {
-            OutputDebugStringA((
+            AgusWriteLog((
                 "[AgusMapsFlutter] Data incomplete, suspicious symbol atlas size: " +
                 check.path.string() + " (size=" + std::to_string(size) + ")\n").c_str());
             return false;
@@ -631,7 +654,7 @@ void AgusMapsFlutterPlugin::GetApkPath(
 void AgusMapsFlutterPlugin::CreateMapSurface(
     const CreateMapSurfaceRequest& request,
     std::function<void(ErrorOr<int64_t> reply)> result) {
-    OutputDebugStringA("[AgusMapsFlutter] createMapSurface called\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] createMapSurface called\n");
 
     int32_t width = request.width() ? static_cast<int32_t>(*request.width()) : 800;
     int32_t height = request.height() ? static_cast<int32_t>(*request.height()) : 600;
@@ -640,22 +663,22 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
     char msg[256];
     snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Creating surface: %dx%d, density=%.2f\n", 
              width, height, density);
-    OutputDebugStringA(msg);
+    AGUS_DEBUG_LOG("%s", msg);
     
     // Ensure FFI library is loaded
     if (!LoadFfiLibrary()) {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: Failed to load FFI library\n");
+        AgusWriteLog("[AgusMapsFlutter] ERROR: Failed to load FFI library\n");
         result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "Failed to load native FFI library")));
         return;
     }
     
     // Create native surface (this creates Framework, DrapeEngine, OpenGL context)
     if (g_fnCreateSurface) {
-        OutputDebugStringA("[AgusMapsFlutter] Calling agus_native_create_surface...\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Calling agus_native_create_surface...\n");
         g_fnCreateSurface(width, height, static_cast<float>(density));
-        OutputDebugStringA("[AgusMapsFlutter] agus_native_create_surface returned\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] agus_native_create_surface returned\n");
     } else {
-        OutputDebugStringA("[AgusMapsFlutter] ERROR: agus_native_create_surface not available\n");
+        AgusWriteLog("[AgusMapsFlutter] ERROR: agus_native_create_surface not available\n");
         result(ErrorOr<int64_t>(FlutterError("FFI_ERROR", "agus_native_create_surface function not found")));
         return;
     }
@@ -663,7 +686,7 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
     // Set up frame ready callback
     if (g_fnSetFrameReadyCallback) {
         g_fnSetFrameReadyCallback(&OnNativeFrameReady);
-        OutputDebugStringA("[AgusMapsFlutter] Frame ready callback set\n");
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Frame ready callback set\n");
     }
     
     // Get the D3D11 texture from native code
@@ -683,7 +706,7 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
     
     snprintf(msg, sizeof(msg), "[AgusMapsFlutter] D3D11: device=%p, texture=%p, handle=%p\n",
              d3d11Device, d3d11Texture, sharedHandle);
-    OutputDebugStringA(msg);
+    AGUS_DEBUG_LOG("%s", msg);
     
     // Store surface dimensions
     surface_width_ = width;
@@ -705,7 +728,7 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
                     }
                     
                     if (!currentHandle) {
-                        OutputDebugStringA("[AgusMapsFlutter] WARNING: No current shared handle available\n");
+                        AgusWriteLog("[AgusMapsFlutter] WARNING: No current shared handle available\n");
                         return nullptr;
                     }
                     
@@ -716,7 +739,7 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
                         snprintf(dbg, sizeof(dbg),
                             "[AgusMapsFlutter] GpuSurfaceTexture callback: requested=%zux%zu, surface=%dx%d, handle=%p\n",
                             w, h, this->surface_width_, this->surface_height_, currentHandle);
-                        OutputDebugStringA(dbg);
+                        AGUS_DEBUG_LOG("%s", dbg);
 
                         if (w != static_cast<size_t>(this->surface_width_) ||
                             h != static_cast<size_t>(this->surface_height_)) {
@@ -724,7 +747,7 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
                             snprintf(mismatch, sizeof(mismatch),
                                 "[AgusMapsFlutter] WARNING: Flutter requested size differs from surface (requested=%zux%zu, surface=%dx%d)\n",
                                 w, h, this->surface_width_, this->surface_height_);
-                            OutputDebugStringA(mismatch);
+                            AGUS_DEBUG_LOG("%s", mismatch);
                         }
                     }
                     sampleCount++;
@@ -748,7 +771,7 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
         texture_id_ = texture_registrar_->RegisterTexture(texture_.get());
         
         snprintf(msg, sizeof(msg), "[AgusMapsFlutter] Texture registered with ID: %lld\n", texture_id_);
-        OutputDebugStringA(msg);
+        AGUS_DEBUG_LOG("%s", msg);
         
         map_ready_sent_ = false;
         result(ErrorOr<int64_t>(texture_id_));
@@ -761,7 +784,7 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
         }
     } else {
         // Fallback: return -1 if texture creation failed
-        OutputDebugStringA("[AgusMapsFlutter] WARN: No D3D11 texture available, returning -1\n");
+        AgusWriteLog("[AgusMapsFlutter] WARN: No D3D11 texture available, returning -1\n");
         result(ErrorOr<int64_t>(static_cast<int64_t>(-1)));
     }
 }
@@ -769,32 +792,28 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
 void AgusMapsFlutterPlugin::ResizeMapSurface(
     const ResizeMapSurfaceRequest& request,
     std::function<void(ErrorOr<bool> reply)> result) {
-    std::fprintf(stderr, "[AgusMapsFlutter] resizeMapSurface method call received\n");
-    std::fflush(stderr);
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] resizeMapSurface method call received\n");
 
     int32_t width = static_cast<int32_t>(request.width());
     int32_t height = static_cast<int32_t>(request.height());
     double density = request.density() ? *request.density() : 0.0;
 
     if (density > 0.0) {
-        std::fprintf(stderr, "[AgusMapsFlutter] Resizing surface to %dx%d (density=%.2f)\n", width, height, density);
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Resizing surface to %dx%d (density=%.2f)\n", width, height, density);
     } else {
-        std::fprintf(stderr, "[AgusMapsFlutter] Resizing surface to %dx%d\n", width, height);
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Resizing surface to %dx%d\n", width, height);
     }
-    std::fflush(stderr);
 
     surface_width_ = width;
     surface_height_ = height;
 
     if (g_fnOnSizeChanged) {
-        std::fprintf(stderr, "[AgusMapsFlutter] Calling g_fnOnSizeChanged(%d, %d)\n", width, height);
-        std::fflush(stderr);
+        AGUS_DEBUG_LOG("[AgusMapsFlutter] Calling g_fnOnSizeChanged(%d, %d)\n", width, height);
         g_fnOnSizeChanged(width, height);
 
         if (density > 0.0 && g_fnSetVisualScale) {
             if (std::fabs(density - last_density_) > 0.001) {
-                std::fprintf(stderr, "[AgusMapsFlutter] Calling g_fnSetVisualScale(%.2f)\n", density);
-                std::fflush(stderr);
+                AGUS_DEBUG_LOG("[AgusMapsFlutter] Calling g_fnSetVisualScale(%.2f)\n", density);
                 g_fnSetVisualScale(static_cast<float>(density));
                 last_density_ = density;
             }
@@ -802,12 +821,10 @@ void AgusMapsFlutterPlugin::ResizeMapSurface(
 
         if (texture_id_ >= 0 && texture_registrar_) {
             texture_registrar_->MarkTextureFrameAvailable(texture_id_);
-            std::fprintf(stderr, "[AgusMapsFlutter] MarkTextureFrameAvailable called after resize\n");
-            std::fflush(stderr);
+            AGUS_DEBUG_LOG("[AgusMapsFlutter] MarkTextureFrameAvailable called after resize\n");
         }
     } else {
-        std::fprintf(stderr, "[AgusMapsFlutter] WARNING: g_fnOnSizeChanged is null!\n");
-        std::fflush(stderr);
+        AgusWriteLog("[AgusMapsFlutter] WARNING: g_fnOnSizeChanged is null!\n");
     }
 
     result(ErrorOr<bool>(true));
@@ -815,7 +832,7 @@ void AgusMapsFlutterPlugin::ResizeMapSurface(
 
 void AgusMapsFlutterPlugin::DestroyMapSurface(
     std::function<void(ErrorOr<bool> reply)> result) {
-    OutputDebugStringA("[AgusMapsFlutter] destroyMapSurface called\n");
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] destroyMapSurface called\n");
 
     if (texture_id_ >= 0 && texture_registrar_) {
         texture_registrar_->UnregisterTexture(texture_id_);
@@ -843,7 +860,7 @@ void AgusMapsFlutterPlugin::DestroyMapSurface(
 void AgusMapsFlutterPlugin::GetCurrentPlacePage(
     std::function<void(ErrorOr<std::optional<PlacePageData>> reply)> result) {
     if (!EnsurePlacePageFunctionsLoaded()) {
-        OutputDebugStringA("[AgusMapsFlutter] getCurrentPlacePage unavailable (FFI missing)\n");
+        AgusWriteLog("[AgusMapsFlutter] getCurrentPlacePage unavailable (FFI missing)\n");
         result(ErrorOr<std::optional<PlacePageData>>(std::nullopt));
         return;
     }
@@ -871,7 +888,7 @@ void AgusMapsFlutterPlugin::GetCurrentPlacePage(
 void AgusMapsFlutterPlugin::ClearPlacePageSelection(
     std::function<void(ErrorOr<bool> reply)> result) {
     if (!EnsurePlacePageFunctionsLoaded()) {
-        OutputDebugStringA("[AgusMapsFlutter] clearPlacePageSelection unavailable (FFI missing)\n");
+        AgusWriteLog("[AgusMapsFlutter] clearPlacePageSelection unavailable (FFI missing)\n");
         result(ErrorOr<bool>(false));
         return;
     }

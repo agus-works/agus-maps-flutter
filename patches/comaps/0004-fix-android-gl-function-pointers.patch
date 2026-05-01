@@ -1,5 +1,5 @@
 diff --git a/libs/drape/gl_functions.cpp b/libs/drape/gl_functions.cpp
-index 6e06b24..75d3c7b 100644
+index 6e06b24f7..4d7af4330 100644
 --- a/libs/drape/gl_functions.cpp
 +++ b/libs/drape/gl_functions.cpp
 @@ -10,10 +10,25 @@
@@ -239,7 +239,7 @@ index 6e06b24..75d3c7b 100644
  }
  
  bool GLFunctions::glHasExtension(std::string const & name)
-@@ -637,16 +753,46 @@ void GLFunctions::glFlushMappedBufferRange(glConst target, uint32_t offset, uint
+@@ -637,16 +753,51 @@ void GLFunctions::glFlushMappedBufferRange(glConst target, uint32_t offset, uint
  uint32_t GLFunctions::glCreateShader(glConst type)
  {
    ASSERT_EQUAL(CurrentApiVersion, dp::ApiVersion::OpenGLES3, ());
@@ -247,15 +247,17 @@ index 6e06b24..75d3c7b 100644
 +  
 +  // Check if we have a current OpenGL context
 +#ifdef OMIM_OS_WINDOWS
-+  HGLRC currentCtx = wglGetCurrentContext();
-+  if (currentCtx == nullptr)
++  if (g_shaderVerboseLogs)
 +  {
-+    fprintf(stderr, "[GL_FUNCTIONS] WARNING: No WGL context current when creating shader!\n");
-+    fflush(stderr);
-+  }
-+  else
-+  {
-+    fprintf(stderr, "[GL_FUNCTIONS] WGL context: %p\n", currentCtx);
++    HGLRC currentCtx = wglGetCurrentContext();
++    if (currentCtx == nullptr)
++    {
++      fprintf(stderr, "[GL_FUNCTIONS] WARNING: No WGL context current when creating shader!\n");
++    }
++    else
++    {
++      fprintf(stderr, "[GL_FUNCTIONS] WGL context: %p\n", currentCtx);
++    }
 +    fflush(stderr);
 +  }
 +#endif
@@ -267,8 +269,11 @@ index 6e06b24..75d3c7b 100644
 +    return 0;
 +  }
    GLuint result = glCreateShaderFn(type);
-+  fprintf(stderr, "[GL_FUNCTIONS] glCreateShader(type=%d) -> shader_id=%u\n", type, result);
-+  fflush(stderr);
++  if (g_shaderVerboseLogs)
++  {
++    fprintf(stderr, "[GL_FUNCTIONS] glCreateShader(type=%d) -> shader_id=%u\n", type, result);
++    fflush(stderr);
++  }
    GLCHECKCALL();
    return result;
  }
@@ -289,7 +294,7 @@ index 6e06b24..75d3c7b 100644
  
    std::string fullSrc;
    if (src.find("#version") != std::string::npos)
-@@ -661,28 +807,211 @@ void GLFunctions::glShaderSource(uint32_t shaderID, std::string const & src, std
+@@ -661,28 +812,211 @@ void GLFunctions::glShaderSource(uint32_t shaderID, std::string const & src, std
      fullSrc = defines + src;
    }
  
@@ -510,7 +515,7 @@ index 6e06b24..75d3c7b 100644
    return false;
  }
  
-@@ -690,7 +1019,12 @@ void GLFunctions::glDeleteShader(uint32_t shaderID)
+@@ -690,7 +1024,12 @@ void GLFunctions::glDeleteShader(uint32_t shaderID)
  {
    ASSERT_EQUAL(CurrentApiVersion, dp::ApiVersion::OpenGLES3, ());
    ASSERT(glDeleteShaderFn != nullptr, ());
@@ -524,7 +529,7 @@ index 6e06b24..75d3c7b 100644
  }
  
  uint32_t GLFunctions::glCreateProgram()
-@@ -757,7 +1091,15 @@ int8_t GLFunctions::glGetAttribLocation(uint32_t programID, std::string const &
+@@ -757,7 +1096,15 @@ int8_t GLFunctions::glGetAttribLocation(uint32_t programID, std::string const &
    ASSERT(glGetAttribLocationFn != nullptr, ());
    int result = glGetAttribLocationFn(programID, name.c_str());
    GLCHECKCALL();
