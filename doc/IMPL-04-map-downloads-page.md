@@ -37,9 +37,12 @@ only after expanding their parent, or directly in search results.
 
 ## Search Behavior
 
-Search intentionally differs from browse mode. While browse mode preserves the
-folder tree, search flattens the tree and returns matching leaf regions so users
-can jump directly to a downloadable map.
+Search intentionally differs from browse mode. The root search list is flattened
+and sorted by fuzzy relevance so users can jump directly to a downloadable map,
+but matching folder rows still expand using their normal `countries.txt` child
+order. A matching leaf may therefore appear once as a direct root result and
+again inside an expanded matching parent folder; the duplicate presentation is
+intentional because it preserves both quick access and folder context.
 
 ## Cache Behavior
 

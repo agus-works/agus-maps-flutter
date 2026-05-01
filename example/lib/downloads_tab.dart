@@ -1316,8 +1316,8 @@ class _DownloadsTabState extends State<DownloadsTab> {
     final items = <_ListItem>[];
     if (_searchQuery.isNotEmpty) {
       items.add(_ListItem.searchCount(regionsToShow.length));
-      for (final r in regionsToShow) {
-        items.add(_ListItem.region(r));
+      for (final region in regionsToShow) {
+        _addRegionItems(items, region, depth: 0);
       }
     } else {
       final rootRegions = _browserRootRegions;
@@ -1337,7 +1337,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
-                'Found ${item.count} region${item.count == 1 ? '' : 's'}',
+                'Found ${item.count} result${item.count == 1 ? '' : 's'}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
               ),
             );
