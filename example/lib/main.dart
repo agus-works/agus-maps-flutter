@@ -784,28 +784,42 @@ class _MyAppState extends State<MyApp> {
         _log('All stored metadata is valid.');
       }
 
-      // 1. Extract ICU data for transliteration
-      _log('Extracting icudt75l.dat...');
-      await agus_maps_flutter.extractMap('assets/maps/icudt75l.dat');
-
-      // 2. Extract CoMaps data files (classificator.txt, types.txt, etc.)
+      // 1. Extract CoMaps data files (classificator.txt, types.txt, etc.)
       _log('Extracting data files...');
-      String dataPath = await agus_maps_flutter.extractDataFiles();
+      final dataPath = await agus_maps_flutter.extractDataFiles();
       _log('Data path: $dataPath');
+
+      // 2. Extract ICU data for transliteration.
+      _log('Extracting icudt75l.dat...');
+      final icuDataPath = await _prepareBundledResourceFile(
+        extractedPath:
+            await agus_maps_flutter.extractMap('assets/maps/icudt75l.dat'),
+        dataPath: dataPath,
+      );
+      _log('ICU data path: $icuDataPath');
 
       _bundledMwmVersion = await _readBundledMwmVersion(dataPath);
       _log('Bundled MWM version: ${_bundledMwmVersion ?? 'unknown'}');
 
       // 3. Extract bundled maps before surface creation. CoMaps scans the
-      // writable directory during native surface creation, so country maps must
-      // be under the current version directory before RegisterAllMaps() runs.
+      // writable directory during native surface creation. World/WorldCoasts
+      // must be in the resource root, while country maps must be under the
+      // current version directory before RegisterAllMaps() runs.
       _log('Extracting World.mwm...');
-      final worldPath =
-          await agus_maps_flutter.extractMap('assets/maps/World.mwm');
+      final worldPath = await _prepareBundledCountryMap(
+        extractedPath:
+            await agus_maps_flutter.extractMap('assets/maps/World.mwm'),
+        dataPath: dataPath,
+        version: _bundledMwmVersion,
+      );
 
       _log('Extracting WorldCoasts.mwm...');
-      final coastsPath =
-          await agus_maps_flutter.extractMap('assets/maps/WorldCoasts.mwm');
+      final coastsPath = await _prepareBundledCountryMap(
+        extractedPath:
+            await agus_maps_flutter.extractMap('assets/maps/WorldCoasts.mwm'),
+        dataPath: dataPath,
+        version: _bundledMwmVersion,
+      );
 
       _log('Extracting Gibraltar.mwm...');
       final extractedGibraltarPath =
@@ -1479,9 +1493,13 @@ class _MyAppState extends State<MyApp> {
     required int? version,
   }) async {
     final fileName = File(extractedPath).uri.pathSegments.last;
-    if (version == null ||
-        fileName == 'World.mwm' ||
-        fileName == 'WorldCoasts.mwm') {
+    if (_isRootCoMapsResource(fileName)) {
+      return _prepareBundledResourceFile(
+        extractedPath: extractedPath,
+        dataPath: dataPath,
+      );
+    }
+    if (version == null) {
       return extractedPath;
     }
 
@@ -1495,6 +1513,40 @@ class _MyAppState extends State<MyApp> {
       await source.copy(target.path);
     }
     return target.path;
+  }
+
+  bool _isRootCoMapsResource(String fileName) {
+    return fileName == 'World.mwm' ||
+        fileName == 'WorldCoasts.mwm' ||
+        fileName == 'icudt75l.dat';
+  }
+
+  Future<String> _prepareBundledResourceFile({
+    required String extractedPath,
+    required String dataPath,
+  }) async {
+    final fileName = File(extractedPath).uri.pathSegments.last;
+    final source = File(extractedPath);
+    final target = File('$dataPath/$fileName');
+
+    if (_sameFilePath(source.path, target.path)) {
+      return target.path;
+    }
+
+    final targetExists = await target.exists();
+    if (!targetExists || await target.length() != await source.length()) {
+      await source.copy(target.path);
+    }
+    return target.path;
+  }
+
+  bool _sameFilePath(String left, String right) {
+    String normalize(String value) {
+      final normalized = value.replaceAll('\\', '/');
+      return Platform.isWindows ? normalized.toLowerCase() : normalized;
+    }
+
+    return normalize(left) == normalize(right);
   }
 
   Future<int?> _readBundledMwmVersion(String dataPath) async {

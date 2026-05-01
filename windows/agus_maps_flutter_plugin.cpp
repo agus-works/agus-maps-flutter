@@ -459,16 +459,24 @@ std::string AgusMapsFlutterPlugin::ExtractMapAsset(const std::string& assetPath)
     fs::path assetsDir = fs::path(exeDir) / "data" / "flutter_assets";
     fs::path sourcePath = assetsDir / assetPath;
 
-    // Destination: Documents/agus_maps_flutter/maps
+    // Destination: Documents/agus_maps_flutter for resources CoMaps opens via
+    // Platform::GetReader(), and maps/ for regular country maps.
     fs::path documentsDir = fs::path(GetDocumentsPath());
-    fs::path mapsDir = documentsDir / "agus_maps_flutter" / "maps";
+    fs::path dataDir = documentsDir / "agus_maps_flutter";
+    fs::path mapsDir = dataDir / "maps";
     
-    // Create maps directory if needed
+    // Create directories if needed
+    fs::create_directories(dataDir);
     fs::create_directories(mapsDir);
 
     // Extract filename from asset path
     fs::path fileName = fs::path(assetPath).filename();
-    fs::path destPath = mapsDir / fileName;
+    const std::string fileNameString = fileName.string();
+    const bool rootResource =
+        fileNameString == "World.mwm" ||
+        fileNameString == "WorldCoasts.mwm" ||
+        fileNameString == "icudt75l.dat";
+    fs::path destPath = (rootResource ? dataDir : mapsDir) / fileName;
 
     // Check if already extracted
     if (fs::exists(destPath)) {

@@ -1446,6 +1446,10 @@ endif()
 
 **Possible Causes:**
 
+**Root resource layout check:** `World.mwm`, `WorldCoasts.mwm`, and `icudt75l.dat` must live directly in `%USERPROFILE%\Documents\agus_maps_flutter\`. If logs contain `Can't find any: World` or `Can't find any: WorldCoasts`, these files were extracted under `maps/` instead of the resource root. The Windows extractor and example app now normalize these bundled resources before native initialization.
+
+**Versioned country map scan check:** Country maps such as `Gibraltar.mwm` must live under a version directory such as `%USERPROFILE%\Documents\agus_maps_flutter\260421\Gibraltar.mwm`, and `Platform::GetAllFiles()` must return directories as well as files. If the log loads `World` and `WorldCoasts` but never says `Found file: Gibraltar`, CoMaps is not seeing the version directory during `RegisterAllMaps()`.
+
 1. **Frame callback not connected:** The `AgusWglContextFactory::m_frameCallback` is not set, so `CopyToSharedTexture()` runs but Flutter is never notified.
    - Check logs for "[AgusMapsFlutter] WGL factory frame callback set"
    - Ensure `g_wglFactory->SetFrameCallback()` is called after factory creation

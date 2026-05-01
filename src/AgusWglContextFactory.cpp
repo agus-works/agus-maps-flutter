@@ -398,6 +398,12 @@ bool AgusWglContextFactory::InitializeWGL()
   m_wglDXLockObjectsNV = (PFNWGLDXLOCKOBJECTSNVPROC)wglGetProcAddress("wglDXLockObjectsNV");
   m_wglDXUnlockObjectsNV = (PFNWGLDXUNLOCKOBJECTSNVPROC)wglGetProcAddress("wglDXUnlockObjectsNV");
 
+  LOG(LINFO, ("WGL interop functions:",
+              "open", m_wglDXOpenDeviceNV != nullptr,
+              "register", m_wglDXRegisterObjectNV != nullptr,
+              "lock", m_wglDXLockObjectsNV != nullptr,
+              "unlock", m_wglDXUnlockObjectsNV != nullptr));
+
   // Initialize GL functions
   GLFunctions::Init(dp::ApiVersion::OpenGLES3);
 
@@ -406,6 +412,7 @@ bool AgusWglContextFactory::InitializeWGL()
   if (const GLubyte * vendor = glGetString(GL_VENDOR))
     m_glVendor = reinterpret_cast<const char *>(vendor);
 
+  LOG(LINFO, ("OpenGL renderer:", m_glRenderer, "vendor:", m_glVendor));
 
   // Create framebuffer
   glGenFramebuffers(1, &m_framebuffer);
@@ -449,6 +456,7 @@ bool AgusWglContextFactory::InitializeWGL()
   glScissor(0, 0, m_width, m_height);
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  m_lastBoundFramebuffer.store(m_framebuffer);
   wglMakeCurrent(nullptr, nullptr);
 
   return true;
@@ -493,6 +501,7 @@ bool AgusWglContextFactory::InitializeD3D11()
             adapterLower.find(rendererLower) != std::string::npos)
         {
           preferredAdapter = adapter;
+          LOG(LINFO, ("D3D adapter matched OpenGL renderer:", adapterName));
           break;
         }
       }
@@ -517,6 +526,7 @@ bool AgusWglContextFactory::InitializeD3D11()
 
   if (FAILED(hr))
   {
+    LOG(LINFO, ("D3D adapter fallback: default hardware adapter"));
     hr = D3D11CreateDevice(
       nullptr,
       D3D_DRIVER_TYPE_HARDWARE,
@@ -536,6 +546,8 @@ bool AgusWglContextFactory::InitializeD3D11()
     LOG(LERROR, ("Failed to create D3D11 device:", hr));
     return false;
   }
+
+  LOG(LINFO, ("D3D11 device created. Feature level:", featureLevel));
 
   return true;
 }
@@ -650,6 +662,10 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
     }
   }
 
+  LOG(LINFO, ("Shared texture created:", width, "x", height,
+              "handle:", m_sharedHandle,
+              "KeyedMutex:", (m_keyedMutex ? "Yes" : "No")));
+
   //
   // PROMPT CHECK: "Consumer (Flutter): The Flutter engine (or the plugin's D3D side) calls AcquireSync(0)... It waits for the key to be 0".
   // Note: "or the plugin's D3D side". The plugin C++ code *hands* the texture to Flutter. Flutter compositor uses it.
@@ -706,10 +722,16 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             m_interopObject = m_wglDXRegisterObjectNV(m_interopDevice, m_sharedTexture.Get(),
                                                       m_interopTexture, GL_TEXTURE_2D, WGL_ACCESS_READ_WRITE_NV);
             if (!m_interopObject)
+            {
+              LOG(LWARNING, ("WGL Interop: Failed to register D3D texture as GL texture.",
+                             "GetLastError:", GetLastError(), "GL error:", glGetError()));
               return false;
+            }
 
             if (!m_wglDXLockObjectsNV(m_interopDevice, 1, &m_interopObject))
             {
+              LOG(LWARNING, ("WGL Interop: Failed to lock texture object during setup.",
+                             "GetLastError:", GetLastError()));
               return false;
             }
 
@@ -725,6 +747,8 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE)
             {
+              LOG(LWARNING, ("WGL Interop: Interop texture FBO incomplete:",
+                             status, FramebufferStatusToString(status)));
               glBindFramebuffer(GL_FRAMEBUFFER, 0);
               m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
               return false;
@@ -732,6 +756,7 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
+            LOG(LINFO, ("WGL Interop: Texture FBO complete - zero-copy enabled"));
             return true;
           };
 
@@ -743,10 +768,16 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             m_interopObject = m_wglDXRegisterObjectNV(m_interopDevice, m_sharedTexture.Get(),
                                                       m_interopRenderbuffer, GL_RENDERBUFFER, WGL_ACCESS_READ_WRITE_NV);
             if (!m_interopObject)
+            {
+              LOG(LWARNING, ("WGL Interop: Failed to register D3D texture as GL renderbuffer.",
+                             "GetLastError:", GetLastError(), "GL error:", glGetError()));
               return false;
+            }
 
             if (!m_wglDXLockObjectsNV(m_interopDevice, 1, &m_interopObject))
             {
+              LOG(LWARNING, ("WGL Interop: Failed to lock renderbuffer object during setup.",
+                             "GetLastError:", GetLastError()));
               return false;
             }
 
@@ -762,6 +793,8 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE)
             {
+              LOG(LWARNING, ("WGL Interop: Renderbuffer FBO incomplete:",
+                             status, FramebufferStatusToString(status)));
               glBindFramebuffer(GL_FRAMEBUFFER, 0);
               m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
               return false;
@@ -769,6 +802,7 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
+            LOG(LINFO, ("WGL Interop: Renderbuffer FBO complete - zero-copy enabled"));
             return true;
           };
 
@@ -785,6 +819,7 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             if (m_wglDXCloseDeviceNV)
               m_wglDXCloseDeviceNV(m_interopDevice);
             m_interopDevice = nullptr;
+            LOG(LWARNING, ("WGL Interop: disabled; falling back to CPU copy"));
           }
       }
       else
@@ -1172,7 +1207,7 @@ void AgusWglContextFactory::CopyToSharedTexture()
   std::lock_guard<std::mutex> lock(m_mutex);
 
   // If we have interop object, use Zero-Copy path
-  bool hasInteropFns = m_wglDXLockObjectsNV && m_wglDXUnlockObjectsNV;
+  bool hasInteropFns = m_wglDXLockObjectsNV && m_wglDXUnlockObjectsNV && glBlitFramebuffer;
   bool useInterop = (m_interopObject != nullptr && m_interopFramebuffer != 0 &&
                      m_interopDevice != nullptr && hasInteropFns);
 
@@ -1209,6 +1244,18 @@ void AgusWglContextFactory::CopyToSharedTexture()
   m_renderedWidth.store(readWidth);
   m_renderedHeight.store(readHeight);
 
+  static std::atomic<int> copyLogCounter{0};
+  int const copyLogIndex = copyLogCounter.fetch_add(1);
+  if (copyLogIndex < 5 || copyLogIndex % 120 == 0)
+  {
+    LOG(LINFO, ("CopyToSharedTexture: useInterop:", useInterop,
+                "fbo:", fboToRead,
+                "read:", readWidth, "x", readHeight,
+                "surface:", m_width, "x", m_height,
+                "keyedMutex:", (m_keyedMutex ? "Yes" : "No")));
+  }
+
+  bool copiedFrame = false;
   if (useInterop)
   {
       // ZERO-COPY PATH
@@ -1247,8 +1294,11 @@ void AgusWglContextFactory::CopyToSharedTexture()
                             0, readHeight, readWidth, 0,
                             GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
+          glFinish();
+
           // Unlock GL Interop Object
           m_wglDXUnlockObjectsNV(m_interopDevice, 1, &m_interopObject);
+          copiedFrame = true;
         }
         else
         {
@@ -1262,8 +1312,14 @@ void AgusWglContextFactory::CopyToSharedTexture()
         }
       }
   }
-  else
+
+  if (!copiedFrame)
   {
+      if (!m_stagingTexture || !m_sharedTexture)
+      {
+        return;
+      }
+
       // FALBACK PATH (CPU COPY)
       // Read pixels from OpenGL
       glBindFramebuffer(GL_FRAMEBUFFER, fboToRead);
@@ -1310,6 +1366,7 @@ void AgusWglContextFactory::CopyToSharedTexture()
         // Handle KeyedMutex for shared texture even in fallback
         if (m_keyedMutex) m_keyedMutex->AcquireSync(0, 100);
         m_d3dContext->CopyResource(m_sharedTexture.Get(), m_stagingTexture.Get());
+        m_d3dContext->Flush();
         if (m_keyedMutex) m_keyedMutex->ReleaseSync(1);
       }
   }
