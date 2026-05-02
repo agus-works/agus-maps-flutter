@@ -9,6 +9,9 @@
 1. Do not poll terminal/cli MCP but instead run any arbitrary command as follows: `mycommand 2>&1 | tee ./output.log`. Then analyze the output.log making sure you're well aware of the file length before reading and strategically read the file by searching keywords relevant to analysis.
 1. Do not commit automatically unless instructed specifically. And when commiting please use appropriate commit message.
 1. When working on a specific target platform, make sure not to break other platforms! Be precise and surgical in updating `./patches`. You may create new patches as needed - but analyze if editing existing patch is more appropriate instead. Please update `./patches/comaps/README.md` when editing or adding patches! Analyze all patch changes and update the `./patches/comaps/README.md` as appropriate in detail with the same formatting as the other existing items.
+1. you are allowed to do git commands and don't forget to recursively clone submodules and recursively get lfs. 
+1. when running builds, please wait for the entire command to finish and do not poll commands for progress. wait entire until they're done.
+1. please make sure that your commands are known not to take user input in advance. if you know a command will take user input, then please ask me to run it instead and then try to guide me on the answers to inputs in advance.
 
 ### Thirdparty Patching Mechanism
 
