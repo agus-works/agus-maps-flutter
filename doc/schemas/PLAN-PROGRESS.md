@@ -453,7 +453,7 @@ Known analyzer output:
 
 ## Current Worktree Notes
 
-The submodules are present in the working tree but currently unstaged. Until `.gitmodules` and gitlink entries are staged, `git submodule status thirdparty/duckdb thirdparty/duckdb-spatial` will not know those paths. Use direct `git -C` checks for pin validation before staging.
+The DuckDB and duckdb-spatial submodule gitlinks are staged for the next checkpoint commit. After that commit lands, `git submodule status thirdparty/duckdb thirdparty/duckdb-spatial` should report the pinned refs directly from the root repository.
 
 Generated build outputs under `build/` and framework outputs under `macos/Frameworks/` and `ios/Frameworks/` are ignored. The source changes that matter are the root submodule metadata, tooling, bridge, Dart bindings/API, podspecs, docs, schema files, and the `example/ios/Podfile.lock` plus `example/macos/Podfile.lock` checksum updates caused by the Apple podspec changes.
 
