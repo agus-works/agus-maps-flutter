@@ -5,7 +5,8 @@ import 'dart:convert';
 
 import 'package:path/path.dart' as path;
 
-import 'cmake_build.dart' show CMakeBuildConfig, buildWithCMake;
+import 'cmake_build.dart'
+    show CMakeBuildConfig, buildWithCMake, detectAndroidNDK;
 import 'config.dart' show BuildConfig;
 import 'file_operations.dart' show copyPath, dirExists, ensureDir, fileExists;
 import 'platform_detector.dart'
@@ -214,6 +215,80 @@ Future<void> buildDuckDBiOSXCFramework({
     outputDir: outputDir,
     duckdbSourceDir: duckdbSourceDir,
   );
+}
+
+/// Build DuckDB for Android as ABI-specific static archive bundles.
+Future<String> buildDuckDBAndroidArchives({
+  String? duckdbDir,
+  String? duckdbSpatialDir,
+  String? vcpkgRoot,
+  String? ndkPath,
+  Iterable<String>? abis,
+}) async {
+  final duckdbSourceDir = duckdbDir ?? getDuckdbDir();
+  final spatialSourceDir = duckdbSpatialDir ?? getDuckdbSpatialDir();
+  final extensionConfig = _getExtensionConfigPath();
+  _validateDuckDBInputs(duckdbSourceDir, spatialSourceDir, extensionConfig);
+
+  final resolvedVcpkgRoot = vcpkgRoot ?? await _detectVcpkgRoot();
+  final vcpkgToolchainFile = path.join(
+    resolvedVcpkgRoot,
+    'scripts',
+    'buildsystems',
+    'vcpkg.cmake',
+  );
+  if (!fileExists(vcpkgToolchainFile)) {
+    throw Exception('vcpkg toolchain not found: $vcpkgToolchainFile');
+  }
+
+  final ndk = ndkPath ?? detectAndroidNDK();
+  final androidToolchainFile =
+      path.join(ndk, 'build', 'cmake', 'android.toolchain.cmake');
+  if (!fileExists(androidToolchainFile)) {
+    throw Exception('Android NDK toolchain not found: $androidToolchainFile');
+  }
+
+  print('=== Build DuckDB Android static archives ===');
+  print('DuckDB source: $duckdbSourceDir');
+  print('duckdb-spatial source: $spatialSourceDir');
+  print('DuckDB extensions: ${_requiredDuckDBExtensions.join(', ')}');
+  print('vcpkg root: $resolvedVcpkgRoot');
+  print('Android NDK: $ndk');
+
+  final manifestDir = await _generateDuckDBVcpkgManifest(
+    duckdbSourceDir: duckdbSourceDir,
+    spatialSourceDir: spatialSourceDir,
+    extensionConfig: extensionConfig,
+  );
+  await _ensureVcpkgBaselineAvailable(resolvedVcpkgRoot, manifestDir);
+
+  final buildRoot = path.join(getBuildDir(), 'duckdb', 'android');
+  final installedDir =
+      path.join(getBuildDir(), 'duckdb-vcpkg-installed-android');
+  final outputRoot = path.join(getBuildDir(), 'agus-binaries-android-duckdb');
+  final tripletsDir = await _writeDuckDBAndroidTriplets(
+    buildRoot: buildRoot,
+    androidToolchainFile: androidToolchainFile,
+  );
+
+  for (final abi in abis ?? BuildConfig.androidAbis) {
+    await _buildDuckDBAndroidAbi(
+      abi: abi,
+      duckdbSourceDir: duckdbSourceDir,
+      spatialSourceDir: spatialSourceDir,
+      extensionConfig: extensionConfig,
+      manifestDir: manifestDir,
+      installedDir: installedDir,
+      vcpkgToolchainFile: vcpkgToolchainFile,
+      androidToolchainFile: androidToolchainFile,
+      ndkPath: ndk,
+      buildRoot: buildRoot,
+      outputRoot: outputRoot,
+      tripletsDir: tripletsDir,
+    );
+  }
+
+  return outputRoot;
 }
 
 String _getExtensionConfigPath() {
@@ -464,6 +539,185 @@ Future<String> _buildDuckDBAppleArch({
   return archive;
 }
 
+Future<void> _buildDuckDBAndroidAbi({
+  required String abi,
+  required String duckdbSourceDir,
+  required String spatialSourceDir,
+  required String extensionConfig,
+  required String manifestDir,
+  required String installedDir,
+  required String vcpkgToolchainFile,
+  required String androidToolchainFile,
+  required String ndkPath,
+  required String buildRoot,
+  required String outputRoot,
+  required String tripletsDir,
+}) async {
+  print('Building DuckDB for Android $abi...');
+
+  final buildDir = path.join(buildRoot, abi);
+  await _deleteIfExists(buildDir);
+  final icuPrefixHeader = await _writeDuckDBICUPrefixHeader(
+    duckdbSourceDir: duckdbSourceDir,
+    buildDir: buildDir,
+  );
+  final forceIncludeICUPrefix = '-include $icuPrefixHeader';
+
+  final variables = <String, String>{
+    'CMAKE_TOOLCHAIN_FILE': vcpkgToolchainFile,
+    'VCPKG_CHAINLOAD_TOOLCHAIN_FILE': androidToolchainFile,
+    'VCPKG_MANIFEST_DIR': manifestDir,
+    'VCPKG_INSTALLED_DIR': installedDir,
+    'VCPKG_TARGET_TRIPLET': _androidVcpkgTripletForAbi(abi),
+    'VCPKG_OVERLAY_TRIPLETS': tripletsDir,
+    'VCPKG_BUILD': '1',
+    'CMAKE_BUILD_TYPE': BuildConfig.buildType,
+    'CMAKE_SYSTEM_NAME': 'Android',
+    'CMAKE_SYSTEM_VERSION': BuildConfig.androidMinSdk,
+    'CMAKE_ANDROID_NDK': ndkPath,
+    'ANDROID_NDK': ndkPath,
+    'ANDROID_ABI': abi,
+    'CMAKE_ANDROID_ARCH_ABI': abi,
+    'ANDROID_PLATFORM': 'android-${BuildConfig.androidMinSdk}',
+    'ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES': 'ON',
+    'CMAKE_POSITION_INDEPENDENT_CODE': 'ON',
+    'DUCKDB_EXTENSION_CONFIGS': extensionConfig,
+    'AGUS_DUCKDB_SPATIAL_SOURCE_DIR': spatialSourceDir,
+    'DUCKDB_EXPLICIT_PLATFORM': 'android_$abi',
+    'EXTENSION_STATIC_BUILD': 'TRUE',
+    'BUILD_SHELL': 'OFF',
+    'BUILD_UNITTESTS': 'OFF',
+    'BUILD_BENCHMARKS': 'OFF',
+    'ENABLE_EXTENSION_AUTOLOADING': 'OFF',
+    'ENABLE_EXTENSION_AUTOINSTALL': 'OFF',
+    'OPENSSL_USE_STATIC_LIBS': 'ON',
+    'ZLIB_USE_STATIC_LIBS': 'ON',
+    'CMAKE_C_FLAGS': forceIncludeICUPrefix,
+    'CMAKE_CXX_FLAGS': forceIncludeICUPrefix,
+  };
+
+  await buildWithCMake(CMakeBuildConfig(
+    sourceDir: duckdbSourceDir,
+    buildDir: buildDir,
+    variables: variables,
+    environment: {
+      'ANDROID_NDK_HOME': ndkPath,
+      'ANDROID_NDK_ROOT': ndkPath,
+      'ANDROID_NDK': ndkPath,
+    },
+    generator: 'Ninja',
+  ));
+
+  await _bundleDuckDBAndroidAbi(
+    abi: abi,
+    buildDir: buildDir,
+    installedDir: installedDir,
+    triplet: _androidVcpkgTripletForAbi(abi),
+    outputRoot: outputRoot,
+    duckdbSourceDir: duckdbSourceDir,
+  );
+}
+
+Future<void> _bundleDuckDBAndroidAbi({
+  required String abi,
+  required String buildDir,
+  required String installedDir,
+  required String triplet,
+  required String outputRoot,
+  required String duckdbSourceDir,
+}) async {
+  final bundleDir = path.join(outputRoot, abi);
+  await _deleteIfExists(bundleDir);
+  await ensureDir(bundleDir);
+
+  final includeDir = path.join(bundleDir, 'include');
+  await copyPath(path.join(duckdbSourceDir, 'src', 'include'), includeDir);
+
+  final duckdbLibDir = path.join(bundleDir, 'lib', 'duckdb');
+  final vcpkgLibDir = path.join(bundleDir, 'lib', 'vcpkg');
+  final duckdbLibs = await _copyStaticLibrariesToDirectory(
+    _sortDuckDBStaticLibraries(await _findStaticLibraries(buildDir)),
+    duckdbLibDir,
+  );
+  final vcpkgLibs = await _copyStaticLibrariesToDirectory(
+    _sortDuckDBStaticLibraries(
+      await _findStaticLibraries(path.join(installedDir, triplet, 'lib')),
+    ),
+    vcpkgLibDir,
+  );
+  final bundledLibs = _dedupePaths([...duckdbLibs, ...vcpkgLibs]);
+  if (bundledLibs.isEmpty) {
+    throw Exception('No DuckDB Android static libraries found for $abi');
+  }
+
+  final cmakeFile = path.join(bundleDir, 'agus_duckdb_android.cmake');
+  await File(cmakeFile).writeAsString(_renderDuckDBAndroidBundleCMake(
+    includeDir: includeDir,
+    libraries: bundledLibs,
+  ));
+
+  print('Created DuckDB Android archive bundle: $bundleDir');
+}
+
+Future<List<String>> _copyStaticLibrariesToDirectory(
+  List<String> libraries,
+  String outputDir,
+) async {
+  await ensureDir(outputDir);
+  final copied = <String>[];
+  final nameCounts = <String, int>{};
+
+  for (final library in libraries) {
+    final basename = path.basename(library);
+    final nextCount = (nameCounts[basename] ?? 0) + 1;
+    nameCounts[basename] = nextCount;
+    final outputName = nextCount == 1
+        ? basename
+        : '${path.basenameWithoutExtension(basename)}_$nextCount.a';
+    final outputPath = path.join(outputDir, outputName);
+    await copyPath(library, outputPath);
+    copied.add(outputPath);
+  }
+
+  return copied;
+}
+
+String _renderDuckDBAndroidBundleCMake({
+  required String includeDir,
+  required List<String> libraries,
+}) {
+  String cmakePath(String value) => path.normalize(value).replaceAll('\\', '/');
+
+  final buffer = StringBuffer()
+    ..writeln('set(AGUS_DUCKDB_ANDROID_INCLUDE_DIR "${cmakePath(includeDir)}")')
+    ..writeln('set(AGUS_DUCKDB_ANDROID_LIBRARIES');
+  for (final library in libraries) {
+    buffer.writeln('  "${cmakePath(library)}"');
+  }
+  buffer
+    ..writeln(')')
+    ..writeln('');
+  return buffer.toString();
+}
+
+List<String> _sortDuckDBStaticLibraries(List<String> libraries) {
+  final sorted = _dedupePaths(libraries);
+  sorted.sort((left, right) {
+    final leftWeight = _duckDBStaticLibraryWeight(left);
+    final rightWeight = _duckDBStaticLibraryWeight(right);
+    if (leftWeight != rightWeight) return leftWeight.compareTo(rightWeight);
+    return path.basename(left).compareTo(path.basename(right));
+  });
+  return sorted;
+}
+
+int _duckDBStaticLibraryWeight(String library) {
+  final basename = path.basename(library);
+  if (basename == 'libduckdb_static.a' || basename == 'libduckdb.a') return 0;
+  if (basename.contains('extension')) return 1;
+  return 2;
+}
+
 Future<String> _writeDuckDBICUPrefixHeader({
   required String duckdbSourceDir,
   required String buildDir,
@@ -632,6 +886,72 @@ Future<void> _writeDuckDBIOSTriplet({
 
   await File(path.join(tripletsDir, '$name.cmake'))
       .writeAsString(buffer.toString());
+}
+
+Future<String> _writeDuckDBAndroidTriplets({
+  required String buildRoot,
+  required String androidToolchainFile,
+}) async {
+  final tripletsDir = path.join(buildRoot, 'vcpkg-triplets');
+  await _deleteIfExists(tripletsDir);
+  await ensureDir(tripletsDir);
+
+  await _writeDuckDBAndroidTriplet(
+    tripletsDir: tripletsDir,
+    name: 'arm64-android-agus',
+    architecture: 'arm64',
+    abi: 'arm64-v8a',
+    androidToolchainFile: androidToolchainFile,
+  );
+  await _writeDuckDBAndroidTriplet(
+    tripletsDir: tripletsDir,
+    name: 'arm-neon-android-agus',
+    architecture: 'arm',
+    abi: 'armeabi-v7a',
+    androidToolchainFile: androidToolchainFile,
+  );
+  await _writeDuckDBAndroidTriplet(
+    tripletsDir: tripletsDir,
+    name: 'x64-android-agus',
+    architecture: 'x64',
+    abi: 'x86_64',
+    androidToolchainFile: androidToolchainFile,
+  );
+
+  return tripletsDir;
+}
+
+Future<void> _writeDuckDBAndroidTriplet({
+  required String tripletsDir,
+  required String name,
+  required String architecture,
+  required String abi,
+  required String androidToolchainFile,
+}) async {
+  final toolchain = path.normalize(androidToolchainFile).replaceAll('\\', '/');
+  final buffer = StringBuffer()
+    ..writeln('set(VCPKG_TARGET_ARCHITECTURE $architecture)')
+    ..writeln('set(VCPKG_CRT_LINKAGE dynamic)')
+    ..writeln('set(VCPKG_LIBRARY_LINKAGE static)')
+    ..writeln('set(VCPKG_CMAKE_SYSTEM_NAME Android)')
+    ..writeln('set(VCPKG_CMAKE_SYSTEM_VERSION ${BuildConfig.androidMinSdk})')
+    ..writeln('set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "$toolchain")')
+    ..writeln('set(VCPKG_CMAKE_CONFIGURE_OPTIONS')
+    ..writeln('  -DANDROID_ABI=$abi')
+    ..writeln('  -DANDROID_PLATFORM=android-${BuildConfig.androidMinSdk}')
+    ..writeln(')');
+
+  await File(path.join(tripletsDir, '$name.cmake'))
+      .writeAsString(buffer.toString());
+}
+
+String _androidVcpkgTripletForAbi(String abi) {
+  return switch (abi) {
+    'arm64-v8a' => 'arm64-android-agus',
+    'armeabi-v7a' => 'arm-neon-android-agus',
+    'x86_64' => 'x64-android-agus',
+    _ => throw UnsupportedError('Unsupported Android ABI for DuckDB: $abi'),
+  };
 }
 
 Future<void> _createDuckDBiOSXCFramework({

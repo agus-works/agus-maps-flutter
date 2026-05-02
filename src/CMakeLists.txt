@@ -17,6 +17,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(USE_PREBUILT_COMAPS "Use pre-built CoMaps libraries instead of building from source" OFF)
 set(PREBUILT_DIR "" CACHE PATH "Path to pre-built CoMaps libraries")
 set(COMAPS_HEADERS_DIR "" CACHE PATH "Path to downloaded CoMaps headers")
+set(AGUS_DUCKDB_ANDROID_DIR "" CACHE PATH "Path to ABI-specific DuckDB Android archive bundle")
 
 if(USE_PREBUILT_COMAPS)
   message(STATUS "=== Using pre-built CoMaps libraries ===")
@@ -121,6 +122,7 @@ elseif(ANDROID)
     "agus_localization.cpp"
     "agus_ogl.cpp"
     "agus_gui_thread.cpp"
+    "agus_duckdb_bridge.cpp"
   )
 elseif(UNIX AND NOT APPLE)
   # Linux uses EGL/GLES3 for offscreen rendering with Flutter texture sharing
@@ -154,6 +156,28 @@ set_target_properties(agus_maps_flutter PROPERTIES
   # when our implementation files have namespace declarations that interact
   UNITY_BUILD OFF
 )
+
+if(ANDROID)
+  if(NOT AGUS_DUCKDB_ANDROID_DIR)
+    get_filename_component(AGUS_DUCKDB_ANDROID_DIR
+      "${CMAKE_CURRENT_SOURCE_DIR}/../build/agus-binaries-android-duckdb/${ANDROID_ABI}"
+      ABSOLUTE)
+  endif()
+
+  set(AGUS_DUCKDB_ANDROID_CMAKE
+    "${AGUS_DUCKDB_ANDROID_DIR}/agus_duckdb_android.cmake")
+  if(EXISTS "${AGUS_DUCKDB_ANDROID_CMAKE}")
+    include("${AGUS_DUCKDB_ANDROID_CMAKE}")
+    message(STATUS
+      "Using DuckDB Android archive bundle: ${AGUS_DUCKDB_ANDROID_DIR}")
+  else()
+    message(FATAL_ERROR
+      "DuckDB Android archive bundle not found for ${ANDROID_ABI}: "
+      "${AGUS_DUCKDB_ANDROID_DIR}. Run `dart run tool/build.dart "
+      "--build-binaries --platform android` before building Android from "
+      "source.")
+  endif()
+endif()
 
 # ============================================================================
 # Include Directories
@@ -221,6 +245,18 @@ else()
   endif()
 endif()
 
+if(ANDROID)
+  if(NOT AGUS_DUCKDB_ANDROID_INCLUDE_DIR OR NOT AGUS_DUCKDB_ANDROID_LIBRARIES)
+    message(FATAL_ERROR
+      "DuckDB Android archive bundle is missing include/library metadata: "
+      "${AGUS_DUCKDB_ANDROID_CMAKE}")
+  endif()
+
+  target_include_directories(agus_maps_flutter PRIVATE
+    "${AGUS_DUCKDB_ANDROID_INCLUDE_DIR}"
+  )
+endif()
+
 # ============================================================================
 # Link Libraries
 # ============================================================================
@@ -260,6 +296,32 @@ else()
     drape
     drape_frontend
   )
+endif()
+
+if(ANDROID)
+  if(NOT USE_PREBUILT_COMAPS)
+    # DuckDB spatial pulls json-c, which defines json_object_get and
+    # json_object_iter_next too. Load CoMaps' Jansson first so CoMaps JSON
+    # parsing cannot bind to json-c's incompatible ABI.
+    target_link_libraries(agus_maps_flutter
+      PRIVATE
+      -Wl,--whole-archive
+      jansson
+      -Wl,--no-whole-archive
+    )
+  endif()
+
+  target_link_libraries(agus_maps_flutter
+    PRIVATE
+    -Wl,--start-group
+    ${AGUS_DUCKDB_ANDROID_LIBRARIES}
+    -Wl,--end-group
+    -ldl
+    -lm
+  )
+  if(ANDROID_ABI STREQUAL "armeabi-v7a")
+    target_link_libraries(agus_maps_flutter PRIVATE -latomic)
+  endif()
 endif()
 
 target_compile_definitions(agus_maps_flutter PUBLIC DART_SHARED_LIB)

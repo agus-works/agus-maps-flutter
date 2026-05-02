@@ -67,6 +67,7 @@ class CMakeBuildConfig {
   final String sourceDir;
   final String buildDir;
   final Map<String, String> variables;
+  final Map<String, String>? environment;
   final String? generator;
   final String? target;
   final int? parallelJobs;
@@ -75,6 +76,7 @@ class CMakeBuildConfig {
     required this.sourceDir,
     required this.buildDir,
     required this.variables,
+    this.environment,
     this.generator,
     this.target,
     this.parallelJobs,
@@ -116,6 +118,7 @@ Future<void> buildWithCMake(CMakeBuildConfig config) async {
   final configureExitCode = await runProcessStreaming(
     cmake,
     cmakeArgs,
+    environment: config.environment,
   );
   if (configureExitCode != 0) {
     throw ProcessException(
@@ -157,6 +160,7 @@ Future<void> buildWithCMake(CMakeBuildConfig config) async {
   final buildExitCode = await runProcessStreaming(
     cmake,
     buildArgs,
+    environment: config.environment,
   );
   if (buildExitCode != 0) {
     throw ProcessException(
@@ -175,10 +179,11 @@ Future<void> buildAndroidAbi(
   String abi, {
   String? ndkPath,
   String? sourceDir,
+  String? duckdbAndroidDir,
 }) async {
   final buildDir = path.join(getBuildDir(), 'android-$abi');
   final source = sourceDir ?? path.join(getRepoRoot(), 'src');
-  final ndk = ndkPath ?? _detectAndroidNDK();
+  final ndk = ndkPath ?? detectAndroidNDK();
 
   // Find NDK toolchain
   final toolchainFile =
@@ -195,6 +200,9 @@ Future<void> buildAndroidAbi(
     'CMAKE_BUILD_TYPE': BuildConfig.buildType,
     'ANDROID': 'ON',
   };
+  if (duckdbAndroidDir != null) {
+    variables['AGUS_DUCKDB_ANDROID_DIR'] = duckdbAndroidDir;
+  }
 
   await buildWithCMake(CMakeBuildConfig(
     sourceDir: source,
@@ -641,7 +649,7 @@ Future<void> _deleteIfExists(String targetPath) async {
 }
 
 /// Detect Android NDK path
-String _detectAndroidNDK() {
+String detectAndroidNDK() {
   // Check environment variable first
   final envNdkPath = Platform.environment['ANDROID_NDK_HOME'] ??
       Platform.environment['ANDROID_NDK'];

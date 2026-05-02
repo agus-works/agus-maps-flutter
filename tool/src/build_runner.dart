@@ -41,7 +41,10 @@ import 'cmake_build.dart'
         buildWindowsLibrary,
         buildLinuxLibrary;
 import 'duckdb_build.dart'
-    show buildDuckDBiOSXCFramework, buildDuckDBMacOSXCFramework;
+    show
+        buildDuckDBAndroidArchives,
+        buildDuckDBiOSXCFramework,
+        buildDuckDBMacOSXCFramework;
 import 'archive_manager.dart' show createTarGz, extractTarGz;
 
 const int _minSymbolsPngBytes = 100000;
@@ -900,9 +903,14 @@ Future<void> _buildAndroid() async {
   final outputDir = path.join(getBuildDir(), 'agus-binaries-android');
   await ensureDir(outputDir);
 
+  final duckdbAndroidRoot = await buildDuckDBAndroidArchives();
+
   for (final abi in BuildConfig.androidAbis) {
     print('Building Android $abi...');
-    await buildAndroidAbi(abi);
+    await buildAndroidAbi(
+      abi,
+      duckdbAndroidDir: path.join(duckdbAndroidRoot, abi),
+    );
   }
 
   // Copy to android/prebuilt
