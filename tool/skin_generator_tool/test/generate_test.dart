@@ -5,9 +5,11 @@ import 'package:path/path.dart' as p;
 
 void main() {
   test('Generate all skins', () async {
-    final workspacePath = p.normalize(p.join(Directory.current.path, '..', '..'));
+    final workspacePath = p.normalize(
+      p.join(Directory.current.path, '..', '..'),
+    );
     final dataPath = p.join(workspacePath, 'thirdparty', 'comaps', 'data');
-    
+
     Future<void> buildSkin({
       required String styleType,
       required String styleName,
@@ -18,13 +20,19 @@ void main() {
       String symbolsSuffix = '',
     }) async {
       print('Building skin for $styleName/$resourceName');
-      
+
       final stylePath = p.join(dataPath, 'styles', styleType, styleName);
       final svgDir = p.join(stylePath, symbolsFolder);
       final pngDir = p.join(stylePath, '$resourceName$symbolsSuffix');
-      
-      final skinName = p.join(dataPath, 'symbols', resourceName, suffix, 'basic');
-      
+
+      final skinName = p.join(
+        dataPath,
+        'symbols',
+        resourceName,
+        suffix,
+        'basic',
+      );
+
       await SkinGenerator.generate(
         svgDir: svgDir,
         pngDir: pngDir,
@@ -33,7 +41,7 @@ void main() {
         suffixes: [symbolsSuffix],
       );
     }
-    
+
     // Clear old symbols
     final symbolsDir = Directory(p.join(dataPath, 'symbols'));
     if (symbolsDir.existsSync()) {
@@ -43,25 +51,109 @@ void main() {
         }
       }
     }
-    
+
     // dark
-    await buildSkin(styleType: 'default', styleName: 'dark', resourceName: 'mdpi', symbolSize: 18, suffix: 'dark', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'dark', resourceName: 'hdpi', symbolSize: 27, suffix: 'dark', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'dark', resourceName: 'xhdpi', symbolSize: 36, suffix: 'dark', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'dark', resourceName: '6plus', symbolSize: 43, suffix: 'dark', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'dark', resourceName: 'xxhdpi', symbolSize: 54, suffix: 'dark', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'dark', resourceName: 'xxxhdpi', symbolSize: 64, suffix: 'dark', symbolsFolder: 'symbols');
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'dark',
+      resourceName: 'mdpi',
+      symbolSize: 18,
+      suffix: 'dark',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'dark',
+      resourceName: 'hdpi',
+      symbolSize: 27,
+      suffix: 'dark',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'dark',
+      resourceName: 'xhdpi',
+      symbolSize: 36,
+      suffix: 'dark',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'dark',
+      resourceName: '6plus',
+      symbolSize: 43,
+      suffix: 'dark',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'dark',
+      resourceName: 'xxhdpi',
+      symbolSize: 54,
+      suffix: 'dark',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'dark',
+      resourceName: 'xxxhdpi',
+      symbolSize: 64,
+      suffix: 'dark',
+      symbolsFolder: 'symbols',
+    );
 
     // light
-    await buildSkin(styleType: 'default', styleName: 'light', resourceName: 'mdpi', symbolSize: 18, suffix: 'light', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'light', resourceName: 'hdpi', symbolSize: 27, suffix: 'light', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'light', resourceName: 'xhdpi', symbolSize: 36, suffix: 'light', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'light', resourceName: '6plus', symbolSize: 43, suffix: 'light', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'light', resourceName: 'xxhdpi', symbolSize: 54, suffix: 'light', symbolsFolder: 'symbols');
-    await buildSkin(styleType: 'default', styleName: 'light', resourceName: 'xxxhdpi', symbolSize: 64, suffix: 'light', symbolsFolder: 'symbols');
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'light',
+      resourceName: 'mdpi',
+      symbolSize: 18,
+      suffix: 'light',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'light',
+      resourceName: 'hdpi',
+      symbolSize: 27,
+      suffix: 'light',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'light',
+      resourceName: 'xhdpi',
+      symbolSize: 36,
+      suffix: 'light',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'light',
+      resourceName: '6plus',
+      symbolSize: 43,
+      suffix: 'light',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'light',
+      resourceName: 'xxhdpi',
+      symbolSize: 54,
+      suffix: 'light',
+      symbolsFolder: 'symbols',
+    );
+    await buildSkin(
+      styleType: 'default',
+      styleName: 'light',
+      resourceName: 'xxxhdpi',
+      symbolSize: 64,
+      suffix: 'light',
+      symbolsFolder: 'symbols',
+    );
 
     final symbolsName = ['6plus', 'mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
-    
+
     bool hasOptiPng = false;
     try {
       final res = await Process.run('optipng', ['-v']);
@@ -73,15 +165,23 @@ void main() {
         for (final theme in ['light', 'dark']) {
           final pngPath = p.join(dataPath, 'symbols', i, theme, 'symbols.png');
           if (File(pngPath).existsSync()) {
-            await Process.run('optipng', ['-zc9', '-zm8', '-zs0', '-f0', pngPath]);
+            await Process.run('optipng', [
+              '-zc9',
+              '-zm8',
+              '-zs0',
+              '-f0',
+              pngPath,
+            ]);
             print('Optimized $pngPath');
           }
         }
       }
     } else {
-      print('[WARN] optipng could not be found; generated symbol atlases will not be optimized.');
+      print(
+        '[WARN] optipng could not be found; generated symbol atlases will not be optimized.',
+      );
     }
-    
+
     // Cleanup design folder and copy light to design
     for (final i in symbolsName) {
       final designDir = Directory(p.join(dataPath, 'symbols', i, 'design'));
@@ -98,7 +198,7 @@ void main() {
         }
       }
     }
-    
+
     print('Skin generation completed successfully.');
-  });
+  }, timeout: const Timeout(Duration(minutes: 5)));
 }
