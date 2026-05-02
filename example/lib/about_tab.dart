@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps;
 
 /// Professional About tab with license and attribution information.
 ///
@@ -99,6 +102,15 @@ class AboutTab extends StatelessWidget {
                       context,
                       onTap: () => _showOssLicenses(context),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildSectionCard(
+                  context,
+                  title: 'DuckDB',
+                  icon: Icons.storage_outlined,
+                  children: const [
+                    _DuckDBSmokeStatus(),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -498,6 +510,122 @@ class _ThirdPartyLib {
   final String license;
 
   const _ThirdPartyLib(this.name, this.license);
+}
+
+class _DuckDBSmokeStatus extends StatefulWidget {
+  const _DuckDBSmokeStatus();
+
+  @override
+  State<_DuckDBSmokeStatus> createState() => _DuckDBSmokeStatusState();
+}
+
+class _DuckDBSmokeStatusState extends State<_DuckDBSmokeStatus> {
+  late final Future<_DuckDBSmokeResult> _result = _runSmokeTest();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_DuckDBSmokeResult>(
+      future: _result,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const ListTile(
+            contentPadding: EdgeInsets.symmetric(horizontal: 16),
+            leading: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            title: Text('Starting DuckDB'),
+            subtitle: Text('Opening the app database'),
+          );
+        }
+
+        final result = snapshot.data!;
+        final colorScheme = Theme.of(context).colorScheme;
+        final iconColor =
+            result.isSuccess ? colorScheme.primary : colorScheme.error;
+        final icon =
+            result.isSuccess ? Icons.check_circle_outline : Icons.error_outline;
+
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          leading: Icon(icon, color: iconColor),
+          title: Text(result.title),
+          subtitle: Text(result.detail),
+        );
+      },
+    );
+  }
+
+  Future<_DuckDBSmokeResult> _runSmokeTest() async {
+    try {
+      final version = agus_maps.duckDBLibraryVersion();
+      final directory = await getApplicationSupportDirectory();
+      final opened = agus_maps.openDuckDBAppDatabase(directory.path);
+      if (!opened) {
+        return _DuckDBSmokeResult.failure(
+          'DuckDB open failed',
+          agus_maps.duckDBLastError(),
+        );
+      }
+
+      final spatialQueryOk = agus_maps.executeDuckDBSql(
+        'SELECT ST_AsText(ST_Point(1, 2));',
+      );
+      if (!spatialQueryOk) {
+        return _DuckDBSmokeResult.failure(
+          'DuckDB spatial query failed',
+          agus_maps.duckDBLastError(),
+        );
+      }
+
+      final databaseOpen = agus_maps.isDuckDBOpen();
+      return _DuckDBSmokeResult.success(
+        'DuckDB $version',
+        databaseOpen
+            ? 'Database open • required extensions loaded • spatial query ok'
+            : 'Required extensions loaded • spatial query ok',
+      );
+    } on UnsupportedError catch (error) {
+      return _DuckDBSmokeResult.failure(
+        'DuckDB bridge unavailable',
+        error.message?.toString() ?? error.toString(),
+      );
+    } on Object catch (error) {
+      return _DuckDBSmokeResult.failure(
+        'DuckDB smoke test failed',
+        error.toString(),
+      );
+    }
+  }
+}
+
+class _DuckDBSmokeResult {
+  const _DuckDBSmokeResult._({
+    required this.isSuccess,
+    required this.title,
+    required this.detail,
+  });
+
+  factory _DuckDBSmokeResult.success(String title, String detail) {
+    return _DuckDBSmokeResult._(
+      isSuccess: true,
+      title: title,
+      detail: detail,
+    );
+  }
+
+  factory _DuckDBSmokeResult.failure(String title, String detail) {
+    return _DuckDBSmokeResult._(
+      isSuccess: false,
+      title: title,
+      detail: detail.isEmpty ? 'No native error was reported' : detail,
+    );
+  }
+
+  final bool isSuccess;
+  final String title;
+  final String detail;
 }
 
 /// Full-screen Apache License 2.0 display.

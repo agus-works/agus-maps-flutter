@@ -2,12 +2,33 @@
 
 import 'dart:io';
 import 'package:path/path.dart' as path;
-import 'config.dart' show BuildConfig, BuildMode, getComapsTag;
+import 'config.dart'
+    show
+        BuildConfig,
+        BuildMode,
+        getComapsTag,
+        getDuckdbSpatialTag,
+        getDuckdbTag;
 import 'platform_detector.dart'
-    show getRepoRoot, getComapsDir, getBuildDir, detectOS, OSType;
+    show
+        getRepoRoot,
+        getComapsDir,
+        getDuckdbDir,
+        getDuckdbSpatialDir,
+        getBuildDir,
+        getPatchesDir,
+        detectOS,
+        OSType;
 import 'git_operations.dart'
-    show cloneComaps, checkoutComapsTag, initSubmodules;
-import 'patch_applicator.dart' show applyPatches;
+    show
+        checkoutComapsTag,
+        checkoutGitRef,
+        cloneComaps,
+        initRepositorySubmodules,
+        initSubmodules,
+        isGitCheckout,
+        updateSubmodule;
+import 'patch_applicator.dart' show applyDependencyPatches, applyPatches;
 import 'file_operations.dart' show ensureDir, copyPath;
 import 'assets_updater.dart'
     show syncLocalizedStringsAssets, copyDataFiles, updateExampleAssetsList;
@@ -19,6 +40,8 @@ import 'cmake_build.dart'
         buildMacOSXCFramework,
         buildWindowsLibrary,
         buildLinuxLibrary;
+import 'duckdb_build.dart'
+    show buildDuckDBiOSXCFramework, buildDuckDBMacOSXCFramework;
 import 'archive_manager.dart' show createTarGz, extractTarGz;
 
 const int _minSymbolsPngBytes = 100000;
@@ -68,32 +91,43 @@ Future<void> runBuild(BuildRunnerConfig config) async {
 
 /// Contributor build workflow (build from source)
 Future<void> _runContributorBuild(BuildRunnerConfig config) async {
-  final tag = getComapsTag();
+  final comapsTag = getComapsTag();
+  final duckdbTag = getDuckdbTag();
+  final duckdbSpatialTag = getDuckdbSpatialTag();
 
   print('=== Contributor Build (from source) ===');
-  print('CoMaps tag: $tag');
+  print('CoMaps tag: $comapsTag');
+  print('DuckDB tag: $duckdbTag');
+  print('duckdb-spatial tag/ref: $duckdbSpatialTag');
   print('');
 
   // Step 1: Bootstrap CoMaps
-  await _bootstrapComaps(tag,
+  await _bootstrapComaps(comapsTag,
       skipPatches: config.skipPatches, noCache: config.noCache);
 
-  // Step 2: Build Boost headers
+  // Step 2: Bootstrap DuckDB dependencies
+  await _bootstrapDuckdbDependencies(
+    duckdbTag,
+    duckdbSpatialTag,
+    skipPatches: config.skipPatches,
+  );
+
+  // Step 3: Build Boost headers
   await _buildBoostHeaders();
 
-  // Step 3: Generate CoMaps data files
+  // Step 4: Generate CoMaps data files
   await _generateComapsData();
 
-  // Step 4: Sync localized strings into Flutter assets
+  // Step 5: Sync localized strings into Flutter assets
   await syncLocalizedStringsAssets();
 
-  // Step 5: Copy data files to example/assets
+  // Step 6: Copy data files to example/assets
   await copyDataFiles();
 
-  // Step 6: Update example pubspec assets list after asset sync/copy
+  // Step 7: Update example pubspec assets list after asset sync/copy
   await updateExampleAssetsList();
 
-  // Step 7: Build native binaries (if requested)
+  // Step 8: Build native binaries (if requested)
   bool builtIOS = false;
   bool builtMacOS = false;
 
@@ -127,6 +161,68 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
 
   print('');
   print('=== Build Complete ===');
+}
+
+Future<void> _bootstrapDuckdbDependencies(
+  String duckdbRef,
+  String duckdbSpatialRef, {
+  bool skipPatches = false,
+}) async {
+  print('=== Bootstrap DuckDB Dependencies ===');
+
+  await _bootstrapGitSubmoduleDependency(
+    dependencyName: 'DuckDB',
+    relativePath: 'thirdparty/duckdb',
+    targetDir: getDuckdbDir(),
+    ref: duckdbRef,
+    patchesName: 'duckdb',
+    skipPatches: skipPatches,
+  );
+
+  await _bootstrapGitSubmoduleDependency(
+    dependencyName: 'duckdb-spatial',
+    relativePath: 'thirdparty/duckdb-spatial',
+    targetDir: getDuckdbSpatialDir(),
+    ref: duckdbSpatialRef,
+    patchesName: 'duckdb-spatial',
+    skipPatches: skipPatches,
+  );
+
+  print('');
+}
+
+Future<void> _bootstrapGitSubmoduleDependency({
+  required String dependencyName,
+  required String relativePath,
+  required String targetDir,
+  required String ref,
+  required String patchesName,
+  bool skipPatches = false,
+}) async {
+  print('--- $dependencyName ---');
+
+  if (!await isGitCheckout(targetDir)) {
+    print('$dependencyName checkout not initialized; updating submodule');
+    await updateSubmodule(relativePath);
+  } else {
+    print('$dependencyName checkout already initialized at $targetDir');
+  }
+
+  await checkoutGitRef(ref, dir: targetDir, dependencyName: dependencyName);
+  await initRepositorySubmodules(
+    dir: targetDir,
+    dependencyName: dependencyName,
+  );
+
+  if (!skipPatches) {
+    await applyDependencyPatches(
+      dependencyName: dependencyName,
+      sourceDir: targetDir,
+      patchesDir: getPatchesDir(patchesName),
+    );
+  } else {
+    print('Skipping $dependencyName patches (--skip-patches)');
+  }
 }
 
 /// Bootstrap CoMaps (clone, checkout, submodules, patches)
@@ -547,7 +643,8 @@ Future<void> _generateComapsData() async {
     // Generate symbols atlas (symbols.png + symbols.sdf)
     if (!await _symbolsAtlasesReady(dataDir)) {
       print('Generating symbols atlas using Dart skin generator...');
-      final skinGeneratorDir = path.join(getRepoRoot(), 'tool', 'skin_generator_tool');
+      final skinGeneratorDir =
+          path.join(getRepoRoot(), 'tool', 'skin_generator_tool');
       if (await Directory(skinGeneratorDir).exists()) {
         await runProcess(
           'flutter',
@@ -817,6 +914,7 @@ Future<void> _buildAndroid() async {
 /// Build iOS XCFramework
 Future<void> _buildiOS() async {
   await buildiOSXCFramework();
+  await buildDuckDBiOSXCFramework();
 
   // Copy to ios/Frameworks
   final outputDir = path.join(getBuildDir(), 'agus-binaries-ios');
@@ -828,11 +926,20 @@ Future<void> _buildiOS() async {
     await copyPath(
         xcframeworkPath, path.join(frameworksDir, 'CoMaps.xcframework'));
   }
+
+  final duckdbXcframeworkPath = path.join(outputDir, 'DuckDB.xcframework');
+  if (await Directory(duckdbXcframeworkPath).exists()) {
+    await copyPath(
+      duckdbXcframeworkPath,
+      path.join(frameworksDir, 'DuckDB.xcframework'),
+    );
+  }
 }
 
 /// Build macOS XCFramework
 Future<void> _buildMacOS() async {
   await buildMacOSXCFramework();
+  await buildDuckDBMacOSXCFramework();
 
   // Copy to macos/Frameworks
   final outputDir = path.join(getBuildDir(), 'agus-binaries-macos');
@@ -843,6 +950,14 @@ Future<void> _buildMacOS() async {
   if (await Directory(xcframeworkPath).exists()) {
     await copyPath(
         xcframeworkPath, path.join(frameworksDir, 'CoMaps.xcframework'));
+  }
+
+  final duckdbXcframeworkPath = path.join(outputDir, 'DuckDB.xcframework');
+  if (await Directory(duckdbXcframeworkPath).exists()) {
+    await copyPath(
+      duckdbXcframeworkPath,
+      path.join(frameworksDir, 'DuckDB.xcframework'),
+    );
   }
 }
 

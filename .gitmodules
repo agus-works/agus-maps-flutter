@@ -1,0 +1,6 @@
+[submodule "thirdparty/duckdb"]
+	path = thirdparty/duckdb
+	url = https://github.com/duckdb/duckdb.git
+[submodule "thirdparty/duckdb-spatial"]
+	path = thirdparty/duckdb-spatial
+	url = https://github.com/duckdb/duckdb-spatial.git

@@ -106,11 +106,17 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
   s.prepare_command = <<-CMD
     set -e
     
-    FRAMEWORK_NAME="CoMaps.xcframework"
+    REQUIRED_FRAMEWORKS="CoMaps.xcframework DuckDB.xcframework"
     
-    # Check if framework already exists (in-repo build or CI)
-    if [ -d "Frameworks/${FRAMEWORK_NAME}" ]; then
-      echo "[agus_maps_flutter] Found existing ${FRAMEWORK_NAME} in plugin directory"
+    # Check if frameworks already exist (in-repo build or CI)
+    ALL_FRAMEWORKS_PRESENT=1
+    for FRAMEWORK_NAME in $REQUIRED_FRAMEWORKS; do
+      if [ ! -d "Frameworks/${FRAMEWORK_NAME}" ]; then
+        ALL_FRAMEWORKS_PRESENT=0
+      fi
+    done
+    if [ "$ALL_FRAMEWORKS_PRESENT" = "1" ]; then
+      echo "[agus_maps_flutter] Found existing native frameworks in plugin directory"
       exit 0
     fi
     
@@ -127,12 +133,21 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
     # Check AGUS_MAPS_HOME for consumer builds
     if [ -n "$AGUS_MAPS_HOME" ]; then
       echo "[agus_maps_flutter] AGUS_MAPS_HOME set to $AGUS_MAPS_HOME"
-      SDK_FRAMEWORK="$AGUS_MAPS_HOME/macos/Frameworks/${FRAMEWORK_NAME}"
-      if [ -d "$SDK_FRAMEWORK" ]; then
-         echo "[agus_maps_flutter] Found ${FRAMEWORK_NAME} in AGUS_MAPS_HOME"
-         mkdir -p Frameworks
-         cp -R "$SDK_FRAMEWORK" Frameworks/
-         echo "[agus_maps_flutter] Copied from AGUS_MAPS_HOME"
+      MISSING_FRAMEWORKS=0
+      mkdir -p Frameworks
+      for FRAMEWORK_NAME in $REQUIRED_FRAMEWORKS; do
+        SDK_FRAMEWORK="$AGUS_MAPS_HOME/macos/Frameworks/${FRAMEWORK_NAME}"
+        if [ -d "$SDK_FRAMEWORK" ]; then
+          echo "[agus_maps_flutter] Found ${FRAMEWORK_NAME} in AGUS_MAPS_HOME"
+          rm -rf "Frameworks/${FRAMEWORK_NAME}"
+          cp -R "$SDK_FRAMEWORK" Frameworks/
+          echo "[agus_maps_flutter] Copied ${FRAMEWORK_NAME} from AGUS_MAPS_HOME"
+        else
+          echo "[agus_maps_flutter] WARNING: ${FRAMEWORK_NAME} not found in $AGUS_MAPS_HOME/macos/Frameworks"
+          MISSING_FRAMEWORKS=1
+        fi
+      done
+      if [ "$MISSING_FRAMEWORKS" = "0" ]; then
          
          # Copy headers
          SDK_HEADERS="$AGUS_MAPS_HOME/headers"
@@ -148,8 +163,6 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
          fi
          
          exit 0
-      else
-         echo "[agus_maps_flutter] WARNING: ${FRAMEWORK_NAME} not found in $AGUS_MAPS_HOME/macos/Frameworks"
       fi
 
       # Copy Resources (Metal shaders)
@@ -233,9 +246,12 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
   # Copied into the main app bundle for NSLocalizedStringFromTable to find
   s.resources = ['Resources/LocalizedStrings/**/*.strings']
 
-  # Vendored CoMaps XCFramework - must be manually placed before pod install
+  # Vendored native XCFrameworks - must be manually placed before pod install
   # Download from GitHub Releases: agus-maps-binaries-vX.Y.Z.zip
-  s.vendored_frameworks = 'Frameworks/CoMaps.xcframework'
+  s.vendored_frameworks = [
+    'Frameworks/CoMaps.xcframework',
+    'Frameworks/DuckDB.xcframework'
+  ]
   
   # Build settings for C++ interop
   s.xcconfig = {
@@ -295,13 +311,15 @@ sharing via Metal and CVPixelBuffer for optimal performance on macOS devices.
     'DEFINES_MODULE' => 'YES',
     
     # Linker flags - force load all symbols from static libraries
-    'OTHER_LDFLAGS' => '-ObjC -all_load',
+    'OTHER_LDFLAGS' => '-ObjC',
     
     # Header search paths for CoMaps includes
     # Include both thirdparty (in-repo) and Headers (downloaded) paths
     # The compiler will use whichever paths exist
     'HEADER_SEARCH_PATHS' => [
       '"$(PODS_TARGET_SRCROOT)/../src"',
+      '"$(PODS_TARGET_SRCROOT)/../thirdparty/duckdb/src/include"',
+      '"$(PODS_TARGET_SRCROOT)/Frameworks/DuckDB.xcframework/macos-arm64_x86_64/Headers"',
       # Downloaded headers paths (fallback - prioritized now)
       "\"#{headers_base}\"",
       "\"#{headers_base}/libs\"",

@@ -328,6 +328,38 @@ FFI_PLUGIN_EXPORT int comaps_deregister_map(const char* fullPath);
 FFI_PLUGIN_EXPORT int comaps_get_registered_maps_count(void);
 
 // =============================================================================
+// DuckDB Persistence Functions
+// =============================================================================
+
+// Returns the linked DuckDB library version, or an empty string when unavailable.
+FFI_PLUGIN_EXPORT const char* agus_duckdb_library_version(void);
+
+// Returns the last DuckDB bridge error message, or an empty string.
+FFI_PLUGIN_EXPORT const char* agus_duckdb_last_error(void);
+
+// Opens the app-instance DuckDB file at writablePath/agus_layers.duckdb.
+// Returns 1 on success, 0 on failure.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_open_app_database(const char* writablePath);
+
+// Closes the current app-instance DuckDB connection, if any.
+FFI_PLUGIN_EXPORT void agus_duckdb_close(void);
+
+// Returns 1 when the app-instance DuckDB connection is open.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_is_open(void);
+
+// Loads and verifies the required static extensions for layer storage/querying.
+// Returns 1 on success, 0 on failure.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_load_required_extensions(void);
+
+// Executes unrestricted SQL against the app-instance DuckDB connection.
+// Returns 1 on success, 0 on failure.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_execute(const char* sql);
+
+// Executes a SQL migration file against the app-instance DuckDB connection.
+// Returns 1 on success, 0 on failure.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_apply_migration_file(const char* path);
+
+// =============================================================================
 // Native Surface Functions (for Windows/Desktop)
 // =============================================================================
 

@@ -1006,6 +1006,74 @@ void initWithPaths(String resourcePath, String writablePath) {
   malloc.free(writablePathPtr);
 }
 
+void _ensureDuckDBBridgeSupported() {
+  if (!(Platform.isMacOS || Platform.isIOS)) {
+    throw UnsupportedError('DuckDB bridge is currently wired on Apple only');
+  }
+}
+
+String _nativeDuckDBString(Pointer<Char> value) {
+  if (value == nullptr) return '';
+  return value.cast<Utf8>().toDartString();
+}
+
+/// Linked DuckDB library version for the native persistence bridge.
+String duckDBLibraryVersion() {
+  _ensureDuckDBBridgeSupported();
+  return _nativeDuckDBString(_bindings.agus_duckdb_library_version());
+}
+
+/// Last native DuckDB bridge error, or an empty string.
+String duckDBLastError() {
+  _ensureDuckDBBridgeSupported();
+  return _nativeDuckDBString(_bindings.agus_duckdb_last_error());
+}
+
+/// Opens `writablePath/agus_layers.duckdb` and loads required extensions.
+bool openDuckDBAppDatabase(String writablePath) {
+  _ensureDuckDBBridgeSupported();
+  final writablePathPtr = writablePath.toNativeUtf8().cast<Char>();
+  try {
+    return _bindings.agus_duckdb_open_app_database(writablePathPtr) == 1;
+  } finally {
+    malloc.free(writablePathPtr);
+  }
+}
+
+/// Closes the current app-instance DuckDB connection.
+void closeDuckDB() {
+  _ensureDuckDBBridgeSupported();
+  _bindings.agus_duckdb_close();
+}
+
+/// Whether the app-instance DuckDB connection is open.
+bool isDuckDBOpen() {
+  _ensureDuckDBBridgeSupported();
+  return _bindings.agus_duckdb_is_open() == 1;
+}
+
+/// Executes unrestricted SQL against the app-instance DuckDB connection.
+bool executeDuckDBSql(String sql) {
+  _ensureDuckDBBridgeSupported();
+  final sqlPtr = sql.toNativeUtf8().cast<Char>();
+  try {
+    return _bindings.agus_duckdb_execute(sqlPtr) == 1;
+  } finally {
+    malloc.free(sqlPtr);
+  }
+}
+
+/// Executes a SQL migration file against the app-instance DuckDB connection.
+bool applyDuckDBMigrationFile(String path) {
+  _ensureDuckDBBridgeSupported();
+  final pathPtr = path.toNativeUtf8().cast<Char>();
+  try {
+    return _bindings.agus_duckdb_apply_migration_file(pathPtr) == 1;
+  } finally {
+    malloc.free(pathPtr);
+  }
+}
+
 /// Set the locale for native POI type localization.
 ///
 /// This controls how POI type names are translated in place page data

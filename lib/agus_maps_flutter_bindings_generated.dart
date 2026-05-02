@@ -1023,6 +1023,109 @@ class AgusMapsFlutterBindings {
   late final _comaps_get_registered_maps_count =
       _comaps_get_registered_maps_countPtr.asFunction<int Function()>();
 
+  /// Returns the linked DuckDB library version, or an empty string when unavailable.
+  ffi.Pointer<ffi.Char> agus_duckdb_library_version() {
+    return _agus_duckdb_library_version();
+  }
+
+  late final _agus_duckdb_library_versionPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
+          'agus_duckdb_library_version');
+  late final _agus_duckdb_library_version = _agus_duckdb_library_versionPtr
+      .asFunction<ffi.Pointer<ffi.Char> Function()>();
+
+  /// Returns the last DuckDB bridge error message, or an empty string.
+  ffi.Pointer<ffi.Char> agus_duckdb_last_error() {
+    return _agus_duckdb_last_error();
+  }
+
+  late final _agus_duckdb_last_errorPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
+          'agus_duckdb_last_error');
+  late final _agus_duckdb_last_error =
+      _agus_duckdb_last_errorPtr.asFunction<ffi.Pointer<ffi.Char> Function()>();
+
+  /// Opens the app-instance DuckDB file at writablePath/agus_layers.duckdb.
+  /// Returns 1 on success, 0 on failure.
+  int agus_duckdb_open_app_database(
+    ffi.Pointer<ffi.Char> writablePath,
+  ) {
+    return _agus_duckdb_open_app_database(
+      writablePath,
+    );
+  }
+
+  late final _agus_duckdb_open_app_databasePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Pointer<ffi.Char>)>>(
+          'agus_duckdb_open_app_database');
+  late final _agus_duckdb_open_app_database = _agus_duckdb_open_app_databasePtr
+      .asFunction<int Function(ffi.Pointer<ffi.Char>)>();
+
+  /// Closes the current app-instance DuckDB connection, if any.
+  void agus_duckdb_close() {
+    return _agus_duckdb_close();
+  }
+
+  late final _agus_duckdb_closePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('agus_duckdb_close');
+  late final _agus_duckdb_close =
+      _agus_duckdb_closePtr.asFunction<void Function()>();
+
+  /// Returns 1 when the app-instance DuckDB connection is open.
+  int agus_duckdb_is_open() {
+    return _agus_duckdb_is_open();
+  }
+
+  late final _agus_duckdb_is_openPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>('agus_duckdb_is_open');
+  late final _agus_duckdb_is_open =
+      _agus_duckdb_is_openPtr.asFunction<int Function()>();
+
+  /// Loads and verifies the required static extensions for layer storage/querying.
+  /// Returns 1 on success, 0 on failure.
+  int agus_duckdb_load_required_extensions() {
+    return _agus_duckdb_load_required_extensions();
+  }
+
+  late final _agus_duckdb_load_required_extensionsPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'agus_duckdb_load_required_extensions');
+  late final _agus_duckdb_load_required_extensions =
+      _agus_duckdb_load_required_extensionsPtr.asFunction<int Function()>();
+
+  /// Executes unrestricted SQL against the app-instance DuckDB connection.
+  /// Returns 1 on success, 0 on failure.
+  int agus_duckdb_execute(
+    ffi.Pointer<ffi.Char> sql,
+  ) {
+    return _agus_duckdb_execute(
+      sql,
+    );
+  }
+
+  late final _agus_duckdb_executePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Pointer<ffi.Char>)>>(
+          'agus_duckdb_execute');
+  late final _agus_duckdb_execute =
+      _agus_duckdb_executePtr.asFunction<int Function(ffi.Pointer<ffi.Char>)>();
+
+  /// Executes a SQL migration file against the app-instance DuckDB connection.
+  /// Returns 1 on success, 0 on failure.
+  int agus_duckdb_apply_migration_file(
+    ffi.Pointer<ffi.Char> path,
+  ) {
+    return _agus_duckdb_apply_migration_file(
+      path,
+    );
+  }
+
+  late final _agus_duckdb_apply_migration_filePtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Pointer<ffi.Char>)>>(
+          'agus_duckdb_apply_migration_file');
+  late final _agus_duckdb_apply_migration_file =
+      _agus_duckdb_apply_migration_filePtr
+          .asFunction<int Function(ffi.Pointer<ffi.Char>)>();
+
   void agus_native_create_surface(
     int width,
     int height,
