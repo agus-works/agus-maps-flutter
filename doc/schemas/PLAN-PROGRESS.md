@@ -420,6 +420,7 @@ Validation update after resuming on May 3:
 - Runtime fix: linking DuckDB spatial pulled vcpkg `json-c`, whose `json_object_get`/`json_object_iter_next` symbols collided with CoMaps' Jansson symbols. Android CMake now force-loads CoMaps Jansson before the DuckDB/json-c archive group so `countries.txt` parsing binds to the correct JSON ABI.
 - `flutter build apk --debug --target-platform android-arm64` now completes, and the rebuilt Android shared library resolves `json_object_get` next to Jansson's `json_loads`/`json_integer_value` symbols instead of json-c.
 - Android device smoke passed on `SM G973F`: the example launches to the Map tab, `countries.txt` parses successfully, the map surface is created, three bundled MWMs register, and the About-tab DuckDB card reports `DuckDB v1.5.2` with `Database open • required extensions loaded • spatial query ok`.
+- Release-mode Android source smoke also passed from the example app directory with `flutter run -d RF8M20SAQSL --release`: Gradle built CoMaps from source, produced `build/app/outputs/flutter-apk/app-release.apk` at 435.0 MB, installed it on the same device, and the About-tab DuckDB card reported spatial query success.
 
 If the simulator destination changes, list destinations with:
 
@@ -506,13 +507,14 @@ Implementation status and next steps:
   - Reuse the existing About-tab smoke status; it should report DuckDB version, database open, static extension load, and `ST_Point` success on Android.
 
 5. Validate Android in layers.
-  - Status: all-ABI native build, symbol validation, source APK build, and device runtime smoke completed.
+  - Status: all-ABI native build, symbol validation, debug/source APK build, release/source APK build, and device runtime smoke completed.
   - Completed: built all configured ABIs: `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
   - Completed: inspected the built `.so` outputs with Android NDK `llvm-nm`; all ABIs export the bridge symbols, retain the generated DuckDB static extension loader, and include prefixed DuckDB ICU symbols.
   - Completed: Android source APK build was constrained to the supported arm64 target for smoke validation, then installed and launched on the detected Android device (`SM G973F`, Android 12/API 31).
+  - Completed: unrestricted release-mode example launch from `example/` with `flutter run -d RF8M20SAQSL --release` built and installed `app-release.apk` without requesting unsupported `x86`, and the About-tab DuckDB smoke still reported spatial query success.
   - Completed: About-tab DuckDB smoke status reports `DuckDB v1.5.2`, database open, required extensions loaded, and spatial query success.
   - Completed: Android link-order validation confirms CoMaps Jansson is force-loaded before DuckDB/json-c, preventing the `countries.txt` parser from binding to json-c's incompatible `json_object_get` ABI.
-  - Follow-up: once runtime smoke passes, add stripping/package-size handling for release Android artifacts so the debug-sized static-link outputs do not define the release footprint.
+  - Follow-up: add stripping/package-size handling for Android artifacts; the validated release APK is functional but still large at 435.0 MB.
 
 Do not run a full Android all-ABI build casually if it looks like vcpkg/DuckDB will take a long time. First implement the build graph and ask the user before kicking off long all-ABI rebuilds.
 
