@@ -53,6 +53,35 @@ The build/runtime pipeline now applies two guardrails:
     - If atlas files are missing/suspicious (placeholder-sized), extraction is
        forced and stale files are overwritten from bundled `flutter_assets`.
 
+### 5. DuckDB Data Layers
+
+DuckDB is the plugin's embedded persistence and analytics layer for user
+drawings, metadata, preset data layers, and custom query-driven geospatial
+layers. The dependency model mirrors CoMaps: `DUCKDB_TAG` pins
+`thirdparty/duckdb`, `DUCKDB_SPATIAL_TAG` pins `thirdparty/duckdb-spatial`, and
+local patches live under `patches/duckdb/` and `patches/duckdb-spatial/`.
+
+The required DuckDB extensions are `core_functions`, `parquet`, `json`, `icu`,
+`httpfs`, and `spatial`. Mobile builds statically embed the required extension
+set; desktop SDKs bundle private DuckDB artifacts rather than relying on a
+machine-wide DuckDB installation.
+
+macOS and iOS contributor builds now produce `DuckDB.xcframework` from the
+pinned DuckDB source, `duckdb-spatial`, and the pinned out-of-tree `httpfs`
+extension. The build uses DuckDB's merged vcpkg manifest for spatial
+dependencies and packages private static Apple framework artifacts for macOS,
+iOS device, and iOS simulator slices.
+
+The first macOS native bridge exposes DuckDB version/health checks,
+`writablePath/agus_layers.duckdb` app-database open/close, required extension
+loading, unrestricted SQL execution, and migration-file execution through Dart
+helpers in the public plugin library.
+
+DuckDB layers render through the native CoMaps/Drape path, not a Flutter overlay.
+First-party drawing layers use strict plugin-owned tables. User SQL is allowed to
+run arbitrary commands, but renderable query layers must return the documented
+contract in `doc/schemas/README.md`.
+
 ## SDK Distribution Model
 
 ### Three Workflows
@@ -73,6 +102,7 @@ cd agus-maps-flutter
 
 The build scripts handle:
 - Fetching CoMaps source code
+- Initializing pinned DuckDB and duckdb-spatial checkouts
 - Applying patches
 - Building native binaries for all platforms
 - Generating assets
@@ -123,9 +153,11 @@ agus-maps-sdk-vX.Y.Z/
 │   ├── armeabi-v7a/
 │   └── x86_64/
 ├── ios/Frameworks/
-│   └── CoMaps.xcframework/
+│   ├── CoMaps.xcframework/
+│   └── DuckDB.xcframework/        # DuckDB layer runtime
 ├── macos/Frameworks/
-│   └── CoMaps.xcframework/
+│   ├── CoMaps.xcframework/
+│   └── DuckDB.xcframework/        # DuckDB layer runtime
 ├── windows/prebuilt/x64/
 ├── linux/prebuilt/x64/
 ├── example/assets/

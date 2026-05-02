@@ -9,6 +9,8 @@ on:
 
 env:
   COMAPS_TAG: v2026.04.23-19
+  DUCKDB_TAG: v1.5.2
+  DUCKDB_SPATIAL_TAG: dc1996bfd16bd8614fb4ccb5895b3ee0dbd4298e
   FLUTTER_VERSION: "3.41.8"
   NDK_VERSION: "29.0.14206865"
   CMAKE_VERSION: "4.2.1"
@@ -2022,6 +2024,8 @@ jobs:
 
           Flutter Version: ${{ env.FLUTTER_VERSION }}
           CoMaps Version: ${{ env.COMAPS_TAG }}
+          DuckDB Version: ${{ env.DUCKDB_TAG }}
+          duckdb-spatial Version: ${{ env.DUCKDB_SPATIAL_TAG }}
 
           Supported Platforms:
           - Android (armeabi-v7a, arm64-v8a, x86_64)
@@ -2228,6 +2232,8 @@ jobs:
             - Build Number: ${{ github.run_number }}
             - Flutter: ${{ env.FLUTTER_VERSION }}
             - CoMaps: ${{ env.COMAPS_TAG }}
+            - DuckDB: ${{ env.DUCKDB_TAG }}
+            - duckdb-spatial: ${{ env.DUCKDB_SPATIAL_TAG }}
           draft: false
           prerelease: false
           files: |

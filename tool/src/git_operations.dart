@@ -5,6 +5,129 @@ import 'package:path/path.dart' as path;
 import 'process_runner.dart' show runProcess, commandExists;
 import 'platform_detector.dart' show getComapsDir, getThirdpartyDir;
 
+/// Check whether [dir] is a git checkout or initialized git submodule.
+Future<bool> isGitCheckout(String dir) async {
+  if (!await Directory(dir).exists()) {
+    return false;
+  }
+
+  return await Directory(path.join(dir, '.git')).exists() ||
+      await File(path.join(dir, '.git')).exists();
+}
+
+/// Initialize a submodule path from the parent repository.
+Future<void> updateSubmodule(String relativePath) async {
+  await runProcess(
+    'git',
+    ['submodule', 'update', '--init', '--recursive', '--', relativePath],
+  );
+}
+
+/// Checkout a tag, branch, or commit in a managed git checkout.
+Future<void> checkoutGitRef(
+  String ref, {
+  required String dir,
+  required String dependencyName,
+}) async {
+  if (!await isGitCheckout(dir)) {
+    throw Exception('$dependencyName directory is not a git checkout: $dir');
+  }
+
+  print('Checking out $dependencyName ref: $ref');
+
+  final status = await runProcess(
+    'git',
+    ['status', '--porcelain'],
+    workingDirectory: dir,
+    throwOnError: false,
+  );
+  if (status.exitCode == 0 && status.stdout.toString().trim().isNotEmpty) {
+    print('$dependencyName working tree has local changes; resetting first');
+    await resetGitWorkingTree(dir: dir, dependencyName: dependencyName);
+  }
+
+  await runProcess(
+    'git',
+    ['fetch', '--tags', '--prune', '--no-recurse-submodules'],
+    workingDirectory: dir,
+  );
+  await runProcess('git', ['checkout', '--detach', ref], workingDirectory: dir);
+}
+
+/// Reset a managed git checkout to a clean HEAD state.
+Future<void> resetGitWorkingTree({
+  required String dir,
+  required String dependencyName,
+}) async {
+  if (!await isGitCheckout(dir)) {
+    throw Exception('$dependencyName directory is not a git checkout: $dir');
+  }
+
+  print('Resetting $dependencyName working tree to HEAD...');
+  await runProcess('git', ['reset', '--hard', 'HEAD'], workingDirectory: dir);
+  await runProcess('git', ['clean', '-fd'], workingDirectory: dir);
+
+  print('Resetting $dependencyName submodules...');
+  try {
+    await runProcess(
+      'git',
+      ['submodule', 'foreach', '--recursive', 'git', 'reset', '--hard', 'HEAD'],
+      workingDirectory: dir,
+    );
+    await runProcess(
+      'git',
+      ['submodule', 'foreach', '--recursive', 'git', 'clean', '-fd'],
+      workingDirectory: dir,
+    );
+  } catch (e) {
+    print('Note: $dependencyName submodule reset had warnings');
+  }
+}
+
+/// Initialize submodules and LFS recursively for a managed git checkout.
+Future<void> initRepositorySubmodules({
+  required String dir,
+  required String dependencyName,
+}) async {
+  if (!await isGitCheckout(dir)) {
+    throw Exception('$dependencyName directory is not a git checkout: $dir');
+  }
+
+  print('Initializing $dependencyName submodules');
+  try {
+    await runProcess(
+      'git',
+      ['submodule', 'update', '--init', '--recursive'],
+      workingDirectory: dir,
+    );
+  } catch (e) {
+    print('Warning: $dependencyName submodule update failed. Retrying...');
+    await runProcess('git', ['submodule', 'sync', '--recursive'],
+        workingDirectory: dir);
+    await runProcess(
+      'git',
+      ['submodule', 'update', '--init', '--recursive', '--force'],
+      workingDirectory: dir,
+    );
+  }
+
+  print('Download LFS on $dependencyName');
+  await runProcess(
+    'git',
+    ['lfs', 'pull'],
+    workingDirectory: dir,
+    throwOnError: false,
+  );
+
+  print('Download LFS recursively on $dependencyName');
+  await runProcess(
+    'git',
+    ['submodule', 'foreach', '--recursive', 'git', 'lfs', 'pull'],
+    workingDirectory: dir,
+    throwOnError: false,
+  );
+}
+
 /// Clone CoMaps repository
 Future<void> cloneComaps(String tag, {String? targetDir}) async {
   final comapsDir = targetDir ?? getComapsDir();
@@ -44,26 +167,7 @@ Future<void> checkoutComapsTag(String tag, {String? comapsDir}) async {
     throw Exception('CoMaps directory does not exist: $dir');
   }
 
-  print('Checking out CoMaps tag: $tag');
-
-  final status = await runProcess(
-    'git',
-    ['status', '--porcelain'],
-    workingDirectory: dir,
-    throwOnError: false,
-  );
-  if (status.exitCode == 0 && status.stdout.toString().trim().isNotEmpty) {
-    print('CoMaps working tree has local changes; resetting before checkout');
-    await resetComapsWorkingTree(comapsDir: dir);
-  }
-
-  // Fetch tags
-  await runProcess(
-      'git', ['fetch', '--tags', '--prune', '--no-recurse-submodules'],
-      workingDirectory: dir);
-
-  // Checkout tag
-  await runProcess('git', ['checkout', '--detach', tag], workingDirectory: dir);
+  await checkoutGitRef(tag, dir: dir, dependencyName: 'CoMaps');
 }
 
 /// Reset the managed CoMaps checkout to a clean HEAD state.
@@ -74,25 +178,7 @@ Future<void> resetComapsWorkingTree({String? comapsDir}) async {
     throw Exception('CoMaps directory does not exist: $dir');
   }
 
-  print('Resetting CoMaps working tree to HEAD...');
-  await runProcess('git', ['reset', '--hard', 'HEAD'], workingDirectory: dir);
-  await runProcess('git', ['clean', '-fd'], workingDirectory: dir);
-
-  print('Resetting CoMaps submodules...');
-  try {
-    await runProcess(
-      'git',
-      ['submodule', 'foreach', '--recursive', 'git', 'reset', '--hard', 'HEAD'],
-      workingDirectory: dir,
-    );
-    await runProcess(
-      'git',
-      ['submodule', 'foreach', '--recursive', 'git', 'clean', '-fd'],
-      workingDirectory: dir,
-    );
-  } catch (e) {
-    print('Note: Submodule reset had warnings (may be expected)');
-  }
+  await resetGitWorkingTree(dir: dir, dependencyName: 'CoMaps');
 }
 
 /// Initialize submodules recursively
