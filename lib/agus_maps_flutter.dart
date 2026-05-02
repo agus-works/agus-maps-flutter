@@ -1007,8 +1007,10 @@ void initWithPaths(String resourcePath, String writablePath) {
 }
 
 void _ensureDuckDBBridgeSupported() {
-  if (!(Platform.isMacOS || Platform.isIOS)) {
-    throw UnsupportedError('DuckDB bridge is currently wired on Apple only');
+  if (!(Platform.isMacOS || Platform.isIOS || Platform.isAndroid)) {
+    throw UnsupportedError(
+      'DuckDB bridge is currently wired on Apple and Android only',
+    );
   }
 }
 

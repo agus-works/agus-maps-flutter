@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__ANDROID__)
 namespace duckdb
 {
 std::vector<std::string> LinkedExtensions();
@@ -108,7 +108,7 @@ bool LoadRequiredDuckDBExtensionsLocked()
 
 void EnsureStaticDuckDBExtensionLoaderLinked()
 {
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__ANDROID__)
   static auto const linkedExtensions = duckdb::LinkedExtensions();
   (void)linkedExtensions;
 #endif

@@ -386,6 +386,41 @@ Android-specific implementation implications:
 - ABI mapping should start with the existing Flutter plugin ABI list: `arm64-v8a`, `armeabi-v7a`, and `x86_64`. Candidate DuckDB/vcpkg mapping is `android_arm64-v8a`, `android_armeabi-v7a`, and `android_x86_64` for DuckDB platform names, with vcpkg triplets likely `arm64-android`, `arm-neon-android`, and `x64-android` unless project-owned overlay triplets prove necessary.
 - Android linker validation should include exported `agus_duckdb_*` symbols, generated static extension loader symbols, prefixed `agus_duckdb_icu_*` symbols, and absence of raw DuckDB ICU collisions with CoMaps.
 
+### May 3 Android Implementation Progress
+
+Implementation progress after the Android scoping pass:
+
+- `tool/src/duckdb_build.dart` now has `buildDuckDBAndroidArchives()`, which builds ABI-specific DuckDB static archive bundles before the final Android plugin build.
+- Android DuckDB builds reuse the project DuckDB extension config, merged vcpkg manifest generation, required extension list, and DuckDB ICU prefixing strategy already proven on Apple.
+- Project-owned Android vcpkg overlay triplets are generated for `arm64-v8a`, `armeabi-v7a`, and `x86_64` so the ABI mapping is explicit and the NDK chainload toolchain is under project control.
+- `tool/src/cmake_build.dart` now lets CMake builds receive extra environment values; the Android DuckDB build passes `ANDROID_NDK_HOME`, `ANDROID_NDK_ROOT`, and `ANDROID_NDK` so vcpkg/Android package configuration can find the same NDK used by the plugin build.
+- `tool/src/build_runner.dart` now builds the DuckDB Android archive root before each Android plugin ABI and passes `AGUS_DUCKDB_ANDROID_DIR` into `buildAndroidAbi()`.
+- `src/CMakeLists.txt` now compiles `agus_duckdb_bridge.cpp` for Android, loads the generated per-ABI DuckDB bundle metadata, adds DuckDB headers, and links the DuckDB/vcpkg static archives into `libagus_maps_flutter.so` with an Android linker group.
+- `src/agus_duckdb_bridge.cpp` now retains DuckDB's generated static extension loader on Android, matching the Apple fix that kept `LOAD spatial` from falling back to external `.duckdb_extension` files.
+- `lib/agus_maps_flutter.dart` now allows the DuckDB bridge on Android in addition to macOS and iOS.
+
+Current validation target:
+
+1. Run the Android build through `dart run tool/build.dart --build-binaries --platform android` and keep the full output in `android-duckdb-build.log`.
+2. If the first build fails during DuckDB/vcpkg Android configuration, inspect the log around the first `error:`/`CMake Error` and adjust only the Android triplet/toolchain variables.
+3. After the first successful ABI output, inspect `build/agus-binaries-android/<abi>/libagus_maps_flutter.so` for exported `agus_duckdb_*` symbols, generated loader retention, and prefixed `agus_duckdb_icu_*` symbols.
+4. After all ABIs build, run the Android example smoke UI on device/emulator and confirm the About tab reports DuckDB version, database open, and spatial query success.
+
+Validation update after resuming on May 3:
+
+- No terminal process from the previous attempt was still active. The saved `android-duckdb-build.log` had 5,170 lines and ended with `android build complete` plus `=== Build Complete ===`.
+- `build/agus-binaries-android/arm64-v8a/libagus_maps_flutter.so`, `build/agus-binaries-android/armeabi-v7a/libagus_maps_flutter.so`, and `build/agus-binaries-android/x86_64/libagus_maps_flutter.so` were all produced.
+- Android output sizes are currently large because the debug shared libraries are unstripped and statically include CoMaps plus DuckDB: approximately 1.1 GB for `arm64-v8a`, 954 MB for `armeabi-v7a`, and 1.1 GB for `x86_64`.
+- `android-duckdb-symbol-summary.log` confirms each ABI exports all eight bridge symbols: `agus_duckdb_library_version`, `agus_duckdb_last_error`, `agus_duckdb_open_app_database`, `agus_duckdb_close`, `agus_duckdb_is_open`, `agus_duckdb_load_required_extensions`, `agus_duckdb_execute`, and `agus_duckdb_apply_migration_file`.
+- The same symbol check confirms each ABI contains DuckDB's generated static extension loader path, including `duckdb::LinkedExtensions()`, `CoreFunctionsExtension`, and `SpatialExtension` symbols.
+- The same symbol check confirms each ABI contains the prefixed ICU sample symbol `agus_duckdb_icu_u_isUUppercase`, so the Android DuckDB ICU-prefixing strategy is present in the final plugin shared library.
+- `adb devices -l` and `flutter devices` detected a physical Android device, `SM G973F` (`RF8M20SAQSL`, Android 12/API 31, `android-arm64`). The next validation step is a non-resident Flutter launch/install against this device, followed by About-tab smoke verification.
+- The first non-resident `flutter run --debug --no-resident -d RF8M20SAQSL` failed during Gradle CMake configuration because Flutter requested unsupported `ANDROID_ABI=x86`. This is outside the documented plugin ABI contract and there is no DuckDB Android bundle at `build/agus-binaries-android-duckdb/x86`.
+- Fix in progress: constrain Android source builds to the supported ABI set in both the plugin Gradle file and the example app Gradle file: `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
+- Runtime fix: linking DuckDB spatial pulled vcpkg `json-c`, whose `json_object_get`/`json_object_iter_next` symbols collided with CoMaps' Jansson symbols. Android CMake now force-loads CoMaps Jansson before the DuckDB/json-c archive group so `countries.txt` parsing binds to the correct JSON ABI.
+- `flutter build apk --debug --target-platform android-arm64` now completes, and the rebuilt Android shared library resolves `json_object_get` next to Jansson's `json_loads`/`json_integer_value` symbols instead of json-c.
+- Android device smoke passed on `SM G973F`: the example launches to the Map tab, `countries.txt` parses successfully, the map surface is created, three bundled MWMs register, and the About-tab DuckDB card reports `DuckDB v1.5.2` with `Database open • required extensions loaded • spatial query ok`.
+
 If the simulator destination changes, list destinations with:
 
 ```bash
@@ -441,16 +476,18 @@ Generated build outputs under `build/` and framework outputs under `macos/Framew
 
 ### 2. Android Single `.so` Integration
 
-Immediate steps:
+Implementation status and next steps:
 
 1. Extend `tool/src/duckdb_build.dart` with `buildDuckDBAndroidArchives()`.
+  - Status: implemented and build-validated.
   - Reuse the existing extension config and vcpkg manifest generation.
   - Build one DuckDB static archive bundle per `BuildConfig.androidAbis` ABI.
   - Use the Android NDK CMake toolchain, `ANDROID_PLATFORM=android-24`, `EXTENSION_STATIC_BUILD=TRUE`, `BUILD_SHELL=OFF`, `BUILD_UNITTESTS=OFF`, `BUILD_BENCHMARKS=OFF`, and `DUCKDB_EXPLICIT_PLATFORM=android_<abi>`.
   - Apply the same DuckDB ICU symbol prefixing used for Apple builds.
-  - Add project-owned Android vcpkg overlay triplets only if the stock Android triplets fail or do not express the needed ABI mapping.
+  - Project-owned Android vcpkg overlay triplets are now generated up front so ABI mapping and NDK chainloading are explicit.
 
 2. Wire Android DuckDB archives into the final plugin CMake target.
+  - Status: implemented and link-validated.
   - Add `agus_duckdb_bridge.cpp` to Android `PLATFORM_SOURCES` in `src/CMakeLists.txt`.
   - Add DuckDB headers to Android include paths.
   - Link the ABI-specific DuckDB archive bundle and vcpkg/extension static libraries into `agus_maps_flutter`.
@@ -458,19 +495,24 @@ Immediate steps:
   - Preserve the existing Android link options for 16 KB page size and CoMaps platform-stub overrides.
 
 3. Update Android build orchestration and distribution shape.
+  - Status: implemented and artifact-validated.
   - Call the Android DuckDB archive build before `buildAndroidAbi()` in `tool/src/build_runner.dart`.
   - Pass the per-ABI DuckDB archive/header locations into `buildAndroidAbi()` and then into CMake.
   - Keep final outputs as `build/agus-binaries-android/<abi>/libagus_maps_flutter.so` and `android/prebuilt/<abi>/libagus_maps_flutter.so`; do not add a separate DuckDB `.so`.
 
 4. Enable Dart and example smoke on Android.
+  - Status: Dart platform gate implemented; native runtime smoke passed.
   - Allow `Platform.isAndroid` in `_ensureDuckDBBridgeSupported()` after the native symbols are present.
   - Reuse the existing About-tab smoke status; it should report DuckDB version, database open, static extension load, and `ST_Point` success on Android.
 
 5. Validate Android in layers.
-  - First run a single ABI build, preferably `arm64-v8a`, before all ABIs.
-  - Inspect the built `.so` with `nm`/`readelf` for `agus_duckdb_*`, `duckdb::LinkedExtensions`, and `agus_duckdb_icu_*` symbols.
-  - Build all configured ABIs: `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
-  - Run the example app on an Android device or emulator and confirm the About-tab DuckDB smoke status reports spatial query success.
+  - Status: all-ABI native build, symbol validation, source APK build, and device runtime smoke completed.
+  - Completed: built all configured ABIs: `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
+  - Completed: inspected the built `.so` outputs with Android NDK `llvm-nm`; all ABIs export the bridge symbols, retain the generated DuckDB static extension loader, and include prefixed DuckDB ICU symbols.
+  - Completed: Android source APK build was constrained to the supported arm64 target for smoke validation, then installed and launched on the detected Android device (`SM G973F`, Android 12/API 31).
+  - Completed: About-tab DuckDB smoke status reports `DuckDB v1.5.2`, database open, required extensions loaded, and spatial query success.
+  - Completed: Android link-order validation confirms CoMaps Jansson is force-loaded before DuckDB/json-c, preventing the `countries.txt` parser from binding to json-c's incompatible `json_object_get` ABI.
+  - Follow-up: once runtime smoke passes, add stripping/package-size handling for release Android artifacts so the debug-sized static-link outputs do not define the release footprint.
 
 Do not run a full Android all-ABI build casually if it looks like vcpkg/DuckDB will take a long time. First implement the build graph and ask the user before kicking off long all-ABI rebuilds.
 
