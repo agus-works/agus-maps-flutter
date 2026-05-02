@@ -421,6 +421,7 @@ Validation update after resuming on May 3:
 - `flutter build apk --debug --target-platform android-arm64` now completes, and the rebuilt Android shared library resolves `json_object_get` next to Jansson's `json_loads`/`json_integer_value` symbols instead of json-c.
 - Android device smoke passed on `SM G973F`: the example launches to the Map tab, `countries.txt` parses successfully, the map surface is created, three bundled MWMs register, and the About-tab DuckDB card reports `DuckDB v1.5.2` with `Database open • required extensions loaded • spatial query ok`.
 - Release-mode Android source smoke also passed from the example app directory with `flutter run -d RF8M20SAQSL --release`: Gradle built CoMaps from source, produced `build/app/outputs/flutter-apk/app-release.apk` at 435.0 MB, installed it on the same device, and the About-tab DuckDB card reported spatial query success.
+- Android release package-size handling now uses split-per-ABI direct-install APKs plus an App Bundle. `flutter build apk --release --split-per-abi` produces 203.4 MB (`armeabi-v7a`), 231.0 MB (`arm64-v8a`), and 237.7 MB (`x86_64`) APKs instead of the 435.0 MB universal APK; `flutter build appbundle --release` produces a 367.3 MB AAB for store-style ABI delivery.
 
 If the simulator destination changes, list destinations with:
 
@@ -514,7 +515,7 @@ Implementation status and next steps:
   - Completed: unrestricted release-mode example launch from `example/` with `flutter run -d RF8M20SAQSL --release` built and installed `app-release.apk` without requesting unsupported `x86`, and the About-tab DuckDB smoke still reported spatial query success.
   - Completed: About-tab DuckDB smoke status reports `DuckDB v1.5.2`, database open, required extensions loaded, and spatial query success.
   - Completed: Android link-order validation confirms CoMaps Jansson is force-loaded before DuckDB/json-c, preventing the `countries.txt` parser from binding to json-c's incompatible `json_object_get` ABI.
-  - Follow-up: add stripping/package-size handling for Android artifacts; the validated release APK is functional but still large at 435.0 MB.
+  - Completed: Android release packaging now builds split-per-ABI APKs and an AAB. AGP already strips debug symbols from release native libraries; the main size reduction is avoiding universal APK delivery of all ABIs.
 
 Do not run a full Android all-ABI build casually if it looks like vcpkg/DuckDB will take a long time. First implement the build graph and ask the user before kicking off long all-ABI rebuilds.
 
