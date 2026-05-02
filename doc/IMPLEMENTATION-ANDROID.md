@@ -60,9 +60,12 @@ dart run tool/build.dart --no-cache
 cd example
 flutter run --release
 
-# Or build an APK for installation
-flutter build apk --release
-adb install build/app/outputs/flutter-apk/app-release.apk
+# Or build a direct-install APK for the connected device ABI
+flutter build apk --release --split-per-abi
+adb install build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+
+# Build an Android App Bundle for store-style ABI delivery
+flutter build appbundle --release
 ```
 
 **Windows PowerShell:**
@@ -74,16 +77,19 @@ dart run tool/build.dart --no-cache
 cd example
 flutter run --release
 
-# Or build an APK for installation
-flutter build apk --release
-adb install build/app/outputs/flutter-apk/app-release.apk
+# Or build a direct-install APK for the connected device ABI
+flutter build apk --release --split-per-abi
+adb install build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+
+# Build an Android App Bundle for store-style ABI delivery
+flutter build appbundle --release
 ```
 
 **Release mode characteristics:**
 - Flutter: AOT compiled, tree-shaken, minified
 - Native: `-O3` optimization, no debug symbols, no assertions
 - Performance: Full speed, minimal battery usage
-- APK size: ~100MB (stripped, compressed)
+- APK size: native-code heavy; use split-per-ABI APKs or an App Bundle for release distribution. The validated May 3 release outputs were 203.4 MB for `armeabi-v7a`, 231.0 MB for `arm64-v8a`, 237.7 MB for `x86_64`, and 367.3 MB for the App Bundle.
 
 ### Profile Mode (For Android Studio Profiler)
 
@@ -122,7 +128,11 @@ Unlike iOS, Android **does allow** debug builds to be launched standalone from t
 ```bash
 cd example
 
-# Build and install Release APK
+# Build and install a Release APK for the device ABI
+flutter build apk --release --split-per-abi
+adb install build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+
+# Or build a universal APK only for quick local smoke checks
 flutter build apk --release
 adb install build/app/outputs/flutter-apk/app-release.apk
 

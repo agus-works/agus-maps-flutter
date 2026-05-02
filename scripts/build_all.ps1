@@ -221,16 +221,21 @@ Write-LogHeader "Building Flutter Example Apps"
 
 Push-Location (Join-Path $repoRoot "example")
 try {
-    Write-LogStep "Building Android APK..."
-    flutter build apk --release
-    if ($LASTEXITCODE -ne 0) { throw "flutter build apk failed" }
+    Write-LogStep "Building Android split APKs..."
+    flutter build apk --release --split-per-abi
+    if ($LASTEXITCODE -ne 0) { throw "flutter build apk --split-per-abi failed" }
+
+    Write-LogStep "Building Android App Bundle..."
+    flutter build appbundle --release
+    if ($LASTEXITCODE -ne 0) { throw "flutter build appbundle failed" }
 
     Write-LogStep "Building Windows Executable..."
     flutter build windows --release
     if ($LASTEXITCODE -ne 0) { throw "flutter build windows failed" }
 
     Write-LogHeader "BUILD SUCCESSFUL"
-    Write-Host "Android APK: example\build\app\outputs\flutter-apk\app-release.apk" -ForegroundColor Green
+    Write-Host "Android APKs: example\build\app\outputs\flutter-apk\app-*-release.apk" -ForegroundColor Green
+    Write-Host "Android AAB: example\build\app\outputs\bundle\release\app-release.aab" -ForegroundColor Green
     Write-Host "Windows EXE: example\build\windows\x64\runner\Release\agus_maps_flutter_example.exe" -ForegroundColor Green
 }
 finally {

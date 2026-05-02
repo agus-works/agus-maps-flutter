@@ -266,9 +266,14 @@ build_flutter_apps() {
     
     pushd "$ROOT_DIR/example" >/dev/null
     
-    # Build Android
-    log_step "Building Android APK..."
-    flutter build apk --release || log_warn "Android build failed"
+    # Build Android distribution artifacts. Use split APKs so each direct
+    # install artifact carries only one native ABI; the App Bundle lets Play
+    # deliver the same ABI split server-side.
+    log_step "Building Android split APKs..."
+    flutter build apk --release --split-per-abi || log_warn "Android split APK build failed"
+
+    log_step "Building Android App Bundle..."
+    flutter build appbundle --release || log_warn "Android app bundle build failed"
     
     # Build iOS (if on macOS)
     if [[ "$(uname -s)" == "Darwin" ]]; then
