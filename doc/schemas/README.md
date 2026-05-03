@@ -84,3 +84,15 @@ The public Dart controls are:
 - `refreshDuckDBMapLayers()`: manually refreshes visible features and returns the number submitted to Drape, or a negative value if DuckDB/map state is not ready.
 
 The renderer is intentionally Android-only for now. Apple, Windows, and Linux will need platform-specific Drape ownership wiring before these helpers are enabled there.
+
+## Reusable Layer UI
+
+The first reusable DuckDB layer UI is exported from the main plugin library:
+
+- `DuckDBLayerDrawController`: captures pins, two-point segments, multi-vertex lines, and polygons; supports vertex editing; stores user metadata; writes WKT features with bounding boxes to `DuckDBLayerStore`.
+- `DuckDBLayerDrawOverlay`: a full-map overlay that captures pointer events while a draw tool is active so map pan/zoom is not forwarded during drawing.
+- `DuckDBLayerDrawToolbar`: icon controls for draw tools, undo, commit, and cancel.
+- `DuckDBLayerMetadataForm`: title/note capture for the next committed feature.
+- `DuckDBLayerPanel`: visibility and z-order controls for DuckDB layers, plus a database backup action.
+
+Android draw overlays can call `screenPointToLatLon()` to convert Flutter overlay positions, after multiplying by the device pixel ratio, into WGS84 coordinates for WKT persistence.

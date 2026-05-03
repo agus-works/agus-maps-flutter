@@ -27,6 +27,8 @@ export 'src/agus_maps_api.g.dart'
         RenderState;
 
 part 'src/layers/duckdb_layer_store.dart';
+part 'src/layers/duckdb_draw_controller.dart';
+part 'src/layers/duckdb_layer_widgets.dart';
 
 /// Low-frequency map-ready event emitted by native platforms.
 class MapReadyEvent {
@@ -129,6 +131,18 @@ class MapCameraPosition {
     required this.zoom,
     required this.bearing,
   });
+}
+
+/// WGS84 latitude/longitude coordinate.
+class AgusLatLon {
+  /// Creates a coordinate in decimal degrees.
+  const AgusLatLon({required this.lat, required this.lon});
+
+  /// Latitude in decimal degrees.
+  final double lat;
+
+  /// Longitude in decimal degrees.
+  final double lon;
 }
 
 /// CoMaps overlay/style layer state.
@@ -1361,6 +1375,35 @@ MapCameraPosition? getCameraPosition() {
 
 /// Return the current native camera state, or null if the map is not ready.
 MapCameraPosition? getMapCameraPosition() => getCameraPosition();
+
+/// Converts physical screen coordinates to a WGS84 coordinate.
+///
+/// The coordinates must be in the native map surface's physical pixel space.
+/// Flutter overlays should multiply logical local positions by the device pixel
+/// ratio before calling this helper.
+AgusLatLon? screenPointToLatLon(double physicalX, double physicalY) {
+  if (!Platform.isAndroid) {
+    throw UnsupportedError(
+      'Screen-to-coordinate projection is currently wired on Android only',
+    );
+  }
+
+  final latPtr = malloc<Double>();
+  final lonPtr = malloc<Double>();
+  try {
+    final result = _bindings.comaps_screen_to_latlon(
+      physicalX,
+      physicalY,
+      latPtr,
+      lonPtr,
+    );
+    if (result != 1) return null;
+    return AgusLatLon(lat: latPtr.value, lon: lonPtr.value);
+  } finally {
+    malloc.free(latPtr);
+    malloc.free(lonPtr);
+  }
+}
 
 /// Zoom in by one native step, centered on the viewport.
 void zoomInMap({bool animated = true}) {

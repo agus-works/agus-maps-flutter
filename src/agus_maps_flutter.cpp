@@ -302,6 +302,8 @@ std::mutex g_duckDBRenderMutex;
 std::unique_ptr<DuckDBMarksProvider> g_duckDBMarksProvider;
 bool g_duckDBRenderingEnabled = false;
 std::chrono::steady_clock::time_point g_lastDuckDBRenderRefresh;
+std::mutex g_viewportMutex;
+std::unique_ptr<ScreenBase> g_currentScreen;
 
 std::vector<m2::PointD> ParseWktMercatorPoints(char const * wkt) {
     std::vector<m2::PointD> points;
@@ -444,6 +446,10 @@ void SetViewportTracking() {
     g_framework->SetViewportListener([](ScreenBase const & screen) {
         g_currentBearingDegrees = NormalizeBearingDegrees(
             screen.GetAngle() * kDegreesPerRadian);
+        {
+            std::lock_guard<std::mutex> lock(g_viewportMutex);
+            g_currentScreen = std::make_unique<ScreenBase>(screen);
+        }
         if (ShouldRefreshDuckDBRenderOnViewportChange()) {
             RefreshDuckDBRenderLayersInternal();
         }
@@ -1422,6 +1428,28 @@ FFI_PLUGIN_EXPORT int comaps_get_current_zoom(void) {
         return -1;
     }
     return g_framework->GetDrawScale();
+}
+
+FFI_PLUGIN_EXPORT int comaps_screen_to_latlon(
+    double physical_x,
+    double physical_y,
+    double* lat,
+    double* lon) {
+    if (!lat || !lon) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(g_viewportMutex);
+    if (!g_currentScreen) {
+        return 0;
+    }
+
+    auto const mercatorPoint = g_currentScreen->PtoG(
+        m2::PointD(physical_x, physical_y));
+    auto const coordinate = mercator::ToLatLon(mercatorPoint);
+    *lat = coordinate.m_lat;
+    *lon = coordinate.m_lon;
+    return 1;
 }
 
 FFI_PLUGIN_EXPORT void comaps_zoom_in(int animated) {
