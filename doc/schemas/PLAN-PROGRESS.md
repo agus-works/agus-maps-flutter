@@ -591,6 +591,14 @@ Status: initial Dart persistence API completed on top of the native DuckDB bridg
 
 ### 6. Native Drape Rendering
 
+Status: Android initial renderer implementation completed and compile-validated; device runtime smoke still pending.
+
+- Completed: native DuckDB bridge exposes a typed viewport/zoom render-feature copy API so platform renderers can consume rows without parsing JSON.
+- Completed: Android plugin owns a DuckDB `df::UserMarksProvider` and submits visible points plus line/polygon outlines to Drape through `DrapeEngine::UpdateUserMarks()` and `InvalidateUserMarks()`.
+- Completed: Dart exposes Android-only `setDuckDBMapLayerRenderingEnabled()` and `refreshDuckDBMapLayers()` helpers; the example app opens/migrates DuckDB and enables native layer rendering after the map surface is ready.
+- Completed: viewport listener preserves existing bearing tracking and triggers throttled DuckDB render refreshes while native layer rendering is enabled.
+- Validated: regenerated FFI bindings, `dart analyze lib/agus_maps_flutter.dart lib/src/layers/duckdb_layer_store.dart example/lib/main.dart`, and `flutter build apk --debug --target-platform android-arm64` from `example/`.
+
 - Add a DuckDB-backed layer renderer/provider in native code.
 - Initial render path should support points and lines through `df::UserMarksProvider`, `df::UserPointMark`, and `df::UserLineMark`.
 - Add viewport listener fan-out so DuckDB rendering can react to viewport changes without replacing existing bearing tracking.

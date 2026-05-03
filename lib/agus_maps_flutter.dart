@@ -1071,6 +1071,14 @@ void _ensureDuckDBBridgeSupported() {
   }
 }
 
+void _ensureNativeDuckDBLayerRenderingSupported() {
+  if (!Platform.isAndroid) {
+    throw UnsupportedError(
+      'Native DuckDB layer rendering is currently wired on Android only',
+    );
+  }
+}
+
 String _nativeDuckDBString(Pointer<Char> value) {
   if (value == nullptr) return '';
   return value.cast<Utf8>().toDartString();
@@ -1177,6 +1185,27 @@ bool applyDuckDBMigrationFile(String path) {
   } finally {
     malloc.free(pathPtr);
   }
+}
+
+/// Enables or disables native Drape rendering for visible DuckDB layers.
+///
+/// Android currently renders DuckDB-backed points and line/polygon outlines by
+/// submitting native user marks to CoMaps Drape. The renderer refreshes as the
+/// viewport changes while enabled.
+void setDuckDBMapLayerRenderingEnabled(bool enabled) {
+  _ensureDuckDBBridgeSupported();
+  _ensureNativeDuckDBLayerRenderingSupported();
+  _bindings.agus_duckdb_set_rendering_enabled(enabled ? 1 : 0);
+}
+
+/// Refreshes visible DuckDB map layers into the native Drape renderer.
+///
+/// Returns the number of features submitted. A negative value means the native
+/// map or DuckDB connection is not ready yet.
+int refreshDuckDBMapLayers() {
+  _ensureDuckDBBridgeSupported();
+  _ensureNativeDuckDBLayerRenderingSupported();
+  return _bindings.agus_duckdb_refresh_render_layers();
 }
 
 /// Set the locale for native POI type localization.

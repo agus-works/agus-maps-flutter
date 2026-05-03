@@ -6,8 +6,11 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -403,6 +406,17 @@ std::string DuckDBValueVarchar(duckdb_result * result, idx_t columnIndex,
   return value;
 }
 
+char * CopyDuckDBCString(std::string const & value)
+{
+  auto * output = static_cast<char *>(std::malloc(value.size() + 1));
+  if (output == nullptr)
+    return nullptr;
+  if (!value.empty())
+    std::memcpy(output, value.data(), value.size());
+  output[value.size()] = '\0';
+  return output;
+}
+
 std::vector<DuckDBColumnInfo> ReadDuckDBColumnInfo(duckdb_result * result)
 {
   std::vector<DuckDBColumnInfo> columns;
@@ -704,6 +718,96 @@ bool ValidateRenderableDuckDBQueryLocked(std::string const & sql)
   if (valid)
     ClearDuckDBError();
   return valid;
+}
+
+int32_t CopyRenderableDuckDBFeaturesLocked(double minLon, double minLat,
+                                           double maxLon, double maxLat,
+                                           int32_t zoom,
+                                           AgusDuckDBRenderFeature ** outFeatures,
+                                           int32_t * outCount)
+{
+  if (g_duckdbConnection == nullptr)
+  {
+    SetDuckDBError("DuckDB connection is not open");
+    return 0;
+  }
+
+  std::ostringstream query;
+  query << "SELECT f.layer_id, f.feature_id, f.geometry_kind, "
+        << "ST_AsText(f.geometry) AS geometry_wkt, "
+        << "COALESCE(f.min_zoom, l.min_zoom, -1) AS min_zoom, "
+        << "COALESCE(f.max_zoom, l.max_zoom, -1) AS max_zoom, "
+        << "COALESCE(f.z_index, l.z_index, 0) AS z_index "
+        << "FROM agus.layer_features f "
+        << "JOIN agus.layers l ON l.layer_id = f.layer_id "
+        << "WHERE l.visible = true "
+        << "AND l.deleted_at IS NULL "
+        << "AND f.deleted_at IS NULL "
+        << "AND (COALESCE(f.min_zoom, l.min_zoom) IS NULL OR "
+        << "COALESCE(f.min_zoom, l.min_zoom) <= " << zoom << ") "
+        << "AND (COALESCE(f.max_zoom, l.max_zoom) IS NULL OR "
+        << "COALESCE(f.max_zoom, l.max_zoom) >= " << zoom << ") "
+        << "AND (f.bbox_min_lon IS NULL OR ("
+        << "f.bbox_max_lon >= " << minLon << " AND "
+        << "f.bbox_min_lon <= " << maxLon << " AND "
+        << "f.bbox_max_lat >= " << minLat << " AND "
+        << "f.bbox_min_lat <= " << maxLat << ")) "
+        << "ORDER BY l.z_index ASC, f.z_index ASC NULLS LAST, f.feature_id ASC "
+        << "LIMIT 5000;";
+
+  duckdb_result result;
+  if (duckdb_query(g_duckdbConnection, query.str().c_str(), &result) !=
+      DuckDBSuccess)
+  {
+    char const * error = duckdb_result_error(&result);
+    SetDuckDBError(error != nullptr ? error : "DuckDB render feature query failed");
+    duckdb_destroy_result(&result);
+    return 0;
+  }
+
+  idx_t const rowCount = duckdb_row_count(&result);
+  if (rowCount > static_cast<idx_t>(std::numeric_limits<int32_t>::max()))
+  {
+    duckdb_destroy_result(&result);
+    SetDuckDBError("DuckDB render feature query returned too many rows");
+    return 0;
+  }
+
+  auto * features = static_cast<AgusDuckDBRenderFeature *>(
+      std::calloc(static_cast<size_t>(rowCount), sizeof(AgusDuckDBRenderFeature)));
+  if (rowCount > 0 && features == nullptr)
+  {
+    duckdb_destroy_result(&result);
+    SetDuckDBError("Failed to allocate DuckDB render feature buffer");
+    return 0;
+  }
+
+  for (idx_t rowIndex = 0; rowIndex < rowCount; ++rowIndex)
+  {
+    auto & feature = features[rowIndex];
+    feature.layer_id = CopyDuckDBCString(DuckDBValueVarchar(&result, 0, rowIndex));
+    feature.feature_id = CopyDuckDBCString(DuckDBValueVarchar(&result, 1, rowIndex));
+    feature.geometry_kind = CopyDuckDBCString(DuckDBValueVarchar(&result, 2, rowIndex));
+    feature.geometry_wkt = CopyDuckDBCString(DuckDBValueVarchar(&result, 3, rowIndex));
+    feature.min_zoom = duckdb_value_int32(&result, 4, rowIndex);
+    feature.max_zoom = duckdb_value_int32(&result, 5, rowIndex);
+    feature.z_index = duckdb_value_int32(&result, 6, rowIndex);
+
+    if (feature.layer_id == nullptr || feature.feature_id == nullptr ||
+        feature.geometry_kind == nullptr || feature.geometry_wkt == nullptr)
+    {
+      duckdb_destroy_result(&result);
+      agus_duckdb_free_render_features(features, static_cast<int32_t>(rowIndex + 1));
+      SetDuckDBError("Failed to allocate DuckDB render feature strings");
+      return 0;
+    }
+  }
+
+  duckdb_destroy_result(&result);
+  *outFeatures = features;
+  *outCount = static_cast<int32_t>(rowCount);
+  ClearDuckDBError();
+  return 1;
 }
 
 std::string DuckDBMigrationChecksum(std::string const & sql)
@@ -1053,6 +1157,44 @@ FFI_PLUGIN_EXPORT int32_t agus_duckdb_validate_render_query(char const * sql)
 
   std::lock_guard<std::mutex> lock(g_duckdbMutex);
   return ValidateRenderableDuckDBQueryLocked(sql) ? 1 : 0;
+}
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features(
+    double min_lon, double min_lat, double max_lon, double max_lat, int32_t zoom,
+    AgusDuckDBRenderFeature ** out_features, int32_t * out_count)
+{
+  if (out_features == nullptr || out_count == nullptr)
+  {
+    std::lock_guard<std::mutex> lock(g_duckdbMutex);
+    SetDuckDBError("DuckDB render feature output pointer is null");
+    return 0;
+  }
+
+  *out_features = nullptr;
+  *out_count = 0;
+
+  std::lock_guard<std::mutex> lock(g_duckdbMutex);
+  return CopyRenderableDuckDBFeaturesLocked(min_lon, min_lat, max_lon, max_lat,
+                                            zoom, out_features, out_count);
+}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_free_render_features(
+    AgusDuckDBRenderFeature * features, int32_t count)
+{
+  if (features == nullptr || count <= 0)
+  {
+    std::free(features);
+    return;
+  }
+
+  for (int32_t index = 0; index < count; ++index)
+  {
+    std::free(features[index].layer_id);
+    std::free(features[index].feature_id);
+    std::free(features[index].geometry_kind);
+    std::free(features[index].geometry_wkt);
+  }
+  std::free(features);
 }
 
 FFI_PLUGIN_EXPORT int32_t agus_duckdb_apply_migration_file(char const * path)
