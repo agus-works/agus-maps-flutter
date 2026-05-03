@@ -55,6 +55,14 @@ FFI_PLUGIN_EXPORT int comaps_get_viewport_center(double* lat, double* lon);
 // Get the current integer draw scale/zoom level, or -1 when unavailable.
 FFI_PLUGIN_EXPORT int comaps_get_current_zoom(void);
 
+// Converts physical screen coordinates to WGS84 coordinates using the latest
+// native viewport. Returns 1 when values were written.
+FFI_PLUGIN_EXPORT int comaps_screen_to_latlon(
+	double physical_x,
+	double physical_y,
+	double* lat,
+	double* lon);
+
 // Relative zoom controls centered on the visible viewport.
 FFI_PLUGIN_EXPORT void comaps_zoom_in(int animated);
 FFI_PLUGIN_EXPORT void comaps_zoom_out(int animated);

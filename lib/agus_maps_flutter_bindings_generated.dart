@@ -184,6 +184,30 @@ class AgusMapsFlutterBindings {
   late final _comaps_get_current_zoom =
       _comaps_get_current_zoomPtr.asFunction<int Function()>();
 
+  /// Converts physical screen coordinates to WGS84 coordinates using the latest
+  /// native viewport. Returns 1 when values were written.
+  int comaps_screen_to_latlon(
+    double physical_x,
+    double physical_y,
+    ffi.Pointer<ffi.Double> lat,
+    ffi.Pointer<ffi.Double> lon,
+  ) {
+    return _comaps_screen_to_latlon(
+      physical_x,
+      physical_y,
+      lat,
+      lon,
+    );
+  }
+
+  late final _comaps_screen_to_latlonPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int Function(ffi.Double, ffi.Double, ffi.Pointer<ffi.Double>,
+              ffi.Pointer<ffi.Double>)>>('comaps_screen_to_latlon');
+  late final _comaps_screen_to_latlon = _comaps_screen_to_latlonPtr.asFunction<
+      int Function(
+          double, double, ffi.Pointer<ffi.Double>, ffi.Pointer<ffi.Double>)>();
+
   /// Relative zoom controls centered on the visible viewport.
   void comaps_zoom_in(
     int animated,

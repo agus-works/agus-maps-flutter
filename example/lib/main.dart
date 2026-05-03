@@ -201,6 +201,9 @@ class _MyAppState extends State<MyApp> {
   bool _searchOpen = false;
   final ValueNotifier<double> _currentBearing = ValueNotifier<double>(0.0);
   agus_maps_flutter.PlacePageData? _placePage;
+  agus_maps_flutter.DuckDBLayerStore? _duckDBLayerStore;
+  agus_maps_flutter.DuckDBLayerDrawController? _duckDBDrawController;
+  bool _duckDBLayerPanelVisible = false;
 
   int? _bundledMwmVersion;
   String? _dataPath;
@@ -220,6 +223,8 @@ class _MyAppState extends State<MyApp> {
 
   final agus_maps_flutter.AgusMapController _mapController =
       agus_maps_flutter.AgusMapController();
+
+  static const String _userDrawLayerId = 'example_user_draw';
 
   // MWM storage for tracking downloaded maps
   MwmStorage? _mwmStorage;
@@ -245,6 +250,7 @@ class _MyAppState extends State<MyApp> {
     _navigationPollTimer?.cancel();
     agus_maps_flutter.cancelNativeSearch();
     _currentBearing.dispose();
+    _duckDBDrawController?.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -975,22 +981,52 @@ class _MyAppState extends State<MyApp> {
     }
 
     try {
-      if (!agus_maps_flutter.openDuckDBAppDatabase(_dataPath!)) {
-        _log('DuckDB layer rendering skipped: '
-            '${agus_maps_flutter.duckDBLastError()}');
-        return;
-      }
-      if (!agus_maps_flutter.runDuckDBMigrations()) {
-        _log('DuckDB layer migrations failed: '
-            '${agus_maps_flutter.duckDBLastError()}');
-        return;
-      }
+      final store = agus_maps_flutter.DuckDBLayerStore(writablePath: _dataPath!)
+        ..open();
+      store.upsertLayer(
+        const agus_maps_flutter.AgusLayerDraft(
+          layerId: _userDrawLayerId,
+          name: 'User drawings',
+          kind: agus_maps_flutter.AgusLayerKind.userDraw,
+          visible: true,
+          zIndex: 1000,
+        ),
+      );
+
+      final controller = agus_maps_flutter.DuckDBLayerDrawController(
+        store: store,
+        layerId: _userDrawLayerId,
+        projector: _projectDrawPoint,
+        onCommitted: _refreshDuckDBNativeLayers,
+      );
+
       agus_maps_flutter.setDuckDBMapLayerRenderingEnabled(true);
       final count = agus_maps_flutter.refreshDuckDBMapLayers();
+      _duckDBDrawController?.dispose();
+      if (mounted) {
+        setState(() {
+          _duckDBLayerStore = store;
+          _duckDBDrawController = controller;
+        });
+      }
       _log('DuckDB layer rendering enabled: $count visible features.');
     } catch (error, stackTrace) {
       _log('DuckDB layer rendering unavailable: $error\n$stackTrace');
     }
+  }
+
+  agus_maps_flutter.AgusLatLon? _projectDrawPoint(Offset localPosition) {
+    final pixelRatio = View.of(context).devicePixelRatio;
+    return agus_maps_flutter.screenPointToLatLon(
+      localPosition.dx * pixelRatio,
+      localPosition.dy * pixelRatio,
+    );
+  }
+
+  Future<void> _refreshDuckDBNativeLayers() async {
+    if (!Platform.isAndroid) return;
+    final count = agus_maps_flutter.refreshDuckDBMapLayers();
+    _log('DuckDB layer renderer refreshed: $count visible features.');
   }
 
   void _startBearingUpdates() {
@@ -1917,6 +1953,8 @@ class _MyAppState extends State<MyApp> {
         : _placePage == null
             ? 24.0
             : 248.0;
+    final drawController = _duckDBDrawController;
+    final layerStore = _duckDBLayerStore;
 
     return Stack(
       children: [
@@ -1932,12 +1970,56 @@ class _MyAppState extends State<MyApp> {
           userScale: _mapScale,
           resizePolicy: agus_maps_flutter.AgusMapResizePolicy.stableViewport,
         ),
+        if (drawController != null)
+          Positioned.fill(
+            child: agus_maps_flutter.DuckDBLayerDrawOverlay(
+              controller: drawController,
+            ),
+          ),
         Positioned(
           top: 12,
           left: 12,
           right: 12,
           child: _buildSearchOverlay(context),
         ),
+        if (_duckDBLayerPanelVisible && layerStore != null)
+          Positioned(
+            top: 76,
+            left: 12,
+            right: 12,
+            child: agus_maps_flutter.DuckDBLayerPanel(
+              store: layerStore,
+              onRenderingRefresh: _refreshDuckDBNativeLayers,
+            ),
+          ),
+        if (drawController != null)
+          Positioned(
+            left: 12,
+            bottom: controlsBottom,
+            child: agus_maps_flutter.DuckDBLayerDrawToolbar(
+              controller: drawController,
+              onCommitted: (featureId) {
+                _log('DuckDB feature committed: $featureId');
+              },
+            ),
+          ),
+        if (drawController != null)
+          Positioned(
+            left: 12,
+            right: 84,
+            top: 76,
+            child: AnimatedBuilder(
+              animation: drawController,
+              builder: (context, child) {
+                if (!drawController.isDrawing) {
+                  return const SizedBox.shrink();
+                }
+                return agus_maps_flutter.DuckDBLayerMetadataForm(
+                  controller: drawController,
+                );
+              },
+            ),
+          ),
         Positioned(
           right: 12,
           bottom: controlsBottom,
@@ -2071,6 +2153,20 @@ class _MyAppState extends State<MyApp> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (_duckDBLayerStore != null) ...[
+            IconButton(
+              tooltip: 'Layers',
+              icon: Icon(
+                _duckDBLayerPanelVisible ? Icons.layers : Icons.layers_outlined,
+              ),
+              onPressed: () {
+                setState(() {
+                  _duckDBLayerPanelVisible = !_duckDBLayerPanelVisible;
+                });
+              },
+            ),
+            const Divider(height: 1),
+          ],
           IconButton(
             tooltip: 'Zoom in',
             icon: const Icon(Icons.add),
