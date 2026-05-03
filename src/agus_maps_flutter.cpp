@@ -110,6 +110,8 @@ double constexpr kRadiansPerDegree = 3.14159265358979323846 / 180.0;
 kml::MarkGroupId constexpr kDuckDBRenderGroupId = 1ULL << 60;
 kml::MarkId constexpr kDuckDBPointMarkIdBase = kDuckDBRenderGroupId + 1;
 kml::TrackId constexpr kDuckDBLineMarkIdBase = kDuckDBRenderGroupId + (1ULL << 20);
+int32_t constexpr kDuckDBRenderFetchBatchSize = 1000;
+int32_t constexpr kDuckDBRenderFetchMaxFeatures = 10000;
 auto constexpr kDuckDBViewportRefreshInterval = std::chrono::milliseconds(250);
 
 void WakeRenderer();
@@ -363,29 +365,41 @@ int32_t RefreshDuckDBRenderLayersInternal() {
 
     auto const viewport = mercator::ToLatLon(g_framework->GetCurrentViewport());
     auto const zoom = ClampZoom(g_framework->GetDrawScale());
-    AgusDuckDBRenderFeature * features = nullptr;
-    int32_t featureCount = 0;
-    if (agus_duckdb_copy_render_features(viewport.minX(), viewport.minY(),
-                                         viewport.maxX(), viewport.maxY(), zoom,
-                                         &features, &featureCount) == 0) {
-        return -2;
-    }
-
     std::vector<DuckDBRenderableGeometry> renderableFeatures;
-    renderableFeatures.reserve(static_cast<size_t>(featureCount));
-    for (int32_t index = 0; index < featureCount; ++index) {
-        auto const & feature = features[index];
-        DuckDBRenderableGeometry renderable;
-        renderable.isPoint = IsPointFeature(feature.geometry_kind, feature.geometry_wkt);
-        renderable.minZoom = feature.min_zoom <= 0 ? 1 : feature.min_zoom;
-        renderable.zIndex = feature.z_index;
-        renderable.points = ParseWktMercatorPoints(feature.geometry_wkt);
-        if ((renderable.isPoint && !renderable.points.empty()) ||
-            (!renderable.isPoint && renderable.points.size() > 1)) {
-            renderableFeatures.push_back(std::move(renderable));
+    renderableFeatures.reserve(kDuckDBRenderFetchBatchSize);
+
+    int32_t queryOffset = 0;
+    while (queryOffset < kDuckDBRenderFetchMaxFeatures) {
+        int32_t const batchLimit =
+            std::min(kDuckDBRenderFetchBatchSize,
+                     kDuckDBRenderFetchMaxFeatures - queryOffset);
+        AgusDuckDBRenderFeature * features = nullptr;
+        int32_t featureCount = 0;
+        if (agus_duckdb_copy_render_features_page(
+                viewport.minX(), viewport.minY(), viewport.maxX(), viewport.maxY(),
+                zoom, batchLimit, queryOffset, &features, &featureCount) == 0) {
+            return -2;
+        }
+
+        for (int32_t index = 0; index < featureCount; ++index) {
+            auto const & feature = features[index];
+            DuckDBRenderableGeometry renderable;
+            renderable.isPoint = IsPointFeature(feature.geometry_kind, feature.geometry_wkt);
+            renderable.minZoom = feature.min_zoom <= 0 ? 1 : feature.min_zoom;
+            renderable.zIndex = feature.z_index;
+            renderable.points = ParseWktMercatorPoints(feature.geometry_wkt);
+            if ((renderable.isPoint && !renderable.points.empty()) ||
+                (!renderable.isPoint && renderable.points.size() > 1)) {
+                renderableFeatures.push_back(std::move(renderable));
+            }
+        }
+
+        agus_duckdb_free_render_features(features, featureCount);
+        queryOffset += featureCount;
+        if (featureCount < batchLimit) {
+            break;
         }
     }
-    agus_duckdb_free_render_features(features, featureCount);
 
     if (!g_duckDBMarksProvider) {
         g_duckDBMarksProvider = std::make_unique<DuckDBMarksProvider>();

@@ -1216,6 +1216,58 @@ class AgusMapsFlutterBindings {
               ffi.Pointer<ffi.Pointer<AgusDuckDBRenderFeature>>,
               ffi.Pointer<ffi.Int32>)>();
 
+  /// Copies a page of currently renderable DuckDB features for a WGS84 viewport
+  /// and zoom. Use limit/offset to avoid one large render allocation.
+  int agus_duckdb_copy_render_features_page(
+    double min_lon,
+    double min_lat,
+    double max_lon,
+    double max_lat,
+    int zoom,
+    int limit,
+    int offset,
+    ffi.Pointer<ffi.Pointer<AgusDuckDBRenderFeature>> out_features,
+    ffi.Pointer<ffi.Int32> out_count,
+  ) {
+    return _agus_duckdb_copy_render_features_page(
+      min_lon,
+      min_lat,
+      max_lon,
+      max_lat,
+      zoom,
+      limit,
+      offset,
+      out_features,
+      out_count,
+    );
+  }
+
+  late final _agus_duckdb_copy_render_features_pagePtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Int32 Function(
+                  ffi.Double,
+                  ffi.Double,
+                  ffi.Double,
+                  ffi.Double,
+                  ffi.Int32,
+                  ffi.Int32,
+                  ffi.Int32,
+                  ffi.Pointer<ffi.Pointer<AgusDuckDBRenderFeature>>,
+                  ffi.Pointer<ffi.Int32>)>>(
+      'agus_duckdb_copy_render_features_page');
+  late final _agus_duckdb_copy_render_features_page =
+      _agus_duckdb_copy_render_features_pagePtr.asFunction<
+          int Function(
+              double,
+              double,
+              double,
+              double,
+              int,
+              int,
+              int,
+              ffi.Pointer<ffi.Pointer<AgusDuckDBRenderFeature>>,
+              ffi.Pointer<ffi.Int32>)>();
+
   /// Frees render features allocated by agus_duckdb_copy_render_features().
   void agus_duckdb_free_render_features(
     ffi.Pointer<AgusDuckDBRenderFeature> features,

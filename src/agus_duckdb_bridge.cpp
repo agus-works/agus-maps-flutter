@@ -616,13 +616,26 @@ bool ValidateRenderableDuckDBQueryLocked(std::string const & sql)
 
 int32_t CopyRenderableDuckDBFeaturesLocked(double minLon, double minLat,
                                            double maxLon, double maxLat,
-                                           int32_t zoom,
+                                           int32_t zoom, int32_t limit,
+                                           int32_t offset,
                                            AgusDuckDBRenderFeature ** outFeatures,
                                            int32_t * outCount)
 {
   if (g_duckdbConnection == nullptr)
   {
     SetDuckDBError("DuckDB connection is not open");
+    return 0;
+  }
+
+  if (limit <= 0)
+  {
+    SetDuckDBError("DuckDB render feature limit must be positive");
+    return 0;
+  }
+
+  if (offset < 0)
+  {
+    SetDuckDBError("DuckDB render feature offset must be non-negative");
     return 0;
   }
 
@@ -647,7 +660,7 @@ int32_t CopyRenderableDuckDBFeaturesLocked(double minLon, double minLat,
         << "f.bbox_max_lat >= " << minLat << " AND "
         << "f.bbox_min_lat <= " << maxLat << ")) "
         << "ORDER BY l.z_index ASC, f.z_index ASC NULLS LAST, f.feature_id ASC "
-        << "LIMIT 5000;";
+        << "LIMIT " << limit << " OFFSET " << offset << ";";
 
   duckdb_result result;
   if (duckdb_query(g_duckdbConnection, query.str().c_str(), &result) !=
@@ -1057,6 +1070,16 @@ FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features(
     double min_lon, double min_lat, double max_lon, double max_lat, int32_t zoom,
     AgusDuckDBRenderFeature ** out_features, int32_t * out_count)
 {
+  return agus_duckdb_copy_render_features_page(
+      min_lon, min_lat, max_lon, max_lat, zoom, 5000, 0, out_features,
+      out_count);
+}
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features_page(
+    double min_lon, double min_lat, double max_lon, double max_lat, int32_t zoom,
+    int32_t limit, int32_t offset, AgusDuckDBRenderFeature ** out_features,
+    int32_t * out_count)
+{
   if (out_features == nullptr || out_count == nullptr)
   {
     std::lock_guard<std::mutex> lock(g_duckdbMutex);
@@ -1069,7 +1092,8 @@ FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features(
 
   std::lock_guard<std::mutex> lock(g_duckdbMutex);
   return CopyRenderableDuckDBFeaturesLocked(min_lon, min_lat, max_lon, max_lat,
-                                            zoom, out_features, out_count);
+                                            zoom, limit, offset, out_features,
+                                            out_count);
 }
 
 FFI_PLUGIN_EXPORT void agus_duckdb_free_render_features(
