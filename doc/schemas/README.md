@@ -96,3 +96,7 @@ The first reusable DuckDB layer UI is exported from the main plugin library:
 - `DuckDBLayerPanel`: visibility and z-order controls for DuckDB layers, plus a database backup action.
 
 Android draw overlays can call `screenPointToLatLon()` to convert Flutter overlay positions, after multiplying by the device pixel ratio, into WGS84 coordinates for WKT persistence.
+
+## Manual Testing
+
+Use [doc/schemas/MANUAL-TESTING.md](MANUAL-TESTING.md) for the current step-by-step runtime checklist covering DuckDB startup, Android native rendering, drawing tools, layer controls, backups, and release artifact checks.

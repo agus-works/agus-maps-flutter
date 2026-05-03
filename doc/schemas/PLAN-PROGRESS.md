@@ -428,6 +428,21 @@ Validation update after resuming on May 3:
 - Release-mode Android source smoke also passed from the example app directory with `flutter run -d RF8M20SAQSL --release`: Gradle built CoMaps from source, produced `build/app/outputs/flutter-apk/app-release.apk` at 435.0 MB, installed it on the same device, and the About-tab DuckDB card reported spatial query success.
 - Android release package-size handling now uses split-per-ABI direct-install APKs plus an App Bundle. `flutter build apk --release --split-per-abi` produces 203.4 MB (`armeabi-v7a`), 231.0 MB (`arm64-v8a`), and 237.7 MB (`x86_64`) APKs instead of the 435.0 MB universal APK; `flutter build appbundle --release` produces a 367.3 MB AAB for store-style ABI delivery.
 
+### May 3 GitHub Actions Follow-up
+
+The attached GitHub Actions logs in `/Users/gilmichael/Downloads/logs_67196491754` showed the same failure in `Build iOS and macOS`, `Build Android (using Linux)`, and `Build Linux`: after CoMaps restored from the Azure cache and patches applied, `dart run tool/build.dart --no-cache` entered DuckDB bootstrap and failed with `error: pathspec 'thirdparty/duckdb' did not match any file(s) known to git` while running `git submodule update --init --recursive -- thirdparty/duckdb`.
+
+CI hardening/fix status:
+
+- Current root repository state tracks `.gitmodules`, `thirdparty/duckdb`, and `thirdparty/duckdb-spatial`, so fresh checkouts of the current branch know the DuckDB submodule paths.
+- `tool/src/build_runner.dart` now falls back to cloning DuckDB or duckdb-spatial from their canonical GitHub repositories if submodule update fails because metadata is missing in a CI checkout.
+- The three requested workflow jobs now initialize root submodules during checkout so DuckDB metadata is available before the contributor build runner starts.
+- Apple CI binary archives now include both `CoMaps.xcframework` and `DuckDB.xcframework`, and the iOS/macOS example setup copies both frameworks before CocoaPods builds.
+- Android CI now builds split-per-ABI release APKs plus the AAB rather than a universal APK, reducing release artifact size and avoiding unnecessary all-ABI APK install artifacts.
+- Android, Apple, and Linux workflow paths now remove large source/build directories after native artifacts are copied, especially CoMaps `.git`, DuckDB source checkouts, DuckDB/vcpkg build trees, and Linux/Android native intermediates before Flutter app packaging.
+
+Manual runtime validation guidance has been added at `doc/schemas/MANUAL-TESTING.md` for About-tab DuckDB smoke, drawing, native renderer refresh, layer controls, backups, and release artifact checks.
+
 If the simulator destination changes, list destinations with:
 
 ```bash

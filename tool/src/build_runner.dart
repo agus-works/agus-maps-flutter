@@ -24,6 +24,7 @@ import 'git_operations.dart'
         checkoutComapsTag,
         checkoutGitRef,
         cloneComaps,
+        cloneGitRepository,
         initRepositorySubmodules,
         initSubmodules,
         isGitCheckout,
@@ -176,6 +177,7 @@ Future<void> _bootstrapDuckdbDependencies(
   await _bootstrapGitSubmoduleDependency(
     dependencyName: 'DuckDB',
     relativePath: 'thirdparty/duckdb',
+    repositoryUrl: 'https://github.com/duckdb/duckdb.git',
     targetDir: getDuckdbDir(),
     ref: duckdbRef,
     patchesName: 'duckdb',
@@ -185,6 +187,7 @@ Future<void> _bootstrapDuckdbDependencies(
   await _bootstrapGitSubmoduleDependency(
     dependencyName: 'duckdb-spatial',
     relativePath: 'thirdparty/duckdb-spatial',
+    repositoryUrl: 'https://github.com/duckdb/duckdb-spatial.git',
     targetDir: getDuckdbSpatialDir(),
     ref: duckdbSpatialRef,
     patchesName: 'duckdb-spatial',
@@ -197,6 +200,7 @@ Future<void> _bootstrapDuckdbDependencies(
 Future<void> _bootstrapGitSubmoduleDependency({
   required String dependencyName,
   required String relativePath,
+  required String repositoryUrl,
   required String targetDir,
   required String ref,
   required String patchesName,
@@ -206,7 +210,18 @@ Future<void> _bootstrapGitSubmoduleDependency({
 
   if (!await isGitCheckout(targetDir)) {
     print('$dependencyName checkout not initialized; updating submodule');
-    await updateSubmodule(relativePath);
+    try {
+      await updateSubmodule(relativePath);
+    } catch (e) {
+      print(
+        '$dependencyName submodule update failed; cloning repository instead',
+      );
+      await cloneGitRepository(
+        url: repositoryUrl,
+        targetDir: targetDir,
+        dependencyName: dependencyName,
+      );
+    }
   } else {
     print('$dependencyName checkout already initialized at $targetDir');
   }
