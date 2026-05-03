@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -37,6 +38,59 @@ class RenderStateChangedEvent {
   final int? surfaceId;
 
   const RenderStateChangedEvent(this.state, this.surfaceId);
+}
+
+/// Column metadata returned from a DuckDB query result.
+class DuckDBColumn {
+  /// Creates column metadata for a DuckDB result column.
+  const DuckDBColumn({required this.name, required this.type});
+
+  /// Column name reported by DuckDB.
+  final String name;
+
+  /// DuckDB logical type or alias, such as `VARCHAR`, `JSON`, or `GEOMETRY`.
+  final String type;
+
+  static DuckDBColumn _fromJson(Object? value) {
+    final map = value as Map<String, Object?>;
+    return DuckDBColumn(
+      name: map['name'] as String? ?? '',
+      type: map['type'] as String? ?? 'INVALID',
+    );
+  }
+}
+
+/// Materialized JSON query result returned by the native DuckDB bridge.
+class DuckDBQueryResult {
+  /// Creates a materialized query result.
+  const DuckDBQueryResult({
+    required this.columns,
+    required this.rows,
+    required this.rowCount,
+  });
+
+  /// Result columns in DuckDB result order.
+  final List<DuckDBColumn> columns;
+
+  /// Materialized result rows, where each row is ordered like [columns].
+  final List<List<Object?>> rows;
+
+  /// Number of materialized rows reported by the native bridge.
+  final int rowCount;
+
+  /// Parses the JSON payload returned by [queryDuckDBJson].
+  factory DuckDBQueryResult.fromJsonString(String source) {
+    final decoded = jsonDecode(source) as Map<String, Object?>;
+    return DuckDBQueryResult(
+      columns: (decoded['columns'] as List<Object?>? ?? const [])
+          .map(DuckDBColumn._fromJson)
+          .toList(growable: false),
+      rows: (decoded['rows'] as List<Object?>? ?? const [])
+          .map((row) => List<Object?>.unmodifiable(row as List<Object?>))
+          .toList(growable: false),
+      rowCount: decoded['row_count'] as int? ?? 0,
+    );
+  }
 }
 
 /// Low-frequency place page change event emitted by native platforms.
@@ -1019,6 +1073,11 @@ String _nativeDuckDBString(Pointer<Char> value) {
   return value.cast<Utf8>().toDartString();
 }
 
+String? _nativeNullableDuckDBString(Pointer<Char> value) {
+  if (value == nullptr) return null;
+  return value.cast<Utf8>().toDartString();
+}
+
 /// Linked DuckDB library version for the native persistence bridge.
 String duckDBLibraryVersion() {
   _ensureDuckDBBridgeSupported();
@@ -1060,6 +1119,41 @@ bool executeDuckDBSql(String sql) {
   final sqlPtr = sql.toNativeUtf8().cast<Char>();
   try {
     return _bindings.agus_duckdb_execute(sqlPtr) == 1;
+  } finally {
+    malloc.free(sqlPtr);
+  }
+}
+
+/// Executes SQL and returns a JSON payload with columns, rows, and row count.
+///
+/// Throws a [StateError] with [duckDBLastError] when native execution fails.
+String queryDuckDBJson(String sql) {
+  _ensureDuckDBBridgeSupported();
+  final sqlPtr = sql.toNativeUtf8().cast<Char>();
+  try {
+    final json = _nativeNullableDuckDBString(
+      _bindings.agus_duckdb_query_json(sqlPtr),
+    );
+    if (json == null) {
+      throw StateError('DuckDB query failed: ${duckDBLastError()}');
+    }
+    return json;
+  } finally {
+    malloc.free(sqlPtr);
+  }
+}
+
+/// Executes SQL and returns a parsed materialized DuckDB result.
+DuckDBQueryResult queryDuckDB(String sql) {
+  return DuckDBQueryResult.fromJsonString(queryDuckDBJson(sql));
+}
+
+/// Validates whether SQL satisfies the renderable query-layer contract.
+bool validateRenderableDuckDBQuery(String sql) {
+  _ensureDuckDBBridgeSupported();
+  final sqlPtr = sql.toNativeUtf8().cast<Char>();
+  try {
+    return _bindings.agus_duckdb_validate_render_query(sqlPtr) == 1;
   } finally {
     malloc.free(sqlPtr);
   }
