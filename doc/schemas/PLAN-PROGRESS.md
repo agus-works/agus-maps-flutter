@@ -32,14 +32,14 @@ The rollout order is macOS first, then iOS, Android, Windows, and Linux. macOS w
 - Required extensions are `core_functions`, `parquet`, `json`, `icu`, `httpfs`, and `spatial`.
 - `httpfs` is out-of-tree for DuckDB `v1.5.2`; it is pinned through DuckDB's release config to `duckdb-httpfs` commit `13e18b3c9f3810334f5972b76a3acc247b28e537`.
 - The app database path currently used by the first bridge is `writablePath/agus_layers.duckdb`.
-- The first bridge scope is lifecycle/health/SQL/migration execution only. It is wired through the macOS and iOS podspecs. Query-result serialization, layer CRUD, backups, and rendering refresh are still pending.
+- The native bridge now covers lifecycle, health, SQL execution, embedded migrations, materialized JSON query results, render-query validation, and Android render-feature copying. Layer CRUD/backups live in the Dart store and Android native rendering is wired through Drape.
 
 ## Current File Map
 
 ### Dependency and Build Pins
 
 - `.gitmodules`: root submodule registry for `thirdparty/duckdb` and `thirdparty/duckdb-spatial`.
-- `.github/workflows/devops.yml`: exposes `DUCKDB_TAG` and `DUCKDB_SPATIAL_TAG` in CI/release metadata. Full CI build/cache/package steps for DuckDB are still pending.
+- `.github/workflows/devops.yml`: exposes `DUCKDB_TAG` and `DUCKDB_SPATIAL_TAG` in CI/release metadata, bootstraps DuckDB dependencies, and packages the current Apple, Android, and Linux artifacts. The latest CI hardening needs a GitHub Actions rerun for external confirmation.
 - `tool/src/config.dart`: default DuckDB and duckdb-spatial refs plus `getDuckdbTag()` and `getDuckdbSpatialTag()`.
 - `tool/src/platform_detector.dart`: path helpers for DuckDB, duckdb-spatial, and dependency-specific patch directories.
 
@@ -62,6 +62,7 @@ The rollout order is macOS first, then iOS, Android, Windows, and Linux. macOS w
 
 - `src/agus_maps_flutter.h`: public C ABI declarations for the initial DuckDB bridge.
 - `src/agus_duckdb_bridge.cpp`: initial DuckDB bridge implementation.
+- `src/agus_duckdb_migrations.inc`: generated native migration manifest created from `doc/schemas/migrations/*.sql`.
 - `lib/agus_maps_flutter_bindings_generated.dart`: regenerated ffigen bindings including DuckDB bridge functions.
 - `lib/agus_maps_flutter.dart`: Dart convenience helpers for Apple-platform DuckDB bridge calls.
 
@@ -131,7 +132,7 @@ Current limitations:
 - The bridge now uses `duckdb_open_ext`, but advanced config options are still not wired beyond the default configuration.
 - Extension verification now queries `duckdb_extensions()` after `LOAD <extension>` succeeds.
 - The initial schema migration is embedded in the native bridge, applied in a transaction, and recorded with a non-null `fnv1a64:` checksum. Adding future migrations currently requires updating both the reviewable SQL file under `doc/schemas/migrations/` and the embedded migration manifest in `src/agus_duckdb_bridge.cpp`.
-- Query results can now be extracted as a materialized JSON payload for small result sets and diagnostics. Layer CRUD, feature CRUD, checkpoint/backup, and render refresh APIs are still pending.
+- Query results can now be extracted as a materialized JSON payload for small result sets and diagnostics. Layer CRUD, feature CRUD, checkpoint/backup, and Android render refresh APIs are implemented; large/chunked result delivery remains a future renderer-path improvement.
 - Dart wrappers intentionally throw `UnsupportedError` outside macOS, iOS, and Android until additional native platform builds are wired.
 
 ### Dart API
@@ -443,6 +444,19 @@ CI hardening/fix status:
 
 Manual runtime validation guidance has been added at `doc/schemas/MANUAL-TESTING.md` for About-tab DuckDB smoke, drawing, native renderer refresh, layer controls, backups, and release artifact checks.
 
+### May 3 Migration Manifest Generation
+
+The production migration runner no longer requires hand-editing SQL raw strings in the native bridge. `tool/src/duckdb_migration_generator.dart` reads `doc/schemas/migrations/*.sql`, strips an optional `-- agus_migration_description:` metadata comment, and generates `src/agus_duckdb_migrations.inc` with the C++ migration array consumed by `src/agus_duckdb_bridge.cpp`.
+
+Validation status:
+
+- `dart run tool/build.dart --generate-duckdb-migrations` generated `src/agus_duckdb_migrations.inc` from the current single migration.
+- `dart run tool/build.dart --check-duckdb-migrations` and `dart run tool/generate_duckdb_migrations.dart --check` both report the generated manifest is current.
+- `clang++ -std=c++17 -I src -I thirdparty/duckdb/src/include -c src/agus_duckdb_bridge.cpp -o /tmp/agus_duckdb_bridge_generated_migrations.o` succeeds, confirming the generated include is valid from the bridge translation unit.
+- Targeted Dart analysis of the new generator files reports no diagnostics for the generator itself. The only analyzer output in that run is the pre-existing build-tool `_copyDataFiles` unused warning plus existing script-style `print` info lints in `tool/build.dart` and `tool/src/build_runner.dart`.
+
+Future migrations should be added only as SQL files under `doc/schemas/migrations/`, then regenerated with `dart run tool/build.dart --generate-duckdb-migrations`. CI or local validation can use `dart run tool/build.dart --check-duckdb-migrations` to detect drift.
+
 If the simulator destination changes, list destinations with:
 
 ```bash
@@ -465,6 +479,9 @@ Completed checks:
 - `dart analyze lib/agus_maps_flutter.dart lib/agus_maps_flutter_bindings_generated.dart tool/src/duckdb_build.dart`
 - `git diff --check`
 - `dart run tool/build.dart --help`
+- `dart run tool/build.dart --generate-duckdb-migrations`
+- `dart run tool/build.dart --check-duckdb-migrations`
+- `dart run tool/generate_duckdb_migrations.dart --check`
 - VS Code diagnostics on edited bridge, header, Dart, podspec, build helper, CMake config, and docs
 - Migration runner validation after the interrupted May 3 session resumed:
   - `dart run ffigen --config ffigen.yaml`
@@ -571,7 +588,7 @@ Do not run a full Android all-ABI build casually if it looks like vcpkg/DuckDB w
 
 ### 3. Production Migration Runner
 
-Status: initial production runner completed for the embedded first migration.
+Status: completed for the embedded first migration, with generated native manifest support.
 
 - Completed: `agus_duckdb_run_migrations()` runs the embedded migration manifest under the native bridge mutex.
 - Completed: `openDuckDBAppDatabase()` loads required extensions and runs migrations before reporting an open database to Dart.
@@ -579,7 +596,7 @@ Status: initial production runner completed for the embedded first migration.
 - Completed: unapplied migrations run in a transaction and roll back on failure.
 - Completed: recorded migration checksums are non-null and deterministic as `fnv1a64:<16 hex digits>`.
 - Completed: already-applied migrations verify their stored checksum and fail startup if the runtime SQL body has drifted.
-- Follow-up: replace or augment the manual embedded manifest maintenance with generated migration embedding before the migration count grows.
+- Completed: `src/agus_duckdb_migrations.inc` is generated from `doc/schemas/migrations/*.sql`, so future migrations do not require manual native raw-string edits.
 
 ### 4. Query Result API
 
@@ -602,11 +619,11 @@ Status: initial Dart persistence API completed on top of the native DuckDB bridg
 - Completed: layer metadata CRUD supports string key/value metadata with caller-defined value type.
 - Completed: `setLayerVisibility()` and `setLayerZIndex()` cover the immediate UI ordering/visibility controls.
 - Completed: `DuckDBLayerStore.backup()` executes `CHECKPOINT`, copies the `.duckdb` file to a timestamped backup path, and returns the generated path.
-- Follow-up: add user-facing backup UI in the reusable layer management widgets.
+- Completed: `DuckDBLayerPanel` exposes a user-facing backup action and status message backed by `DuckDBLayerStore.backup()`.
 
 ### 6. Native Drape Rendering
 
-Status: Android initial renderer implementation completed and compile-validated; device runtime smoke still pending.
+Status: Android initial renderer implementation completed and compile-validated; About-tab Android runtime smoke passed. Manual draw/native-rendering interaction checks remain covered by `doc/schemas/MANUAL-TESTING.md` until they are run on a device.
 
 - Completed: native DuckDB bridge exposes a typed viewport/zoom render-feature copy API so platform renderers can consume rows without parsing JSON.
 - Completed: Android plugin owns a DuckDB `df::UserMarksProvider` and submits visible points plus line/polygon outlines to Drape through `DrapeEngine::UpdateUserMarks()` and `InvalidateUserMarks()`.
@@ -671,8 +688,8 @@ Current focus: continue to Android packaging. The source/build/doc work already 
 
 Validated after the latest fixes: macOS debug build passes, macOS `ctypes` smoke reports `version=v1.5.2`, `open=1`, `spatial_query=1`, and `is_open=1`; iPhoneOS debug no-codesign and iOS simulator builds pass; iPhoneOS and simulator plugin frameworks export all `agus_duckdb_*` C ABI symbols and contain the generated loader and prefixed ICU symbols. User UI validation reports spatial query success on macOS and a physical iPhone 15.
 
-Next action: proceed to Android single-`.so` DuckDB integration, keeping the Apple smoke paths as regression checks.
+Next action: continue the remaining platform validation work. Android single-`.so` integration is implemented and smoke-tested; the outstanding platform item is Windows/Linux private DuckDB runtime validation on native hosts once artifacts are available.
 
 ## Open Questions
 
-No product-level questions are blocking the next step. The active technical question is the Android packaging shape for DuckDB, DuckDB Spatial, `httpfs`, and vcpkg/third-party static libraries inside the plugin's single shared library per ABI.
+No product-level questions are blocking the next step. The active external validation question is whether Windows and Linux hosts have the private DuckDB runtime artifacts needed to run their Flutter desktop builds without falling back to system DuckDB.

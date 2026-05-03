@@ -64,6 +64,13 @@ Migrations live in `doc/schemas/migrations/` and are named with date plus sequen
 
 Runtime migration code should treat these files as the source of truth. If migrations are embedded into native source for mobile/offline startup, generation must preserve the SQL text and checksum.
 
+The native manifest is generated from those SQL files into `src/agus_duckdb_migrations.inc`. Run this after adding or editing migrations:
+
+```bash
+dart run tool/build.dart --generate-duckdb-migrations
+dart run tool/build.dart --check-duckdb-migrations
+```
+
 ## Dart Layer Store
 
 The public Dart API includes `DuckDBLayerStore`, which uses the native DuckDB bridge for layer persistence. The first API surface supports:
