@@ -1031,7 +1031,7 @@ String duckDBLastError() {
   return _nativeDuckDBString(_bindings.agus_duckdb_last_error());
 }
 
-/// Opens `writablePath/agus_layers.duckdb` and loads required extensions.
+/// Opens `writablePath/agus_layers.duckdb`, loads extensions, and migrates it.
 bool openDuckDBAppDatabase(String writablePath) {
   _ensureDuckDBBridgeSupported();
   final writablePathPtr = writablePath.toNativeUtf8().cast<Char>();
@@ -1063,6 +1063,12 @@ bool executeDuckDBSql(String sql) {
   } finally {
     malloc.free(sqlPtr);
   }
+}
+
+/// Applies embedded app schema migrations and verifies recorded checksums.
+bool runDuckDBMigrations() {
+  _ensureDuckDBBridgeSupported();
+  return _bindings.agus_duckdb_run_migrations() == 1;
 }
 
 /// Executes a SQL migration file against the app-instance DuckDB connection.

@@ -142,7 +142,7 @@ class AboutTab extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            colorScheme.primaryContainer.withOpacity(0.5),
+            colorScheme.primaryContainer.withValues(alpha: 0.5),
             colorScheme.surface,
           ],
         ),
@@ -158,7 +158,7 @@ class AboutTab extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: colorScheme.primary.withOpacity(0.3),
+                  color: colorScheme.primary.withValues(alpha: 0.3),
                   blurRadius: 20,
                   offset: const Offset(0, 8),
                 ),
@@ -218,7 +218,7 @@ class AboutTab extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: colorScheme.outlineVariant.withOpacity(0.5),
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
       child: Column(
@@ -569,6 +569,14 @@ class _DuckDBSmokeStatusState extends State<_DuckDBSmokeStatus> {
         );
       }
 
+      final migrationsOk = agus_maps.runDuckDBMigrations();
+      if (!migrationsOk) {
+        return _DuckDBSmokeResult.failure(
+          'DuckDB migration check failed',
+          agus_maps.duckDBLastError(),
+        );
+      }
+
       final spatialQueryOk = agus_maps.executeDuckDBSql(
         'SELECT ST_AsText(ST_Point(1, 2));',
       );
@@ -583,8 +591,8 @@ class _DuckDBSmokeStatusState extends State<_DuckDBSmokeStatus> {
       return _DuckDBSmokeResult.success(
         'DuckDB $version',
         databaseOpen
-            ? 'Database open • required extensions loaded • spatial query ok'
-            : 'Required extensions loaded • spatial query ok',
+            ? 'Database open • schema migrated • spatial query ok'
+            : 'Schema migrated • spatial query ok',
       );
     } on UnsupportedError catch (error) {
       return _DuckDBSmokeResult.failure(

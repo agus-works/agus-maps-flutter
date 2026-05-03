@@ -3,7 +3,7 @@ CREATE SCHEMA IF NOT EXISTS agus;
 CREATE TABLE IF NOT EXISTS agus.schema_migrations (
   version VARCHAR PRIMARY KEY,
   description VARCHAR NOT NULL,
-  checksum VARCHAR,
+  checksum VARCHAR NOT NULL,
   applied_at TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
 
@@ -96,14 +96,3 @@ CREATE INDEX IF NOT EXISTS idx_agus_features_bbox
 
 CREATE INDEX IF NOT EXISTS idx_agus_features_deleted
   ON agus.layer_features(deleted_at);
-
-INSERT INTO agus.schema_migrations(version, description, checksum)
-SELECT
-  '20260502_001_initial_duckdb_layers',
-  'Initial DuckDB layer schema',
-  NULL
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM agus.schema_migrations
-  WHERE version = '20260502_001_initial_duckdb_layers'
-);

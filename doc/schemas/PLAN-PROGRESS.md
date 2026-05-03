@@ -122,16 +122,17 @@ The initial bridge in `src/agus_duckdb_bridge.cpp` exposes:
 - `agus_duckdb_load_required_extensions()`
 - `agus_duckdb_execute(sql)`
 - `agus_duckdb_apply_migration_file(path)`
+- `agus_duckdb_run_migrations()`
 
 The bridge currently opens `writablePath/agus_layers.duckdb`, loads required extensions, executes arbitrary SQL, and can execute a migration SQL file. It is guarded by a mutex and maintains a last-error string for Dart callers.
 
 Current limitations:
 
-- The bridge uses `duckdb_open`, not `duckdb_open_ext`, so advanced config options are not wired yet.
-- Extension verification currently relies on `LOAD <extension>` success. It does not yet query `duckdb_extensions()` to verify loaded/available status.
-- Migrations are not yet embedded or checksummed at runtime. The bridge can execute a SQL file, but a full migration runner remains pending.
+- The bridge now uses `duckdb_open_ext`, but advanced config options are still not wired beyond the default configuration.
+- Extension verification now queries `duckdb_extensions()` after `LOAD <extension>` succeeds.
+- The initial schema migration is embedded in the native bridge, applied in a transaction, and recorded with a non-null `fnv1a64:` checksum. Adding future migrations currently requires updating both the reviewable SQL file under `doc/schemas/migrations/` and the embedded migration manifest in `src/agus_duckdb_bridge.cpp`.
 - No query result extraction, JSON result encoding, layer CRUD, feature CRUD, checkpoint/backup, or render refresh APIs yet.
-- Dart wrappers intentionally throw `UnsupportedError` outside Apple platforms until Android/native builds are wired.
+- Dart wrappers intentionally throw `UnsupportedError` outside macOS, iOS, and Android until additional native platform builds are wired.
 
 ### Dart API
 
@@ -144,6 +145,7 @@ Current limitations:
 - `isDuckDBOpen()`
 - `executeDuckDBSql(String sql)`
 - `applyDuckDBMigrationFile(String path)`
+- `runDuckDBMigrations()`
 
 These are intentionally small bridge helpers, not the final layer-management API.
 
@@ -411,7 +413,7 @@ Validation update after resuming on May 3:
 - No terminal process from the previous attempt was still active. The saved `android-duckdb-build.log` had 5,170 lines and ended with `android build complete` plus `=== Build Complete ===`.
 - `build/agus-binaries-android/arm64-v8a/libagus_maps_flutter.so`, `build/agus-binaries-android/armeabi-v7a/libagus_maps_flutter.so`, and `build/agus-binaries-android/x86_64/libagus_maps_flutter.so` were all produced.
 - Android output sizes are currently large because the debug shared libraries are unstripped and statically include CoMaps plus DuckDB: approximately 1.1 GB for `arm64-v8a`, 954 MB for `armeabi-v7a`, and 1.1 GB for `x86_64`.
-- `android-duckdb-symbol-summary.log` confirms each ABI exports all eight bridge symbols: `agus_duckdb_library_version`, `agus_duckdb_last_error`, `agus_duckdb_open_app_database`, `agus_duckdb_close`, `agus_duckdb_is_open`, `agus_duckdb_load_required_extensions`, `agus_duckdb_execute`, and `agus_duckdb_apply_migration_file`.
+- `android-duckdb-symbol-summary.log` confirmed each ABI exported the original eight bridge symbols: `agus_duckdb_library_version`, `agus_duckdb_last_error`, `agus_duckdb_open_app_database`, `agus_duckdb_close`, `agus_duckdb_is_open`, `agus_duckdb_load_required_extensions`, `agus_duckdb_execute`, and `agus_duckdb_apply_migration_file`. After the migration-runner update, `agus_duckdb_run_migrations` must be included in the next native symbol check.
 - The same symbol check confirms each ABI contains DuckDB's generated static extension loader path, including `duckdb::LinkedExtensions()`, `CoreFunctionsExtension`, and `SpatialExtension` symbols.
 - The same symbol check confirms each ABI contains the prefixed ICU sample symbol `agus_duckdb_icu_u_isUUppercase`, so the Android DuckDB ICU-prefixing strategy is present in the final plugin shared library.
 - `adb devices -l` and `flutter devices` detected a physical Android device, `SM G973F` (`RF8M20SAQSL`, Android 12/API 31, `android-arm64`). The next validation step is a non-resident Flutter launch/install against this device, followed by About-tab smoke verification.
@@ -446,6 +448,17 @@ Completed checks:
 - `git diff --check`
 - `dart run tool/build.dart --help`
 - VS Code diagnostics on edited bridge, header, Dart, podspec, build helper, CMake config, and docs
+- Migration runner validation after the interrupted May 3 session resumed:
+  - `dart run ffigen --config ffigen.yaml`
+  - `dart format lib/agus_maps_flutter.dart lib/agus_maps_flutter_bindings_generated.dart example/lib/about_tab.dart`
+  - `clang++ -std=c++17 -I src -I thirdparty/duckdb/src/include -c src/agus_duckdb_bridge.cpp -o /tmp/agus_duckdb_bridge_migration.o`
+  - `dart analyze lib/agus_maps_flutter.dart lib/agus_maps_flutter_bindings_generated.dart`
+  - `cd example && flutter analyze lib/about_tab.dart`
+  - `cd example && flutter build macos --debug`
+  - `cd example && flutter build ios --simulator`
+  - `cd example && flutter build apk --debug --target-platform android-arm64`
+  - macOS `ctypes` smoke against the debug plugin framework opened a fresh temp DuckDB database, reran embedded migrations idempotently, verified the `agus.schema_migrations` row has an `fnv1a64:` checksum, and confirmed `SELECT ST_AsText(ST_Point(1, 2));` still succeeds.
+  - Android arm64 debug dynamic-symbol validation on the stripped packaged library confirmed `agus_duckdb_run_migrations`, `agus_duckdb_open_app_database`, `agus_duckdb_apply_migration_file`, and `agus_duckdb_library_version` are exported.
 
 Known analyzer output:
 
@@ -454,7 +467,7 @@ Known analyzer output:
 
 ## Current Worktree Notes
 
-The DuckDB and duckdb-spatial submodule gitlinks are staged for the next checkpoint commit. After that commit lands, `git submodule status thirdparty/duckdb thirdparty/duckdb-spatial` should report the pinned refs directly from the root repository.
+The DuckDB and duckdb-spatial submodule gitlinks are committed. `git submodule status thirdparty/duckdb thirdparty/duckdb-spatial` should report the pinned refs directly from the root repository.
 
 Generated build outputs under `build/` and framework outputs under `macos/Frameworks/` and `ios/Frameworks/` are ignored. The source changes that matter are the root submodule metadata, tooling, bridge, Dart bindings/API, podspecs, docs, schema files, and the `example/ios/Podfile.lock` plus `example/macos/Podfile.lock` checksum updates caused by the Apple podspec changes.
 
@@ -473,8 +486,12 @@ Generated build outputs under `build/` and framework outputs under `macos/Framew
 
 ### 1. Finish Apple Migration Smoke Validation
 
-- Apply `doc/schemas/migrations/20260502_001_initial_duckdb_layers.sql` through the bridge once migrations are embedded or packaged for runtime access.
-- Keep the macOS `ctypes` smoke test as the fast local regression check for lookup, open, static extension loading, and spatial SQL.
+Status: completed for the shared native bridge on macOS; iOS simulator build validation also passes. Rerun on physical iOS after the next device smoke cycle if desired.
+
+- Completed: `doc/schemas/migrations/20260502_001_initial_duckdb_layers.sql` is embedded in `src/agus_duckdb_bridge.cpp` as the first migration manifest entry.
+- Completed: opening the app database now loads extensions and runs embedded migrations before returning success.
+- Completed: explicit `runDuckDBMigrations()` reruns are idempotent and verify the stored checksum.
+- Completed: the macOS `ctypes` smoke test remains the fast local regression check for lookup, open, migration, static extension loading, and spatial SQL.
 
 ### 2. Android Single `.so` Integration
 
@@ -521,13 +538,15 @@ Do not run a full Android all-ABI build casually if it looks like vcpkg/DuckDB w
 
 ### 3. Production Migration Runner
 
-- Replace manual `agus_duckdb_apply_migration_file(path)` use with a real migration runner.
-- Keep SQL files in `doc/schemas/migrations/` as source of truth.
-- Generate embedded migration text/checksums or load packaged migration assets in a deterministic way.
-- Use transactions per migration.
-- Record non-null checksums in `agus.schema_migrations`.
-- Verify already-applied migration checksums at startup.
-- Fail startup/rendering if schema state is unknown.
+Status: initial production runner completed for the embedded first migration.
+
+- Completed: `agus_duckdb_run_migrations()` runs the embedded migration manifest under the native bridge mutex.
+- Completed: `openDuckDBAppDatabase()` loads required extensions and runs migrations before reporting an open database to Dart.
+- Completed: SQL remains reviewable under `doc/schemas/migrations/`; future migrations must add both a SQL file and a manifest entry in `src/agus_duckdb_bridge.cpp`.
+- Completed: unapplied migrations run in a transaction and roll back on failure.
+- Completed: recorded migration checksums are non-null and deterministic as `fnv1a64:<16 hex digits>`.
+- Completed: already-applied migrations verify their stored checksum and fail startup if the runtime SQL body has drifted.
+- Follow-up: replace or augment the manual embedded manifest maintenance with generated migration embedding before the migration count grows.
 
 ### 4. Query Result API
 

@@ -1126,6 +1126,18 @@ class AgusMapsFlutterBindings {
       _agus_duckdb_apply_migration_filePtr
           .asFunction<int Function(ffi.Pointer<ffi.Char>)>();
 
+  /// Applies embedded app schema migrations and verifies recorded checksums.
+  /// Returns 1 on success, 0 on failure.
+  int agus_duckdb_run_migrations() {
+    return _agus_duckdb_run_migrations();
+  }
+
+  late final _agus_duckdb_run_migrationsPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'agus_duckdb_run_migrations');
+  late final _agus_duckdb_run_migrations =
+      _agus_duckdb_run_migrationsPtr.asFunction<int Function()>();
+
   void agus_native_create_surface(
     int width,
     int height,

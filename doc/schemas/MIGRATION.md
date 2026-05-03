@@ -21,6 +21,8 @@ The database owns `agus.schema_migrations` with these columns:
 
 The runtime should verify that already-applied migrations still match their recorded checksum. A checksum mismatch means the database was created with a different migration body and startup should fail with a clear diagnostic.
 
+The current native runner records checksums as `fnv1a64:<16 hex digits>`. The checksum is deterministic and intended to detect accidental drift between a database and the embedded migration text used by the plugin runtime.
+
 ## Runtime Algorithm
 
 1. Open the app-instance DuckDB file with `duckdb_open_ext`.
