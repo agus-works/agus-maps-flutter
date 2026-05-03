@@ -46,6 +46,7 @@ import 'duckdb_build.dart'
         buildDuckDBAndroidArchives,
         buildDuckDBiOSXCFramework,
         buildDuckDBMacOSXCFramework;
+import 'duckdb_migration_generator.dart' show generateDuckDBMigrations;
 import 'archive_manager.dart' show createTarGz, extractTarGz;
 
 const int _minSymbolsPngBytes = 100000;
@@ -104,6 +105,9 @@ Future<void> _runContributorBuild(BuildRunnerConfig config) async {
   print('DuckDB tag: $duckdbTag');
   print('duckdb-spatial tag/ref: $duckdbSpatialTag');
   print('');
+
+  // Keep the embedded native manifest in sync with the reviewable SQL files.
+  await generateDuckDBMigrations();
 
   // Step 1: Bootstrap CoMaps
   await _bootstrapComaps(comapsTag,

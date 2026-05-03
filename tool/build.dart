@@ -7,6 +7,7 @@ import 'package:args/args.dart';
 
 import 'src/build_runner.dart' show runBuild, BuildRunnerConfig;
 import 'src/config.dart' show detectBuildMode;
+import 'src/duckdb_migration_generator.dart' show generateDuckDBMigrations;
 
 Future<void> main(List<String> args) async {
   final parser = ArgParser()
@@ -25,6 +26,17 @@ Future<void> main(List<String> args) async {
       'no-cache',
       defaultsTo: false,
       help: 'Disable caching',
+    )
+    ..addFlag(
+      'generate-duckdb-migrations',
+      negatable: false,
+      help: 'Generate the embedded DuckDB migration manifest and exit',
+    )
+    ..addFlag(
+      'check-duckdb-migrations',
+      negatable: false,
+      help:
+          'Check that the embedded DuckDB migration manifest is current and exit',
     )
     ..addMultiOption(
       'platform',
@@ -57,9 +69,18 @@ Future<void> main(List<String> args) async {
       print('  dart run tool/build.dart --build-binaries');
       print('    Bootstrap and build native binaries for all platforms');
       print('');
-      print('  dart run tool/build.dart --build-binaries --platform android --platform ios');
+      print(
+          '  dart run tool/build.dart --build-binaries --platform android --platform ios');
       print('    Build only Android and iOS binaries');
       exit(0);
+    }
+
+    if (results['generate-duckdb-migrations'] as bool ||
+        results['check-duckdb-migrations'] as bool) {
+      final ok = await generateDuckDBMigrations(
+        checkOnly: results['check-duckdb-migrations'] as bool,
+      );
+      exit(ok ? 0 : 1);
     }
 
     // Detect build mode
