@@ -398,7 +398,20 @@ FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features(
 		AgusDuckDBRenderFeature** out_features,
 		int32_t* out_count);
 
-// Frees render features allocated by agus_duckdb_copy_render_features().
+// Copies a page of currently renderable DuckDB features for a WGS84 viewport
+// and zoom. Use limit/offset to avoid one large render allocation.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features_page(
+		double min_lon,
+		double min_lat,
+		double max_lon,
+		double max_lat,
+		int32_t zoom,
+		int32_t limit,
+		int32_t offset,
+		AgusDuckDBRenderFeature** out_features,
+		int32_t* out_count);
+
+// Frees render features allocated by DuckDB render-feature copy APIs.
 FFI_PLUGIN_EXPORT void agus_duckdb_free_render_features(
 		AgusDuckDBRenderFeature* features,
 		int32_t count);

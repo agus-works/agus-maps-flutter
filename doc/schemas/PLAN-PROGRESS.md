@@ -457,6 +457,20 @@ Validation status:
 
 Future migrations should be added only as SQL files under `doc/schemas/migrations/`, then regenerated with `dart run tool/build.dart --generate-duckdb-migrations`. CI or local validation can use `dart run tool/build.dart --check-duckdb-migrations` to detect drift.
 
+### May 3 Paged Native Render Fetch
+
+The Android renderer no longer depends on a single fixed `LIMIT 5000` native query for every refresh. `src/agus_duckdb_bridge.cpp` now exposes `agus_duckdb_copy_render_features_page(...)`, and the existing `agus_duckdb_copy_render_features(...)` remains as a compatibility wrapper using the previous first-page behavior.
+
+Android Drape refresh in `src/agus_maps_flutter.cpp` now pages visible DuckDB rows in batches of 1,000, up to 10,000 query rows per refresh, then parses and submits valid point/line/polygon-outline geometries to the `DuckDBMarksProvider`. This keeps the render path native and bounded without routing large feature sets through `agus_duckdb_query_json()`.
+
+Validation status:
+
+- `dart run ffigen --config ffigen.yaml` regenerated bindings for the new paged C ABI symbol.
+- `clang++ -std=c++17 -I src -I thirdparty/duckdb/src/include -c src/agus_duckdb_bridge.cpp -o /tmp/agus_duckdb_bridge_render_page.o` succeeds.
+- `dart analyze lib/agus_maps_flutter.dart lib/agus_maps_flutter_bindings_generated.dart` reports no issues.
+- `cd example && flutter build apk --debug --target-platform android-arm64` succeeds after the source edits.
+- Android arm64 packaged-library symbol validation confirms `agus_duckdb_copy_render_features`, `agus_duckdb_copy_render_features_page`, and `agus_duckdb_refresh_render_layers` are exported from `libagus_maps_flutter.so`.
+
 If the simulator destination changes, list destinations with:
 
 ```bash
@@ -482,6 +496,9 @@ Completed checks:
 - `dart run tool/build.dart --generate-duckdb-migrations`
 - `dart run tool/build.dart --check-duckdb-migrations`
 - `dart run tool/generate_duckdb_migrations.dart --check`
+- `clang++ -std=c++17 -I src -I thirdparty/duckdb/src/include -c src/agus_duckdb_bridge.cpp -o /tmp/agus_duckdb_bridge_render_page.o`
+- `dart analyze lib/agus_maps_flutter.dart lib/agus_maps_flutter_bindings_generated.dart`
+- `cd example && flutter build apk --debug --target-platform android-arm64`
 - VS Code diagnostics on edited bridge, header, Dart, podspec, build helper, CMake config, and docs
 - Migration runner validation after the interrupted May 3 session resumed:
   - `dart run ffigen --config ffigen.yaml`
@@ -600,13 +617,13 @@ Status: completed for the embedded first migration, with generated native manife
 
 ### 4. Query Result API
 
-Status: implemented for materialized JSON results and render-contract validation.
+Status: implemented for materialized JSON results and render-contract validation; map rendering now uses paged native feature copies instead of the JSON helper.
 
 - Completed: native `agus_duckdb_query_json(sql)` returns a JSON payload with `columns`, `rows`, and `row_count` for materialized result sets.
 - Completed: Dart exposes `queryDuckDBJson(sql)` and parsed `queryDuckDB(sql)` helpers with `DuckDBQueryResult`/`DuckDBColumn` models.
 - Completed: unrestricted `executeDuckDBSql(sql)` remains available for setup/mutation.
 - Completed: native `agus_duckdb_validate_render_query(sql)` wraps SQL in `SELECT * FROM (...) LIMIT 0` and validates required `feature_id VARCHAR`, `geometry GEOMETRY`, and `properties JSON` columns, plus optional `style JSON`, `min_zoom`, `max_zoom`, and `z_index` integer columns when present.
-- Follow-up: move large render fetches to a chunked/native renderer path rather than using the materialized JSON helper.
+- Completed: large map-render fetches use a paged native render-feature API and Android Drape batching rather than the materialized JSON helper.
 
 ### 5. Layer CRUD and Backup APIs
 
@@ -626,6 +643,7 @@ Status: initial Dart persistence API completed on top of the native DuckDB bridg
 Status: Android initial renderer implementation completed and compile-validated; About-tab Android runtime smoke passed. Manual draw/native-rendering interaction checks remain covered by `doc/schemas/MANUAL-TESTING.md` until they are run on a device.
 
 - Completed: native DuckDB bridge exposes a typed viewport/zoom render-feature copy API so platform renderers can consume rows without parsing JSON.
+- Completed: native render-feature copying supports paged `limit`/`offset` access, and Android refreshes visible rows in bounded batches.
 - Completed: Android plugin owns a DuckDB `df::UserMarksProvider` and submits visible points plus line/polygon outlines to Drape through `DrapeEngine::UpdateUserMarks()` and `InvalidateUserMarks()`.
 - Completed: Dart exposes Android-only `setDuckDBMapLayerRenderingEnabled()` and `refreshDuckDBMapLayers()` helpers; the example app opens/migrates DuckDB and enables native layer rendering after the map surface is ready.
 - Completed: viewport listener preserves existing bearing tracking and triggers throttled DuckDB render refreshes while native layer rendering is enabled.
