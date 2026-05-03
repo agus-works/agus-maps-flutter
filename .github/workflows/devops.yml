@@ -65,6 +65,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          submodules: recursive
 
       # ======================================================================
       # CoMaps Source Cache (Azure Blob Storage)
@@ -329,7 +330,7 @@ jobs:
           mkdir -p build/agus-binaries-ios/Resources
           cp ios/Resources/shaders_metal.metallib build/agus-binaries-ios/Resources/
           cd build/agus-binaries-ios
-          zip -r ../agus-binaries-ios.zip CoMaps.xcframework Resources
+          zip -r ../agus-binaries-ios.zip CoMaps.xcframework DuckDB.xcframework Resources
           ls -lh ../agus-binaries-ios.zip
 
       - name: Upload iOS Binaries Artifact
@@ -354,7 +355,7 @@ jobs:
           mkdir -p build/agus-binaries-macos/Resources
           cp macos/Resources/shaders_metal.metallib build/agus-binaries-macos/Resources/
           cd build/agus-binaries-macos
-          zip -r ../agus-binaries-macos.zip CoMaps.xcframework Resources
+          zip -r ../agus-binaries-macos.zip CoMaps.xcframework DuckDB.xcframework Resources
           ls -lh ../agus-binaries-macos.zip
 
       - name: Upload macOS Binaries Artifact
@@ -363,6 +364,19 @@ jobs:
           name: agus-binaries-macos
           path: build/agus-binaries-macos.zip
 
+      - name: Cleanup Apple Native Build Artifacts
+        run: |
+          echo "Cleaning large Apple native source and DuckDB build directories before app packaging..."
+          rm -rf thirdparty/comaps/.git
+          rm -rf thirdparty/duckdb thirdparty/duckdb-spatial
+          rm -rf build/duckdb build/duckdb-vcpkg-installed build/duckdb-vcpkg-installed-ios
+
+          echo "=== Disk Usage (After Apple Cleanup) ==="
+          df -h
+          echo ""
+          echo "=== Workspace Usage (After Apple Cleanup) ==="
+          du -sh thirdparty build build/agus-binaries-ios build/agus-binaries-macos 2>/dev/null || true
+
       # ======================================================================
       # Build iOS Example App (Simulator)
       # ======================================================================
@@ -370,6 +384,7 @@ jobs:
         run: |
           mkdir -p ios/Frameworks
           cp -r build/agus-binaries-ios/CoMaps.xcframework ios/Frameworks/
+          cp -r build/agus-binaries-ios/DuckDB.xcframework ios/Frameworks/
           ls -la ios/Frameworks/
 
       - name: Precache iOS
@@ -462,6 +477,7 @@ jobs:
         run: |
           mkdir -p macos/Frameworks
           cp -r build/agus-binaries-macos/CoMaps.xcframework macos/Frameworks/
+          cp -r build/agus-binaries-macos/DuckDB.xcframework macos/Frameworks/
           ls -la macos/Frameworks/
 
       - name: Restore CoMaps Source
@@ -587,6 +603,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          submodules: recursive
 
       - name: Prepare Large Android Build Volume
         run: |
@@ -876,7 +893,9 @@ jobs:
         run: |
           echo "Cleaning large intermediate build directories before Flutter packaging..."
           rm -rf build/android-arm64-v8a build/android-armeabi-v7a build/android-x86_64
+          rm -rf build/duckdb build/duckdb-vcpkg-installed-android build/agus-binaries-android-duckdb
           rm -rf thirdparty/comaps/.git
+          rm -rf thirdparty/duckdb thirdparty/duckdb-spatial
 
           GRADLE_CACHE_DIR="${GRADLE_USER_HOME:-$HOME/.gradle}/caches"
           rm -rf "$GRADLE_CACHE_DIR"/transforms-* "$GRADLE_CACHE_DIR"/*/transforms-* 2>/dev/null || true
@@ -958,13 +977,13 @@ jobs:
             --build-name=1.0.0 \
             --build-number=${{ github.run_number }}
 
-      - name: Build Android APK
+      - name: Build Android APKs
         run: |
-          echo "=== Disk Usage (Before APK) ==="
+          echo "=== Disk Usage (Before Split APKs) ==="
           df -h
           du -sh android/prebuilt build example/build "$GRADLE_USER_HOME/caches" "$AGUS_CI_LARGE_DISK" 2>/dev/null || true
           cd example
-          flutter build apk --release \
+          flutter build apk --release --split-per-abi \
             --build-name=1.0.0 \
             --build-number=${{ github.run_number }}
 
@@ -972,7 +991,9 @@ jobs:
         run: |
           mkdir -p artifacts
           cp example/build/app/outputs/bundle/release/app-release.aab artifacts/agus-maps-android.aab
-          cp example/build/app/outputs/flutter-apk/app-release.apk artifacts/agus-maps-android.apk
+          cp example/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk artifacts/agus-maps-android-armeabi-v7a.apk
+          cp example/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk artifacts/agus-maps-android-arm64-v8a.apk
+          cp example/build/app/outputs/flutter-apk/app-x86_64-release.apk artifacts/agus-maps-android-x86_64.apk
           echo "=== Android Artifacts ==="
           ls -lh artifacts/
 
@@ -1624,6 +1645,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          submodules: recursive
 
       # ======================================================================
       # CoMaps Source Cache (Azure Blob Storage)
@@ -1821,6 +1843,19 @@ jobs:
           name: agus-binaries-linux
           path: build/agus-binaries-linux.zip
 
+      - name: Cleanup Linux Native Build Artifacts
+        run: |
+          echo "Cleaning large Linux native build directories before asset packaging..."
+          rm -rf thirdparty/comaps/.git
+          rm -rf thirdparty/duckdb thirdparty/duckdb-spatial
+          rm -rf build/duckdb build/duckdb-vcpkg-installed build/duckdb-vcpkg-installed-* build/linux
+
+          echo "=== Disk Usage (After Linux Native Cleanup) ==="
+          df -h
+          echo ""
+          echo "=== Workspace Usage (After Linux Native Cleanup) ==="
+          du -sh thirdparty build build/agus-binaries-linux 2>/dev/null || true
+
       # ======================================================================
       # Build Linux Example App
       # ======================================================================
@@ -1949,6 +1984,16 @@ jobs:
 
           echo "Created agus-assets.zip ($(du -h agus-assets.zip | cut -f1))"
 
+      - name: Force Linux Pre-built Packaging
+        run: |
+          echo "AGUS_MAPS_HOME=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+          echo "Removing CoMaps source checkout before Flutter Linux packaging..."
+          rm -rf thirdparty/comaps
+
+          echo "=== Disk Usage (Before Linux Flutter Packaging) ==="
+          df -h
+          du -sh linux/prebuilt build example/build 2>/dev/null || true
+
       - name: Upload Assets Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -2005,7 +2050,11 @@ jobs:
           # Only include example apps in final release (with version in filename)
           # Individual platform binaries are consolidated into the unified package
           [ -f all-artifacts/agus-maps-android.aab ] && cp all-artifacts/agus-maps-android.aab "final-assets/agus-maps-android-${VERSION_TAG}.aab" || true
-          [ -f all-artifacts/agus-maps-android.apk ] && cp all-artifacts/agus-maps-android.apk "final-assets/agus-maps-android-${VERSION_TAG}.apk" || true
+          for APK in all-artifacts/agus-maps-android-*.apk; do
+            [ -f "$APK" ] || continue
+            APK_BASENAME=$(basename "$APK" .apk)
+            cp "$APK" "final-assets/${APK_BASENAME}-${VERSION_TAG}.apk"
+          done
           [ -f all-artifacts/agus-maps-ios-simulator.app.zip ] && cp all-artifacts/agus-maps-ios-simulator.app.zip "final-assets/agus-maps-ios-simulator-${VERSION_TAG}.app.zip" || true
           [ -f all-artifacts/agus-maps-macos.app.zip ] && cp all-artifacts/agus-maps-macos.app.zip "final-assets/agus-maps-macos-${VERSION_TAG}.app.zip" || true
           [ -f all-artifacts/agus-maps-windows.zip ] && cp all-artifacts/agus-maps-windows.zip "final-assets/agus-maps-windows-${VERSION_TAG}.zip" || true
@@ -2065,8 +2114,8 @@ jobs:
           fi
 
           # ---------------------------------------------------------
-          # iOS: ios/Frameworks/CoMaps.xcframework/
-          # Archive contains: CoMaps.xcframework/ directly
+          # iOS: ios/Frameworks/{CoMaps,DuckDB}.xcframework/
+          # Archive contains both XCFrameworks directly
           # Target: ios/Frameworks/
           # ---------------------------------------------------------
           if [ -f ../all-artifacts/agus-binaries-ios.zip ]; then
@@ -2078,8 +2127,8 @@ jobs:
           fi
 
           # ---------------------------------------------------------
-          # macOS: macos/Frameworks/CoMaps.xcframework/
-          # Archive contains: CoMaps.xcframework/ directly
+          # macOS: macos/Frameworks/{CoMaps,DuckDB}.xcframework/
+          # Archive contains both XCFrameworks directly
           # Target: macos/Frameworks/
           # ---------------------------------------------------------
           if [ -f ../all-artifacts/agus-binaries-macos.zip ]; then
@@ -2196,8 +2245,8 @@ jobs:
 
             This SDK contains all platform binaries:
             - `android/prebuilt/{arm64-v8a,armeabi-v7a,x86_64}/`
-            - `ios/Frameworks/CoMaps.xcframework/`
-            - `macos/Frameworks/CoMaps.xcframework/`
+            - `ios/Frameworks/{CoMaps,DuckDB}.xcframework/`
+            - `macos/Frameworks/{CoMaps,DuckDB}.xcframework/`
             - `windows/prebuilt/x64/`
             - `linux/prebuilt/x64/`
             - `example/assets/` (CoMaps data files - copy to your app)
@@ -2219,7 +2268,9 @@ jobs:
             #### 📱 Example Apps
             | Platform | File | Description |
             |----------|------|-------------|
-            | Android | `agus-maps-android-${{ github.ref_name }}.apk` | Universal APK |
+            | Android | `agus-maps-android-arm64-v8a-${{ github.ref_name }}.apk` | arm64-v8a APK |
+            | Android | `agus-maps-android-armeabi-v7a-${{ github.ref_name }}.apk` | armeabi-v7a APK |
+            | Android | `agus-maps-android-x86_64-${{ github.ref_name }}.apk` | x86_64 APK |
             | Android | `agus-maps-android-${{ github.ref_name }}.aab` | App Bundle (Play Store) |
             | iOS | `agus-maps-ios-simulator-${{ github.ref_name }}.app.zip` | Simulator Debug |
             | macOS | `agus-maps-macos-${{ github.ref_name }}.app.zip` | Universal Release |

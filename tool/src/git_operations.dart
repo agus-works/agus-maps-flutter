@@ -23,6 +23,46 @@ Future<void> updateSubmodule(String relativePath) async {
   );
 }
 
+/// Clone a managed git dependency when root submodule metadata is unavailable.
+Future<void> cloneGitRepository({
+  required String url,
+  required String targetDir,
+  required String dependencyName,
+}) async {
+  if (await isGitCheckout(targetDir)) {
+    print('$dependencyName repository already exists at $targetDir');
+    return;
+  }
+
+  final targetDirectory = Directory(targetDir);
+  if (await targetDirectory.exists()) {
+    final entries = await targetDirectory.list().take(1).toList();
+    if (entries.isEmpty) {
+      await targetDirectory.delete();
+    } else {
+      throw Exception(
+        '$dependencyName target exists but is not a git checkout: $targetDir',
+      );
+    }
+  }
+
+  await Directory(path.dirname(targetDir)).create(recursive: true);
+
+  print('Cloning $dependencyName repository from $url');
+  try {
+    await runProcess(
+      'git',
+      ['clone', '--filter=blob:none', url, targetDir],
+    );
+  } catch (e) {
+    print('Partial clone failed for $dependencyName; retrying full clone');
+    if (await targetDirectory.exists()) {
+      await targetDirectory.delete(recursive: true);
+    }
+    await runProcess('git', ['clone', url, targetDir]);
+  }
+}
+
 /// Checkout a tag, branch, or commit in a managed git checkout.
 Future<void> checkoutGitRef(
   String ref, {
