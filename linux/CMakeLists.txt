@@ -149,6 +149,22 @@ else()
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../src" "${CMAKE_CURRENT_BINARY_DIR}/shared")
 endif()
 
+# DuckDB desktop runtime is private to the SDK/package. Do not fall back to a
+# system libduckdb.so; if the artifact is absent, the desktop DuckDB bridge
+# remains unavailable for that package.
+set(AGUS_DUCKDB_LINUX_RUNTIME "")
+if(PREBUILT_FOUND AND EXISTS "${PREBUILT_DIR}/libduckdb.so")
+  set(AGUS_DUCKDB_LINUX_RUNTIME "${PREBUILT_DIR}/libduckdb.so")
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64/libduckdb.so")
+  set(AGUS_DUCKDB_LINUX_RUNTIME "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64/libduckdb.so")
+endif()
+
+if(AGUS_DUCKDB_LINUX_RUNTIME)
+  message(STATUS "Bundling private DuckDB runtime: ${AGUS_DUCKDB_LINUX_RUNTIME}")
+else()
+  message(STATUS "Private DuckDB Linux runtime not found; no system DuckDB fallback will be used")
+endif()
+
 # Link the plugin against the native library for FFI function access
 target_link_libraries(${PLUGIN_NAME} PRIVATE agus_maps_flutter)
 
@@ -156,19 +172,26 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE agus_maps_flutter)
 # This list could contain prebuilt libraries, or libraries created by an
 # external build triggered from this build file.
 if(PREBUILT_FOUND)
-  set(agus_maps_flutter_bundled_libraries
+  set(AGUS_LINUX_BUNDLED_LIBRARIES
     # The plugin library itself
     $<TARGET_FILE:${PLUGIN_NAME}>
     # The prebuilt native library
     "${PREBUILT_DIR}/libagus_maps_flutter.so"
-    PARENT_SCOPE
   )
 else()
-  set(agus_maps_flutter_bundled_libraries
+  set(AGUS_LINUX_BUNDLED_LIBRARIES
     # The plugin library itself
     $<TARGET_FILE:${PLUGIN_NAME}>
     # The native CoMaps library name might be different when built from source, check src/CMakeLists.txt
     $<TARGET_FILE:agus_maps_flutter>
-    PARENT_SCOPE
   )
 endif()
+
+if(AGUS_DUCKDB_LINUX_RUNTIME)
+  list(APPEND AGUS_LINUX_BUNDLED_LIBRARIES "${AGUS_DUCKDB_LINUX_RUNTIME}")
+endif()
+
+set(agus_maps_flutter_bundled_libraries
+  ${AGUS_LINUX_BUNDLED_LIBRARIES}
+  PARENT_SCOPE
+)

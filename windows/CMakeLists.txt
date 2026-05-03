@@ -52,6 +52,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(PREBUILT_DIR "")
 set(PREBUILT_DLL "")
 set(PREBUILT_ZLIB "")
+set(PREBUILT_DUCKDB "")
 
 # Detect if we're in the plugin repository (in-repo build)
 set(IS_IN_REPO OFF)
@@ -91,6 +92,7 @@ if(DEFINED ENV{AGUS_MAPS_HOME} AND NOT PREBUILT_DIR AND (NOT IS_IN_REPO OR FORCE
     set(PREBUILT_DIR "${SDK_WINDOWS_PREBUILT_DIR}")
     set(PREBUILT_DLL "${PREBUILT_DIR}/agus_maps_flutter.dll")
     set(PREBUILT_ZLIB "${PREBUILT_DIR}/zlib1.dll")
+    set(PREBUILT_DUCKDB "${PREBUILT_DIR}/duckdb.dll")
     message(STATUS "Found pre-built Windows binaries in AGUS_MAPS_HOME: ${PREBUILT_DIR}")
   else()
     message(STATUS "WARNING: AGUS_MAPS_HOME set but binaries not found in ${SDK_WINDOWS_PREBUILT_DIR}")
@@ -106,12 +108,28 @@ if(NOT PREBUILT_DIR AND (FORCE_PREBUILT_WINDOWS OR IS_CI OR NOT IS_IN_REPO) AND 
     set(PREBUILT_DIR "${PLUGIN_PREBUILT_DIR}")
     set(PREBUILT_DLL "${PREBUILT_DIR}/agus_maps_flutter.dll")
     set(PREBUILT_ZLIB "${PREBUILT_DIR}/zlib1.dll")
+    set(PREBUILT_DUCKDB "${PREBUILT_DIR}/duckdb.dll")
     if(IS_CI)
       message(STATUS "CI environment: Found pre-built binaries in plugin dir: ${PREBUILT_DIR}")
     else()
       message(STATUS "Found pre-built binaries in plugin dir: ${PREBUILT_DIR}")
     endif()
   endif()
+endif()
+
+# DuckDB desktop runtime is private to the SDK/package. Do not search PATH,
+# Program Files, or vcpkg for duckdb.dll at app packaging time.
+set(AGUS_DUCKDB_WINDOWS_RUNTIME "")
+if(PREBUILT_DUCKDB AND EXISTS "${PREBUILT_DUCKDB}")
+  set(AGUS_DUCKDB_WINDOWS_RUNTIME "${PREBUILT_DUCKDB}")
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64/duckdb.dll")
+  set(AGUS_DUCKDB_WINDOWS_RUNTIME "${CMAKE_CURRENT_SOURCE_DIR}/prebuilt/x64/duckdb.dll")
+endif()
+
+if(AGUS_DUCKDB_WINDOWS_RUNTIME)
+  message(STATUS "Bundling private DuckDB runtime: ${AGUS_DUCKDB_WINDOWS_RUNTIME}")
+else()
+  message(STATUS "Private DuckDB Windows runtime not found; no system DuckDB fallback will be used")
 endif()
 
 # Location 2: Project root windows/prebuilt (consumer extracts unified package to app root)
@@ -236,24 +254,31 @@ endif()
 # List of absolute paths to libraries that should be bundled with the plugin.
 if(USE_PREBUILT_WINDOWS)
   # Use pre-built DLLs
-  set(agus_maps_flutter_bundled_libraries
+  set(AGUS_WINDOWS_BUNDLED_LIBRARIES
     # The plugin DLL (MethodChannel handler)
     $<TARGET_FILE:${PLUGIN_NAME}>
     # Pre-built native CoMaps FFI library
     "${PREBUILT_DLL}"
     # Runtime dependencies
     "${ZLIB_DLL}"
-    PARENT_SCOPE
   )
 else()
   # Use freshly built DLLs
-  set(agus_maps_flutter_bundled_libraries
+  set(AGUS_WINDOWS_BUNDLED_LIBRARIES
     # The plugin DLL (MethodChannel handler)
     $<TARGET_FILE:${PLUGIN_NAME}>
     # The native CoMaps FFI library
     $<TARGET_FILE:agus_maps_flutter>
     # Runtime dependencies
     "${ZLIB_DLL}"
-    PARENT_SCOPE
   )
 endif()
+
+if(AGUS_DUCKDB_WINDOWS_RUNTIME)
+  list(APPEND AGUS_WINDOWS_BUNDLED_LIBRARIES "${AGUS_DUCKDB_WINDOWS_RUNTIME}")
+endif()
+
+set(agus_maps_flutter_bundled_libraries
+  ${AGUS_WINDOWS_BUNDLED_LIBRARIES}
+  PARENT_SCOPE
+)

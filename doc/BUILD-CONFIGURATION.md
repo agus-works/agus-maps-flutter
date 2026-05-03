@@ -66,6 +66,15 @@ Linux uses standard CMake with Makefiles or Ninja.
 | `flutter run -d linux --release` | `Release` | `RELEASE` |
 | `flutter run -d linux --profile` | `Release` | `RELEASE` |
 
+### Desktop DuckDB Runtime Packaging
+
+Windows and Linux desktop packages must use private DuckDB runtime artifacts from the SDK/prebuilt directories, never a system installation:
+
+- Windows bundles `duckdb.dll` when it exists beside `agus_maps_flutter.dll` in `windows/prebuilt/x64/` or `AGUS_MAPS_HOME/windows/prebuilt/x64/`.
+- Linux bundles `libduckdb.so` when it exists beside `libagus_maps_flutter.so` in `linux/prebuilt/x64/` or `AGUS_MAPS_HOME/linux/prebuilt/x64/`.
+
+If these files are absent, CMake logs that no private DuckDB runtime was found and does not search system paths. Platform build validation for the DuckDB desktop runtime must run on native Windows/Linux hosts after producing those artifacts.
+
 
 
 
