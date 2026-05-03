@@ -9,6 +9,7 @@ import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'src/agus_maps_api.g.dart';
 
 import 'agus_maps_flutter_bindings_generated.dart';
@@ -24,6 +25,8 @@ export 'src/agus_maps_api.g.dart'
         PlacePageIntMetadataEntry,
         PlacePageStringMetadataEntry,
         RenderState;
+
+part 'src/layers/duckdb_layer_store.dart';
 
 /// Low-frequency map-ready event emitted by native platforms.
 class MapReadyEvent {

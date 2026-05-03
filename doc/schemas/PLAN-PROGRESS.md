@@ -472,6 +472,11 @@ Completed checks:
   - `cd example && flutter build ios --simulator`
   - `cd example && flutter build apk --debug --target-platform android-arm64`
   - Android arm64 debug dynamic-symbol validation on the stripped packaged library confirmed `agus_duckdb_query_json`, `agus_duckdb_validate_render_query`, and `agus_duckdb_run_migrations` are exported.
+- Layer store API validation after the query API checkpoint:
+  - `dart format lib/agus_maps_flutter.dart lib/src/layers/duckdb_layer_store.dart`
+  - `dart analyze lib/agus_maps_flutter.dart lib/src/layers/duckdb_layer_store.dart`
+  - `cd example && flutter build macos --debug`
+  - `cd example && flutter build apk --debug --target-platform android-arm64`
 
 Known analyzer output:
 
@@ -573,9 +578,16 @@ Status: implemented for materialized JSON results and render-contract validation
 
 ### 5. Layer CRUD and Backup APIs
 
-- Add native/Dart APIs for layers, features, query layers, metadata, style JSON, visibility, z-order, and min/max zoom.
-- Add `CHECKPOINT` + file-copy backup API and UI action.
-- Ensure backup reports the generated path and handles open database state safely.
+Status: initial Dart persistence API completed on top of the native DuckDB bridge.
+
+- Completed: `DuckDBLayerStore` opens the app database and exposes layer CRUD through `AgusLayerDraft`/`AgusLayer`.
+- Completed: feature CRUD supports WKT geometry input/output, geometry kind, JSON properties/style, optional bbox, z-order, and min/max zoom.
+- Completed: query-layer CRUD stores SQL, preset status, required extensions, result contract version, validation timestamp, and validation errors.
+- Completed: query-layer upsert can validate the render contract through the native `validateRenderableDuckDBQuery()` API before saving.
+- Completed: layer metadata CRUD supports string key/value metadata with caller-defined value type.
+- Completed: `setLayerVisibility()` and `setLayerZIndex()` cover the immediate UI ordering/visibility controls.
+- Completed: `DuckDBLayerStore.backup()` executes `CHECKPOINT`, copies the `.duckdb` file to a timestamped backup path, and returns the generated path.
+- Follow-up: add user-facing backup UI in the reusable layer management widgets.
 
 ### 6. Native Drape Rendering
 

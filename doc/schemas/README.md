@@ -63,3 +63,15 @@ The same bridge exposes render-query validation that wraps candidate SQL in `SEL
 Migrations live in `doc/schemas/migrations/` and are named with date plus sequence: `YYYYMMDD_NNN_description.sql`.
 
 Runtime migration code should treat these files as the source of truth. If migrations are embedded into native source for mobile/offline startup, generation must preserve the SQL text and checksum.
+
+## Dart Layer Store
+
+The public Dart API includes `DuckDBLayerStore`, which uses the native DuckDB bridge for layer persistence. The first API surface supports:
+
+- Layer CRUD through `AgusLayerDraft` and `AgusLayer`.
+- Feature CRUD through WKT input in `AgusLayerFeatureDraft` and WKT output in `AgusLayerFeature`.
+- Query-layer upsert/read through `AgusQueryLayerDraft` and `AgusQueryLayer`, with optional render-contract validation before saving.
+- Layer key/value metadata through `AgusLayerMetadataEntry`.
+- Local database backups through `CHECKPOINT` plus file copy to `duckdb_backups/` or a caller-provided directory.
+
+The store is intentionally still a persistence API. Native Drape rendering will consume these tables in a later step rather than routing large render fetches through the JSON query helper.
