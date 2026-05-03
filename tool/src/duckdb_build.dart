@@ -314,9 +314,17 @@ void _validateDuckDBInputs(
 }
 
 Future<String> _detectVcpkgRoot() async {
+  final searchedRoots = <String>[];
   final envRoot = Platform.environment['VCPKG_ROOT'];
-  if (envRoot != null && envRoot.isNotEmpty && dirExists(envRoot)) {
-    return envRoot;
+  if (envRoot != null && envRoot.isNotEmpty) {
+    final root = path.normalize(envRoot);
+    searchedRoots.add(root);
+    if (_isVcpkgRoot(root)) return root;
+
+    throw Exception(
+      'VCPKG_ROOT is set to "$envRoot", but no vcpkg toolchain was found at '
+      '${_vcpkgToolchainFile(root)}.',
+    );
   }
 
   if (await commandExists('vcpkg')) {
@@ -329,7 +337,10 @@ Future<String> _detectVcpkgRoot() async {
       final executable =
           result.stdout.toString().split(RegExp(r'\r?\n')).first.trim();
       if (executable.isNotEmpty) {
-        return path.dirname(executable);
+        for (final root in _vcpkgRootsFromExecutable(executable)) {
+          searchedRoots.add(root);
+          if (_isVcpkgRoot(root)) return root;
+        }
       }
     }
   }
@@ -341,13 +352,42 @@ Future<String> _detectVcpkgRoot() async {
     '/usr/local/vcpkg',
   ];
   for (final candidate in candidates) {
-    if (dirExists(candidate)) return candidate;
+    final root = path.normalize(candidate);
+    searchedRoots.add(root);
+    if (_isVcpkgRoot(root)) return root;
   }
 
   throw Exception(
     'vcpkg is required to build DuckDB spatial dependencies. '
-    'Install vcpkg and set VCPKG_ROOT before building DuckDB.',
+    'Install vcpkg and set VCPKG_ROOT to a checkout root containing '
+    'scripts/buildsystems/vcpkg.cmake before building DuckDB. '
+    'Searched: ${searchedRoots.join(', ')}',
   );
+}
+
+String _vcpkgToolchainFile(String root) {
+  return path.join(root, 'scripts', 'buildsystems', 'vcpkg.cmake');
+}
+
+bool _isVcpkgRoot(String root) => fileExists(_vcpkgToolchainFile(root));
+
+List<String> _vcpkgRootsFromExecutable(String executable) {
+  final roots = <String>[];
+
+  void addRoot(String root) {
+    final normalized = path.normalize(root);
+    if (!roots.contains(normalized)) roots.add(normalized);
+  }
+
+  addRoot(path.dirname(executable));
+
+  try {
+    addRoot(path.dirname(File(executable).resolveSymbolicLinksSync()));
+  } on FileSystemException {
+    // If the executable cannot be resolved, the literal path was still checked.
+  }
+
+  return roots;
 }
 
 Future<String> _generateDuckDBVcpkgManifest({
