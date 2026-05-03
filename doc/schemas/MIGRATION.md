@@ -44,6 +44,8 @@ Before production schema upgrades, the UI should offer a quick static backup act
 
 The first implementation intentionally does not include sync, merge, or cloud conflict handling. Backups are local files owned by the user/application instance.
 
+`DuckDBLayerStore.backup()` implements the first local backup path in Dart. It executes `CHECKPOINT`, verifies the app-instance database file exists, copies it to `duckdb_backups/` by default, and returns the generated path.
+
 ## User SQL
 
 Custom SQL is unrestricted by design. The migration runner should not try to guard arbitrary user SQL. Instead, rendering code should require the documented query result contract before treating a user query as a layer source.
