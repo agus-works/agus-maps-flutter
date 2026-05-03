@@ -181,6 +181,33 @@ jobs:
           echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
           echo "VIRTUAL_ENV=$HOME/.protobuf-venv" >> $GITHUB_ENV
 
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ~/vcpkg
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
+
+      - name: Setup vcpkg
+        run: |
+          VCPKG_ROOT="$HOME/vcpkg"
+          if [ ! -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
+            echo "Installing vcpkg into $VCPKG_ROOT"
+            rm -rf "$VCPKG_ROOT"
+            git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          else
+            echo "Using cached vcpkg checkout at $VCPKG_ROOT"
+          fi
+
+          if [ ! -x "$VCPKG_ROOT/vcpkg" ]; then
+            "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+
+          echo "VCPKG_ROOT=$VCPKG_ROOT" >> "$GITHUB_ENV"
+          echo "$VCPKG_ROOT" >> "$GITHUB_PATH"
+          "$VCPKG_ROOT/vcpkg" version
+
       - name: Install Qt 6
         uses: jurplel/install-qt-action@v4
         with:
@@ -802,6 +829,33 @@ jobs:
           pip install 'protobuf<4.0'
           echo "$HOME/.protobuf-venv/bin" >> $GITHUB_PATH
           echo "VIRTUAL_ENV=$HOME/.protobuf-venv" >> $GITHUB_ENV
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ~/vcpkg
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
+
+      - name: Setup vcpkg
+        run: |
+          VCPKG_ROOT="$HOME/vcpkg"
+          if [ ! -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
+            echo "Installing vcpkg into $VCPKG_ROOT"
+            rm -rf "$VCPKG_ROOT"
+            git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          else
+            echo "Using cached vcpkg checkout at $VCPKG_ROOT"
+          fi
+
+          if [ ! -x "$VCPKG_ROOT/vcpkg" ]; then
+            "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+
+          echo "VCPKG_ROOT=$VCPKG_ROOT" >> "$GITHUB_ENV"
+          echo "$VCPKG_ROOT" >> "$GITHUB_PATH"
+          "$VCPKG_ROOT/vcpkg" version
 
       - name: Install Qt 6
         uses: jurplel/install-qt-action@v4

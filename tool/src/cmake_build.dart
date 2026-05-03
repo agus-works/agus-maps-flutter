@@ -720,8 +720,10 @@ String detectAndroidNDK() {
 String _detectVcpkg() {
   final vcpkgRoot = Platform.environment['VCPKG_ROOT'] ??
       (Platform.isWindows ? 'C:\\vcpkg' : '/usr/local/vcpkg');
-  if (!dirExists(vcpkgRoot)) {
-    throw Exception('vcpkg not found at: $vcpkgRoot');
+  final toolchainFile =
+      path.join(vcpkgRoot, 'scripts', 'buildsystems', 'vcpkg.cmake');
+  if (!dirExists(vcpkgRoot) || !fileExists(toolchainFile)) {
+    throw Exception('vcpkg toolchain not found: $toolchainFile');
   }
   return vcpkgRoot;
 }
