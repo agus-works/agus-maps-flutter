@@ -25,9 +25,15 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 #include <android/log.h>
 #include <jni.h>
 #include <android/native_window_jni.h>
+#include <algorithm>
 #include <chrono>
 #include <atomic>
+#include <cstdlib>
+#include <cstring>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <thread>
 #include <vector>
 #include <cmath>
@@ -39,11 +45,15 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 #include "map/place_page_info.hpp"
 #include "indexer/feature_meta.hpp"
 #include "indexer/map_style.hpp"
+#include "indexer/scales.hpp"
 #include "platform/local_country_file.hpp"
+#include "drape/color.hpp"
 #include "drape/graphics_context_factory.hpp"
+#include "drape_frontend/drape_engine.hpp"
 #include "drape_frontend/visual_params.hpp"
 #include "drape_frontend/user_event_stream.hpp"
 #include "drape_frontend/active_frame_callback.hpp"
+#include "drape_frontend/user_marks_provider.hpp"
 #include "geometry/mercator.hpp"
 #include "geometry/screenbase.hpp"
 #include "platform/localization.hpp"
@@ -97,6 +107,305 @@ namespace
 {
 double constexpr kDegreesPerRadian = 180.0 / 3.14159265358979323846;
 double constexpr kRadiansPerDegree = 3.14159265358979323846 / 180.0;
+kml::MarkGroupId constexpr kDuckDBRenderGroupId = 1ULL << 60;
+kml::MarkId constexpr kDuckDBPointMarkIdBase = kDuckDBRenderGroupId + 1;
+kml::TrackId constexpr kDuckDBLineMarkIdBase = kDuckDBRenderGroupId + (1ULL << 20);
+auto constexpr kDuckDBViewportRefreshInterval = std::chrono::milliseconds(250);
+
+void WakeRenderer();
+
+struct DuckDBRenderableGeometry {
+    bool isPoint = false;
+    int minZoom = 1;
+    int zIndex = 0;
+    std::vector<m2::PointD> points;
+};
+
+class DuckDBPointMark final : public df::UserPointMark {
+public:
+    DuckDBPointMark(kml::MarkId id, m2::PointD const & pivot, int minZoom,
+                    int zIndex)
+        : df::UserPointMark(id), m_pivot(pivot), m_minZoom(std::max(1, minZoom)),
+          m_zIndex(zIndex) {
+        auto const visualScale = static_cast<float>(df::VisualParams::Instance().GetVisualScale());
+        df::ColoredSymbolViewParams params;
+        params.m_outlineColor = dp::Color::White();
+        params.m_outlineWidth = 1.5f * visualScale;
+        params.m_radiusInPixels = 6.5f * visualScale;
+        params.m_color = dp::Color(0, 122, 255, 255);
+        m_coloredSymbols.m_needOverlay = false;
+        m_coloredSymbols.m_zoomInfo.emplace(1, params);
+    }
+
+    kml::MarkGroupId GetGroupId() const override { return kDuckDBRenderGroupId; }
+    bool IsDirty() const override { return m_dirty; }
+    void ResetChanges() const override { m_dirty = false; }
+    bool IsVisible() const override { return true; }
+    m2::PointD const & GetPivot() const override { return m_pivot; }
+    m2::PointD GetPixelOffset() const override { return {0.0, 0.0}; }
+    dp::Anchor GetAnchor() const override { return dp::Center; }
+    bool GetDepthTestEnabled() const override { return true; }
+    float GetDepth() const override { return kInvalidDepth; }
+    df::DepthLayer GetDepthLayer() const override { return df::DepthLayer::UserMarkLayer; }
+    drape_ptr<TitlesInfo> GetTitleDecl() const override { return nullptr; }
+    drape_ptr<SymbolNameZoomInfo> GetSymbolNames() const override { return nullptr; }
+    drape_ptr<ColoredSymbolZoomInfo> GetColoredSymbols() const override {
+        return make_unique_dp<ColoredSymbolZoomInfo>(m_coloredSymbols);
+    }
+    drape_ptr<SymbolSizes> GetSymbolSizes() const override { return nullptr; }
+    drape_ptr<SymbolOffsets> GetSymbolOffsets() const override { return nullptr; }
+    uint16_t GetPriority() const override {
+        return static_cast<uint16_t>(std::clamp(m_zIndex, 0, 65535));
+    }
+    df::SpecialDisplacement GetDisplacement() const override { return df::SpecialDisplacement::UserMark; }
+    uint32_t GetIndex() const override { return 0; }
+    bool SymbolIsPOI() const override { return true; }
+    bool HasTitlePriority() const override { return false; }
+    int GetMinZoom() const override { return m_minZoom; }
+    int GetMinTitleZoom() const override { return m_minZoom; }
+    FeatureID GetFeatureID() const override { return FeatureID(); }
+    bool HasCreationAnimation() const override { return false; }
+    df::ColorConstant GetColorConstant() const override { return {}; }
+    bool IsMarkAboveText() const override { return false; }
+    float GetSymbolOpacity() const override { return 1.0f; }
+    bool IsSymbolSelectable() const override { return false; }
+    bool IsNonDisplaceable() const override { return false; }
+
+private:
+    m2::PointD m_pivot;
+    int m_minZoom;
+    int m_zIndex;
+    ColoredSymbolZoomInfo m_coloredSymbols;
+    mutable bool m_dirty = true;
+};
+
+class DuckDBLineMark final : public df::UserLineMark {
+public:
+    DuckDBLineMark(kml::TrackId id, std::vector<m2::PointD> points, int minZoom,
+                   int zIndex)
+        : df::UserLineMark(id), m_points(std::move(points)),
+          m_minZoom(std::max(1, minZoom)), m_zIndex(zIndex) {
+        auto const visualScale = static_cast<float>(df::VisualParams::Instance().GetVisualScale());
+        m_width = 4.0f * visualScale;
+    }
+
+    kml::MarkGroupId GetGroupId() const override { return kDuckDBRenderGroupId; }
+    bool IsDirty() const override { return m_dirty; }
+    void ResetChanges() const override { m_dirty = false; }
+    int GetMinZoom() const override { return m_minZoom; }
+    df::DepthLayer GetDepthLayer() const override { return df::DepthLayer::UserLineLayer; }
+    size_t GetLayerCount() const override { return 1; }
+    dp::Color GetColor(size_t /* layerIndex */) const override {
+        return dp::Color(0, 122, 255, 220);
+    }
+    float GetWidth(size_t /* layerIndex */) const override { return m_width; }
+    float GetDepth(size_t /* layerIndex */) const override {
+        return static_cast<float>(m_zIndex) * 0.001f;
+    }
+    void ForEachGeometry(GeometryFnT && fn) const override {
+        if (m_points.size() > 1) {
+            fn(std::vector<m2::PointD>(m_points));
+        }
+    }
+
+private:
+    std::vector<m2::PointD> m_points;
+    float m_width = 4.0f;
+    int m_minZoom;
+    int m_zIndex;
+    mutable bool m_dirty = true;
+};
+
+class DuckDBMarksProvider final : public df::UserMarksProvider {
+public:
+    DuckDBMarksProvider() { m_allGroups.insert(kDuckDBRenderGroupId); }
+
+    void SetFeatures(std::vector<DuckDBRenderableGeometry> const & features) {
+        m_pointMarks.clear();
+        m_lineMarks.clear();
+        m_pointIds.clear();
+        m_lineIds.clear();
+        m_createdPointIds.clear();
+        m_createdLineIds.clear();
+        m_updatedPointIds.clear();
+        m_updatedLineIds.clear();
+        m_updatedGroups.clear();
+        m_updatedGroups.insert(kDuckDBRenderGroupId);
+
+        size_t pointIndex = 0;
+        size_t lineIndex = 0;
+        for (auto const & feature : features) {
+            if (feature.isPoint && !feature.points.empty()) {
+                auto const id = kDuckDBPointMarkIdBase + pointIndex++;
+                m_pointIds.insert(id);
+                m_createdPointIds.insert(id);
+                m_pointMarks.emplace(id, std::make_unique<DuckDBPointMark>(
+                    id, feature.points.front(), feature.minZoom, feature.zIndex));
+            } else if (feature.points.size() > 1) {
+                auto const id = kDuckDBLineMarkIdBase + lineIndex++;
+                m_lineIds.insert(id);
+                m_createdLineIds.insert(id);
+                m_lineMarks.emplace(id, std::make_unique<DuckDBLineMark>(
+                    id, feature.points, feature.minZoom, feature.zIndex));
+            }
+        }
+    }
+
+    kml::GroupIdSet GetAllGroupIds() const override { return m_allGroups; }
+    kml::GroupIdSet const & GetUpdatedGroupIds() const override { return m_updatedGroups; }
+    kml::GroupIdSet const & GetRemovedGroupIds() const override { return m_emptyGroups; }
+    kml::GroupIdSet const & GetBecameVisibleGroupIds() const override { return m_emptyGroups; }
+    kml::GroupIdSet const & GetBecameInvisibleGroupIds() const override { return m_emptyGroups; }
+    kml::MarkIdSet const & GetCreatedMarkIds() const override { return m_createdPointIds; }
+    kml::MarkIdSet const & GetRemovedMarkIds() const override { return m_removedPointIds; }
+    kml::MarkIdSet const & GetUpdatedMarkIds() const override { return m_updatedPointIds; }
+    kml::TrackIdSet const & GetCreatedLineIds() const override { return m_createdLineIds; }
+    kml::TrackIdSet const & GetRemovedLineIds() const override { return m_removedLineIds; }
+    kml::TrackIdSet const & GetUpdatedLineIds() const override { return m_updatedLineIds; }
+    kml::MarkIdSet const & GetGroupPointIds(kml::MarkGroupId groupId) const override {
+        return groupId == kDuckDBRenderGroupId ? m_pointIds : m_emptyPointIds;
+    }
+    df::UserPointMark const * GetUserPointMark(kml::MarkId markId) const override {
+        auto const found = m_pointMarks.find(markId);
+        return found == m_pointMarks.end() ? nullptr : found->second.get();
+    }
+    kml::TrackIdSet const & GetGroupLineIds(kml::MarkGroupId groupId) const override {
+        return groupId == kDuckDBRenderGroupId ? m_lineIds : m_emptyLineIds;
+    }
+    df::UserLineMark const * GetUserLineMark(kml::TrackId lineId) const override {
+        auto const found = m_lineMarks.find(lineId);
+        return found == m_lineMarks.end() ? nullptr : found->second.get();
+    }
+    bool IsGroupVisible(kml::MarkGroupId groupId) const override {
+        return groupId == kDuckDBRenderGroupId;
+    }
+
+private:
+    kml::GroupIdSet m_allGroups;
+    kml::GroupIdSet m_updatedGroups;
+    kml::GroupIdSet m_emptyGroups;
+    kml::MarkIdSet m_pointIds;
+    kml::MarkIdSet m_emptyPointIds;
+    kml::TrackIdSet m_lineIds;
+    kml::TrackIdSet m_emptyLineIds;
+    kml::MarkIdSet m_createdPointIds;
+    kml::MarkIdSet m_removedPointIds;
+    kml::MarkIdSet m_updatedPointIds;
+    kml::TrackIdSet m_createdLineIds;
+    kml::TrackIdSet m_removedLineIds;
+    kml::TrackIdSet m_updatedLineIds;
+    std::map<kml::MarkId, std::unique_ptr<DuckDBPointMark>> m_pointMarks;
+    std::map<kml::TrackId, std::unique_ptr<DuckDBLineMark>> m_lineMarks;
+};
+
+std::mutex g_duckDBRenderMutex;
+std::unique_ptr<DuckDBMarksProvider> g_duckDBMarksProvider;
+bool g_duckDBRenderingEnabled = false;
+std::chrono::steady_clock::time_point g_lastDuckDBRenderRefresh;
+
+std::vector<m2::PointD> ParseWktMercatorPoints(char const * wkt) {
+    std::vector<m2::PointD> points;
+    if (wkt == nullptr) {
+        return points;
+    }
+
+    char const * cursor = wkt;
+    while (*cursor != '\0') {
+        char * numberEnd = nullptr;
+        double const lon = std::strtod(cursor, &numberEnd);
+        if (numberEnd == cursor) {
+            ++cursor;
+            continue;
+        }
+        cursor = numberEnd;
+
+        double const lat = std::strtod(cursor, &numberEnd);
+        if (numberEnd == cursor) {
+            break;
+        }
+        cursor = numberEnd;
+        points.push_back(mercator::FromLatLon(lat, lon));
+    }
+    return points;
+}
+
+bool IsPointFeature(char const * geometryKind, char const * wkt) {
+    std::string_view const kind = geometryKind == nullptr ? std::string_view() : std::string_view(geometryKind);
+    if (kind == "point") {
+        return true;
+    }
+    std::string_view const text = wkt == nullptr ? std::string_view() : std::string_view(wkt);
+    return text.rfind("POINT", 0) == 0;
+}
+
+int ClampZoom(int zoom) {
+    if (zoom < 1) {
+        return 1;
+    }
+    if (zoom > scales::UPPER_STYLE_SCALE) {
+        return scales::UPPER_STYLE_SCALE;
+    }
+    return zoom;
+}
+
+int32_t RefreshDuckDBRenderLayersInternal() {
+    std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+    if (!g_framework || !g_drapeEngineCreated || agus_duckdb_is_open() == 0) {
+        return -1;
+    }
+
+    auto engine = g_framework->GetDrapeEngine();
+    if (!engine) {
+        return -1;
+    }
+
+    auto const viewport = mercator::ToLatLon(g_framework->GetCurrentViewport());
+    auto const zoom = ClampZoom(g_framework->GetDrawScale());
+    AgusDuckDBRenderFeature * features = nullptr;
+    int32_t featureCount = 0;
+    if (agus_duckdb_copy_render_features(viewport.minX(), viewport.minY(),
+                                         viewport.maxX(), viewport.maxY(), zoom,
+                                         &features, &featureCount) == 0) {
+        return -2;
+    }
+
+    std::vector<DuckDBRenderableGeometry> renderableFeatures;
+    renderableFeatures.reserve(static_cast<size_t>(featureCount));
+    for (int32_t index = 0; index < featureCount; ++index) {
+        auto const & feature = features[index];
+        DuckDBRenderableGeometry renderable;
+        renderable.isPoint = IsPointFeature(feature.geometry_kind, feature.geometry_wkt);
+        renderable.minZoom = feature.min_zoom <= 0 ? 1 : feature.min_zoom;
+        renderable.zIndex = feature.z_index;
+        renderable.points = ParseWktMercatorPoints(feature.geometry_wkt);
+        if ((renderable.isPoint && !renderable.points.empty()) ||
+            (!renderable.isPoint && renderable.points.size() > 1)) {
+            renderableFeatures.push_back(std::move(renderable));
+        }
+    }
+    agus_duckdb_free_render_features(features, featureCount);
+
+    if (!g_duckDBMarksProvider) {
+        g_duckDBMarksProvider = std::make_unique<DuckDBMarksProvider>();
+    }
+    g_duckDBMarksProvider->SetFeatures(renderableFeatures);
+
+    engine->ClearUserMarksGroup(kDuckDBRenderGroupId);
+    engine->UpdateUserMarks(g_duckDBMarksProvider.get(), true);
+    engine->InvalidateUserMarks();
+    g_lastDuckDBRenderRefresh = std::chrono::steady_clock::now();
+    WakeRenderer();
+    return static_cast<int32_t>(renderableFeatures.size());
+}
+
+bool ShouldRefreshDuckDBRenderOnViewportChange() {
+    std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+    if (!g_duckDBRenderingEnabled) {
+        return false;
+    }
+    auto const now = std::chrono::steady_clock::now();
+    return now - g_lastDuckDBRenderRefresh >= kDuckDBViewportRefreshInterval;
+}
 
 double NormalizeBearingDegrees(double degrees) {
     double normalized = std::fmod(degrees, 360.0);
@@ -135,6 +444,9 @@ void SetViewportTracking() {
     g_framework->SetViewportListener([](ScreenBase const & screen) {
         g_currentBearingDegrees = NormalizeBearingDegrees(
             screen.GetAngle() * kDegreesPerRadian);
+        if (ShouldRefreshDuckDBRenderOnViewportChange()) {
+            RefreshDuckDBRenderLayersInternal();
+        }
     });
 }
 
@@ -1338,6 +1650,33 @@ FFI_PLUGIN_EXPORT void comaps_navigation_set_avoid_routing_options(int32_t mask)
 
 FFI_PLUGIN_EXPORT int32_t comaps_navigation_get_avoid_routing_options(void) {
     return agus::navigation::GetAvoidRoutingOptions();
+}
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_refresh_render_layers(void) {
+    return RefreshDuckDBRenderLayersInternal();
+}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t enabled) {
+    if (enabled != 0) {
+        {
+            std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+            g_duckDBRenderingEnabled = true;
+        }
+        RefreshDuckDBRenderLayersInternal();
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+    g_duckDBRenderingEnabled = false;
+    g_duckDBMarksProvider.reset();
+    if (g_framework && g_drapeEngineCreated) {
+        auto engine = g_framework->GetDrapeEngine();
+        if (engine) {
+            engine->ClearUserMarksGroup(kDuckDBRenderGroupId);
+            engine->InvalidateUserMarks();
+            WakeRenderer();
+        }
+    }
 }
 
 FFI_PLUGIN_EXPORT void comaps_invalidate(void) {

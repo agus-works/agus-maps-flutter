@@ -367,6 +367,43 @@ FFI_PLUGIN_EXPORT const char* agus_duckdb_query_json(const char* sql);
 // when present. Returns 1 on success, 0 on failure.
 FFI_PLUGIN_EXPORT int32_t agus_duckdb_validate_render_query(const char* sql);
 
+typedef struct {
+	char* layer_id;
+	char* feature_id;
+	char* geometry_kind;
+	char* geometry_wkt;
+	int32_t min_zoom;
+	int32_t max_zoom;
+	int32_t z_index;
+} AgusDuckDBRenderFeature;
+
+// Copies currently renderable DuckDB features for a WGS84 viewport and zoom.
+// The returned array and nested strings are owned by the caller and must be
+// released with agus_duckdb_free_render_features(). Nullable zoom values are
+// returned as -1.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features(
+		double min_lon,
+		double min_lat,
+		double max_lon,
+		double max_lat,
+		int32_t zoom,
+		AgusDuckDBRenderFeature** out_features,
+		int32_t* out_count);
+
+// Frees render features allocated by agus_duckdb_copy_render_features().
+FFI_PLUGIN_EXPORT void agus_duckdb_free_render_features(
+		AgusDuckDBRenderFeature* features,
+		int32_t count);
+
+// Android currently wires DuckDB-backed rows into Drape user marks.
+// Returns the number of visible features submitted, or a negative value when
+// the map/DuckDB state is not ready. Other platforms will wire this later.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_refresh_render_layers(void);
+
+// Enables or disables viewport-driven DuckDB render refreshes on platforms that
+// implement native Drape integration.
+FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t enabled);
+
 // Executes a SQL migration file against the app-instance DuckDB connection.
 // Returns 1 on success, 0 on failure.
 FFI_PLUGIN_EXPORT int32_t agus_duckdb_apply_migration_file(const char* path);

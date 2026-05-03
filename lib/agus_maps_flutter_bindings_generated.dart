@@ -1147,6 +1147,99 @@ class AgusMapsFlutterBindings {
       _agus_duckdb_validate_render_queryPtr
           .asFunction<int Function(ffi.Pointer<ffi.Char>)>();
 
+  /// Copies currently renderable DuckDB features for a WGS84 viewport and zoom.
+  /// The returned array and nested strings are owned by the caller and must be
+  /// released with agus_duckdb_free_render_features(). Nullable zoom values are
+  /// returned as -1.
+  int agus_duckdb_copy_render_features(
+    double min_lon,
+    double min_lat,
+    double max_lon,
+    double max_lat,
+    int zoom,
+    ffi.Pointer<ffi.Pointer<AgusDuckDBRenderFeature>> out_features,
+    ffi.Pointer<ffi.Int32> out_count,
+  ) {
+    return _agus_duckdb_copy_render_features(
+      min_lon,
+      min_lat,
+      max_lon,
+      max_lat,
+      zoom,
+      out_features,
+      out_count,
+    );
+  }
+
+  late final _agus_duckdb_copy_render_featuresPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.Double,
+              ffi.Double,
+              ffi.Double,
+              ffi.Double,
+              ffi.Int32,
+              ffi.Pointer<ffi.Pointer<AgusDuckDBRenderFeature>>,
+              ffi.Pointer<ffi.Int32>)>>('agus_duckdb_copy_render_features');
+  late final _agus_duckdb_copy_render_features =
+      _agus_duckdb_copy_render_featuresPtr.asFunction<
+          int Function(
+              double,
+              double,
+              double,
+              double,
+              int,
+              ffi.Pointer<ffi.Pointer<AgusDuckDBRenderFeature>>,
+              ffi.Pointer<ffi.Int32>)>();
+
+  /// Frees render features allocated by agus_duckdb_copy_render_features().
+  void agus_duckdb_free_render_features(
+    ffi.Pointer<AgusDuckDBRenderFeature> features,
+    int count,
+  ) {
+    return _agus_duckdb_free_render_features(
+      features,
+      count,
+    );
+  }
+
+  late final _agus_duckdb_free_render_featuresPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<AgusDuckDBRenderFeature>,
+              ffi.Int32)>>('agus_duckdb_free_render_features');
+  late final _agus_duckdb_free_render_features =
+      _agus_duckdb_free_render_featuresPtr.asFunction<
+          void Function(ffi.Pointer<AgusDuckDBRenderFeature>, int)>();
+
+  /// Android currently wires DuckDB-backed rows into Drape user marks.
+  /// Returns the number of visible features submitted, or a negative value when
+  /// the map/DuckDB state is not ready. Other platforms will wire this later.
+  int agus_duckdb_refresh_render_layers() {
+    return _agus_duckdb_refresh_render_layers();
+  }
+
+  late final _agus_duckdb_refresh_render_layersPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function()>>(
+          'agus_duckdb_refresh_render_layers');
+  late final _agus_duckdb_refresh_render_layers =
+      _agus_duckdb_refresh_render_layersPtr.asFunction<int Function()>();
+
+  /// Enables or disables viewport-driven DuckDB render refreshes on platforms that
+  /// implement native Drape integration.
+  void agus_duckdb_set_rendering_enabled(
+    int enabled,
+  ) {
+    return _agus_duckdb_set_rendering_enabled(
+      enabled,
+    );
+  }
+
+  late final _agus_duckdb_set_rendering_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int32)>>(
+          'agus_duckdb_set_rendering_enabled');
+  late final _agus_duckdb_set_rendering_enabled =
+      _agus_duckdb_set_rendering_enabledPtr.asFunction<void Function(int)>();
+
   /// Executes a SQL migration file against the app-instance DuckDB connection.
   /// Returns 1 on success, 0 on failure.
   int agus_duckdb_apply_migration_file(
@@ -1532,6 +1625,25 @@ final class AgusNavigationStatus extends ffi.Struct {
   external ffi.Pointer<ffi.Char> next_street;
 
   external ffi.Pointer<ffi.Char> next_next_street;
+}
+
+final class AgusDuckDBRenderFeature extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> layer_id;
+
+  external ffi.Pointer<ffi.Char> feature_id;
+
+  external ffi.Pointer<ffi.Char> geometry_kind;
+
+  external ffi.Pointer<ffi.Char> geometry_wkt;
+
+  @ffi.Int32()
+  external int min_zoom;
+
+  @ffi.Int32()
+  external int max_zoom;
+
+  @ffi.Int32()
+  external int z_index;
 }
 
 typedef FrameReadyCallbackFunction = ffi.Void Function();

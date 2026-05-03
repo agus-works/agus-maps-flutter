@@ -909,6 +909,7 @@ class _MyAppState extends State<MyApp> {
     _nativeSurfaceReady = true;
     _applyNativeMapSettings();
     _applyNativeNavigationSettings();
+    _enableDuckDBLayerRendering();
     _startBearingUpdates();
 
     // Re-register all previously downloaded maps from MwmStorage
@@ -965,6 +966,30 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         _status = 'Map ready!';
       });
+    }
+  }
+
+  void _enableDuckDBLayerRendering() {
+    if (!Platform.isAndroid || _dataPath == null) {
+      return;
+    }
+
+    try {
+      if (!agus_maps_flutter.openDuckDBAppDatabase(_dataPath!)) {
+        _log('DuckDB layer rendering skipped: '
+            '${agus_maps_flutter.duckDBLastError()}');
+        return;
+      }
+      if (!agus_maps_flutter.runDuckDBMigrations()) {
+        _log('DuckDB layer migrations failed: '
+            '${agus_maps_flutter.duckDBLastError()}');
+        return;
+      }
+      agus_maps_flutter.setDuckDBMapLayerRenderingEnabled(true);
+      final count = agus_maps_flutter.refreshDuckDBMapLayers();
+      _log('DuckDB layer rendering enabled: $count visible features.');
+    } catch (error, stackTrace) {
+      _log('DuckDB layer rendering unavailable: $error\n$stackTrace');
     }
   }
 
