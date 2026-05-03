@@ -46,6 +46,18 @@ First-party drawing layers write into strict tables owned by the plugin. Custom 
 
 The renderer converts WGS84 geometry to CoMaps Mercator coordinates on the native side. For large result sets, custom queries should include viewport predicates or be wrapped by generated renderer SQL that filters by bounds.
 
+The native bridge now exposes a JSON query-result API for setup, diagnostics, and small UI-facing result sets. The payload shape is:
+
+```json
+{
+	"columns": [{"name": "feature_id", "type": "VARCHAR"}],
+	"rows": [["example-feature"]],
+	"row_count": 1
+}
+```
+
+The same bridge exposes render-query validation that wraps candidate SQL in `SELECT * FROM (...) LIMIT 0` and checks the required render contract without materializing feature rows.
+
 ## Migrations
 
 Migrations live in `doc/schemas/migrations/` and are named with date plus sequence: `YYYYMMDD_NNN_description.sql`.

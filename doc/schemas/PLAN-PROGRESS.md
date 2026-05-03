@@ -131,7 +131,7 @@ Current limitations:
 - The bridge now uses `duckdb_open_ext`, but advanced config options are still not wired beyond the default configuration.
 - Extension verification now queries `duckdb_extensions()` after `LOAD <extension>` succeeds.
 - The initial schema migration is embedded in the native bridge, applied in a transaction, and recorded with a non-null `fnv1a64:` checksum. Adding future migrations currently requires updating both the reviewable SQL file under `doc/schemas/migrations/` and the embedded migration manifest in `src/agus_duckdb_bridge.cpp`.
-- No query result extraction, JSON result encoding, layer CRUD, feature CRUD, checkpoint/backup, or render refresh APIs yet.
+- Query results can now be extracted as a materialized JSON payload for small result sets and diagnostics. Layer CRUD, feature CRUD, checkpoint/backup, and render refresh APIs are still pending.
 - Dart wrappers intentionally throw `UnsupportedError` outside macOS, iOS, and Android until additional native platform builds are wired.
 
 ### Dart API
@@ -144,6 +144,9 @@ Current limitations:
 - `closeDuckDB()`
 - `isDuckDBOpen()`
 - `executeDuckDBSql(String sql)`
+- `queryDuckDBJson(String sql)`
+- `queryDuckDB(String sql)`
+- `validateRenderableDuckDBQuery(String sql)`
 - `applyDuckDBMigrationFile(String path)`
 - `runDuckDBMigrations()`
 
@@ -459,6 +462,16 @@ Completed checks:
   - `cd example && flutter build apk --debug --target-platform android-arm64`
   - macOS `ctypes` smoke against the debug plugin framework opened a fresh temp DuckDB database, reran embedded migrations idempotently, verified the `agus.schema_migrations` row has an `fnv1a64:` checksum, and confirmed `SELECT ST_AsText(ST_Point(1, 2));` still succeeds.
   - Android arm64 debug dynamic-symbol validation on the stripped packaged library confirmed `agus_duckdb_run_migrations`, `agus_duckdb_open_app_database`, `agus_duckdb_apply_migration_file`, and `agus_duckdb_library_version` are exported.
+- Query result API validation after the migration-runner checkpoint:
+  - `dart run ffigen --config ffigen.yaml`
+  - `dart format lib/agus_maps_flutter.dart lib/agus_maps_flutter_bindings_generated.dart`
+  - `clang++ -std=c++17 -I src -I thirdparty/duckdb/src/include -c src/agus_duckdb_bridge.cpp -o /tmp/agus_duckdb_bridge_query.o`
+  - `dart analyze lib/agus_maps_flutter.dart lib/agus_maps_flutter_bindings_generated.dart`
+  - `cd example && flutter build macos --debug`
+  - macOS `ctypes` smoke verified `agus_duckdb_query_json()` returns typed column metadata, primitive row values, and JSON values as JSON objects; the same smoke verified `agus_duckdb_validate_render_query()` accepts a valid `feature_id`/`geometry`/`properties` result contract and rejects a query missing `geometry`.
+  - `cd example && flutter build ios --simulator`
+  - `cd example && flutter build apk --debug --target-platform android-arm64`
+  - Android arm64 debug dynamic-symbol validation on the stripped packaged library confirmed `agus_duckdb_query_json`, `agus_duckdb_validate_render_query`, and `agus_duckdb_run_migrations` are exported.
 
 Known analyzer output:
 
@@ -550,9 +563,13 @@ Status: initial production runner completed for the embedded first migration.
 
 ### 4. Query Result API
 
-- Add native query execution that returns results as JSON or an explicit C ABI row/column structure.
-- Keep unrestricted SQL execution available for setup/mutation.
-- Add a strict validation function for renderable query layers with required columns `feature_id`, `geometry`, and `properties`.
+Status: implemented for materialized JSON results and render-contract validation.
+
+- Completed: native `agus_duckdb_query_json(sql)` returns a JSON payload with `columns`, `rows`, and `row_count` for materialized result sets.
+- Completed: Dart exposes `queryDuckDBJson(sql)` and parsed `queryDuckDB(sql)` helpers with `DuckDBQueryResult`/`DuckDBColumn` models.
+- Completed: unrestricted `executeDuckDBSql(sql)` remains available for setup/mutation.
+- Completed: native `agus_duckdb_validate_render_query(sql)` wraps SQL in `SELECT * FROM (...) LIMIT 0` and validates required `feature_id VARCHAR`, `geometry GEOMETRY`, and `properties JSON` columns, plus optional `style JSON`, `min_zoom`, `max_zoom`, and `z_index` integer columns when present.
+- Follow-up: move large render fetches to a chunked/native renderer path rather than using the materialized JSON helper.
 
 ### 5. Layer CRUD and Backup APIs
 

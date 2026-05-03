@@ -355,6 +355,18 @@ FFI_PLUGIN_EXPORT int32_t agus_duckdb_load_required_extensions(void);
 // Returns 1 on success, 0 on failure.
 FFI_PLUGIN_EXPORT int32_t agus_duckdb_execute(const char* sql);
 
+// Executes SQL and returns a JSON payload with columns, rows, and row_count.
+// Returns NULL on failure; call agus_duckdb_last_error() for diagnostics.
+// The returned pointer is owned by the bridge and remains valid until the next
+// DuckDB query-json call or bridge close/error mutation.
+FFI_PLUGIN_EXPORT const char* agus_duckdb_query_json(const char* sql);
+
+// Validates a query-layer SQL result contract without materializing rows.
+// Required columns are feature_id VARCHAR, geometry GEOMETRY, and properties JSON.
+// Optional style JSON and min_zoom/max_zoom/z_index INTEGER columns are checked
+// when present. Returns 1 on success, 0 on failure.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_validate_render_query(const char* sql);
+
 // Executes a SQL migration file against the app-instance DuckDB connection.
 // Returns 1 on success, 0 on failure.
 FFI_PLUGIN_EXPORT int32_t agus_duckdb_apply_migration_file(const char* path);

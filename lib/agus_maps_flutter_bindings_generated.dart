@@ -1109,6 +1109,44 @@ class AgusMapsFlutterBindings {
   late final _agus_duckdb_execute =
       _agus_duckdb_executePtr.asFunction<int Function(ffi.Pointer<ffi.Char>)>();
 
+  /// Executes SQL and returns a JSON payload with columns, rows, and row_count.
+  /// Returns NULL on failure; call agus_duckdb_last_error() for diagnostics.
+  /// The returned pointer is owned by the bridge and remains valid until the next
+  /// DuckDB query-json call or bridge close/error mutation.
+  ffi.Pointer<ffi.Char> agus_duckdb_query_json(
+    ffi.Pointer<ffi.Char> sql,
+  ) {
+    return _agus_duckdb_query_json(
+      sql,
+    );
+  }
+
+  late final _agus_duckdb_query_jsonPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ffi.Char> Function(
+              ffi.Pointer<ffi.Char>)>>('agus_duckdb_query_json');
+  late final _agus_duckdb_query_json = _agus_duckdb_query_jsonPtr
+      .asFunction<ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Char>)>();
+
+  /// Validates a query-layer SQL result contract without materializing rows.
+  /// Required columns are feature_id VARCHAR, geometry GEOMETRY, and properties JSON.
+  /// Optional style JSON and min_zoom/max_zoom/z_index INTEGER columns are checked
+  /// when present. Returns 1 on success, 0 on failure.
+  int agus_duckdb_validate_render_query(
+    ffi.Pointer<ffi.Char> sql,
+  ) {
+    return _agus_duckdb_validate_render_query(
+      sql,
+    );
+  }
+
+  late final _agus_duckdb_validate_render_queryPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Pointer<ffi.Char>)>>(
+          'agus_duckdb_validate_render_query');
+  late final _agus_duckdb_validate_render_query =
+      _agus_duckdb_validate_render_queryPtr
+          .asFunction<int Function(ffi.Pointer<ffi.Char>)>();
+
   /// Executes a SQL migration file against the app-instance DuckDB connection.
   /// Returns 1 on success, 0 on failure.
   int agus_duckdb_apply_migration_file(
