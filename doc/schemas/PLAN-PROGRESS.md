@@ -623,6 +623,12 @@ Status: initial reusable draw/layer UI completed and compile-validated on Androi
 
 ### 8. Windows and Linux
 
+Status: initial private runtime bundling hooks completed; platform build validation must run on Windows/Linux hosts.
+
+- Completed: Windows CMake now bundles `duckdb.dll` from `windows/prebuilt/x64` or the SDK `windows/prebuilt/x64` directory when present and explicitly avoids searching system paths for DuckDB.
+- Completed: Linux CMake now bundles `libduckdb.so` from `linux/prebuilt/x64` or the SDK `linux/prebuilt/x64` directory when present and explicitly avoids system DuckDB fallback.
+- Remaining validation: run `flutter build windows` on Windows and `flutter build linux` on Linux once private DuckDB desktop runtime artifacts are produced for those platforms.
+
 - Windows: bundle a private DuckDB runtime artifact with required extensions statically linked where possible.
 - Linux: bundle private DuckDB runtime artifacts later, following the same no-system-DuckDB rule.
 
