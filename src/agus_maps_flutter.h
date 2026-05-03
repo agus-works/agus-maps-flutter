@@ -359,6 +359,10 @@ FFI_PLUGIN_EXPORT int32_t agus_duckdb_execute(const char* sql);
 // Returns 1 on success, 0 on failure.
 FFI_PLUGIN_EXPORT int32_t agus_duckdb_apply_migration_file(const char* path);
 
+// Applies embedded app schema migrations and verifies recorded checksums.
+// Returns 1 on success, 0 on failure.
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_run_migrations(void);
+
 // =============================================================================
 // Native Surface Functions (for Windows/Desktop)
 // =============================================================================
