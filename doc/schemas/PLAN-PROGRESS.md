@@ -613,7 +613,7 @@ Status: initial reusable draw/layer UI completed and compile-validated on Androi
 - Completed: added reusable `DuckDBLayerDrawOverlay`, `DuckDBLayerDrawToolbar`, `DuckDBLayerMetadataForm`, and `DuckDBLayerPanel` widgets.
 - Completed: added Android `screenPointToLatLon()` projection so draw overlays can convert captured pointer positions to WGS84 before committing features.
 - Completed: example app creates a default `user_draw` layer, enables the draw toolbar on the map, captures pointer events while drawing, refreshes native Drape rendering after commits, and exposes layer visibility/order plus database backup through the layer panel.
-- Validated: regenerated FFI bindings, `dart analyze lib/agus_maps_flutter.dart lib/src/layers/duckdb_layer_store.dart lib/src/layers/duckdb_draw_controller.dart lib/src/layers/duckdb_layer_widgets.dart example/lib/main.dart`, and `flutter build apk --debug --target-platform android-arm64` from `example/`.
+- Validated: regenerated FFI bindings, `dart analyze lib/agus_maps_flutter.dart lib/src/layers/duckdb_layer_store.dart lib/src/layers/duckdb_draw_controller.dart lib/src/layers/duckdb_layer_widgets.dart example/lib/main.dart`, `flutter build apk --debug --target-platform android-arm64` from `example/`, and `flutter build macos --debug` from `example/`.
 
 - Add public layer models/services under `lib/`.
 - Add reusable layer/draw widgets under `lib/src/layers/`.
