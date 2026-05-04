@@ -101,11 +101,12 @@ class DownloadsCacheService {
   /// Validate that the cached snapshot still exists on the server.
   ///
   /// Performs a lightweight HEAD request to check if the snapshot URL is valid.
-  /// Uses CoMaps CDN URL pattern: <base>/maps/<version>/countries.txt
+  /// Uses the CoMaps CDN path pattern
+  /// `base/maps/version/countries.txt`.
   /// Returns true if valid, false if invalid or check failed.
   Future<bool> validateCache(CachedDownloadsData cache) async {
     try {
-      // CoMaps CDN URL structure: <base>/maps/<version>/countries.txt
+      // CoMaps CDN URL structure: base/maps/version/countries.txt
       final uri = Uri.parse(
           '${cache.mirrorBaseUrl}maps/${cache.snapshotVersion}/countries.txt');
       final response = await http.head(uri).timeout(const Duration(seconds: 5));

@@ -1086,9 +1086,9 @@ void _ensureDuckDBBridgeSupported() {
 }
 
 void _ensureNativeDuckDBLayerRenderingSupported() {
-  if (!Platform.isAndroid) {
+  if (!(Platform.isMacOS || Platform.isIOS || Platform.isAndroid)) {
     throw UnsupportedError(
-      'Native DuckDB layer rendering is currently wired on Android only',
+      'Native DuckDB layer rendering is currently wired on Apple and Android only',
     );
   }
 }
@@ -1203,9 +1203,9 @@ bool applyDuckDBMigrationFile(String path) {
 
 /// Enables or disables native Drape rendering for visible DuckDB layers.
 ///
-/// Android currently renders DuckDB-backed points and line/polygon outlines by
-/// submitting native user marks to CoMaps Drape. The renderer refreshes as the
-/// viewport changes while enabled.
+/// Android, macOS, and iOS render DuckDB-backed points and line/polygon
+/// outlines by submitting native user marks to CoMaps Drape. The renderer
+/// refreshes as the viewport changes while enabled.
 void setDuckDBMapLayerRenderingEnabled(bool enabled) {
   _ensureDuckDBBridgeSupported();
   _ensureNativeDuckDBLayerRenderingSupported();
@@ -1382,9 +1382,9 @@ MapCameraPosition? getMapCameraPosition() => getCameraPosition();
 /// Flutter overlays should multiply logical local positions by the device pixel
 /// ratio before calling this helper.
 AgusLatLon? screenPointToLatLon(double physicalX, double physicalY) {
-  if (!Platform.isAndroid) {
+  if (!(Platform.isMacOS || Platform.isIOS || Platform.isAndroid)) {
     throw UnsupportedError(
-      'Screen-to-coordinate projection is currently wired on Android only',
+      'Screen-to-coordinate projection is currently wired on Apple and Android only',
     );
   }
 
@@ -1539,8 +1539,10 @@ void setMapLanguage(String? languageCode) {
   }
 }
 
-/// Invalidate the current viewport to force tile reload.
-/// Call this after registering maps to ensure tiles are refreshed.
+/// Request a native renderer refresh for the current viewport.
+///
+/// Call this after registering maps to make the native renderer process pending
+/// map data without recreating the Flutter texture.
 void invalidateMap() {
   _bindings.comaps_invalidate();
 }
@@ -1768,6 +1770,16 @@ class _TapState {
 }
 
 class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
+  static int? _sharedTextureId;
+  static Size? _sharedLogicalSize;
+  static int? _sharedPhysicalWidth;
+  static int? _sharedPhysicalHeight;
+  static double _sharedDevicePixelRatio = 1.0;
+  static double _sharedUserScale = 1.0;
+  static double _sharedVisualScale = 1.0;
+  static bool _sharedNativeInitialized = false;
+  static bool _sharedReadyCallbackDelivered = false;
+
   int? _textureId;
   Size? _currentSize; // Logical size
   int? _currentPhysicalWidth;
@@ -1870,6 +1882,11 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
     double userScale,
   ) async {
     if (_surfaceCreated) return;
+    if (_sharedTextureId != null) {
+      _attachSharedSurface(logicalSize, pixelRatio, userScale);
+      return;
+    }
+
     _surfaceCreated = true;
     _devicePixelRatio = pixelRatio;
     _userScale = userScale;
@@ -1904,6 +1921,20 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
       density: visualScale,
     );
 
+    _sharedTextureId = textureId;
+    _sharedLogicalSize = logicalSize;
+    _sharedPhysicalWidth = physicalWidth;
+    _sharedPhysicalHeight = physicalHeight;
+    _sharedDevicePixelRatio = pixelRatio;
+    _sharedUserScale = userScale;
+    _sharedVisualScale = visualScale;
+
+    // Set initial view if specified
+    if (widget.initialLat != null && widget.initialLon != null) {
+      setView(widget.initialLat!, widget.initialLon!, widget.initialZoom ?? 14);
+    }
+    _sharedNativeInitialized = true;
+
     if (!mounted) return;
 
     setState(() {
@@ -1911,11 +1942,42 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
       _currentSize = logicalSize;
     });
 
-    // Set initial view if specified
-    if (widget.initialLat != null && widget.initialLon != null) {
-      setView(widget.initialLat!, widget.initialLon!, widget.initialZoom ?? 14);
+    _notifyMapReadyOnce();
+  }
+
+  void _attachSharedSurface(
+    Size logicalSize,
+    double pixelRatio,
+    double userScale,
+  ) {
+    final textureId = _sharedTextureId;
+    if (textureId == null) return;
+
+    _surfaceCreated = true;
+    _textureId = textureId;
+    _currentSize = _sharedLogicalSize;
+    _currentPhysicalWidth = _sharedPhysicalWidth;
+    _currentPhysicalHeight = _sharedPhysicalHeight;
+    _devicePixelRatio = _sharedDevicePixelRatio;
+    _userScale = _sharedUserScale;
+    _visualScale = _sharedVisualScale;
+
+    if (mounted) {
+      setState(() {});
     }
 
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.isVisible) return;
+      _handleResize(logicalSize, pixelRatio, userScale);
+      if (_sharedNativeInitialized) {
+        _notifyMapReadyOnce();
+      }
+    });
+  }
+
+  void _notifyMapReadyOnce() {
+    if (_sharedReadyCallbackDelivered) return;
+    _sharedReadyCallbackDelivered = true;
     widget.onMapReady?.call();
   }
 
@@ -1952,6 +2014,12 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
     _devicePixelRatio = pixelRatio;
     _userScale = userScale;
     _visualScale = visualScale;
+    _sharedLogicalSize = newLogicalSize;
+    _sharedPhysicalWidth = physicalWidth;
+    _sharedPhysicalHeight = physicalHeight;
+    _sharedDevicePixelRatio = pixelRatio;
+    _sharedUserScale = userScale;
+    _sharedVisualScale = visualScale;
 
     if (sizeUnchanged && scaleUnchanged) {
       return;
@@ -2159,6 +2227,15 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        if (!constraints.hasBoundedWidth ||
+            !constraints.hasBoundedHeight ||
+            !constraints.maxWidth.isFinite ||
+            !constraints.maxHeight.isFinite ||
+            constraints.maxWidth <= 0 ||
+            constraints.maxHeight <= 0) {
+          return const SizedBox.shrink();
+        }
+
         final layoutSize = Size(constraints.maxWidth, constraints.maxHeight);
         final resizeSize = _effectiveResizeSize(layoutSize);
         final pixelRatio = MediaQuery.of(context).devicePixelRatio;
@@ -2192,7 +2269,7 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
         }
 
         if (_textureId == null) {
-          return const Center(child: CircularProgressIndicator());
+          return const SizedBox.expand();
         }
 
         return Listener(

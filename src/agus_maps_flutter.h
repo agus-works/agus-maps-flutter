@@ -72,7 +72,9 @@ FFI_PLUGIN_EXPORT double comaps_get_current_bearing(void);
 FFI_PLUGIN_EXPORT void comaps_set_bearing(double degrees, int animated);
 FFI_PLUGIN_EXPORT void comaps_reset_bearing(int animated);
 
-// Enable/disable 3D map mode with 3D buildings.
+// Enable/disable runtime 3D building rendering.
+// Flutter owns persistence for this setting; the native bridge only applies
+// the current process state to Drape.
 FFI_PLUGIN_EXPORT void comaps_set_3d_buildings_enabled(int enabled);
 FFI_PLUGIN_EXPORT int comaps_get_3d_buildings_enabled(void);
 
@@ -416,7 +418,7 @@ FFI_PLUGIN_EXPORT void agus_duckdb_free_render_features(
 		AgusDuckDBRenderFeature* features,
 		int32_t count);
 
-// Android currently wires DuckDB-backed rows into Drape user marks.
+// Android, macOS, and iOS wire DuckDB-backed rows into Drape user marks.
 // Returns the number of visible features submitted, or a negative value when
 // the map/DuckDB state is not ready. Other platforms will wire this later.
 FFI_PLUGIN_EXPORT int32_t agus_duckdb_refresh_render_layers(void);
