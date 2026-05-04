@@ -94,6 +94,24 @@ native renderer. If native Drape rendering is unavailable on a platform, layer
 persistence and editing should remain available and the renderer issue should be
 logged separately.
 
+Layer Manager startup is therefore split into two phases: project persistence
+first, native map rendering second. The UI enables **New Layer** as soon as
+`DuckDBLayerStore` is open, even if the map surface has not finished attaching.
+If the store is unavailable, the Explorer pane must show the failure status and
+the DEBUG CONSOLE must contain the underlying DuckDB error.
+
+The New Layer dialog must not dispose a `TextEditingController` owned by a local
+method scope while the dialog route is closing. Prefer controller-free form
+fields or a dedicated stateful dialog widget that owns and disposes its
+controller. Layer creation failures should be reported inside the Layer Manager
+pane instead of surfacing as Flutter red screens.
+
+Layer editing commands must keep the desktop workbench stable even when
+persistence or renderer operations fail. Visibility toggles, z-order changes,
+new-layer creation, and feature commits should report failures in the Layer
+Manager or active scaffold message area. They must not rely on unhandled async
+exceptions, because those become red screens on desktop debug runs.
+
 ```mermaid
 flowchart TB
     Toolbar["Layer Manager toolbar\nNew Layer, refresh, backup"]

@@ -23,6 +23,7 @@ class AdaptiveLayerManager extends StatefulWidget {
     this.onRenderingRefresh,
     this.onActiveLayerChanged,
     this.onDrawToolChanged,
+    this.layerStoreStatus,
     this.onClose,
   });
 
@@ -37,6 +38,7 @@ class AdaptiveLayerManager extends StatefulWidget {
   final Future<void> Function()? onRenderingRefresh;
   final ValueChanged<String>? onActiveLayerChanged;
   final ValueChanged<agus_maps_flutter.AgusDrawTool>? onDrawToolChanged;
+  final String? layerStoreStatus;
   final VoidCallback? onClose;
 
   @override
@@ -115,9 +117,16 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
   ) async {
     final store = widget.layerStore;
     if (store == null) return;
-    store.setLayerVisibility(layer.layerId, visible);
-    await widget.onRenderingRefresh?.call();
-    await _reload();
+    try {
+      store.setLayerVisibility(layer.layerId, visible);
+      await widget.onRenderingRefresh?.call();
+      await _reload();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = 'Layer visibility update failed: $error';
+      });
+    }
   }
 
   Future<void> _moveLayer(
@@ -126,9 +135,16 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
   ) async {
     final store = widget.layerStore;
     if (store == null) return;
-    store.setLayerZIndex(layer.layerId, layer.zIndex + delta);
-    await widget.onRenderingRefresh?.call();
-    await _reload();
+    try {
+      store.setLayerZIndex(layer.layerId, layer.zIndex + delta);
+      await widget.onRenderingRefresh?.call();
+      await _reload();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = 'Layer order update failed: $error';
+      });
+    }
   }
 
   Future<void> _deleteLayer(agus_maps_flutter.AgusLayer layer) async {
@@ -170,16 +186,14 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
     final store = widget.layerStore;
     if (store == null || _busy) return;
 
-    final nameController = TextEditingController(
-      text: 'Drawing layer ${_layers.length + 1}',
-    );
+    var layerName = 'Drawing layer ${_layers.length + 1}';
     final result = await showDialog<String>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('Create Drawing Layer'),
-          content: TextField(
-            controller: nameController,
+          content: TextFormField(
+            initialValue: layerName,
             autofocus: true,
             textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(
@@ -187,7 +201,10 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
               helperText: 'Creates a DuckDB-backed editable drawing layer.',
               border: OutlineInputBorder(),
             ),
-            onSubmitted: (value) => Navigator.of(context).pop(value),
+            onChanged: (value) {
+              layerName = value;
+            },
+            onFieldSubmitted: (value) => Navigator.of(context).pop(value),
           ),
           actions: [
             TextButton(
@@ -195,37 +212,60 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(nameController.text),
+              onPressed: () => Navigator.of(context).pop(layerName),
               child: const Text('Create'),
             ),
           ],
         );
       },
     );
-    nameController.dispose();
 
     final name = result?.trim();
     if (name == null || name.isEmpty) return;
 
-    final id = _layerIdFromName(name);
-    final zIndex = _layers.isEmpty
-        ? 1000
-        : _layers.map((layer) => layer.zIndex).reduce((a, b) => a > b ? a : b) +
-            10;
+    setState(() {
+      _busy = true;
+      _message = '';
+    });
 
-    store.upsertLayer(
-      agus_maps_flutter.AgusLayerDraft(
-        layerId: id,
-        name: name,
-        kind: agus_maps_flutter.AgusLayerKind.userDraw,
-        visible: true,
-        zIndex: zIndex,
-        metadata: const {'source': 'desktop_layer_manager'},
-      ),
-    );
-    widget.onActiveLayerChanged?.call(id);
-    await widget.onRenderingRefresh?.call();
-    await _reload();
+    try {
+      final id = _layerIdFromName(name);
+      final zIndex = _layers.isEmpty
+          ? 1000
+          : _layers
+                  .map((layer) => layer.zIndex)
+                  .reduce((a, b) => a > b ? a : b) +
+              10;
+
+      store.upsertLayer(
+        agus_maps_flutter.AgusLayerDraft(
+          layerId: id,
+          name: name,
+          kind: agus_maps_flutter.AgusLayerKind.userDraw,
+          visible: true,
+          zIndex: zIndex,
+          metadata: const {'source': 'desktop_layer_manager'},
+        ),
+      );
+      widget.onActiveLayerChanged?.call(id);
+      await widget.onRenderingRefresh?.call();
+      await _reload();
+      if (!mounted) return;
+      setState(() {
+        _message = 'Created layer "$name".';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = 'Layer creation failed: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
+    }
   }
 
   String _layerIdFromName(String name) {
@@ -403,7 +443,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
             nodeId: _projectLayersNodeId,
             title: 'Project layers',
             subtitle: widget.layerStore == null
-                ? 'DuckDB-backed drawing layers are enabled on Android, macOS, and iOS.'
+                ? widget.layerStoreStatus ??
+                    'DuckDB-backed drawing layers are starting.'
                 : 'QGIS-style stack ordered by z-index for rendering.',
             icon: Icons.layers_outlined,
             countLabel: '$projectLayerCount',
@@ -415,7 +456,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
                     child: _InlineInfoBanner(
                       icon: Icons.info_outline,
                       message: widget.layerStore == null
-                          ? 'Map presentation controls work everywhere. Project data layers appear here once the platform DuckDB renderer is active.'
+                          ? widget.layerStoreStatus ??
+                              'Map presentation controls work now. Project data layers appear once the DuckDB store is active.'
                           : 'No project layers have been created yet.',
                     ),
                   )
@@ -471,7 +513,7 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
             title: 'Layer Manager',
             subtitle: storeReady
                 ? '$projectLayerCount project layers'
-                : 'DuckDB layer store is starting',
+                : widget.layerStoreStatus ?? 'DuckDB layer store is starting',
             busy: _busy,
             onRefresh: _reload,
             onBackup: storeReady && !_busy ? _backup : null,
@@ -599,7 +641,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
           padding: const EdgeInsets.all(12),
           child: Text(
             widget.layerStore == null
-                ? 'Map presentation controls work now. Project data layers appear once the DuckDB renderer is active.'
+                ? widget.layerStoreStatus ??
+                    'Map presentation controls work now. Project data layers appear once the DuckDB store is active.'
                 : 'No project layers yet. Create a Drawing Layer to start editing.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,

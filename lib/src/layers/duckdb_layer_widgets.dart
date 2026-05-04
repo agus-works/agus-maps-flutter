@@ -110,8 +110,17 @@ class DuckDBLayerDrawToolbar extends StatelessWidget {
                 : const Icon(Icons.check),
             onPressed: controller.canCommit
                 ? () async {
-                    final featureId = await controller.commit();
-                    if (featureId != null) onCommitted?.call(featureId);
+                    try {
+                      final featureId = await controller.commit();
+                      if (featureId != null) onCommitted?.call(featureId);
+                    } catch (error) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                        SnackBar(
+                          content: Text('Feature commit failed: $error'),
+                        ),
+                      );
+                    }
                   }
                 : null,
           ),
@@ -276,15 +285,29 @@ class _DuckDBLayerPanelState extends State<DuckDBLayerPanel> {
   }
 
   Future<void> _toggleLayer(AgusLayer layer, bool visible) async {
-    widget.store.setLayerVisibility(layer.layerId, visible);
-    await widget.onRenderingRefresh?.call();
-    _reload();
+    try {
+      widget.store.setLayerVisibility(layer.layerId, visible);
+      await widget.onRenderingRefresh?.call();
+      _reload();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = 'Layer visibility update failed: $error';
+      });
+    }
   }
 
   Future<void> _moveLayer(AgusLayer layer, int delta) async {
-    widget.store.setLayerZIndex(layer.layerId, layer.zIndex + delta);
-    await widget.onRenderingRefresh?.call();
-    _reload();
+    try {
+      widget.store.setLayerZIndex(layer.layerId, layer.zIndex + delta);
+      await widget.onRenderingRefresh?.call();
+      _reload();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = 'Layer order update failed: $error';
+      });
+    }
   }
 
   Future<void> _backup() async {
