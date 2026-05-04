@@ -58,20 +58,24 @@ flowchart LR
 
 ## Pane resizing and separators
 
-Desktop pane splitters use the VS Code pattern: a narrow visible separator and a
-larger invisible hit target for pointer resizing. Avoid stacking borders,
-outlines, and splitter lines on the same edge. A pane boundary should visually
-read as one line.
+Desktop pane splitters use a single visible separator that is also the resize
+target. Avoid stacking borders, outlines, reserved transparent hit-target width,
+or splitter padding on the same edge. A pane boundary should visually read as one
+line with no gap between adjacent pane headers and bodies.
 
 ```mermaid
 flowchart LR
-    PaneA["Pane A"] --- Hit["Transparent drag hit target"]
-    Hit --- Line["1 px visible separator"]
+    PaneA["Pane A"] --- Line["1 px resize separator"]
     Line --- PaneB["Pane B"]
 ```
 
 Tablet and mobile can use thicker dividers where touch precision requires it,
 but desktop panes should stay visually thin and compact.
+
+Resize handles must not reserve extra transparent layout space. If a larger hit
+target is introduced later, it should be implemented as an overlay that does not
+change pane geometry; otherwise vertical and horizontal seams will fail to meet
+cleanly at intersections.
 
 ## Layer Manager
 
@@ -84,6 +88,11 @@ It should expose:
 - Active edit layer selection by row click.
 - Drawing session tools using GIS terms: map interaction, point, segment, line,
   and polygon.
+
+The **New Layer** command depends on the DuckDB project layer store, not on the
+native renderer. If native Drape rendering is unavailable on a platform, layer
+persistence and editing should remain available and the renderer issue should be
+logged separately.
 
 ```mermaid
 flowchart TB
@@ -99,6 +108,11 @@ flowchart TB
 
 Tablet can keep the grouped layer tree with larger rows. Mobile should keep the
 modal sheet pattern and avoid exposing every desktop control at once.
+
+Tablet navigation uses the same side-rail placement as desktop/tablet adaptive
+apps, but it must be flush and square-edged. Avoid rounded floating rail chrome
+on macOS tablet-width windows because it conflicts with the pane-based workbench
+visual language.
 
 ## Property grids and data grids
 
@@ -148,6 +162,29 @@ Desktop Downloads should feel like a file explorer or VS Code tree:
   spinners on desktop release builds.
 
 Tablet and mobile should retain larger list rows and clearer explanatory text.
+
+## Desktop Search and Favorites
+
+Search and Favorites in the Primary Side Bar follow VS Code explorer density,
+not mobile `ListTile` density:
+
+- Search input height near 34 logical pixels.
+- Result rows near 36 logical pixels with one-line title and one-line subtitle.
+- Favorites rows near 30 logical pixels.
+- No rounded cards inside the Primary Side Bar.
+- One-pixel row separators aligned to the full pane width.
+
+```mermaid
+flowchart TB
+    Activity["Activity Bar item"]
+    SideBar["Primary Side Bar"]
+    Search["Search\n34 px input + 36 px rows"]
+    Favorites["Favorites\n30 px rows"]
+
+    Activity --> SideBar
+    SideBar --> Search
+    SideBar --> Favorites
+```
 
 ## Responsive behavior
 

@@ -63,15 +63,12 @@ class AdaptiveAppScaffold extends StatelessWidget {
       body: Row(
         children: [
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 0, 12),
-              child: _AdaptiveNavigationRail(
-                title: title,
-                selectedIndex: selectedIndex,
-                destinations: destinations,
-                onDestinationSelected: onDestinationSelected,
-                extended: uiSpec.navigationRailExtended,
-              ),
+            child: _AdaptiveNavigationRail(
+              title: title,
+              selectedIndex: selectedIndex,
+              destinations: destinations,
+              onDestinationSelected: onDestinationSelected,
+              extended: uiSpec.navigationRailExtended,
             ),
           ),
           const VerticalDivider(width: 1),
@@ -104,16 +101,13 @@ class _AdaptiveNavigationRail extends StatelessWidget {
 
     return Material(
       color: colorScheme.surfaceContainerLow,
-      elevation: 1,
-      borderRadius: BorderRadius.circular(24),
-      clipBehavior: Clip.antiAlias,
       child: NavigationRail(
         extended: extended,
         minWidth: 84,
         minExtendedWidth: 216,
         selectedIndex: selectedIndex,
         onDestinationSelected: onDestinationSelected,
-        useIndicator: true,
+        useIndicator: false,
         backgroundColor: Colors.transparent,
         leading: Padding(
           padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
@@ -126,7 +120,6 @@ class _AdaptiveNavigationRail extends StatelessWidget {
                       height: 44,
                       decoration: BoxDecoration(
                         color: colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(14),
                       ),
                       alignment: Alignment.center,
                       child: Icon(
@@ -150,7 +143,6 @@ class _AdaptiveNavigationRail extends StatelessWidget {
                   height: 44,
                   decoration: BoxDecoration(
                     color: colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(14),
                   ),
                   alignment: Alignment.center,
                   child: Icon(
