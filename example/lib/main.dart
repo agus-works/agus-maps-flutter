@@ -16,8 +16,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'about_tab.dart';
 import 'downloads_cache.dart';
 import 'downloads_tab.dart';
+import 'features/map/widgets/adaptive_layer_manager.dart';
+import 'features/workbench/vscode_workbench.dart';
+import 'features/workbench/workbench_controller.dart';
+import 'features/workbench/workbench_panels.dart';
 import 'settings_tab.dart';
 import 'place_page_sheet.dart';
+import 'shared/adaptive/form_factor.dart';
+import 'shared/layout/adaptive_app_scaffold.dart';
 
 void main() {
   // Ensure Flutter bindings are initialized before using platform channels
@@ -119,6 +125,48 @@ class MapSearchResult {
   }
 }
 
+class _DesktopStaticStatus extends StatelessWidget {
+  const _DesktopStaticStatus({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 24, color: colorScheme.primary),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.labelLarge,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LocationFix {
   final double lat;
   final double lon;
@@ -200,10 +248,14 @@ class _MyAppState extends State<MyApp> {
   bool _isLocating = false;
   bool _searchOpen = false;
   final ValueNotifier<double> _currentBearing = ValueNotifier<double>(0.0);
+  bool _reportedInvalidBearing = false;
   agus_maps_flutter.PlacePageData? _placePage;
   agus_maps_flutter.DuckDBLayerStore? _duckDBLayerStore;
   agus_maps_flutter.DuckDBLayerDrawController? _duckDBDrawController;
-  bool _duckDBLayerPanelVisible = false;
+  String _activeDuckDBLayerId = _userDrawLayerId;
+  final WorkbenchController _workbenchController = WorkbenchController();
+  final GlobalKey _mapViewportKey = GlobalKey();
+  bool _duckDBLayerPanelVisible = true;
 
   int? _bundledMwmVersion;
   String? _dataPath;
@@ -251,6 +303,7 @@ class _MyAppState extends State<MyApp> {
     agus_maps_flutter.cancelNativeSearch();
     _currentBearing.dispose();
     _duckDBDrawController?.dispose();
+    _workbenchController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -388,7 +441,6 @@ class _MyAppState extends State<MyApp> {
     agus_maps_flutter.setMapTheme(_resolveMapTheme());
     agus_maps_flutter.setMapLanguage(_mapLanguageCode);
     agus_maps_flutter.setMapLayerState(_mapLayerState);
-    agus_maps_flutter.invalidateMap();
   }
 
   void _applyNativeNavigationSettings() {
@@ -976,7 +1028,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _enableDuckDBLayerRendering() {
-    if (!Platform.isAndroid || _dataPath == null) {
+    if (_dataPath == null) {
       return;
     }
 
@@ -995,7 +1047,7 @@ class _MyAppState extends State<MyApp> {
 
       final controller = agus_maps_flutter.DuckDBLayerDrawController(
         store: store,
-        layerId: _userDrawLayerId,
+        layerId: _activeDuckDBLayerId,
         projector: _projectDrawPoint,
         onCommitted: _refreshDuckDBNativeLayers,
       );
@@ -1015,6 +1067,35 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  void _setActiveDuckDBLayer(String layerId) {
+    final store = _duckDBLayerStore;
+    if (store == null || layerId == _activeDuckDBLayerId) return;
+
+    final previousTool =
+        _duckDBDrawController?.tool ?? agus_maps_flutter.AgusDrawTool.none;
+    final controller = agus_maps_flutter.DuckDBLayerDrawController(
+      store: store,
+      layerId: layerId,
+      projector: _projectDrawPoint,
+      onCommitted: _refreshDuckDBNativeLayers,
+    )..setTool(previousTool);
+
+    _duckDBDrawController?.dispose();
+    setState(() {
+      _activeDuckDBLayerId = layerId;
+      _duckDBDrawController = controller;
+    });
+    _log('Active edit layer changed: $layerId');
+  }
+
+  void _setDuckDBDrawTool(agus_maps_flutter.AgusDrawTool tool) {
+    final controller = _duckDBDrawController;
+    if (controller == null) return;
+    controller.setTool(tool);
+    _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
+    setState(() {});
+  }
+
   agus_maps_flutter.AgusLatLon? _projectDrawPoint(Offset localPosition) {
     final pixelRatio = View.of(context).devicePixelRatio;
     return agus_maps_flutter.screenPointToLatLon(
@@ -1024,7 +1105,6 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _refreshDuckDBNativeLayers() async {
-    if (!Platform.isAndroid) return;
     final count = agus_maps_flutter.refreshDuckDBMapLayers();
     _log('DuckDB layer renderer refreshed: $count visible features.');
   }
@@ -1033,10 +1113,26 @@ class _MyAppState extends State<MyApp> {
     _bearingTimer?.cancel();
     _bearingTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (!mounted || _currentTabIndex != 0 || !_nativeSurfaceReady) return;
-      final bearing = agus_maps_flutter.getCurrentBearing();
+      final bearing = _normalizeNativeBearing(
+        agus_maps_flutter.getCurrentBearing(),
+      );
+      if (bearing == null) return;
       if ((bearing - _currentBearing.value).abs() < 0.25) return;
       _currentBearing.value = bearing;
     });
+  }
+
+  double? _normalizeNativeBearing(double bearing) {
+    if (!bearing.isFinite) {
+      if (!_reportedInvalidBearing) {
+        _reportedInvalidBearing = true;
+        _log('Ignored non-finite native bearing: $bearing');
+      }
+      return null;
+    }
+    _reportedInvalidBearing = false;
+    final normalized = bearing % 360;
+    return normalized < 0 ? normalized + 360 : normalized;
   }
 
   void _toggleSearch() {
@@ -1817,9 +1913,185 @@ class _MyAppState extends State<MyApp> {
   void _onFavoriteSelected(FavoriteLocation favorite) {
     // Navigate to the map and move to the selected location
     _mapController.moveToLocation(favorite.lat, favorite.lon, favorite.zoom);
+    _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
     setState(() {
       _currentTabIndex = 0; // Switch to Map tab
     });
+  }
+
+  Widget _buildShellForFormFactor(BuildContext context) {
+    final formFactor = context.exampleFormFactor;
+    if (formFactor.isDesktop) {
+      return _buildDesktopWorkbench(context);
+    }
+    return _buildAdaptiveTabScaffold(context);
+  }
+
+  Widget _buildAdaptiveTabScaffold(BuildContext context) {
+    return AdaptiveAppScaffold(
+      title: 'Agus Maps',
+      resizeToAvoidBottomInset: _currentTabIndex != 0,
+      selectedIndex: _currentTabIndex,
+      onDestinationSelected: (index) {
+        setState(() {
+          _currentTabIndex = index;
+        });
+      },
+      destinations: const [
+        AdaptiveScaffoldDestination(
+          icon: Icon(Icons.map_outlined),
+          selectedIcon: Icon(Icons.map),
+          label: 'Map',
+        ),
+        AdaptiveScaffoldDestination(
+          icon: Icon(Icons.favorite_border),
+          selectedIcon: Icon(Icons.favorite),
+          label: 'Favorites',
+        ),
+        AdaptiveScaffoldDestination(
+          icon: Icon(Icons.download_outlined),
+          selectedIcon: Icon(Icons.download),
+          label: 'Downloads',
+        ),
+        AdaptiveScaffoldDestination(
+          icon: Icon(Icons.settings_outlined),
+          selectedIcon: Icon(Icons.settings),
+          label: 'Settings',
+        ),
+        AdaptiveScaffoldDestination(
+          icon: Icon(Icons.info_outline),
+          selectedIcon: Icon(Icons.info),
+          label: 'About',
+        ),
+      ],
+      body: IndexedStack(
+        index: _currentTabIndex,
+        children: [
+          _buildMapTab(
+            context,
+            isVisible: _currentTabIndex == 0,
+            useWorkbenchLayout: false,
+          ),
+          _buildFavoritesTab(context),
+          _buildDownloadsTab(isVisible: _currentTabIndex == 2),
+          SettingsTab(
+            mapScale: _mapScale,
+            interfaceThemeMode: _interfaceThemeMode,
+            mapAppearanceMode: _mapAppearanceMode,
+            mapLanguageCode: _mapLanguageCode,
+            buildings3dEnabled: _buildings3dEnabled,
+            layerState: _mapLayerState,
+            navigationSettings: _navigationSettings,
+            onMapScaleChanged: _updateMapScale,
+            onResetMapScale: _resetMapScale,
+            onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
+            onMapAppearanceModeChanged: _updateMapAppearanceMode,
+            onMapLanguageChanged: _updateMapLanguage,
+            onBuildings3dChanged: _updateBuildings3d,
+            onLayerStateChanged: _updateMapLayerState,
+            onNavigationSettingsChanged: _updateNavigationSettings,
+            onClearCachedData: _clearCachedData,
+          ),
+          const AboutTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopWorkbench(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: VSCodeWorkbench(
+        controller: _workbenchController,
+        activityBuilder: _buildWorkbenchActivity,
+        editorBuilder: _buildWorkbenchEditor,
+        panelBuilder: _buildWorkbenchPanel,
+        secondarySideBarBuilder: _buildWorkbenchSecondarySideBar,
+      ),
+    );
+  }
+
+  Widget _buildWorkbenchActivity(
+    BuildContext context,
+    WorkbenchActivity activity,
+  ) {
+    return switch (activity) {
+      WorkbenchActivity.explorer => AdaptiveLayerManager(
+          formFactor: ExampleFormFactor.desktop,
+          nativeLayerState: _mapLayerState,
+          buildings3dEnabled: _buildings3dEnabled,
+          onNativeLayerStateChanged: _updateMapLayerState,
+          onBuildings3dChanged: _updateBuildings3d,
+          layerStore: _duckDBLayerStore,
+          activeLayerId: _activeDuckDBLayerId,
+          activeDrawTool: _duckDBDrawController?.tool,
+          onRenderingRefresh: _refreshDuckDBNativeLayers,
+          onActiveLayerChanged: _setActiveDuckDBLayer,
+          onDrawToolChanged: _setDuckDBDrawTool,
+        ),
+      WorkbenchActivity.search => Padding(
+          padding: const EdgeInsets.all(10),
+          child: _buildSearchOverlay(context),
+        ),
+      WorkbenchActivity.favorites => _buildFavoritesTab(context),
+      WorkbenchActivity.downloads => _buildDownloadsTab(
+          isVisible: _workbenchController.state.activeActivity ==
+              WorkbenchActivity.downloads,
+        ),
+      WorkbenchActivity.settings => SettingsTab(
+          mapScale: _mapScale,
+          interfaceThemeMode: _interfaceThemeMode,
+          mapAppearanceMode: _mapAppearanceMode,
+          mapLanguageCode: _mapLanguageCode,
+          buildings3dEnabled: _buildings3dEnabled,
+          layerState: _mapLayerState,
+          navigationSettings: _navigationSettings,
+          onMapScaleChanged: _updateMapScale,
+          onResetMapScale: _resetMapScale,
+          onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
+          onMapAppearanceModeChanged: _updateMapAppearanceMode,
+          onMapLanguageChanged: _updateMapLanguage,
+          onBuildings3dChanged: _updateBuildings3d,
+          onLayerStateChanged: _updateMapLayerState,
+          onNavigationSettingsChanged: _updateNavigationSettings,
+          onClearCachedData: _clearCachedData,
+        ),
+      WorkbenchActivity.about => const AboutTab(),
+    };
+  }
+
+  Widget _buildWorkbenchEditor(
+    BuildContext context,
+    WorkbenchEditorTab tab,
+  ) {
+    return switch (tab) {
+      WorkbenchEditorTab.blank => const BlankEditorPlaceholder(),
+      WorkbenchEditorTab.map => _buildMapTab(
+          context,
+          isVisible: _workbenchController.state.activeEditorTab ==
+              WorkbenchEditorTab.map,
+          useWorkbenchLayout: true,
+        ),
+    };
+  }
+
+  Widget _buildWorkbenchPanel(BuildContext context, WorkbenchPanelTab tab) {
+    return switch (tab) {
+      WorkbenchPanelTab.pointOfInterest =>
+        PointOfInterestPanel(placePage: _placePage),
+      WorkbenchPanelTab.debugConsole => DebugConsolePanel(log: _debug),
+    };
+  }
+
+  Widget _buildWorkbenchSecondarySideBar(
+    BuildContext context,
+    WorkbenchSecondarySideBarTab tab,
+  ) {
+    return switch (tab) {
+      WorkbenchSecondarySideBarTab.properties =>
+        PropertiesSideBar(placePage: _placePage),
+      WorkbenchSecondarySideBarTab.inspector => const InspectorSideBar(),
+    };
   }
 
   @override
@@ -1840,103 +2112,54 @@ class _MyAppState extends State<MyApp> {
       ),
       home: Builder(
         builder: (context) {
-          return Scaffold(
-            resizeToAvoidBottomInset: _currentTabIndex != 0,
-            body: SafeArea(
-              // Use IndexedStack to keep all tabs alive (especially the map)
-              // This prevents the map from being unmounted/remounted when switching tabs
-              child: IndexedStack(
-                index: _currentTabIndex,
-                children: [
-                  _buildMapTab(context),
-                  _buildFavoritesTab(context),
-                  _buildDownloadsTab(),
-                  SettingsTab(
-                    mapScale: _mapScale,
-                    interfaceThemeMode: _interfaceThemeMode,
-                    mapAppearanceMode: _mapAppearanceMode,
-                    mapLanguageCode: _mapLanguageCode,
-                    buildings3dEnabled: _buildings3dEnabled,
-                    layerState: _mapLayerState,
-                    navigationSettings: _navigationSettings,
-                    onMapScaleChanged: _updateMapScale,
-                    onResetMapScale: _resetMapScale,
-                    onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
-                    onMapAppearanceModeChanged: _updateMapAppearanceMode,
-                    onMapLanguageChanged: _updateMapLanguage,
-                    onBuildings3dChanged: _updateBuildings3d,
-                    onLayerStateChanged: _updateMapLayerState,
-                    onNavigationSettingsChanged: _updateNavigationSettings,
-                    onClearCachedData: _clearCachedData,
-                  ),
-                  const AboutTab(),
-                ],
-              ),
-            ),
-            bottomNavigationBar: NavigationBar(
-              selectedIndex: _currentTabIndex,
-              onDestinationSelected: (index) {
-                setState(() {
-                  _currentTabIndex = index;
-                });
-              },
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(Icons.map_outlined),
-                  selectedIcon: Icon(Icons.map),
-                  label: 'Map',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.favorite_border),
-                  selectedIcon: Icon(Icons.favorite),
-                  label: 'Favorites',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.download_outlined),
-                  selectedIcon: Icon(Icons.download),
-                  label: 'Downloads',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.settings_outlined),
-                  selectedIcon: Icon(Icons.settings),
-                  label: 'Settings',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.info_outline),
-                  selectedIcon: Icon(Icons.info),
-                  label: 'About',
-                ),
-              ],
-            ),
-          );
+          return _buildShellForFormFactor(context);
         },
       ),
     );
   }
 
   /// Full-screen map tab.
-  Widget _buildMapTab(BuildContext context) {
+  Widget _buildMapTab(
+    BuildContext context, {
+    required bool isVisible,
+    required bool useWorkbenchLayout,
+  }) {
     if (!_dataReady) {
       final theme = Theme.of(context);
       final colorScheme = theme.colorScheme;
-      return Container(
+      return ColoredBox(
         color: colorScheme.surface,
-        child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const CircularProgressIndicator(),
+              const Spacer(),
+              Center(
+                child: Icon(
+                  Icons.map_outlined,
+                  size: 40,
+                  color: colorScheme.primary,
+                ),
+              ),
               const SizedBox(height: 16),
-              Text(_status),
+              Center(child: Text(_status)),
               const SizedBox(height: 16),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    _debug,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                      fontFamily: 'monospace',
+                flex: 2,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerLowest,
+                    border: Border.all(color: colorScheme.outlineVariant),
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      _debug,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontFamily: 'monospace',
+                      ),
                     ),
                   ),
                 ),
@@ -1953,20 +2176,24 @@ class _MyAppState extends State<MyApp> {
         : _placePage == null
             ? 24.0
             : 248.0;
+    final uiSpec = context.exampleUiSpec;
+    final formFactor = uiSpec.formFactor;
+    final dockedPanelWidth = uiSpec.dockedPanelWidth;
+    final dockedColumnWidth = max(uiSpec.searchOverlayWidth, dockedPanelWidth);
     final drawController = _duckDBDrawController;
     final layerStore = _duckDBLayerStore;
 
     return Stack(
       children: [
         agus_maps_flutter.AgusMap(
+          key: _mapViewportKey,
           initialLat: kDefaultLocation.lat,
           initialLon: kDefaultLocation.lon,
           initialZoom: kDefaultLocation.zoom,
           onMapReady: _onMapReady,
           onPlacePage: _handlePlacePage,
           controller: _mapController,
-          isVisible:
-              _currentTabIndex == 0, // Only resize when map tab is active
+          isVisible: isVisible,
           userScale: _mapScale,
           resizePolicy: agus_maps_flutter.AgusMapResizePolicy.stableViewport,
         ),
@@ -1976,20 +2203,52 @@ class _MyAppState extends State<MyApp> {
               controller: drawController,
             ),
           ),
-        Positioned(
-          top: 12,
-          left: 12,
-          right: 12,
-          child: _buildSearchOverlay(context),
-        ),
-        if (_duckDBLayerPanelVisible && layerStore != null)
+        if (!useWorkbenchLayout && formFactor.isMobile)
           Positioned(
-            top: 76,
+            top: 12,
             left: 12,
             right: 12,
-            child: agus_maps_flutter.DuckDBLayerPanel(
-              store: layerStore,
-              onRenderingRefresh: _refreshDuckDBNativeLayers,
+            child: _buildSearchOverlay(context),
+          )
+        else if (!useWorkbenchLayout)
+          Positioned(
+            top: 16,
+            left: 16,
+            child: SizedBox(
+              width: dockedColumnWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: uiSpec.searchOverlayWidth,
+                    child: _buildSearchOverlay(context),
+                  ),
+                  if (_duckDBLayerPanelVisible) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: dockedPanelWidth,
+                      child: AdaptiveLayerManager(
+                        formFactor: formFactor,
+                        nativeLayerState: _mapLayerState,
+                        buildings3dEnabled: _buildings3dEnabled,
+                        onNativeLayerStateChanged: _updateMapLayerState,
+                        onBuildings3dChanged: _updateBuildings3d,
+                        layerStore: layerStore,
+                        activeLayerId: _activeDuckDBLayerId,
+                        activeDrawTool: drawController?.tool,
+                        onRenderingRefresh: _refreshDuckDBNativeLayers,
+                        onActiveLayerChanged: _setActiveDuckDBLayer,
+                        onDrawToolChanged: _setDuckDBDrawTool,
+                        onClose: () {
+                          setState(() {
+                            _duckDBLayerPanelVisible = false;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
         if (drawController != null)
@@ -1998,6 +2257,7 @@ class _MyAppState extends State<MyApp> {
             bottom: controlsBottom,
             child: agus_maps_flutter.DuckDBLayerDrawToolbar(
               controller: drawController,
+              axis: uiSpec.mapToolbarAxis,
               onCommitted: (featureId) {
                 _log('DuckDB feature committed: $featureId');
               },
@@ -2005,7 +2265,11 @@ class _MyAppState extends State<MyApp> {
           ),
         if (drawController != null)
           Positioned(
-            left: 12,
+            left: useWorkbenchLayout
+                ? 12
+                : formFactor.isMobile
+                    ? 12
+                    : dockedColumnWidth + 28,
             right: 84,
             top: 76,
             child: AnimatedBuilder(
@@ -2023,7 +2287,11 @@ class _MyAppState extends State<MyApp> {
         Positioned(
           right: 12,
           bottom: controlsBottom,
-          child: _buildMapControls(context),
+          child: _buildMapControls(
+            context,
+            formFactor,
+            showLayerButton: !useWorkbenchLayout,
+          ),
         ),
         if (_navigationPlan != null)
           Positioned(
@@ -2032,7 +2300,7 @@ class _MyAppState extends State<MyApp> {
             bottom: 12,
             child: _buildNavigationPanel(context),
           ),
-        if (_placePage != null)
+        if (_placePage != null && !useWorkbenchLayout)
           PlacePageSheet(
             data: _placePage!,
             onClose: _closePlacePage,
@@ -2144,7 +2412,41 @@ class _MyAppState extends State<MyApp> {
     };
   }
 
-  Widget _buildMapControls(BuildContext context) {
+  Future<void> _showLayerManagerSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final height = MediaQuery.sizeOf(context).height * 0.82;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: height),
+            child: SingleChildScrollView(
+              child: AdaptiveLayerManager(
+                formFactor: ExampleFormFactor.mobile,
+                nativeLayerState: _mapLayerState,
+                buildings3dEnabled: _buildings3dEnabled,
+                onNativeLayerStateChanged: _updateMapLayerState,
+                onBuildings3dChanged: _updateBuildings3d,
+                layerStore: _duckDBLayerStore,
+                onRenderingRefresh: _refreshDuckDBNativeLayers,
+                onClose: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMapControls(
+    BuildContext context,
+    ExampleFormFactor formFactor, {
+    required bool showLayerButton,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
       color: colorScheme.surface,
@@ -2153,13 +2455,21 @@ class _MyAppState extends State<MyApp> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_duckDBLayerStore != null) ...[
+          if (showLayerButton) ...[
             IconButton(
               tooltip: 'Layers',
               icon: Icon(
-                _duckDBLayerPanelVisible ? Icons.layers : Icons.layers_outlined,
+                formFactor.isMobile
+                    ? Icons.layers_outlined
+                    : _duckDBLayerPanelVisible
+                        ? Icons.layers
+                        : Icons.layers_outlined,
               ),
               onPressed: () {
+                if (formFactor.isMobile) {
+                  unawaited(_showLayerManagerSheet());
+                  return;
+                }
                 setState(() {
                   _duckDBLayerPanelVisible = !_duckDBLayerPanelVisible;
                 });
@@ -2185,10 +2495,12 @@ class _MyAppState extends State<MyApp> {
               valueListenable: _currentBearing,
               child: const Icon(Icons.navigation),
               builder: (context, bearing, child) {
-                return Transform.rotate(
-                  angle: -bearing * pi / 180,
-                  child: child,
-                );
+                final safeBearing = bearing.isFinite ? bearing : 0.0;
+                final angle = -safeBearing * pi / 180;
+                if (angle == 0.0 || !angle.isFinite) {
+                  return child!;
+                }
+                return Transform.rotate(angle: angle, child: child);
               },
             ),
             onPressed: _resetNorth,
@@ -2459,15 +2771,24 @@ class _MyAppState extends State<MyApp> {
   }
 
   /// Full-screen downloads tab.
-  Widget _buildDownloadsTab() {
+  Widget _buildDownloadsTab({required bool isVisible}) {
     final dataPath = _dataPath;
     if (_mwmStorage == null || dataPath == null) {
+      if (context.exampleFormFactor.isDesktop) {
+        return const Center(
+          child: _DesktopStaticStatus(
+            icon: Icons.cloud_download_outlined,
+            title: 'Preparing Downloads',
+            subtitle: 'Initializing map catalog storage...',
+          ),
+        );
+      }
       return const Center(child: CircularProgressIndicator());
     }
     return DownloadsTab(
       mwmStorage: _mwmStorage!,
       dataPath: dataPath,
-      isVisible: _currentTabIndex == 2, // Downloads tab is index 2
+      isVisible: isVisible,
       onMapsChanged: () {
         setState(() {});
       },

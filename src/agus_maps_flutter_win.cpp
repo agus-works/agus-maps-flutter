@@ -44,6 +44,7 @@
 #include "map/framework.hpp"
 #include "map/place_page_info.hpp"
 #include "indexer/map_style.hpp"
+#include "indexer/map_style_reader.hpp"
 #include "platform/local_country_file.hpp"
 #include "drape/graphics_context_factory.hpp"
 #include "drape_frontend/visual_params.hpp"
@@ -216,6 +217,9 @@ static std::mutex g_mutex;
 static std::mutex g_placePageMutex;
 static double g_currentBearingDegrees = 0.0;
 static bool g_3dBuildingsEnabled = false;
+static bool g_outdoorsEnabled = false;
+static bool g_isolinesEnabled = false;
+static bool g_subwayEnabled = false;
 
 namespace
 {
@@ -232,6 +236,16 @@ double NormalizeBearingDegrees(double degrees) {
 
 bool IsOutdoorsStyle(MapStyle style) {
     return style == MapStyleOutdoorsLight || style == MapStyleOutdoorsDark;
+}
+
+void ApplyRuntimeMapStyle(MapStyle mapStyle) {
+    if (!g_framework || mapStyle == MapStyleMerged) {
+        return;
+    }
+    GetStyleReader().SetCurrentStyle(mapStyle);
+    if (auto engine = g_framework->GetDrapeEngine()) {
+        engine->UpdateMapStyle();
+    }
 }
 
 void WakeRenderer() {
@@ -260,14 +274,14 @@ void SetOutdoorsEnabledInternal(bool enabled) {
         return;
     }
 
+    g_outdoorsEnabled = enabled;
     auto const currentStyle = g_framework->GetMapStyle();
     bool const dark = MapStyleIsDark(currentStyle);
-    g_framework->SaveOutdoorsEnabled(enabled);
 
     if (enabled) {
-        g_framework->SetMapStyle(dark ? MapStyleOutdoorsDark : MapStyleOutdoorsLight);
+        ApplyRuntimeMapStyle(dark ? MapStyleOutdoorsDark : MapStyleOutdoorsLight);
     } else if (IsOutdoorsStyle(currentStyle)) {
-        g_framework->SetMapStyle(dark ? MapStyleDefaultDark : MapStyleDefaultLight);
+        ApplyRuntimeMapStyle(dark ? MapStyleDefaultDark : MapStyleDefaultLight);
     }
 }
 
@@ -275,8 +289,8 @@ void SetIsolinesEnabledInternal(bool enabled) {
     if (!g_framework) {
         return;
     }
+    g_isolinesEnabled = enabled;
     g_framework->GetIsolinesManager().SetEnabled(enabled);
-    g_framework->SaveIsolinesEnabled(enabled);
 }
 
 void SetSubwayEnabledInternal(bool enabled) {
@@ -287,8 +301,8 @@ void SetSubwayEnabledInternal(bool enabled) {
         SetOutdoorsEnabledInternal(false);
         SetIsolinesEnabledInternal(false);
     }
+    g_subwayEnabled = enabled;
     g_framework->GetTransitManager().EnableTransitSchemeMode(enabled);
-    g_framework->SaveTransitSchemeEnabled(enabled);
 }
 }  // namespace
 
@@ -679,8 +693,7 @@ FFI_PLUGIN_EXPORT void comaps_set_3d_buildings_enabled(int enabled) {
     if (!g_framework) {
         return;
     }
-    g_framework->Save3dMode(g_3dBuildingsEnabled, g_3dBuildingsEnabled);
-    g_framework->Allow3dMode(g_3dBuildingsEnabled, g_3dBuildingsEnabled);
+    g_framework->Allow3dMode(false, g_3dBuildingsEnabled);
     WakeRenderer();
 }
 
@@ -693,7 +706,7 @@ FFI_PLUGIN_EXPORT void comaps_set_map_theme(int dark) {
         return;
     }
     auto const currentStyle = g_framework->GetMapStyle();
-    g_framework->SetMapStyle(dark != 0
+    ApplyRuntimeMapStyle(dark != 0
         ? GetDarkMapStyleVariant(currentStyle)
         : GetLightMapStyleVariant(currentStyle));
     WakeRenderer();
@@ -735,13 +748,13 @@ FFI_PLUGIN_EXPORT void comaps_set_subway_enabled(int enabled) {
 
 FFI_PLUGIN_EXPORT void comaps_get_map_layer_state(int* outdoors, int* isolines, int* subway) {
     if (outdoors) {
-        *outdoors = (g_framework && IsOutdoorsStyle(g_framework->GetMapStyle())) ? 1 : 0;
+        *outdoors = g_outdoorsEnabled ? 1 : 0;
     }
     if (isolines) {
-        *isolines = (g_framework && g_framework->LoadIsolinesEnabled()) ? 1 : 0;
+        *isolines = g_isolinesEnabled ? 1 : 0;
     }
     if (subway) {
-        *subway = (g_framework && g_framework->LoadTransitSchemeEnabled()) ? 1 : 0;
+        *subway = g_subwayEnabled ? 1 : 0;
     }
 }
 
@@ -749,13 +762,19 @@ FFI_PLUGIN_EXPORT void comaps_set_map_language(const char* languageCode) {
     if (!g_framework) {
         return;
     }
-    if (!languageCode || !*languageCode) {
-        g_framework->SetCustomMapLanguageCode();
-    } else {
-        g_framework->SetCustomMapLanguageCode(
-            localisation::LanguageCode(languageCode));
+    auto engine = g_framework->GetDrapeEngine();
+    if (!engine) {
+        return;
     }
-    g_framework->RefreshMapLanguage();
+    auto languageIndex = localisation::GetMapLanguageIndex();
+    if (languageCode && *languageCode) {
+        auto const requestedIndex =
+            localisation::ConvertLanguageCodeToLanguageIndex(languageCode);
+        if (requestedIndex != localisation::kUnsupportedLanguageIndex) {
+            languageIndex = requestedIndex;
+        }
+    }
+    engine->SetMapLangIndex(languageIndex);
     WakeRenderer();
 }
 
@@ -887,7 +906,7 @@ FFI_PLUGIN_EXPORT void comaps_force_redraw(void) {
         // UpdateMapStyle clears all render groups and invalidates the read manager,
         // which forces a complete tile reload when the render loop processes it.
         // This is the cleanest way to force a full redraw.
-        g_framework->SetMapStyle(g_framework->GetMapStyle());
+        ApplyRuntimeMapStyle(g_framework->GetMapStyle());
         
         // MakeFrameActive ensures the render loop stays active (isActiveFrame=true)
         // long enough to process the style update and request new tiles.

@@ -1,6 +1,6 @@
 # DuckDB Layers Plan and Progress
 
-Last updated: 2026-05-03
+Last updated: 2026-05-04
 
 This document is the technical handoff for the DuckDB persistence, analytics, and native layer-rendering work in `agus_maps_flutter`. It is intended to be sufficient context for continuing the implementation later or with another AI coding agent.
 
@@ -33,6 +33,499 @@ The rollout order is macOS first, then iOS, Android, Windows, and Linux. macOS w
 - `httpfs` is out-of-tree for DuckDB `v1.5.2`; it is pinned through DuckDB's release config to `duckdb-httpfs` commit `13e18b3c9f3810334f5972b76a3acc247b28e537`.
 - The app database path currently used by the first bridge is `writablePath/agus_layers.duckdb`.
 - The native bridge now covers lifecycle, health, SQL execution, embedded migrations, materialized JSON query results, render-query validation, and Android render-feature copying. Layer CRUD/backups live in the Dart store and Android native rendering is wired through Drape.
+
+## Responsive Example UI Workstream
+
+The example app is now also being treated as the reference adaptive UI surface
+for plugin demos. The earlier shell was mobile-first across every platform,
+which made macOS and other desktop runs feel like stretched phone layouts. The
+new work introduces a shared responsive UI layer under `example/lib/shared/`
+and `example/lib/features/` so mobile, tablet, and desktop behavior can evolve
+through a single design system.
+
+Current responsive decisions:
+
+- Three UI levels are now the source of truth:
+  - mobile: simplified overlays and modal panels
+  - tablet: docked, touch-optimized panels with larger targets
+  - desktop: docked compact panels with denser controls for mouse/keyboard
+- Width and shortest-side are the primary form-factor signals so Android and
+  iPad tablets can adopt the larger-shell experience without custom native
+  platform branching.
+- The layer manager is the first adaptive GIS-style component:
+  - mobile uses a modal layer-tree sheet
+  - tablet uses a larger docked tree with generous touch spacing
+  - desktop uses a compact docked tree inspired by QGIS/ArcGIS layer docks,
+    including grouped nodes, visibility toggles, z-order actions, and feature
+    previews
+- The example shell now uses a side navigation rail on larger screens instead
+  of forcing bottom navigation everywhere.
+
+### May 4 Desktop Workbench Direction
+
+The macOS desktop run is now moving from a stretched mobile/tablet shell to a
+VS Code-style workbench for GIS workflows. The workbench keeps VS Code
+terminology in the example code and UI:
+
+- **Activity Bar**: left-most icon strip for switching workbench activities.
+- **Primary Side Bar**: left resizable pane whose content is controlled by the
+  selected Activity Bar item.
+- **Editor Area**: main viewport with editor tabs. The initial tabs are `Map`
+  and `Blank`, with `Map` selected by default.
+- **Panel**: bottom resizable pane with `POINT OF INTEREST` selected by default
+  and `DEBUG CONSOLE` available for runtime logs.
+- **Secondary Side Bar**: right resizable pane for stacked inspection tabs,
+  starting with `PROPERTIES` and `INSPECTOR`.
+- **Layout Controls**: upper-right editor controls for toggling the Primary Side
+  Bar, Panel, and Secondary Side Bar.
+
+Tabs and panes are treated as viewports over shared app/workbench state. The
+tab widget itself does not own the map, selected feature, layer tree, or logs;
+it only chooses which viewport reads those shared data models.
+
+```mermaid
+flowchart LR
+    WorkbenchController["WorkbenchController\n(global desktop layout state)"]
+    AppState["MyAppState\nmap, logs, place page, DuckDB store"]
+    ActivityBar["Activity Bar"]
+    Primary["Primary Side Bar"]
+    Editor["Editor Area tabs"]
+    Panel["Panel tabs"]
+    Secondary["Secondary Side Bar tabs"]
+
+    ActivityBar --> WorkbenchController
+    WorkbenchController --> Primary
+    WorkbenchController --> Editor
+    WorkbenchController --> Panel
+    WorkbenchController --> Secondary
+    AppState --> Primary
+    AppState --> Editor
+    AppState --> Panel
+    AppState --> Secondary
+```
+
+```mermaid
+flowchart TB
+    Root["VSCodeWorkbench"]
+    Row["Horizontal workbench row"]
+    Activity["Activity Bar\nfixed width"]
+    Primary["Primary Side Bar\nresizable"]
+    Center["Editor + Panel region"]
+    EditorRow["Editor row"]
+    EditorArea["Editor Area\nMap / Blank"]
+    Secondary["Secondary Side Bar\nresizable"]
+    Panel["Panel\nPOINT OF INTEREST / DEBUG CONSOLE\nresizable"]
+
+    Root --> Row
+    Row --> Activity
+    Row --> Primary
+    Row --> Center
+    Center --> EditorRow
+    EditorRow --> EditorArea
+    EditorRow --> Secondary
+    Center --> Panel
+```
+
+The same DuckDB-backed drawing-layer workflow is also being enabled for macOS
+and iOS. Apple platforms already had the DuckDB persistence bridge and static
+extension loading; the current platform gap was the native Drape user-mark
+renderer and screen-to-coordinate projection that Android had first.
+
+Validation after the desktop workbench and Apple renderer update:
+
+```bash
+dart format example/lib/main.dart \
+  example/lib/features/workbench/workbench_controller.dart \
+  example/lib/features/workbench/vscode_workbench.dart \
+  example/lib/features/workbench/workbench_panels.dart \
+  example/lib/features/map/widgets/adaptive_layer_manager.dart \
+  lib/agus_maps_flutter.dart 2>&1 | tee ./output.log
+
+cd example && \
+  flutter analyze lib/main.dart \
+    lib/features/workbench/workbench_controller.dart \
+    lib/features/workbench/vscode_workbench.dart \
+    lib/features/workbench/workbench_panels.dart \
+    lib/features/map/widgets/adaptive_layer_manager.dart \
+    ../lib/agus_maps_flutter.dart 2>&1 | tee ../output.log
+
+cd example && flutter build macos --debug 2>&1 | tee ../output.log
+
+cd example && flutter build ios --simulator 2>&1 | tee ../output.log
+```
+
+Results:
+
+- Dart analysis reported no issues for the touched Flutter files.
+- macOS debug example build produced
+  `build/macos/Build/Products/Debug/agus_maps_flutter_example.app`.
+- iOS simulator example build produced `build/ios/iphonesimulator/Runner.app`.
+
+### May 4 Desktop Density Refinement
+
+The second desktop pass focuses on making macOS, Linux, and Windows feel like a
+professional GIS workstation rather than a tablet shell. The workbench keeps the
+same VS Code structure, but its surfaces are now moving toward Visual
+Studio/Blender-style density:
+
+- Splitter visuals collapse to one-pixel separators with larger transparent drag
+  hit targets, avoiding stacked pane borders.
+- Feature properties and point-of-interest details share a compact, full-width
+  property-grid widget.
+- The desktop Layer Manager becomes a compact table/property-grid dock with a
+  direct **New Layer** command, active edit-layer selection, z-order controls,
+  and drawing-session tools for point, segment, line, and polygon capture.
+- Desktop Downloads use a compact explorer-style tree with one-line rows,
+  status columns, and right-aligned actions.
+- `doc/UI-LAYOUT.md` is the canonical layout guide for desktop, tablet, and
+  mobile density decisions.
+
+```mermaid
+flowchart TB
+    Desktop["Desktop workbench"]
+    LayerManager["Layer Manager\nproperty grid + layer table"]
+    Downloads["Downloads\ncompact explorer tree"]
+    Properties["Properties\nshared compact grid"]
+    Splitters["Pane splitters\n1 px visible separators"]
+
+    Desktop --> LayerManager
+    Desktop --> Downloads
+    Desktop --> Properties
+    Desktop --> Splitters
+```
+
+Validation after the density refinement:
+
+```bash
+dart format example/lib/main.dart \
+  example/lib/features/workbench/vscode_workbench.dart \
+  example/lib/features/workbench/workbench_panels.dart \
+  example/lib/features/map/widgets/adaptive_layer_manager.dart \
+  example/lib/shared/widgets/compact_property_grid.dart \
+  example/lib/downloads_tab.dart 2>&1 | tee ./output.log
+
+cd example && \
+  flutter analyze lib/main.dart \
+    lib/features/workbench/vscode_workbench.dart \
+    lib/features/workbench/workbench_panels.dart \
+    lib/features/map/widgets/adaptive_layer_manager.dart \
+    lib/shared/widgets/compact_property_grid.dart \
+    lib/downloads_tab.dart 2>&1 | tee ../output.log
+
+cd example && flutter build macos --debug 2>&1 | tee ../output.log
+```
+
+Results:
+
+- Dart analysis reported no issues for the touched Flutter files.
+- macOS debug example build produced
+  `build/macos/Build/Products/Debug/agus_maps_flutter_example.app`.
+
+### May 4 macOS Release TransformLayer Fix
+
+The macOS release app logged repeated Flutter engine errors:
+
+```text
+[ERROR:flutter/flow/layers/transform_layer.cc(15)] TransformLayer is constructed with an invalid matrix.
+```
+
+The issue reproduced only when the desktop Layer Manager was visible in the
+Primary Side Bar at startup. The fix keeps the compact desktop UI but avoids
+startup transform-producing controls in that pane:
+
+- Workbench tabs now build the active viewport directly instead of keeping
+  inactive viewports alive in `IndexedStack`.
+- Desktop Layer Manager map toggles now use compact property-grid checkboxes
+  instead of adaptive switches.
+- Drawing-session tools now use custom compact buttons instead of Material
+  `FilterChip`.
+- The map texture widget now rejects unbounded/non-finite layout constraints
+  before creating or painting a texture.
+- The compass bearing path ignores non-finite native bearings before they can
+  reach `Transform.rotate`.
+
+Validation after the runtime fix:
+
+```bash
+dart format example/lib/features/workbench/workbench_controller.dart \
+  example/lib/features/workbench/vscode_workbench.dart \
+  example/lib/features/map/widgets/adaptive_layer_manager.dart \
+  example/lib/main.dart \
+  lib/agus_maps_flutter.dart 2>&1 | tee ./output.log
+
+cd example && \
+  flutter analyze lib/main.dart \
+    lib/features/workbench/workbench_controller.dart \
+    lib/features/workbench/vscode_workbench.dart \
+    lib/features/map/widgets/adaptive_layer_manager.dart \
+    ../lib/agus_maps_flutter.dart 2>&1 | tee ../output.log
+
+cd example && flutter build macos --release 2>&1 | tee ../output.log
+
+cd example && \
+  perl -e 'alarm 8; exec @ARGV' \
+    ./build/macos/Build/Products/Release/agus_maps_flutter_example.app/Contents/MacOS/agus_maps_flutter_example \
+    2>&1 | tee ../output.release-macos-check.log
+```
+
+Results:
+
+- Dart analysis reported no issues for the touched Flutter files.
+- macOS release build produced
+  `build/macos/Build/Products/Release/agus_maps_flutter_example.app`.
+- The bounded release runtime smoke log no longer contains the TransformLayer
+  invalid-matrix error.
+
+### May 4 macOS Release Crash Follow-up
+
+The next macOS release run crashed after startup with a native stack showing
+`comaps_set_3d_buildings_enabled` entering `Framework::Save3dMode`, which writes
+CoMaps native string settings, while Drape rendering was active. In this Flutter
+plugin example, the user-facing preference is already stored in Dart
+`SharedPreferences`, so the native bridge should apply the runtime renderer
+state only and avoid duplicating persistence in CoMaps settings storage.
+
+The bridge now treats the Flutter 3D buildings toggle as a process-local runtime
+setting on macOS, iOS, Linux, Windows, and the shared C++ fallback:
+
+```mermaid
+flowchart LR
+    UI["Flutter settings / Layer Manager"]
+    Prefs["SharedPreferences\nsource of truth"]
+    FFI["comaps_set_3d_buildings_enabled"]
+    Drape["Framework::Allow3dMode\nruntime renderer state"]
+    NativeSettings["Framework::Save3dMode\nnative string storage"]
+
+    UI --> Prefs
+    UI --> FFI
+    FFI --> Drape
+    FFI -. no longer writes .-> NativeSettings
+```
+
+Two desktop-specific stability changes accompany the native fix:
+
+- `comaps_set_3d_buildings_enabled` no longer calls `Framework::Save3dMode`.
+  The call now uses `Allow3dMode(false, buildingsEnabled)` so the buildings
+  toggle does not implicitly change the separate perspective/navigation mode.
+- Desktop Downloads replaces the remaining animated progress indicators with
+  static icons and compact deterministic progress bars. Mobile and tablet keep
+  their larger touch-oriented progress controls.
+- The reset-north compass icon now avoids constructing a transform layer for
+  the zero-bearing startup state and only rotates when the bearing is finite and
+  non-zero.
+
+Validation after the crash follow-up:
+
+```bash
+dart format example/lib/main.dart example/lib/downloads_tab.dart \
+  2>&1 | tee ./output.log
+
+cd example && \
+  flutter analyze lib/main.dart lib/downloads_tab.dart \
+    ../lib/agus_maps_flutter.dart 2>&1 | tee ../output.log
+
+cd example && flutter build macos --release 2>&1 | tee ../output.log
+
+cd example && \
+  perl -e 'alarm 120; exec @ARGV' \
+    ./build/macos/Build/Products/Release/agus_maps_flutter_example.app/Contents/MacOS/agus_maps_flutter_example \
+    2>&1 | tee ../output.release-macos-check.log
+```
+
+Results:
+
+- Dart analysis reported no issues for the touched Dart files.
+- macOS release build produced
+  `build/macos/Build/Products/Release/agus_maps_flutter_example.app`.
+- The 120-second release smoke completed cleanly with no `TransformLayer`,
+  `SIGSEGV`, `EXC_BAD_ACCESS`, `Save3dMode`, `ERROR`, or `FATAL` entries in
+  `output.release-macos-check.log`.
+
+### May 4 macOS Resize/Layout Transition Crash Follow-up
+
+The next desktop macOS report crashed while resizing from the tablet/adaptive
+shell into the desktop workbench. The main thread was inside Flutter's
+`ResizeSynchronizer` and the plugin `comaps_invalidate` bridge, while Drape
+render threads were processing `FrontendRenderer::InvalidateRect` and Metal
+buffer cleanup. That made viewport-rect invalidation during native surface
+resize the risky operation.
+
+The resize path now keeps the map viewport and renderer lifecycle stable:
+
+- The `AgusMap` used by the example has a stable `GlobalKey`, so Flutter can
+  reparent the same map viewport when the shell crosses the adaptive/desktop
+  breakpoint instead of creating a second native map surface during the resize.
+- The map viewport remains stable across responsive shell changes, so macOS,
+  Linux, and Windows can still move between mobile, tablet, and desktop layouts
+  by width without creating a second native map surface during resize.
+- `_applyNativeMapSettings()` no longer calls an extra `invalidateMap()` after
+  every setting write. The native runtime setting functions already wake the
+  renderer.
+- macOS and iOS `WakeRenderer`, `comaps_invalidate`, and `comaps_force_redraw`
+  now request `InvalidateRendering()` plus `MakeFrameActive()` without forcing
+  `InvalidateRect(GetCurrentViewport())` during resize-sensitive refreshes.
+- Previously misleading duplicate map registration warnings are no longer
+  emitted for already-registered maps; `VersionAlreadyExists` is treated as a
+  benign success path.
+
+```mermaid
+flowchart LR
+    Resize["Window resize / breakpoint change"]
+    Shell["Adaptive or desktop shell"]
+    MapKey["Stable AgusMap GlobalKey"]
+    NativeSurface["Existing native map surface"]
+    Refresh["Renderer refresh"]
+    InvalidateRect["InvalidateRect during resize"]
+
+    Resize --> Shell
+    Shell --> MapKey
+    MapKey --> NativeSurface
+    NativeSurface --> Refresh
+    Refresh -. avoids .-> InvalidateRect
+```
+
+### May 4 Property Grid Layout Follow-up
+
+The desktop inspector/property grids were reported as visually garbled, with
+labels and values painting over each other in compact panes. The shared
+`CompactPropertyGrid` now owns text layout instead of embedding independent
+`SelectableText` controls in every row.
+
+The grid pattern is now:
+
+- One shared row primitive with a dense intrinsic minimum height.
+- A fixed-width label cell with ellipsis.
+- A flexible value cell with compact clipped text or a centered control.
+- Boolean values use a small `On`/`Off` pill control instead of a checkbox in
+  dense grids.
+- Optional trailing actions aligned to the row center.
+- One-pixel row and column separators.
+
+```mermaid
+flowchart LR
+    Source["POI / selected feature / map settings"]
+    Rows["CompactPropertyRow"]
+    Grid["CompactPropertyGrid"]
+    Label["fixed label cell"]
+    Value["flex value cell"]
+    Boolean["On / Off pill"]
+    Pane["Panel or Secondary Side Bar"]
+
+    Source --> Rows
+    Rows --> Grid
+    Grid --> Label
+    Grid --> Value
+    Value --> Boolean
+    Grid --> Pane
+```
+
+### May 4 Responsive Breakpoint Correction
+
+Desktop platforms were temporarily locked to the desktop workbench at every
+window width to avoid the resize crash while the native map surface was being
+stabilized. With the stable map key and non-destructive renderer refresh path in
+place, form-factor resolution is again width-based:
+
+- Mobile: shortest side below 600 logical pixels or width below 700.
+- Desktop OS workbench: macOS, Linux, or Windows at width 1100 and above.
+- Any platform desktop workbench: width 1400 and above.
+- Tablet: the remaining medium-sized layouts.
+
+```mermaid
+flowchart TB
+    Metrics["MediaQuery size"]
+    Mobile["mobile\nshortest < 600 or width < 700"]
+    DesktopOS["desktop OS\nwidth >= 1100"]
+    Wide["any OS\nwidth >= 1400"]
+    Tablet["tablet\nremaining medium width"]
+
+    Metrics --> Mobile
+    Metrics --> DesktopOS
+    Metrics --> Wide
+    Metrics --> Tablet
+```
+
+### May 4 macOS Search Crash / Surface Reattachment Follow-up
+
+The macOS debug search report did not include an Apple crash report, but
+`output.debug-macos.log` ended with `Lost connection to device` immediately
+after Flutter logged a second `AgusMap` surface creation and native macOS logged
+a new `agus_native_set_surface` while the previous Metal render context was
+still presenting frames. The user action was search, but the failure signature
+is a responsive-shell map-surface lifecycle issue: search changed pane/content
+layout enough for Flutter to rebuild the map host, which then tried to create a
+second native CoMaps/Drape surface.
+
+The Dart map widget now treats the native texture as a singleton attachment:
+
+- The first `AgusMap` creates the native surface and records the texture id,
+  logical size, physical size, device pixel ratio, user scale, and visual scale.
+- Later `AgusMap` states created by responsive shell changes attach to the
+  existing texture id instead of calling `createMapSurface`.
+- Attached states schedule `resizeMapSurface` for the new layout size.
+- `onMapReady` remains tied to first native creation so app initialization is
+  not replayed during shell reparenting.
+
+```mermaid
+flowchart LR
+    First["First AgusMap state"]
+    Native["createMapSurface\nnative texture"]
+    Shared["shared texture metadata"]
+    Rebuild["Responsive shell rebuild"]
+    Next["Next AgusMap state"]
+    Attach["attach existing texture"]
+    Resize["resizeMapSurface"]
+
+    First --> Native --> Shared
+    Rebuild --> Next
+    Shared --> Attach --> Next
+    Next --> Resize
+```
+
+### May 4 Cross-platform Build and CI Assessment
+
+The current platform readiness pass reviewed Android, iOS, Linux, Windows, and
+GitHub Actions dependency flow without running local emulators or desktop apps.
+
+Findings and changes:
+
+- Android example `ndkVersion` is aligned with CI's installed
+  `NDK_VERSION=29.0.14206865`, avoiding a packaging build that asks Gradle for a
+  different NDK than the workflow installs.
+- Linux CI now copies every file from `build/agus-binaries-linux/x64/` into
+  `linux/prebuilt/x64/`, not only `libagus_maps_flutter.so`. This preserves
+  private runtime dependencies such as `libduckdb.so` when present.
+- Responsive layout is shared across Android, iOS, macOS, Linux, and Windows
+  through `resolveExampleFormFactor()`.
+- Windows and Linux remain theoretical/local-code assessments on this macOS
+  machine; GitHub Actions is the authoritative host validation path for those
+  targets.
+- iOS and Android can be build-validated locally without launching simulators or
+  emulators.
+
+```mermaid
+flowchart TB
+    CI["GitHub Actions"]
+    Apple["macOS runner\niOS + macOS"]
+    Android["Ubuntu runner\nAndroid"]
+    Linux["Ubuntu runner\nLinux"]
+    Windows["Windows runner\nWindows"]
+    Assets["MWM + ICU + symbols"]
+    Native["CoMaps + DuckDB binaries"]
+    Apps["Example app artifacts"]
+
+    CI --> Apple
+    CI --> Android
+    CI --> Linux
+    CI --> Windows
+    Apple --> Native
+    Android --> Native
+    Linux --> Native
+    Windows --> Native
+    Linux --> Assets
+    Assets --> Windows
+    Native --> Apps
+```
 
 ## Current File Map
 

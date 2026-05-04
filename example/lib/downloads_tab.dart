@@ -7,6 +7,7 @@ import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus;
 import 'package:fuzzywuzzy/fuzzywuzzy.dart' as fuzz;
 import 'package:storage_space/storage_space.dart';
 import 'downloads_cache.dart';
+import 'shared/adaptive/form_factor.dart';
 
 /// Minimum disk space required after download (128 MB).
 const int kMinRemainingSpaceBytes = 128 * 1024 * 1024;
@@ -748,6 +749,12 @@ class _DownloadsTabState extends State<DownloadsTab> {
     );
   }
 
+  bool get _usesStaticProgress =>
+      Platform.isMacOS ||
+      Platform.isLinux ||
+      Platform.isWindows ||
+      context.exampleFormFactor.isDesktop;
+
   Future<bool> _showWarning(String message) async {
     return await showDialog<bool>(
           context: context,
@@ -821,6 +828,18 @@ class _DownloadsTabState extends State<DownloadsTab> {
   }
 
   Widget _buildLoadingView() {
+    if (_usesStaticProgress) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: _StaticDesktopProgress(
+            icon: Icons.cloud_download_outlined,
+            label: _loadingStep.message,
+          ),
+        ),
+      );
+    }
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -883,6 +902,10 @@ class _DownloadsTabState extends State<DownloadsTab> {
   }
 
   Widget _buildContent() {
+    if (context.exampleFormFactor.isDesktop) {
+      return _buildCompactDesktopContent();
+    }
+
     return Column(
       children: [
         // Header with selector and status
@@ -891,6 +914,123 @@ class _DownloadsTabState extends State<DownloadsTab> {
         // Region list
         Expanded(child: _buildRegionList()),
       ],
+    );
+  }
+
+  Widget _buildCompactDesktopContent() {
+    return Column(
+      children: [
+        _buildCompactDesktopHeader(),
+        Expanded(child: _buildRegionList()),
+      ],
+    );
+  }
+
+  Widget _buildCompactDesktopHeader() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final downloadedCount = widget.mwmStorage.getAll().length;
+    final activeCount = _activeDownloads.length;
+    final snapshotLabel = _selectedMirrorResult?.latestSnapshot?.version ??
+        _selectedMirrorResult?.statusText ??
+        'latest';
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cloud_download_outlined,
+                    size: 16, color: colorScheme.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Downloads',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                _CompactDownloadsStatus(
+                  label: '$downloadedCount installed',
+                  icon: Icons.check_circle_outline,
+                ),
+                const SizedBox(width: 6),
+                _CompactDownloadsStatus(
+                  label: '$activeCount active',
+                  icon: Icons.downloading,
+                ),
+                IconButton(
+                  tooltip: 'Refresh downloads',
+                  onPressed: () => _init(forceRefresh: true),
+                  icon: const Icon(Icons.refresh, size: 16),
+                  visualDensity: VisualDensity.compact,
+                  constraints:
+                      const BoxConstraints.tightFor(width: 28, height: 28),
+                  padding: EdgeInsets.zero,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 30,
+                    child: TextField(
+                      controller: _searchController,
+                      style: theme.textTheme.bodySmall,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search, size: 16),
+                        prefixIconConstraints:
+                            const BoxConstraints.tightFor(width: 28),
+                        hintText: 'Search map regions',
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 8),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: _searchQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Clear search',
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                                icon: const Icon(Icons.close, size: 14),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                      ),
+                      onChanged: (value) =>
+                          setState(() => _searchQuery = value),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: 'Snapshot',
+                  child: Text(
+                    snapshotLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1146,14 +1286,14 @@ class _DownloadsTabState extends State<DownloadsTab> {
                             ? Theme.of(context)
                                 .colorScheme
                                 .primaryContainer
-                                .withOpacity(0.3)
+                                .withValues(alpha: 0.3)
                             : null,
                         border: showDivider
                             ? Border(
                                 bottom: BorderSide(
                                   color: Theme.of(context)
                                       .dividerColor
-                                      .withOpacity(0.5),
+                                      .withValues(alpha: 0.5),
                                 ),
                               )
                             : null,
@@ -1207,7 +1347,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
                               decoration: BoxDecoration(
                                 color:
                                     _getLatencyColor(result.mirror.latencyMs!)
-                                        .withOpacity(0.1),
+                                        .withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -1251,9 +1391,9 @@ class _DownloadsTabState extends State<DownloadsTab> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1268,6 +1408,14 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
   Widget _buildRegionList() {
     if (_isLoading) {
+      if (_usesStaticProgress) {
+        return Center(
+          child: _StaticDesktopProgress(
+            icon: Icons.folder_open_outlined,
+            label: _loadingStep.message,
+          ),
+        );
+      }
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -1371,9 +1519,13 @@ class _DownloadsTabState extends State<DownloadsTab> {
               ),
             );
           case _ListItemType.header:
-            return _buildSectionHeader(item.title!, item.color!);
+            return context.exampleFormFactor.isDesktop
+                ? _buildCompactSectionHeader(item.title!)
+                : _buildSectionHeader(item.title!, item.color!);
           case _ListItemType.region:
-            return _buildRegionTile(item.region!, depth: item.depth);
+            return context.exampleFormFactor.isDesktop
+                ? _buildCompactRegionTile(item.region!, depth: item.depth)
+                : _buildRegionTile(item.region!, depth: item.depth);
         }
       },
     );
@@ -1395,13 +1547,140 @@ class _DownloadsTabState extends State<DownloadsTab> {
   Widget _buildSectionHeader(String title, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: color.withOpacity(0.05),
+      color: color.withValues(alpha: 0.05),
       child: Text(
         title,
         style: TextStyle(
           fontWeight: FontWeight.bold,
           color: color,
           fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactSectionHeader(String title) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+      ),
+      child: Text(
+        title.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+      ),
+    );
+  }
+
+  Widget _buildCompactRegionTile(MwmRegion region, {required int depth}) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDownloaded = _isRegionDownloaded(region);
+    final isOutdated = _isRegionOutdated(region);
+    final progress = region.isLeaf ? _downloadProgress[region.name] : null;
+    final error = _regionError(region);
+    final isDownloading = _isRegionDownloading(region);
+    final isExpanded = _expandedRegionIds.contains(region.id);
+    final downloadedLeafCount = _downloadedLeafCount(region);
+    final leafCount = region.leafRegions.length;
+    final statusColor = isOutdated
+        ? Colors.orange
+        : isDownloaded
+            ? Colors.green
+            : isDownloading
+                ? Colors.blue
+                : downloadedLeafCount > 0
+                    ? Colors.orange
+                    : colorScheme.onSurfaceVariant;
+
+    return InkWell(
+      onTap: region.isGroup
+          ? () {
+              setState(() {
+                if (isExpanded) {
+                  _expandedRegionIds.remove(region.id);
+                } else {
+                  _expandedRegionIds.add(region.id);
+                }
+              });
+            }
+          : error != null
+              ? () {
+                  setState(() {
+                    _downloadErrors.remove(region.name);
+                  });
+                }
+              : null,
+      child: Container(
+        height: 30,
+        padding: EdgeInsets.only(left: 8 + depth * 14, right: 4),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              child: region.isGroup
+                  ? Icon(
+                      isExpanded ? Icons.expand_more : Icons.chevron_right,
+                      size: 16,
+                      color: colorScheme.onSurfaceVariant,
+                    )
+                  : const SizedBox(),
+            ),
+            Icon(
+              region.isGroup
+                  ? Icons.folder_outlined
+                  : isDownloaded
+                      ? Icons.check_circle_outline
+                      : isDownloading
+                          ? Icons.downloading
+                          : Icons.circle_outlined,
+              color: statusColor,
+              size: 16,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              flex: 5,
+              child: Text(
+                region.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight:
+                      region.isGroup ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 4,
+              child: Text(
+                error ??
+                    _regionSubtitle(region, downloadedLeafCount, leafCount),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color:
+                      error == null ? colorScheme.onSurfaceVariant : Colors.red,
+                ),
+              ),
+            ),
+            _buildCompactTrailing(
+              region,
+              isDownloaded,
+              isDownloading,
+              progress,
+            ),
+          ],
         ),
       ),
     );
@@ -1581,7 +1860,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
         );
   }
 
-  Widget _buildTrailing(
+  Widget _buildCompactTrailing(
     MwmRegion region,
     bool isDownloaded,
     bool isDownloading,
@@ -1589,8 +1868,97 @@ class _DownloadsTabState extends State<DownloadsTab> {
   ) {
     if (region.isGroup && isDownloading) {
       return const SizedBox(
-        width: 24,
-        height: 24,
+        width: 32,
+        child: Center(
+          child: Icon(Icons.downloading, size: 14),
+        ),
+      );
+    }
+
+    if (isDownloading && progress != null) {
+      return SizedBox(
+        width: 54,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            _CompactProgressBar(value: progress),
+            const SizedBox(width: 4),
+            Text(
+              '${(progress * 100).toInt()}%',
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isDownloaded) {
+      final isBundled = _isRegionBundled(region);
+      final isOutdated = _isRegionOutdated(region);
+      return SizedBox(
+        width: 74,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            if (isOutdated)
+              _CompactDownloadIconButton(
+                tooltip: region.isGroup ? 'Update maps' : 'Update map',
+                icon: Icons.system_update_alt,
+                color: Colors.orange.shade700,
+                onPressed:
+                    _canStartDownload ? () => _downloadRegion(region) : null,
+              ),
+            if (!isBundled)
+              _CompactDownloadIconButton(
+                tooltip: region.isGroup ? 'Delete maps' : 'Delete map',
+                icon: Icons.delete_outline,
+                color: Colors.red.shade400,
+                onPressed: () => _confirmDeleteRegion(region),
+              ),
+            if (isBundled)
+              Tooltip(
+                message: 'Bundled',
+                child: Icon(
+                  Icons.inventory_2_outlined,
+                  size: 15,
+                  color: Colors.blue.shade700,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: 32,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: _CompactDownloadIconButton(
+          tooltip: _canStartDownload
+              ? region.isGroup
+                  ? 'Download missing maps'
+                  : 'Download'
+              : 'Max $kMaxConcurrentDownloads concurrent downloads',
+          icon: Icons.download,
+          color: _canStartDownload ? Colors.blue : Colors.grey,
+          onPressed: _canStartDownload ? () => _downloadRegion(region) : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrailing(
+    MwmRegion region,
+    bool isDownloaded,
+    bool isDownloading,
+    double? progress,
+  ) {
+    if (region.isGroup && isDownloading) {
+      if (_usesStaticProgress) {
+        return const Icon(Icons.downloading_outlined, size: 18);
+      }
+      return const SizedBox.square(
+        dimension: 24,
         child: CircularProgressIndicator(strokeWidth: 2),
       );
     }
@@ -1809,6 +2177,129 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
 /// Item types for the virtualized list
 enum _ListItemType { searchCount, header, region }
+
+class _CompactDownloadsStatus extends StatelessWidget {
+  const _CompactDownloadsStatus({required this.label, required this.icon});
+
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: colorScheme.onSurfaceVariant),
+        const SizedBox(width: 3),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactDownloadIconButton extends StatelessWidget {
+  const _CompactDownloadIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, color: color, size: 15),
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+    );
+  }
+}
+
+class _StaticDesktopProgress extends StatelessWidget {
+  const _StaticDesktopProgress({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 24, color: colorScheme.primary),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelLarge,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Loading map catalog...',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactProgressBar extends StatelessWidget {
+  const _CompactProgressBar({required this.value});
+
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final clampedValue = value.clamp(0.0, 1.0).toDouble();
+
+    return SizedBox(
+      width: 18,
+      height: 4,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: FractionallySizedBox(
+            widthFactor: clampedValue,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colorScheme.primary,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Helper class for ListView.builder items
 class _ListItem {

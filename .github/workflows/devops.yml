@@ -1916,7 +1916,7 @@ jobs:
       - name: Setup Linux Pre-built Binaries
         run: |
           mkdir -p linux/prebuilt/x64
-          cp build/agus-binaries-linux/x64/libagus_maps_flutter.so linux/prebuilt/x64/
+          cp -R build/agus-binaries-linux/x64/* linux/prebuilt/x64/
           echo "=== Prebuilt Structure ==="
           ls -la linux/prebuilt/
 
