@@ -83,16 +83,18 @@ The public Dart API includes `DuckDBLayerStore`, which uses the native DuckDB br
 
 ## Native Drape Rendering
 
-Android now has an initial DuckDB-backed native renderer. The renderer queries visible `agus.layer_features` rows joined to visible `agus.layers`, filters by stored bounding boxes and zoom bounds, converts WGS84 geometry to CoMaps Mercator coordinates in native code, and submits points plus line/polygon outlines to Drape through `df::UserMarksProvider`.
+Android, macOS, and iOS now have an initial DuckDB-backed native renderer. The renderer queries visible `agus.layer_features` rows joined to visible `agus.layers`, filters by stored bounding boxes and zoom bounds, converts WGS84 geometry to CoMaps Mercator coordinates in native code, and submits points plus line/polygon outlines to Drape through `df::UserMarksProvider`.
 
 The renderer fetches native rows through paged C ABI calls rather than the JSON query helper, so map refreshes avoid one large materialized JSON payload. The current Android refresh loop reads up to 10,000 matching rows in batches of 1,000 before submitting the visible geometries to Drape.
 
 The public Dart controls are:
 
-- `setDuckDBMapLayerRenderingEnabled(bool enabled)`: enables or disables viewport-driven native refreshes on Android.
+- `setDuckDBMapLayerRenderingEnabled(bool enabled)`: enables or disables viewport-driven native refreshes on Android, macOS, and iOS.
 - `refreshDuckDBMapLayers()`: manually refreshes visible features and returns the number submitted to Drape, or a negative value if DuckDB/map state is not ready.
 
-The renderer is intentionally Android-only for now. Apple, Windows, and Linux will need platform-specific Drape ownership wiring before these helpers are enabled there.
+The project layer store starts independently from the renderer so users can
+create layers and capture features before the native map surface is ready. See
+[LAYERS.md](LAYERS.md) for the runtime startup contract.
 
 ## Reusable Layer UI
 

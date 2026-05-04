@@ -427,6 +427,7 @@ class _MyAppState extends State<MyApp> {
   agus_maps_flutter.DuckDBLayerStore? _duckDBLayerStore;
   agus_maps_flutter.DuckDBLayerDrawController? _duckDBDrawController;
   String _activeDuckDBLayerId = _userDrawLayerId;
+  String _duckDBLayerStoreStatus = 'DuckDB layer store is starting';
   final WorkbenchController _workbenchController = WorkbenchController();
   final GlobalKey _mapViewportKey = GlobalKey();
   bool _duckDBLayerPanelVisible = true;
@@ -1085,6 +1086,7 @@ class _MyAppState extends State<MyApp> {
       _log('Setting locale: $localeTag');
       agus_maps_flutter.setLocale(localeTag);
 
+      _initializeDuckDBProjectLayers();
       _log('Bundled maps will be registered during surface creation...');
 
       if (!mounted) return;
@@ -1141,7 +1143,7 @@ class _MyAppState extends State<MyApp> {
     _nativeSurfaceReady = true;
     _applyNativeMapSettings();
     _applyNativeNavigationSettings();
-    _enableDuckDBLayerRendering();
+    _enableDuckDBNativeLayerRendering();
     _startBearingUpdates();
 
     // Re-register all previously downloaded maps from MwmStorage
@@ -1201,12 +1203,24 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  void _enableDuckDBLayerRendering() {
+  void _initializeDuckDBProjectLayers() {
+    if (_duckDBLayerStore != null) return;
     if (_dataPath == null) {
+      _log('DuckDB project layer store deferred: data path is not ready.');
+      if (mounted) {
+        setState(() {
+          _duckDBLayerStoreStatus = 'Waiting for app data path';
+        });
+      }
       return;
     }
 
     try {
+      if (mounted) {
+        setState(() {
+          _duckDBLayerStoreStatus = 'Opening DuckDB project layer store...';
+        });
+      }
       final store = agus_maps_flutter.DuckDBLayerStore(writablePath: _dataPath!)
         ..open();
       store.upsertLayer(
@@ -1231,22 +1245,38 @@ class _MyAppState extends State<MyApp> {
         setState(() {
           _duckDBLayerStore = store;
           _duckDBDrawController = controller;
+          _duckDBLayerStoreStatus = 'DuckDB project layer store ready';
         });
       }
       _log('DuckDB drawing layer store enabled.');
-
-      try {
-        agus_maps_flutter.setDuckDBMapLayerRenderingEnabled(true);
-        final count = agus_maps_flutter.refreshDuckDBMapLayers();
-        _log('DuckDB layer rendering enabled: $count visible features.');
-      } catch (error, stackTrace) {
-        _log(
-          'DuckDB native layer rendering unavailable; '
-          'drawing layer persistence remains enabled: $error\n$stackTrace',
-        );
-      }
+      _enableDuckDBNativeLayerRendering();
     } catch (error, stackTrace) {
+      if (mounted) {
+        setState(() {
+          _duckDBLayerStoreStatus =
+              'DuckDB layer store unavailable - see DEBUG CONSOLE';
+        });
+      }
       _log('DuckDB drawing layer store unavailable: $error\n$stackTrace');
+    }
+  }
+
+  void _enableDuckDBNativeLayerRendering() {
+    if (!_nativeSurfaceReady) return;
+    if (_duckDBLayerStore == null) {
+      _initializeDuckDBProjectLayers();
+      return;
+    }
+
+    try {
+      agus_maps_flutter.setDuckDBMapLayerRenderingEnabled(true);
+      final count = agus_maps_flutter.refreshDuckDBMapLayers();
+      _log('DuckDB layer rendering enabled: $count visible features.');
+    } catch (error, stackTrace) {
+      _log(
+        'DuckDB native layer rendering unavailable; '
+        'drawing layer persistence remains enabled: $error\n$stackTrace',
+      );
     }
   }
 
@@ -1288,8 +1318,19 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _refreshDuckDBNativeLayers() async {
-    final count = agus_maps_flutter.refreshDuckDBMapLayers();
-    _log('DuckDB layer renderer refreshed: $count visible features.');
+    if (!_nativeSurfaceReady) {
+      _log('DuckDB layer renderer refresh deferred: map surface is not ready.');
+      return;
+    }
+    try {
+      final count = agus_maps_flutter.refreshDuckDBMapLayers();
+      _log('DuckDB layer renderer refreshed: $count visible features.');
+    } catch (error, stackTrace) {
+      _log(
+        'DuckDB layer renderer refresh failed; '
+        'project layer changes remain persisted: $error\n$stackTrace',
+      );
+    }
   }
 
   void _startBearingUpdates() {
@@ -2208,6 +2249,7 @@ class _MyAppState extends State<MyApp> {
           layerStore: _duckDBLayerStore,
           activeLayerId: _activeDuckDBLayerId,
           activeDrawTool: _duckDBDrawController?.tool,
+          layerStoreStatus: _duckDBLayerStoreStatus,
           onRenderingRefresh: _refreshDuckDBNativeLayers,
           onActiveLayerChanged: _setActiveDuckDBLayer,
           onDrawToolChanged: _setDuckDBDrawTool,
@@ -2416,6 +2458,7 @@ class _MyAppState extends State<MyApp> {
                         layerStore: layerStore,
                         activeLayerId: _activeDuckDBLayerId,
                         activeDrawTool: drawController?.tool,
+                        layerStoreStatus: _duckDBLayerStoreStatus,
                         onRenderingRefresh: _refreshDuckDBNativeLayers,
                         onActiveLayerChanged: _setActiveDuckDBLayer,
                         onDrawToolChanged: _setDuckDBDrawTool,
@@ -2715,6 +2758,7 @@ class _MyAppState extends State<MyApp> {
                 onNativeLayerStateChanged: _updateMapLayerState,
                 onBuildings3dChanged: _updateBuildings3d,
                 layerStore: _duckDBLayerStore,
+                layerStoreStatus: _duckDBLayerStoreStatus,
                 onRenderingRefresh: _refreshDuckDBNativeLayers,
                 onClose: () => Navigator.of(context).pop(),
               ),

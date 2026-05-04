@@ -557,6 +557,136 @@ flowchart LR
     Renderer -. failure logs only .-> LayerManager
 ```
 
+### May 5 Layer Manager Store Startup Fix
+
+The Layer Manager could stay stuck at `DuckDB layer store is starting`, leaving
+**New Layer** disabled, draw tools disabled, and project layer count at zero.
+The root cause was lifecycle coupling: the example initialized
+`DuckDBLayerStore` from the map-ready/native-renderer path. If map-ready was
+delayed or a renderer setup problem occurred, project persistence never reached
+the UI.
+
+The example now opens the project layer store immediately after data-path setup
+and `initWithPaths()`. Native Drape rendering attaches later, after the map
+surface is ready. Renderer failures are logged but no longer disable layer
+creation or drawing persistence.
+
+```mermaid
+flowchart TB
+    Init["Data path + initWithPaths"]
+    Store["Open DuckDBLayerStore"]
+    UI["Layer Manager\nNew Layer enabled"]
+    MapReady["Native map ready"]
+    Render["Enable Drape rendering"]
+    Log["Debug console"]
+
+    Init --> Store --> UI
+    Store --> MapReady --> Render
+    Render -. failure .-> Log
+    Render -. failure does not disable .-> UI
+```
+
+### May 5 Layer Store Timestamp DML Fix
+
+The macOS debug console showed the Layer Manager still reporting
+`DuckDB layer store unavailable` even though the About page reported `Database
+open, schema migrated, spatial query ok`. The store opened correctly, but the
+default `User drawings` layer upsert failed:
+
+```text
+Binder Error: Table "layers" does not have a column named "current_timestamp"
+```
+
+DuckDB accepted the schema defaults, but Dart-generated runtime DML used
+`updated_at = current_timestamp` inside `UPDATE` and `ON CONFLICT DO UPDATE`
+assignments. In that context DuckDB bound `current_timestamp` as an identifier.
+A follow-up run showed that `current_timestamp()` is also invalid in the
+embedded DuckDB build because it is not exposed as a scalar function. The layer
+store now emits `current_localtimestamp()` for runtime update/upsert timestamp
+assignments across layers, features, query-layer validation, and metadata
+writes.
+
+```mermaid
+flowchart LR
+    Store["DuckDBLayerStore.open"]
+    Upsert["Default User drawings upsert"]
+    Bad["current_timestamp identifier\nbinder error"]
+    Fixed["current_localtimestamp()\nfunction expression"]
+    UI["Layer Manager\nNew Layer enabled"]
+
+    Store --> Upsert
+    Upsert -. before .-> Bad
+    Upsert --> Fixed --> UI
+```
+
+### May 5 New Layer Dialog Controller Fix
+
+Clicking **New Layer** on macOS produced a Flutter red screen after the layer
+store was already enabled. The log showed:
+
+```text
+A TextEditingController was used after being disposed.
+TextField:file:///.../adaptive_layer_manager.dart:183:20
+```
+
+The dialog created a method-local `TextEditingController`, awaited
+`showDialog`, then disposed the controller immediately. Flutter can still rebuild
+the closing dialog route, so the `TextField` attempted to attach to a disposed
+controller. The New Layer dialog now uses a controller-free `TextFormField` with
+`initialValue` and tracks the edited name through `onChanged`. Layer creation is
+wrapped so persistence/render failures are shown in the Layer Manager status text
+instead of becoming red-screen exceptions.
+
+```mermaid
+flowchart LR
+    Click["New Layer click"]
+    Dialog["Controller-free dialog"]
+    Store["DuckDBLayerStore.upsertLayer"]
+    Active["Set active edit layer"]
+    Refresh["Refresh renderer if ready"]
+    Status["Layer Manager status"]
+
+    Click --> Dialog --> Store --> Active --> Refresh
+    Store -. failure .-> Status
+    Refresh -. failure .-> Status
+```
+
+### May 5 Layer Feature Foreign-Key Repair
+
+Adding a point/segment/line/polygon feature succeeded, but the next layer update
+could fail when the Layer Manager toggled visibility or z-order. The macOS log
+showed a DuckDB foreign-key constraint error from
+`DuckDBLayerStore.setLayerVisibility`, not from the feature insert itself:
+
+```text
+Constraint Error: Violates foreign key constraint because key "layer_id: ..."
+is still referenced by a foreign key in a different table
+```
+
+The initial schema used `REFERENCES agus.layers(layer_id)` on child tables such
+as `agus.layer_features`. The embedded DuckDB build can reject updates to the
+parent layer row while child rows reference it, even when the update only changes
+non-key columns like `visible` or `z_index`. A new additive migration now
+rebuilds child tables without those foreign keys while preserving the checksum of
+the already-applied initial migration. `DuckDBLayerStore.open()` also keeps a
+runtime repair path for existing app databases by rebuilding child tables without
+foreign keys while preserving rows. Layer integrity is maintained in the
+application layer through store operations and soft-delete cleanup.
+
+```mermaid
+flowchart TB
+    Feature["Feature committed"]
+    Toggle["Toggle visibility / move layer"]
+    OldFK["Old child-table FK\nblocks parent update"]
+    Repair["Store open repair\nrebuild children without FKs"]
+    Store["Application-level integrity\nsoft delete + cleanup"]
+    UI["Layer Manager\nstatus instead of red screen"]
+
+    Feature --> Toggle
+    Toggle -. before .-> OldFK
+    Repair --> Store --> Toggle --> UI
+```
+
 ## Current File Map
 
 ### Dependency and Build Pins
@@ -594,6 +724,7 @@ flowchart LR
 - `doc/schemas/README.md`: database scope, required extensions, layer kinds, and query render contract.
 - `doc/schemas/MIGRATION.md`: migration strategy and backup policy.
 - `doc/schemas/migrations/20260502_001_initial_duckdb_layers.sql`: first schema migration.
+- `doc/schemas/migrations/20260505_001_remove_layer_child_foreign_keys.sql`: additive migration that rebuilds layer child tables without database-level foreign keys.
 - `doc/schemas/PLAN-PROGRESS.md`: this handoff document.
 
 ## Implemented So Far
