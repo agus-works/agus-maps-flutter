@@ -527,6 +527,36 @@ flowchart TB
     Native --> Apps
 ```
 
+### May 4 Desktop and Tablet UI Polish Follow-up
+
+The current polish pass addresses visual mismatches reported from macOS
+tablet-width and desktop-width runs:
+
+- Tablet adaptive navigation rail is now square-edged and flush with the window
+  side instead of a rounded floating card.
+- Desktop workbench splitter handles now consume exactly one logical pixel in
+  layout. The previous wider transparent hit target left visual gaps on the
+  right edge of the Primary Side Bar and the left edge of the Secondary Side Bar.
+- Desktop Search and Favorites activities no longer reuse mobile/tablet
+  `ListTile`-density content in the Primary Side Bar. Search uses a 34 px input
+  and compact result rows; Favorites uses compact one-line rows.
+- DuckDB drawing layer persistence is initialized independently from native
+  layer rendering. If native rendering setup fails, **New Layer** remains
+  available and the rendering failure is logged separately.
+
+```mermaid
+flowchart LR
+    Store["DuckDBLayerStore\nproject persistence"]
+    Controller["DuckDBLayerDrawController\nedit commands"]
+    Renderer["Native Drape renderer\noptional runtime display"]
+    LayerManager["Layer Manager\nNew Layer"]
+
+    Store --> Controller
+    Store --> LayerManager
+    Store -. refresh visible features .-> Renderer
+    Renderer -. failure logs only .-> LayerManager
+```
+
 ## Current File Map
 
 ### Dependency and Build Pins

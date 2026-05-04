@@ -125,6 +125,180 @@ class MapSearchResult {
   }
 }
 
+class _DesktopActivityEmptyState extends StatelessWidget {
+  const _DesktopActivityEmptyState({
+    required this.icon,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DesktopSearchResultRow extends StatelessWidget {
+  const _DesktopSearchResultRow({
+    required this.result,
+    required this.icon,
+    required this.routeEnabled,
+    required this.onTap,
+    required this.onRoute,
+  });
+
+  final MapSearchResult result;
+  final IconData icon;
+  final bool routeEnabled;
+  final VoidCallback onTap;
+  final VoidCallback? onRoute;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: colorScheme.outlineVariant),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 8, right: 2),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      result.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(height: 1.05),
+                    ),
+                    Text(
+                      result.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        height: 1.05,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onRoute != null)
+                IconButton(
+                  tooltip: 'Route',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 28,
+                    height: 28,
+                  ),
+                  padding: EdgeInsets.zero,
+                  iconSize: 16,
+                  onPressed: routeEnabled ? onRoute : null,
+                  icon: const Icon(Icons.alt_route),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopFavoriteRow extends StatelessWidget {
+  const _DesktopFavoriteRow({
+    required this.favorite,
+    required this.onTap,
+  });
+
+  final FavoriteLocation favorite;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: colorScheme.outlineVariant),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            children: [
+              Icon(
+                Icons.location_on_outlined,
+                size: 16,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  favorite.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              Text(
+                '${favorite.lat.toStringAsFixed(4)}, '
+                '${favorite.lon.toStringAsFixed(4)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'z${favorite.zoom}',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DesktopStaticStatus extends StatelessWidget {
   const _DesktopStaticStatus({
     required this.icon,
@@ -1052,8 +1226,6 @@ class _MyAppState extends State<MyApp> {
         onCommitted: _refreshDuckDBNativeLayers,
       );
 
-      agus_maps_flutter.setDuckDBMapLayerRenderingEnabled(true);
-      final count = agus_maps_flutter.refreshDuckDBMapLayers();
       _duckDBDrawController?.dispose();
       if (mounted) {
         setState(() {
@@ -1061,9 +1233,20 @@ class _MyAppState extends State<MyApp> {
           _duckDBDrawController = controller;
         });
       }
-      _log('DuckDB layer rendering enabled: $count visible features.');
+      _log('DuckDB drawing layer store enabled.');
+
+      try {
+        agus_maps_flutter.setDuckDBMapLayerRenderingEnabled(true);
+        final count = agus_maps_flutter.refreshDuckDBMapLayers();
+        _log('DuckDB layer rendering enabled: $count visible features.');
+      } catch (error, stackTrace) {
+        _log(
+          'DuckDB native layer rendering unavailable; '
+          'drawing layer persistence remains enabled: $error\n$stackTrace',
+        );
+      }
     } catch (error, stackTrace) {
-      _log('DuckDB layer rendering unavailable: $error\n$stackTrace');
+      _log('DuckDB drawing layer store unavailable: $error\n$stackTrace');
     }
   }
 
@@ -2029,11 +2212,8 @@ class _MyAppState extends State<MyApp> {
           onActiveLayerChanged: _setActiveDuckDBLayer,
           onDrawToolChanged: _setDuckDBDrawTool,
         ),
-      WorkbenchActivity.search => Padding(
-          padding: const EdgeInsets.all(10),
-          child: _buildSearchOverlay(context),
-        ),
-      WorkbenchActivity.favorites => _buildFavoritesTab(context),
+      WorkbenchActivity.search => _buildDesktopSearchActivity(context),
+      WorkbenchActivity.favorites => _buildDesktopFavoritesActivity(context),
       WorkbenchActivity.downloads => _buildDownloadsTab(
           isVisible: _workbenchController.state.activeActivity ==
               WorkbenchActivity.downloads,
@@ -2403,6 +2583,109 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
+  Widget _buildDesktopSearchActivity(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final hasQuery = _searchController.text.trim().isNotEmpty;
+    final statusText = _nativeSearchRunning ? 'Searching...' : 'No results';
+
+    return ColoredBox(
+      color: colorScheme.surface,
+      child: Column(
+        children: [
+          SizedBox(
+            height: 34,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: colorScheme.outlineVariant),
+                ),
+              ),
+              child: TextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                style: theme.textTheme.bodySmall,
+                onChanged: _onSearchChanged,
+                onTap: () {
+                  if (!_searchOpen) {
+                    setState(() {
+                      _searchOpen = true;
+                    });
+                  }
+                },
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Search',
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  prefixIcon: const Icon(Icons.search, size: 16),
+                  prefixIconConstraints: const BoxConstraints(
+                    minWidth: 30,
+                    minHeight: 30,
+                  ),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 30,
+                            height: 30,
+                          ),
+                          padding: EdgeInsets.zero,
+                          iconSize: 16,
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                  suffixIconConstraints: const BoxConstraints(
+                    minWidth: 30,
+                    minHeight: 30,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: !hasQuery
+                ? _DesktopActivityEmptyState(
+                    icon: Icons.search,
+                    message:
+                        'Type to search places, coordinates, or favorites.',
+                  )
+                : _searchResults.isEmpty
+                    ? _DesktopActivityEmptyState(
+                        icon: Icons.manage_search,
+                        message: statusText,
+                      )
+                    : ListView.builder(
+                        padding: EdgeInsets.zero,
+                        itemExtent: 36,
+                        itemCount: _searchResults.length,
+                        itemBuilder: (context, index) {
+                          final result = _searchResults[index];
+                          return _DesktopSearchResultRow(
+                            result: result,
+                            icon: _searchResultIcon(result),
+                            routeEnabled: !_navigationActionInProgress &&
+                                !result.isSuggestion,
+                            onTap: () => _focusSearchResult(result),
+                            onRoute: result.isSuggestion
+                                ? null
+                                : () => unawaited(
+                                      _previewRouteToSearchResult(result),
+                                    ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
   IconData _searchResultIcon(MapSearchResult result) {
     if (result.isSuggestion) return Icons.north_west;
     return switch (result.source) {
@@ -2715,6 +2998,57 @@ class _MyAppState extends State<MyApp> {
       agus_maps_flutter.NavigationSessionState.routeRebuilding =>
         'Rebuilding route...',
     };
+  }
+
+  Widget _buildDesktopFavoritesActivity(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return ColoredBox(
+      color: colorScheme.surface,
+      child: Column(
+        children: [
+          SizedBox(
+            height: 28,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerLowest,
+                border: Border(
+                  bottom: BorderSide(color: colorScheme.outlineVariant),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '${kFavorites.length} FAVORITES',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              itemExtent: 30,
+              itemCount: kFavorites.length,
+              itemBuilder: (context, index) {
+                final favorite = kFavorites[index];
+                return _DesktopFavoriteRow(
+                  favorite: favorite,
+                  onTap: () => _onFavoriteSelected(favorite),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Full-screen favorites tab.

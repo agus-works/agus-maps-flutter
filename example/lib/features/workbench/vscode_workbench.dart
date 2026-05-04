@@ -562,14 +562,9 @@ class _ResizeHandle extends StatelessWidget {
             ? (details) => onDrag(details.delta.dy)
             : null,
         child: SizedBox(
-          width: axis == Axis.horizontal ? 6 : double.infinity,
-          height: axis == Axis.vertical ? 6 : double.infinity,
-          child: Center(
-            child: _ThinSeparator(
-              axis: axis,
-              color: color,
-            ),
-          ),
+          width: axis == Axis.horizontal ? 1 : double.infinity,
+          height: axis == Axis.vertical ? 1 : double.infinity,
+          child: _ThinSeparator(axis: axis, color: color),
         ),
       ),
     );
