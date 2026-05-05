@@ -56,6 +56,8 @@ Mobile portrait keeps the conventional Material shell ownership:
   layer visibility changes, or layer ordering changes.
 - Camera-driven DuckDB refreshes must be debounced until the viewport is idle so
   Android `Texture` frames are not interrupted mid-gesture.
+- If the idle refresh returns the same renderable feature set, it must skip
+  Drape user-mark update and invalidation completely.
 
 ## Standard surface rules
 

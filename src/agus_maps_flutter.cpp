@@ -144,6 +144,44 @@ struct DuckDBRenderableGeometry {
     std::vector<m2::PointD> points;
 };
 
+bool AreDuckDBRenderablePointsEqual(
+    std::vector<m2::PointD> const & left,
+    std::vector<m2::PointD> const & right) {
+    if (left.size() != right.size()) {
+        return false;
+    }
+
+    for (size_t index = 0; index < left.size(); ++index) {
+        if (std::abs(left[index].x - right[index].x) > 1e-9 ||
+            std::abs(left[index].y - right[index].y) > 1e-9) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool AreDuckDBRenderableFeaturesEqual(
+    std::vector<DuckDBRenderableGeometry> const & left,
+    std::vector<DuckDBRenderableGeometry> const & right) {
+    if (left.size() != right.size()) {
+        return false;
+    }
+
+    for (size_t index = 0; index < left.size(); ++index) {
+        auto const & leftFeature = left[index];
+        auto const & rightFeature = right[index];
+        if (leftFeature.isPoint != rightFeature.isPoint ||
+            leftFeature.minZoom != rightFeature.minZoom ||
+            leftFeature.zIndex != rightFeature.zIndex ||
+            !AreDuckDBRenderablePointsEqual(
+                leftFeature.points,
+                rightFeature.points)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 struct DuckDBRenderViewport {
     double minLon = 0.0;
     double minLat = 0.0;
@@ -420,6 +458,7 @@ std::mutex g_duckDBRenderMutex;
 std::unique_ptr<DuckDBMarksProvider> g_duckDBMarksProvider;
 bool g_duckDBRenderingEnabled = false;
 bool g_duckDBMarksPublished = false;
+std::vector<DuckDBRenderableGeometry> g_lastDuckDBRenderableFeatures;
 std::chrono::steady_clock::time_point g_lastDuckDBRenderRefresh;
 std::atomic<uint64_t> g_duckDBViewportGeneration{0};
 std::atomic<bool> g_duckDBViewportRefreshScheduled{false};
@@ -530,6 +569,14 @@ int32_t RefreshDuckDBRenderLayersInternal() {
         }
     }
 
+    if (g_duckDBMarksPublished &&
+        AreDuckDBRenderableFeaturesEqual(
+            renderableFeatures,
+            g_lastDuckDBRenderableFeatures)) {
+        g_lastDuckDBRenderRefresh = std::chrono::steady_clock::now();
+        return static_cast<int32_t>(renderableFeatures.size());
+    }
+
     if (!g_duckDBMarksProvider) {
         g_duckDBMarksProvider = std::make_unique<DuckDBMarksProvider>();
     }
@@ -540,6 +587,7 @@ int32_t RefreshDuckDBRenderLayersInternal() {
     g_duckDBMarksPublished = true;
     engine->ChangeVisibilityUserMarksGroup(kDuckDBRenderGroupId, true);
     engine->InvalidateUserMarks();
+    g_lastDuckDBRenderableFeatures = renderableFeatures;
     g_lastDuckDBRenderRefresh = std::chrono::steady_clock::now();
     WakeRenderer();
     return static_cast<int32_t>(renderableFeatures.size());
@@ -1949,6 +1997,7 @@ FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t enabled) {
     std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
     g_duckDBRenderingEnabled = false;
     g_duckDBMarksPublished = false;
+    g_lastDuckDBRenderableFeatures.clear();
     g_duckDBMarksProvider.reset();
     if (g_framework && g_drapeEngineCreated) {
         auto engine = g_framework->GetDrapeEngine();

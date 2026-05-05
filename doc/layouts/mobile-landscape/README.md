@@ -34,6 +34,8 @@ separate layout contract for every transient surface.
   user marks from inside the viewport listener.
 - DuckDB-backed Drape rendering refreshes immediately after project-layer
   mutations, then debounces camera-driven refreshes until the viewport is idle.
+- An idle refresh that returns the same renderable feature set must not call
+  Drape user-mark update or invalidation APIs.
 
 ## Safe-area ownership
 
@@ -140,7 +142,7 @@ This removes ambiguity and makes mobile, tablet, and desktop behavior match.
 | Left navigation strip | Implemented | Existing `AdaptiveAppScaffold` uses a side strip for mobile landscape. |
 | Orientation-aware body safe area | Implemented | `AdaptiveBodySafeArea` removes duplicate left and bottom padding from mobile landscape tab bodies while keeping right padding. |
 | Scrollable right action column | Implemented | Current map controls use `SingleChildScrollView` in the right column. |
-| Android camera rendering stability | Implemented | DuckDB viewport refreshes are debounced until camera idle, and Drape user-mark updates no longer force first-time rebuilds after initial publication. |
+| Android camera rendering stability | Implemented | DuckDB viewport refreshes are debounced until camera idle, unchanged idle refreshes are no-ops, and Drape user-mark updates no longer force first-time rebuilds after initial publication. |
 | Downloads empty states | Implemented | No-regions and no-results states use compact scroll-safe content when the region-list viewport is short. |
 | Landscape-specific major panels | Partially implemented | Search and layers now use side panels on the map tab; route preview remains a shallow bottom card. |
 | Shared adaptive prompt | Partially implemented | Layer creation uses a full-screen mobile prompt in portrait and landscape; Downloads/About dialogs still need migration. |

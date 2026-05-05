@@ -111,6 +111,9 @@ The first code pass implements the highest-risk map-tab surfaces:
    - Android DuckDB layer refreshes from viewport changes are now debounced until
      the camera is idle instead of running synchronous DuckDB queries and Drape
      user-mark rebuilds during pan, zoom, or rotation frames.
+   - The delayed idle refresh now compares the renderable DuckDB feature set and
+     skips Drape user-mark updates when nothing changed, avoiding the remaining
+     single post-gesture flicker.
    - DuckDB-backed Drape user marks now use first-time publication only once and
      report created, updated, and removed ids on later refreshes.
    - Explicit project-layer mutations still refresh native rendering immediately.
