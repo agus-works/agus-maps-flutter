@@ -9,6 +9,187 @@ import '../../../shared/widgets/compact_property_grid.dart';
 import '../../../shared/widgets/panel_surface.dart';
 
 /// Adaptive layer tree inspired by GIS desktop layer docks.
+class AdaptiveMapPresentationPanel extends StatelessWidget {
+  const AdaptiveMapPresentationPanel({
+    super.key,
+    required this.formFactor,
+    required this.nativeLayerState,
+    required this.buildings3dEnabled,
+    required this.onNativeLayerStateChanged,
+    required this.onBuildings3dChanged,
+  });
+
+  final ExampleFormFactor formFactor;
+  final agus_maps_flutter.MapLayerState nativeLayerState;
+  final bool buildings3dEnabled;
+  final ValueChanged<agus_maps_flutter.MapLayerState> onNativeLayerStateChanged;
+  final ValueChanged<bool> onBuildings3dChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (formFactor.isDesktop) {
+      return ColoredBox(
+        color: Theme.of(context).colorScheme.surface,
+        child: ListView(
+          padding: const EdgeInsets.all(8),
+          children: [
+            _CompactSectionLabel(
+              label: 'Map presentation',
+              countLabel:
+                  '${_enabledNativeLayerCount(nativeLayerState, buildings3dEnabled)} / 4',
+            ),
+            const SizedBox(height: 6),
+            _MapPresentationPropertyGrid(
+              nativeLayerState: nativeLayerState,
+              buildings3dEnabled: buildings3dEnabled,
+              onNativeLayerStateChanged: onNativeLayerStateChanged,
+              onBuildings3dChanged: onBuildings3dChanged,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final uiSpec = context.exampleUiSpec;
+    return PanelSurface(
+      title: 'Map presentation',
+      subtitle: 'Basemap overlays and visibility profile',
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _TreeToggleRow(
+            label: '3D buildings',
+            subtitle: 'Scene depth for city-scale map views',
+            icon: Icons.apartment_outlined,
+            value: buildings3dEnabled,
+            onChanged: onBuildings3dChanged,
+            padding: uiSpec.treeRowPadding,
+          ),
+          _TreeToggleRow(
+            label: 'Outdoors',
+            subtitle: 'Terrain-driven cartography and hiking emphasis',
+            icon: Icons.terrain_outlined,
+            value: nativeLayerState.outdoors,
+            onChanged: (enabled) {
+              onNativeLayerStateChanged(
+                nativeLayerState.copyWith(
+                  outdoors: enabled,
+                  subway: enabled ? false : nativeLayerState.subway,
+                ),
+              );
+            },
+            padding: uiSpec.treeRowPadding,
+          ),
+          _TreeToggleRow(
+            label: 'Contour lines',
+            subtitle: 'Elevation isolines for terrain reading',
+            icon: Icons.landscape_outlined,
+            value: nativeLayerState.isolines,
+            onChanged: (enabled) {
+              onNativeLayerStateChanged(
+                nativeLayerState.copyWith(
+                  isolines: enabled,
+                  subway: enabled ? false : nativeLayerState.subway,
+                ),
+              );
+            },
+            padding: uiSpec.treeRowPadding,
+          ),
+          _TreeToggleRow(
+            label: 'Subway',
+            subtitle: 'Transit-emphasis cartography',
+            icon: Icons.directions_subway_outlined,
+            value: nativeLayerState.subway,
+            onChanged: (enabled) {
+              onNativeLayerStateChanged(
+                nativeLayerState.copyWith(
+                  outdoors: enabled ? false : nativeLayerState.outdoors,
+                  isolines: enabled ? false : nativeLayerState.isolines,
+                  subway: enabled,
+                ),
+              );
+            },
+            padding: uiSpec.treeRowPadding,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapPresentationPropertyGrid extends StatelessWidget {
+  const _MapPresentationPropertyGrid({
+    required this.nativeLayerState,
+    required this.buildings3dEnabled,
+    required this.onNativeLayerStateChanged,
+    required this.onBuildings3dChanged,
+  });
+
+  final agus_maps_flutter.MapLayerState nativeLayerState;
+  final bool buildings3dEnabled;
+  final ValueChanged<agus_maps_flutter.MapLayerState> onNativeLayerStateChanged;
+  final ValueChanged<bool> onBuildings3dChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return CompactPropertyGrid(
+      rows: [
+        CompactPropertyRow(
+          name: '3D buildings',
+          value: _CompactSwitch(
+            value: buildings3dEnabled,
+            onChanged: onBuildings3dChanged,
+          ),
+        ),
+        CompactPropertyRow(
+          name: 'Outdoors',
+          value: _CompactSwitch(
+            value: nativeLayerState.outdoors,
+            onChanged: (enabled) {
+              onNativeLayerStateChanged(
+                nativeLayerState.copyWith(
+                  outdoors: enabled,
+                  subway: enabled ? false : nativeLayerState.subway,
+                ),
+              );
+            },
+          ),
+        ),
+        CompactPropertyRow(
+          name: 'Contour lines',
+          value: _CompactSwitch(
+            value: nativeLayerState.isolines,
+            onChanged: (enabled) {
+              onNativeLayerStateChanged(
+                nativeLayerState.copyWith(
+                  isolines: enabled,
+                  subway: enabled ? false : nativeLayerState.subway,
+                ),
+              );
+            },
+          ),
+        ),
+        CompactPropertyRow(
+          name: 'Subway',
+          value: _CompactSwitch(
+            value: nativeLayerState.subway,
+            onChanged: (enabled) {
+              onNativeLayerStateChanged(
+                nativeLayerState.copyWith(
+                  outdoors: enabled ? false : nativeLayerState.outdoors,
+                  isolines: enabled ? false : nativeLayerState.isolines,
+                  subway: enabled,
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class AdaptiveLayerManager extends StatefulWidget {
   const AdaptiveLayerManager({
     super.key,
@@ -23,6 +204,7 @@ class AdaptiveLayerManager extends StatefulWidget {
     this.onRenderingRefresh,
     this.onActiveLayerChanged,
     this.onDrawToolChanged,
+    this.onEditFeature,
     this.layerStoreStatus,
     this.onClose,
   });
@@ -38,6 +220,7 @@ class AdaptiveLayerManager extends StatefulWidget {
   final Future<void> Function()? onRenderingRefresh;
   final ValueChanged<String>? onActiveLayerChanged;
   final ValueChanged<agus_maps_flutter.AgusDrawTool>? onDrawToolChanged;
+  final ValueChanged<agus_maps_flutter.AgusLayerFeature>? onEditFeature;
   final String? layerStoreStatus;
   final VoidCallback? onClose;
 
@@ -47,7 +230,6 @@ class AdaptiveLayerManager extends StatefulWidget {
 
 class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
   final Set<String> _expandedNodes = <String>{
-    _mapPresentationNodeId,
     _projectLayersNodeId,
   };
 
@@ -55,10 +237,10 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       const <agus_maps_flutter.AgusLayer>[];
   Map<String, List<agus_maps_flutter.AgusLayerFeature>> _featuresByLayer =
       const <String, List<agus_maps_flutter.AgusLayerFeature>>{};
+  String? _selectedFeatureKey;
   String _message = '';
   bool _busy = false;
 
-  static const String _mapPresentationNodeId = 'map-presentation';
   static const String _projectLayersNodeId = 'project-layers';
 
   @override
@@ -82,6 +264,17 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       } else {
         _expandedNodes.add(nodeId);
       }
+    });
+  }
+
+  void _selectFeature(agus_maps_flutter.AgusLayerFeature feature) {
+    widget.onActiveLayerChanged?.call(feature.layerId);
+    setState(() {
+      _selectedFeatureKey = _featureKey(feature);
+      _message =
+          feature.geometryKind == agus_maps_flutter.AgusGeometryKind.point
+              ? 'Selected point. Use Move to reposition it on the map.'
+              : 'Selected ${_geometryKindLabel(feature.geometryKind)} feature.';
     });
   }
 
@@ -368,78 +561,6 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _LayerTreeGroup(
-            nodeId: _mapPresentationNodeId,
-            title: 'Map presentation',
-            subtitle: 'Basemap overlays and visibility profile',
-            icon: Icons.public_outlined,
-            countLabel: '${_enabledNativeLayerCount()} / 4',
-            expanded: _expandedNodes.contains(_mapPresentationNodeId),
-            onToggle: () => _toggleNode(_mapPresentationNodeId),
-            child: Column(
-              children: [
-                _TreeToggleRow(
-                  label: '3D buildings',
-                  subtitle: 'Scene depth for city-scale map views',
-                  icon: Icons.apartment_outlined,
-                  value: widget.buildings3dEnabled,
-                  onChanged: widget.onBuildings3dChanged,
-                  padding: uiSpec.treeRowPadding,
-                ),
-                _TreeToggleRow(
-                  label: 'Outdoors',
-                  subtitle: 'Terrain-driven cartography and hiking emphasis',
-                  icon: Icons.terrain_outlined,
-                  value: widget.nativeLayerState.outdoors,
-                  onChanged: (enabled) {
-                    widget.onNativeLayerStateChanged(
-                      widget.nativeLayerState.copyWith(
-                        outdoors: enabled,
-                        subway:
-                            enabled ? false : widget.nativeLayerState.subway,
-                      ),
-                    );
-                  },
-                  padding: uiSpec.treeRowPadding,
-                ),
-                _TreeToggleRow(
-                  label: 'Contour lines',
-                  subtitle: 'Elevation isolines for terrain reading',
-                  icon: Icons.landscape_outlined,
-                  value: widget.nativeLayerState.isolines,
-                  onChanged: (enabled) {
-                    widget.onNativeLayerStateChanged(
-                      widget.nativeLayerState.copyWith(
-                        isolines: enabled,
-                        subway:
-                            enabled ? false : widget.nativeLayerState.subway,
-                      ),
-                    );
-                  },
-                  padding: uiSpec.treeRowPadding,
-                ),
-                _TreeToggleRow(
-                  label: 'Subway',
-                  subtitle: 'Transit-emphasis cartography',
-                  icon: Icons.directions_subway_outlined,
-                  value: widget.nativeLayerState.subway,
-                  onChanged: (enabled) {
-                    widget.onNativeLayerStateChanged(
-                      widget.nativeLayerState.copyWith(
-                        outdoors:
-                            enabled ? false : widget.nativeLayerState.outdoors,
-                        isolines:
-                            enabled ? false : widget.nativeLayerState.isolines,
-                        subway: enabled,
-                      ),
-                    );
-                  },
-                  padding: uiSpec.treeRowPadding,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          _LayerTreeGroup(
             nodeId: _projectLayersNodeId,
             title: 'Project layers',
             subtitle: widget.layerStore == null
@@ -469,11 +590,15 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
                           features: _featuresByLayer[layer.layerId] ??
                               const <agus_maps_flutter.AgusLayerFeature>[],
                           compact: compact,
+                          active: layer.layerId == widget.activeLayerId,
                           expanded:
                               _expandedNodes.contains('layer:${layer.layerId}'),
                           padding: uiSpec.treeRowPadding,
+                          selectedFeatureKey: _selectedFeatureKey,
                           onToggleExpanded: () =>
                               _toggleNode('layer:${layer.layerId}'),
+                          onFeatureSelected: _selectFeature,
+                          onEditFeature: widget.onEditFeature,
                           onVisibleChanged: (value) {
                             unawaited(_toggleStoredLayer(layer, value));
                           },
@@ -525,74 +650,6 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
             child: ListView(
               padding: const EdgeInsets.all(8),
               children: [
-                _CompactSectionLabel(
-                  label: 'Map presentation',
-                  countLabel: '${_enabledNativeLayerCount()} / 4',
-                ),
-                const SizedBox(height: 6),
-                CompactPropertyGrid(
-                  rows: [
-                    CompactPropertyRow(
-                      name: '3D buildings',
-                      value: _CompactSwitch(
-                        value: widget.buildings3dEnabled,
-                        onChanged: widget.onBuildings3dChanged,
-                      ),
-                    ),
-                    CompactPropertyRow(
-                      name: 'Outdoors',
-                      value: _CompactSwitch(
-                        value: widget.nativeLayerState.outdoors,
-                        onChanged: (enabled) {
-                          widget.onNativeLayerStateChanged(
-                            widget.nativeLayerState.copyWith(
-                              outdoors: enabled,
-                              subway: enabled
-                                  ? false
-                                  : widget.nativeLayerState.subway,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    CompactPropertyRow(
-                      name: 'Contour lines',
-                      value: _CompactSwitch(
-                        value: widget.nativeLayerState.isolines,
-                        onChanged: (enabled) {
-                          widget.onNativeLayerStateChanged(
-                            widget.nativeLayerState.copyWith(
-                              isolines: enabled,
-                              subway: enabled
-                                  ? false
-                                  : widget.nativeLayerState.subway,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    CompactPropertyRow(
-                      name: 'Subway',
-                      value: _CompactSwitch(
-                        value: widget.nativeLayerState.subway,
-                        onChanged: (enabled) {
-                          widget.onNativeLayerStateChanged(
-                            widget.nativeLayerState.copyWith(
-                              outdoors: enabled
-                                  ? false
-                                  : widget.nativeLayerState.outdoors,
-                              isolines: enabled
-                                  ? false
-                                  : widget.nativeLayerState.isolines,
-                              subway: enabled,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
                 _DesktopDrawSessionCard(
                   activeTool: widget.activeDrawTool ??
                       agus_maps_flutter.AgusDrawTool.none,
@@ -652,85 +709,41 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       );
     }
 
-    return CompactDataGrid(
-      columns: const [
-        CompactDataColumn(label: '', width: 26),
-        CompactDataColumn(label: 'Layer'),
-        CompactDataColumn(label: 'Features', width: 64),
-        CompactDataColumn(label: 'Z', width: 40),
-        CompactDataColumn(label: '', width: 92),
-      ],
-      rows: [
-        for (final layer in _layers) _buildDesktopLayerRow(context, layer),
-      ],
-    );
-  }
-
-  List<Widget> _buildDesktopLayerRow(
-    BuildContext context,
-    agus_maps_flutter.AgusLayer layer,
-  ) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final featureCount = _featuresByLayer[layer.layerId]?.length ?? 0;
-    final selected = layer.layerId == widget.activeLayerId;
-    final nameStyle = theme.textTheme.bodySmall?.copyWith(
-      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-      color: selected ? colorScheme.primary : colorScheme.onSurface,
-    );
-
-    return [
-      _CompactIconButton(
-        tooltip: layer.visible ? 'Hide layer' : 'Show layer',
-        icon: layer.visible ? Icons.visibility : Icons.visibility_off,
-        selected: layer.visible,
-        onPressed: () => unawaited(_toggleStoredLayer(layer, !layer.visible)),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(4),
+        color: colorScheme.surfaceContainerLowest,
       ),
-      InkWell(
-        onTap: () => widget.onActiveLayerChanged?.call(layer.layerId),
-        child: Row(
-          children: [
-            Icon(
-              selected ? Icons.edit_location_alt : Icons.layers_outlined,
-              size: 15,
-              color:
-                  selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                layer.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: nameStyle,
+      child: Column(
+        children: [
+          _ExplorerHeaderRow(),
+          for (final layer in _layers)
+            _StoredLayerNode(
+              layer: layer,
+              features: _featuresByLayer[layer.layerId] ??
+                  const <agus_maps_flutter.AgusLayerFeature>[],
+              compact: true,
+              active: layer.layerId == widget.activeLayerId,
+              expanded: _expandedNodes.contains('layer:${layer.layerId}'),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              selectedFeatureKey: _selectedFeatureKey,
+              onToggleExpanded: () => _toggleNode('layer:${layer.layerId}'),
+              onFeatureSelected: _selectFeature,
+              onEditFeature: widget.onEditFeature,
+              onVisibleChanged: (value) {
+                unawaited(_toggleStoredLayer(layer, value));
+              },
+              onMoveUp: () => unawaited(_moveLayer(layer, 1)),
+              onMoveDown: () => unawaited(_moveLayer(layer, -1)),
+              onDelete: () => unawaited(_deleteLayer(layer)),
+              onActivateLayer: () => widget.onActiveLayerChanged?.call(
+                layer.layerId,
               ),
             ),
-          ],
-        ),
-      ),
-      Text('$featureCount', style: theme.textTheme.bodySmall),
-      Text('${layer.zIndex}', style: theme.textTheme.bodySmall),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          _CompactIconButton(
-            tooltip: 'Move up',
-            icon: Icons.keyboard_arrow_up,
-            onPressed: () => unawaited(_moveLayer(layer, 1)),
-          ),
-          _CompactIconButton(
-            tooltip: 'Move down',
-            icon: Icons.keyboard_arrow_down,
-            onPressed: () => unawaited(_moveLayer(layer, -1)),
-          ),
-          _CompactIconButton(
-            tooltip: 'Delete layer',
-            icon: Icons.delete_outline,
-            onPressed: () => unawaited(_deleteLayer(layer)),
-          ),
         ],
       ),
-    ];
+    );
   }
 
   String _activeLayerName() {
@@ -738,15 +751,6 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       if (layer.layerId == widget.activeLayerId) return layer.name;
     }
     return 'No editable layer selected';
-  }
-
-  int _enabledNativeLayerCount() {
-    var count = 0;
-    if (widget.buildings3dEnabled) count += 1;
-    if (widget.nativeLayerState.outdoors) count += 1;
-    if (widget.nativeLayerState.isolines) count += 1;
-    if (widget.nativeLayerState.subway) count += 1;
-    return count;
   }
 }
 
@@ -914,52 +918,79 @@ class _DesktopDrawSessionCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: [
-                _DrawToolChip(
-                  label: 'Map',
-                  icon: Icons.pan_tool_alt_outlined,
-                  tool: agus_maps_flutter.AgusDrawTool.none,
-                  activeTool: activeTool,
-                  enabled: true,
-                  onToolChanged: onToolChanged,
+            if (activeTool == agus_maps_flutter.AgusDrawTool.none)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: hasEditableLayer
+                      ? () => onToolChanged?.call(
+                            agus_maps_flutter.AgusDrawTool.pin,
+                          )
+                      : null,
+                  icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+                  label: const Text('Start drawing'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
                 ),
-                _DrawToolChip(
-                  label: 'Point',
-                  icon: Icons.add_location_alt_outlined,
-                  tool: agus_maps_flutter.AgusDrawTool.pin,
-                  activeTool: activeTool,
-                  enabled: hasEditableLayer,
-                  onToolChanged: onToolChanged,
+              )
+            else ...[
+              Text(
+                'Drawing mode is active. Choose geometry, then use the map check/X controls to finish.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
                 ),
-                _DrawToolChip(
-                  label: 'Segment',
-                  icon: Icons.linear_scale,
-                  tool: agus_maps_flutter.AgusDrawTool.segment,
-                  activeTool: activeTool,
-                  enabled: hasEditableLayer,
-                  onToolChanged: onToolChanged,
-                ),
-                _DrawToolChip(
-                  label: 'Line',
-                  icon: Icons.timeline,
-                  tool: agus_maps_flutter.AgusDrawTool.line,
-                  activeTool: activeTool,
-                  enabled: hasEditableLayer,
-                  onToolChanged: onToolChanged,
-                ),
-                _DrawToolChip(
-                  label: 'Polygon',
-                  icon: Icons.polyline_outlined,
-                  tool: agus_maps_flutter.AgusDrawTool.polygon,
-                  activeTool: activeTool,
-                  enabled: hasEditableLayer,
-                  onToolChanged: onToolChanged,
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                children: [
+                  _DrawToolChip(
+                    label: 'Map',
+                    icon: Icons.pan_tool_alt_outlined,
+                    tool: agus_maps_flutter.AgusDrawTool.none,
+                    activeTool: activeTool,
+                    enabled: true,
+                    onToolChanged: onToolChanged,
+                  ),
+                  _DrawToolChip(
+                    label: 'Point',
+                    icon: Icons.add_location_alt_outlined,
+                    tool: agus_maps_flutter.AgusDrawTool.pin,
+                    activeTool: activeTool,
+                    enabled: hasEditableLayer,
+                    onToolChanged: onToolChanged,
+                  ),
+                  _DrawToolChip(
+                    label: 'Segment',
+                    icon: Icons.linear_scale,
+                    tool: agus_maps_flutter.AgusDrawTool.segment,
+                    activeTool: activeTool,
+                    enabled: hasEditableLayer,
+                    onToolChanged: onToolChanged,
+                  ),
+                  _DrawToolChip(
+                    label: 'Line',
+                    icon: Icons.timeline,
+                    tool: agus_maps_flutter.AgusDrawTool.line,
+                    activeTool: activeTool,
+                    enabled: hasEditableLayer,
+                    onToolChanged: onToolChanged,
+                  ),
+                  _DrawToolChip(
+                    label: 'Polygon',
+                    icon: Icons.polyline_outlined,
+                    tool: agus_maps_flutter.AgusDrawTool.polygon,
+                    activeTool: activeTool,
+                    enabled: hasEditableLayer,
+                    onToolChanged: onToolChanged,
+                  ),
+                ],
+              ),
+            ],
             if (!hasEditableLayer) ...[
               const SizedBox(height: 6),
               Text(
@@ -1056,22 +1087,17 @@ class _CompactIconButton extends StatelessWidget {
     required this.tooltip,
     required this.icon,
     required this.onPressed,
-    this.selected = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback? onPressed;
-  final bool selected;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return IconButton(
       tooltip: tooltip,
       icon: Icon(icon, size: 16),
-      selectedIcon: Icon(icon, size: 16, color: colorScheme.primary),
-      isSelected: selected,
       visualDensity: VisualDensity.compact,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.tightFor(width: 26, height: 26),
@@ -1226,175 +1252,224 @@ class _TreeToggleRow extends StatelessWidget {
   }
 }
 
+class _ExplorerHeaderRow extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final style = theme.textTheme.labelSmall?.copyWith(
+      color: colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.4,
+    );
+
+    return SizedBox(
+      height: 24,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 98, right: 8),
+        child: Row(
+          children: [
+            Expanded(flex: 5, child: Text('Name', style: style)),
+            SizedBox(
+              width: 58,
+              child: Text('Items', textAlign: TextAlign.right, style: style),
+            ),
+            SizedBox(
+              width: 34,
+              child: Text('Z', textAlign: TextAlign.right, style: style),
+            ),
+            const SizedBox(width: 78),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StoredLayerNode extends StatelessWidget {
   const _StoredLayerNode({
     required this.layer,
     required this.features,
     required this.compact,
+    required this.active,
     required this.expanded,
     required this.padding,
+    required this.selectedFeatureKey,
     required this.onToggleExpanded,
+    required this.onFeatureSelected,
+    required this.onEditFeature,
     required this.onVisibleChanged,
     required this.onMoveUp,
     required this.onMoveDown,
+    this.onDelete,
+    this.onActivateLayer,
   });
 
   final agus_maps_flutter.AgusLayer layer;
   final List<agus_maps_flutter.AgusLayerFeature> features;
   final bool compact;
+  final bool active;
   final bool expanded;
   final EdgeInsets padding;
+  final String? selectedFeatureKey;
   final VoidCallback onToggleExpanded;
+  final ValueChanged<agus_maps_flutter.AgusLayerFeature> onFeatureSelected;
+  final ValueChanged<agus_maps_flutter.AgusLayerFeature>? onEditFeature;
   final ValueChanged<bool> onVisibleChanged;
   final VoidCallback onMoveUp;
   final VoidCallback onMoveDown;
+  final VoidCallback? onDelete;
+  final VoidCallback? onActivateLayer;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final featurePreview = features.take(4).toList(growable: false);
     final hasChildren = features.isNotEmpty;
+    final rowHeight = compact ? 26.0 : 36.0;
 
     return Column(
       children: [
-        Padding(
-          padding: padding,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (hasChildren)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: IconButton(
-                    visualDensity: compact
-                        ? VisualDensity.compact
-                        : VisualDensity.standard,
-                    onPressed: onToggleExpanded,
-                    icon: Icon(
-                      expanded ? Icons.expand_more : Icons.chevron_right,
-                    ),
-                    tooltip: expanded ? 'Collapse layer' : 'Expand layer',
-                  ),
-                )
-              else
-                const SizedBox(width: 40),
-              Checkbox.adaptive(
-                value: layer.visible,
-                onChanged: (value) => onVisibleChanged(value ?? false),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Icon(
-                  _layerIcon(layer.kind),
-                  size: 20,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: active
+                ? colorScheme.primaryContainer.withValues(alpha: 0.55)
+                : Colors.transparent,
+          ),
+          child: InkWell(
+            onTap: onActivateLayer,
+            child: SizedBox(
+              height: rowHeight,
+              child: Padding(
+                padding: padding,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          layer.name,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        _BadgeChip(label: _kindLabel(layer.kind)),
-                        _BadgeChip(label: '${features.length} features'),
-                        if (layer.locked) const _BadgeChip(label: 'Locked'),
-                      ],
+                    Container(
+                      width: 3,
+                      height: compact ? 18 : 26,
+                      color: active ? colorScheme.primary : Colors.transparent,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'z-index ${layer.zIndex}'
-                      '${_zoomRangeLabel(layer)}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
+                    const SizedBox(width: 4),
+                    if (hasChildren)
+                      _CompactIconButton(
+                        icon:
+                            expanded ? Icons.expand_more : Icons.chevron_right,
+                        tooltip: expanded ? 'Collapse layer' : 'Expand layer',
+                        onPressed: onToggleExpanded,
+                      )
+                    else
+                      const SizedBox(width: 26),
+                    SizedBox(
+                      width: 24,
+                      child: Checkbox.adaptive(
+                        value: layer.visible,
+                        onChanged: (value) => onVisibleChanged(value ?? false),
+                        visualDensity: VisualDensity.compact,
                       ),
+                    ),
+                    Icon(
+                      _layerIcon(layer.kind),
+                      size: compact ? 15 : 20,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      flex: 5,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              layer.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: active
+                                    ? colorScheme.onPrimaryContainer
+                                    : colorScheme.onSurface,
+                                fontWeight:
+                                    active ? FontWeight.w800 : FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (active) ...[
+                            const SizedBox(width: 6),
+                            const _ActiveLayerBadge(),
+                          ],
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 58,
+                      child: Text(
+                        '${features.length}',
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 34,
+                      child: Text(
+                        '${layer.zIndex}',
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _CompactIconButton(
+                          tooltip: 'Raise layer',
+                          icon: Icons.keyboard_arrow_up,
+                          onPressed: onMoveUp,
+                        ),
+                        _CompactIconButton(
+                          tooltip: 'Lower layer',
+                          icon: Icons.keyboard_arrow_down,
+                          onPressed: onMoveDown,
+                        ),
+                        if (onDelete != null)
+                          _CompactIconButton(
+                            tooltip: 'Delete layer',
+                            icon: Icons.delete_outline,
+                            onPressed: onDelete,
+                          ),
+                      ],
                     ),
                   ],
                 ),
               ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    visualDensity: compact
-                        ? VisualDensity.compact
-                        : VisualDensity.standard,
-                    tooltip: 'Raise layer',
-                    onPressed: onMoveUp,
-                    icon: const Icon(Icons.keyboard_arrow_up),
-                  ),
-                  IconButton(
-                    visualDensity: compact
-                        ? VisualDensity.compact
-                        : VisualDensity.standard,
-                    tooltip: 'Lower layer',
-                    onPressed: onMoveDown,
-                    icon: const Icon(Icons.keyboard_arrow_down),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
         if (expanded) ...[
-          for (final feature in featurePreview)
+          for (final feature in features)
             _FeatureTreeLeaf(
               feature: feature,
+              compact: compact,
+              selected: selectedFeatureKey == _featureKey(feature),
               padding: EdgeInsets.fromLTRB(
-                padding.left + 68,
-                0,
+                padding.left + 56,
+                compact ? 1 : 0,
                 padding.right,
-                compact ? 8 : 10,
+                compact ? 1 : 10,
               ),
-            ),
-          if (features.length > featurePreview.length)
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                padding.left + 68,
-                0,
-                padding.right,
-                compact ? 8 : 12,
-              ),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '+${features.length - featurePreview.length} more features',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
+              onSelected: () {
+                onFeatureSelected(feature);
+                onEditFeature?.call(feature);
+              },
+              onEditFeature: () {
+                onFeatureSelected(feature);
+                onEditFeature?.call(feature);
+              },
             ),
         ],
       ],
     );
-  }
-
-  String _zoomRangeLabel(agus_maps_flutter.AgusLayer layer) {
-    if (layer.minZoom == null && layer.maxZoom == null) {
-      return '';
-    }
-    return ' · zoom ${layer.minZoom ?? 0}-${layer.maxZoom ?? '∞'}';
-  }
-
-  String _kindLabel(agus_maps_flutter.AgusLayerKind kind) {
-    return switch (kind) {
-      agus_maps_flutter.AgusLayerKind.nativeMwm => 'Native',
-      agus_maps_flutter.AgusLayerKind.userDraw => 'User draw',
-      agus_maps_flutter.AgusLayerKind.comapsSupported => 'Preset',
-      agus_maps_flutter.AgusLayerKind.duckdbQuery => 'Query',
-    };
   }
 
   IconData _layerIcon(agus_maps_flutter.AgusLayerKind kind) {
@@ -1411,54 +1486,83 @@ class _FeatureTreeLeaf extends StatelessWidget {
   const _FeatureTreeLeaf({
     required this.feature,
     required this.padding,
+    required this.compact,
+    required this.selected,
+    required this.onSelected,
+    required this.onEditFeature,
   });
 
   final agus_maps_flutter.AgusLayerFeature feature;
   final EdgeInsets padding;
+  final bool compact;
+  final bool selected;
+  final VoidCallback onSelected;
+  final VoidCallback? onEditFeature;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Padding(
-      padding: padding,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            margin: const EdgeInsets.only(top: 6),
-            decoration: BoxDecoration(
-              color: colorScheme.secondary,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return InkWell(
+      onTap: onSelected,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: selected ? colorScheme.primaryContainer : Colors.transparent,
+        ),
+        child: SizedBox(
+          height: compact ? 24 : 36,
+          child: Padding(
+            padding: padding,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  _featureTitle(),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
+                Icon(
+                  _featureIcon(feature.geometryKind),
+                  size: compact ? 13 : 16,
+                  color: selected
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.secondary,
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  flex: 5,
+                  child: Text(
+                    _featureTitle(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: selected
+                          ? colorScheme.onPrimaryContainer
+                          : colorScheme.onSurface,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '${_geometryLabel()} · ${feature.featureId}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+                SizedBox(
+                  width: 74,
+                  child: Text(
+                    _geometryKindLabel(feature.geometryKind),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: selected
+                          ? colorScheme.onPrimaryContainer
+                          : colorScheme.onSurfaceVariant,
+                    ),
                   ),
+                ),
+                const SizedBox(width: 4),
+                _CompactIconButton(
+                  tooltip: 'Edit feature vertices',
+                  icon: Icons.open_with,
+                  onPressed: onEditFeature,
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1473,19 +1577,6 @@ class _FeatureTreeLeaf extends StatelessWidget {
       return note.trim();
     }
     return 'Untitled feature';
-  }
-
-  String _geometryLabel() {
-    return switch (feature.geometryKind) {
-      agus_maps_flutter.AgusGeometryKind.point => 'Point',
-      agus_maps_flutter.AgusGeometryKind.line => 'Line',
-      agus_maps_flutter.AgusGeometryKind.segment => 'Segment',
-      agus_maps_flutter.AgusGeometryKind.polygon => 'Polygon',
-      agus_maps_flutter.AgusGeometryKind.multipoint => 'Multi-point',
-      agus_maps_flutter.AgusGeometryKind.multiline => 'Multi-line',
-      agus_maps_flutter.AgusGeometryKind.multipolygon => 'Multi-polygon',
-      agus_maps_flutter.AgusGeometryKind.collection => 'Collection',
-    };
   }
 }
 
@@ -1516,30 +1607,73 @@ class _CountChip extends StatelessWidget {
   }
 }
 
-class _BadgeChip extends StatelessWidget {
-  const _BadgeChip({required this.label});
-
-  final String label;
+class _ActiveLayerBadge extends StatelessWidget {
+  const _ActiveLayerBadge();
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
+        color: colorScheme.primary,
+        borderRadius: BorderRadius.circular(3),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
         child: Text(
-          label,
+          'EDIT',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
+                color: colorScheme.onPrimary,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
               ),
         ),
       ),
     );
   }
+}
+
+String _geometryKindLabel(agus_maps_flutter.AgusGeometryKind kind) {
+  return switch (kind) {
+    agus_maps_flutter.AgusGeometryKind.point => 'Point',
+    agus_maps_flutter.AgusGeometryKind.line => 'Line',
+    agus_maps_flutter.AgusGeometryKind.segment => 'Segment',
+    agus_maps_flutter.AgusGeometryKind.polygon => 'Polygon',
+    agus_maps_flutter.AgusGeometryKind.multipoint => 'Multi-point',
+    agus_maps_flutter.AgusGeometryKind.multiline => 'Multi-line',
+    agus_maps_flutter.AgusGeometryKind.multipolygon => 'Multi-polygon',
+    agus_maps_flutter.AgusGeometryKind.collection => 'Collection',
+  };
+}
+
+IconData _featureIcon(agus_maps_flutter.AgusGeometryKind kind) {
+  return switch (kind) {
+    agus_maps_flutter.AgusGeometryKind.point => Icons.circle,
+    agus_maps_flutter.AgusGeometryKind.line => Icons.timeline,
+    agus_maps_flutter.AgusGeometryKind.segment => Icons.linear_scale,
+    agus_maps_flutter.AgusGeometryKind.polygon => Icons.pentagon_outlined,
+    agus_maps_flutter.AgusGeometryKind.multipoint => Icons.grain,
+    agus_maps_flutter.AgusGeometryKind.multiline => Icons.alt_route,
+    agus_maps_flutter.AgusGeometryKind.multipolygon => Icons.polyline_outlined,
+    agus_maps_flutter.AgusGeometryKind.collection =>
+      Icons.account_tree_outlined,
+  };
+}
+
+String _featureKey(agus_maps_flutter.AgusLayerFeature feature) {
+  return '${feature.layerId}:${feature.featureId}';
+}
+
+int _enabledNativeLayerCount(
+  agus_maps_flutter.MapLayerState nativeLayerState,
+  bool buildings3dEnabled,
+) {
+  var count = 0;
+  if (buildings3dEnabled) count += 1;
+  if (nativeLayerState.outdoors) count += 1;
+  if (nativeLayerState.isolines) count += 1;
+  if (nativeLayerState.subway) count += 1;
+  return count;
 }
 
 class _InlineInfoBanner extends StatelessWidget {

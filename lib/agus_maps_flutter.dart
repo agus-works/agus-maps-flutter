@@ -1222,6 +1222,46 @@ int refreshDuckDBMapLayers() {
   return _bindings.agus_duckdb_refresh_render_layers();
 }
 
+/// Renders committed-feature edit handles in the native Drape scene.
+///
+/// This is visual-only state for the currently selected feature. Persistence
+/// remains owned by the Dart layer store and the draw controller.
+void setDuckDBEditHandlesFromWkt(String geometryWkt) {
+  setDuckDBInteractionGeometryFromWkt(
+    AgusDrapeInteractionMode.editingFeature,
+    geometryWkt,
+  );
+}
+
+/// Renders transient drawing/editing geometry in the native Drape scene.
+void setDuckDBInteractionGeometryFromWkt(
+  AgusDrapeInteractionMode mode,
+  String geometryWkt,
+) {
+  _ensureDuckDBBridgeSupported();
+  _ensureNativeDuckDBLayerRenderingSupported();
+  final geometryWktPtr = geometryWkt.toNativeUtf8().cast<Char>();
+  try {
+    _bindings.agus_duckdb_set_interaction_geometry_from_wkt(
+      switch (mode) {
+        AgusDrapeInteractionMode.inactive => 0,
+        AgusDrapeInteractionMode.drawing => 1,
+        AgusDrapeInteractionMode.editingFeature => 2,
+      },
+      geometryWktPtr,
+    );
+  } finally {
+    malloc.free(geometryWktPtr);
+  }
+}
+
+/// Clears native Drape drawing/edit handles for the selected DuckDB feature.
+void clearDuckDBEditHandles() {
+  _ensureDuckDBBridgeSupported();
+  _ensureNativeDuckDBLayerRenderingSupported();
+  _bindings.agus_duckdb_clear_edit_handles();
+}
+
 /// Set the locale for native POI type localization.
 ///
 /// This controls how POI type names are translated in place page data
@@ -1382,9 +1422,13 @@ MapCameraPosition? getMapCameraPosition() => getCameraPosition();
 /// Flutter overlays should multiply logical local positions by the device pixel
 /// ratio before calling this helper.
 AgusLatLon? screenPointToLatLon(double physicalX, double physicalY) {
-  if (!(Platform.isMacOS || Platform.isIOS || Platform.isAndroid)) {
+  if (!(Platform.isMacOS ||
+      Platform.isIOS ||
+      Platform.isAndroid ||
+      Platform.isWindows ||
+      Platform.isLinux)) {
     throw UnsupportedError(
-      'Screen-to-coordinate projection is currently wired on Apple and Android only',
+      'Screen-to-coordinate projection is currently wired on desktop, Apple, and Android only',
     );
   }
 
@@ -1402,6 +1446,39 @@ AgusLatLon? screenPointToLatLon(double physicalX, double physicalY) {
   } finally {
     malloc.free(latPtr);
     malloc.free(lonPtr);
+  }
+}
+
+/// Converts a WGS84 coordinate to physical screen coordinates.
+///
+/// The returned offset is in the native map surface's physical pixel space.
+/// Flutter overlays should divide it by the device pixel ratio before using it
+/// as a logical local position.
+Offset? latLonToScreenPoint(double lat, double lon) {
+  if (!(Platform.isMacOS ||
+      Platform.isIOS ||
+      Platform.isAndroid ||
+      Platform.isWindows ||
+      Platform.isLinux)) {
+    throw UnsupportedError(
+      'Coordinate-to-screen projection is currently wired on desktop, Apple, and Android only',
+    );
+  }
+
+  final xPtr = malloc<Double>();
+  final yPtr = malloc<Double>();
+  try {
+    final result = _bindings.comaps_latlon_to_screen(
+      lat,
+      lon,
+      xPtr,
+      yPtr,
+    );
+    if (result != 1) return null;
+    return Offset(xPtr.value, yPtr.value);
+  } finally {
+    malloc.free(xPtr);
+    malloc.free(yPtr);
   }
 }
 
@@ -1722,6 +1799,25 @@ class AgusMap extends StatefulWidget {
   /// The callback receives null if no place page is available.
   final ValueChanged<PlacePageData?>? onPlacePage;
 
+  /// Observes map taps before place-page lookup.
+  ///
+  /// Return true when an editor consumes the tap, such as adding a sketch
+  /// vertex. Drag gestures still go to the native map unless a pointer-down
+  /// callback captures a specific pointer.
+  final bool Function(Offset localPosition)? onMapTap;
+
+  /// Optional pointer-down hook for map-native editors.
+  ///
+  /// Return true to capture this pointer and prevent CoMaps from using it for
+  /// pan/zoom until the matching up/cancel event.
+  final bool Function(Offset localPosition)? onMapPointerDown;
+
+  /// Receives moves for pointers captured by [onMapPointerDown].
+  final void Function(Offset localPosition)? onMapPointerMove;
+
+  /// Receives up/cancel for pointers captured by [onMapPointerDown].
+  final void Function(Offset localPosition)? onMapPointerUp;
+
   /// Controller for programmatic map control.
   /// If not provided, the map can only be controlled via gestures.
   final AgusMapController? controller;
@@ -1751,6 +1847,10 @@ class AgusMap extends StatefulWidget {
     this.initialZoom,
     this.onMapReady,
     this.onPlacePage,
+    this.onMapTap,
+    this.onMapPointerDown,
+    this.onMapPointerMove,
+    this.onMapPointerUp,
     this.controller,
     this.isVisible = true,
     this.userScale = 1.0,
@@ -2074,12 +2174,18 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   // Track active pointers for multitouch
   final Map<int, Offset> _activePointers = {};
   final Map<int, _TapState> _tapStates = {};
+  final Set<int> _editorCapturedPointers = <int>{};
   bool _hadMultiplePointers = false;
 
   static const double _tapSlop = 8.0;
   static const Duration _tapTimeout = Duration(milliseconds: 350);
 
   void _handlePointerDown(PointerDownEvent event) {
+    if (widget.onMapPointerDown?.call(event.localPosition) ?? false) {
+      _editorCapturedPointers.add(event.pointer);
+      return;
+    }
+
     _activePointers[event.pointer] = event.localPosition;
     _tapStates[event.pointer] = _TapState(event.localPosition, event.timeStamp);
     if (_activePointers.length > 1) {
@@ -2089,6 +2195,11 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
+    if (_editorCapturedPointers.contains(event.pointer)) {
+      widget.onMapPointerMove?.call(event.localPosition);
+      return;
+    }
+
     _activePointers[event.pointer] = event.localPosition;
     final tap = _tapStates[event.pointer];
     if (tap != null) {
@@ -2101,6 +2212,11 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    if (_editorCapturedPointers.remove(event.pointer)) {
+      widget.onMapPointerUp?.call(event.localPosition);
+      return;
+    }
+
     _sendTouchEvent(TouchType.up, event.pointer, event.localPosition);
     final tap = _tapStates.remove(event.pointer);
     _activePointers.remove(event.pointer);
@@ -2110,7 +2226,10 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
           !tap.moved &&
           !_hadMultiplePointers &&
           (event.timeStamp - tap.startTime) <= _tapTimeout) {
-        _emitPlacePageIfAvailable();
+        final consumed = widget.onMapTap?.call(tap.startPosition) ?? false;
+        if (!consumed) {
+          _emitPlacePageIfAvailable();
+        }
       }
       _hadMultiplePointers = false;
       _tapStates.clear();
@@ -2118,6 +2237,11 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
+    if (_editorCapturedPointers.remove(event.pointer)) {
+      widget.onMapPointerUp?.call(event.localPosition);
+      return;
+    }
+
     _sendTouchEvent(TouchType.cancel, event.pointer, event.localPosition);
     _activePointers.remove(event.pointer);
     _tapStates.remove(event.pointer);

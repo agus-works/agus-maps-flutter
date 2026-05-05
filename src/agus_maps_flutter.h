@@ -63,6 +63,14 @@ FFI_PLUGIN_EXPORT int comaps_screen_to_latlon(
 	double* lat,
 	double* lon);
 
+// Converts WGS84 coordinates to physical screen coordinates using the latest
+// native viewport. Returns 1 when values were written.
+FFI_PLUGIN_EXPORT int comaps_latlon_to_screen(
+	double lat,
+	double lon,
+	double* physical_x,
+	double* physical_y);
+
 // Relative zoom controls centered on the visible viewport.
 FFI_PLUGIN_EXPORT void comaps_zoom_in(int animated);
 FFI_PLUGIN_EXPORT void comaps_zoom_out(int animated);
@@ -422,6 +430,15 @@ FFI_PLUGIN_EXPORT void agus_duckdb_free_render_features(
 // Returns the number of visible features submitted, or a negative value when
 // the map/DuckDB state is not ready. Other platforms will wire this later.
 FFI_PLUGIN_EXPORT int32_t agus_duckdb_refresh_render_layers(void);
+
+// Renders selected-feature edit handles in a separate native Drape user-mark
+// group. The WKT is parsed for lon/lat vertex pairs and is not persisted here.
+FFI_PLUGIN_EXPORT void agus_duckdb_set_edit_handles_from_wkt(const char* geometryWkt);
+// Native Drape interaction state: 0 = inactive, 1 = drawing, 2 = editing.
+// The WKT is transient interaction geometry; Dart/DuckDB still own persistence.
+FFI_PLUGIN_EXPORT void agus_duckdb_set_interaction_geometry_from_wkt(
+    int32_t interactionMode, const char* geometryWkt);
+FFI_PLUGIN_EXPORT void agus_duckdb_clear_edit_handles(void);
 
 // Enables or disables viewport-driven DuckDB render refreshes on platforms that
 // implement native Drape integration.

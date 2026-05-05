@@ -655,6 +655,38 @@ FFI_PLUGIN_EXPORT int comaps_get_current_zoom(void) {
     return g_framework->GetDrawScale();
 }
 
+FFI_PLUGIN_EXPORT int comaps_screen_to_latlon(
+    double physical_x,
+    double physical_y,
+    double* lat,
+    double* lon) {
+    if (!g_framework || !lat || !lon) {
+        return 0;
+    }
+
+    auto const mercatorPoint = g_framework->PtoG(
+        m2::PointD(physical_x, physical_y));
+    auto const coordinate = mercator::ToLatLon(mercatorPoint);
+    *lat = coordinate.m_lat;
+    *lon = coordinate.m_lon;
+    return 1;
+}
+
+FFI_PLUGIN_EXPORT int comaps_latlon_to_screen(
+    double lat,
+    double lon,
+    double* physical_x,
+    double* physical_y) {
+    if (!g_framework || !physical_x || !physical_y) {
+        return 0;
+    }
+
+    auto const screenPoint = g_framework->GtoP(mercator::FromLatLon(lat, lon));
+    *physical_x = screenPoint.x;
+    *physical_y = screenPoint.y;
+    return 1;
+}
+
 FFI_PLUGIN_EXPORT void comaps_zoom_in(int animated) {
     if (!g_framework || !g_drapeEngineCreated) {
         return;
