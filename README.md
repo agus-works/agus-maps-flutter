@@ -105,22 +105,22 @@ The following videos showcase the **Agus Maps plugin** running on various platfo
 <table>
   <tr>
     <td align="center" width="50%">
-      <a href="https://youtu.be/YVaBJ8uW5Ag">
-        <img src="https://img.youtube.com/vi/YVaBJ8uW5Ag/maxresdefault.jpg" alt="Android Demo" width="100%">
+      <a href="https://youtu.be/vaBReVqbYhU">
+        <img src="https://img.youtube.com/vi/vaBReVqbYhU/maxresdefault.jpg" alt="Android Demo" width="100%">
         <br><strong>📱 Android</strong>
       </a>
     </td>
     <td align="center" width="50%">
-      <a href="https://youtu.be/Jt0QE9Umsng">
-        <img src="https://img.youtube.com/vi/Jt0QE9Umsng/maxresdefault.jpg" alt="iOS Demo" width="100%">
+      <a href="https://youtu.be/ddIif7v_ayA">
+        <img src="https://img.youtube.com/vi/ddIif7v_ayA/maxresdefault.jpg" alt="iOS Demo" width="100%">
         <br><strong>📱 iOS</strong>
       </a>
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <a href="https://youtu.be/Gd53HFrAGts">
-        <img src="https://img.youtube.com/vi/Gd53HFrAGts/maxresdefault.jpg" alt="macOS Demo" width="100%">
+      <a href="https://youtu.be/TlqcftVdAss">
+        <img src="https://img.youtube.com/vi/TlqcftVdAss/maxresdefault.jpg" alt="macOS Demo" width="100%">
         <br><strong>🖥️ macOS</strong>
       </a>
     </td>
