@@ -278,6 +278,13 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
     });
   }
 
+  Future<void> _startFeatureForLayer(String layerId) async {
+    widget.onActiveLayerChanged?.call(layerId);
+    final tool = await _showDrawToolPicker(context);
+    if (tool == null) return;
+    widget.onDrawToolChanged?.call(tool);
+  }
+
   Future<void> _reload() async {
     final store = widget.layerStore;
     if (store == null) {
@@ -379,38 +386,9 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
     final store = widget.layerStore;
     if (store == null || _busy) return;
 
-    var layerName = 'Drawing layer ${_layers.length + 1}';
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Create Drawing Layer'),
-          content: TextFormField(
-            initialValue: layerName,
-            autofocus: true,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Layer name',
-              helperText: 'Creates a DuckDB-backed editable drawing layer.',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (value) {
-              layerName = value;
-            },
-            onFieldSubmitted: (value) => Navigator.of(context).pop(value),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(layerName),
-              child: const Text('Create'),
-            ),
-          ],
-        );
-      },
+    final result = await _showLayerNamePrompt(
+      context,
+      initialValue: 'Drawing layer ${_layers.length + 1}',
     );
 
     final name = result?.trim();
@@ -515,6 +493,10 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
 
     if (compact) {
       return _buildDesktopCompact(context, projectLayerCount);
+    }
+
+    if (widget.formFactor.isMobile) {
+      return _buildMobileLayerManager(context, projectLayerCount);
     }
 
     return PanelSurface(
@@ -684,6 +666,197 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
     );
   }
 
+  Widget _buildMobileLayerManager(BuildContext context, int projectLayerCount) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final activeTool =
+        widget.activeDrawTool ?? agus_maps_flutter.AgusDrawTool.none;
+    final storeReady = widget.layerStore != null;
+
+    return Material(
+      color: Colors.transparent,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surface.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.75),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 24,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(26),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                child: Column(
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: colorScheme.outlineVariant,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Layers',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                storeReady
+                                    ? '$projectLayerCount layers - map stays live behind this panel'
+                                    : widget.layerStoreStatus ??
+                                        'DuckDB layer store is starting',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Refresh layers',
+                          onPressed: _reload,
+                          icon: const Icon(Icons.refresh),
+                        ),
+                        IconButton(
+                          tooltip: 'Close layers',
+                          onPressed: widget.onClose,
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: storeReady && !_busy ? _createLayer : null,
+                        icon: const Icon(Icons.add),
+                        label: const Text('New layer'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      tooltip: 'Back up project layers',
+                      onPressed: storeReady && !_busy ? _backup : null,
+                      icon: _busy
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.backup_outlined),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: _MobileDrawSessionCard(
+                  activeTool: activeTool,
+                  hasEditableLayer: _layers.any(
+                    (layer) => layer.layerId == widget.activeLayerId,
+                  ),
+                  activeLayerName: _activeLayerName(),
+                  onToolChanged: widget.onDrawToolChanged,
+                ),
+              ),
+              if (_message.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Text(
+                    _message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: projectLayerCount == 0
+                    ? Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: _InlineInfoBanner(
+                          icon: storeReady
+                              ? Icons.add_location_alt_outlined
+                              : Icons.info_outline,
+                          message: storeReady
+                              ? 'Create a layer, choose it as the edit layer, then add point, line, segment, or polygon features on the map.'
+                              : widget.layerStoreStatus ??
+                                  'Project layers appear once the DuckDB store is active.',
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(14, 10, 14, 18),
+                        itemCount: _layers.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final layer = _layers[index];
+                          final features = _featuresByLayer[layer.layerId] ??
+                              const <agus_maps_flutter.AgusLayerFeature>[];
+                          return _MobileLayerCard(
+                            layer: layer,
+                            features: features,
+                            active: layer.layerId == widget.activeLayerId,
+                            expanded: _expandedNodes.contains(
+                              'layer:${layer.layerId}',
+                            ),
+                            selectedFeatureKey: _selectedFeatureKey,
+                            onToggleExpanded: () =>
+                                _toggleNode('layer:${layer.layerId}'),
+                            onActivateLayer: () =>
+                                widget.onActiveLayerChanged?.call(
+                              layer.layerId,
+                            ),
+                            onAddFeature: () => unawaited(
+                              _startFeatureForLayer(layer.layerId),
+                            ),
+                            onFeatureSelected: _selectFeature,
+                            onEditFeature: widget.onEditFeature,
+                            onVisibleChanged: (value) {
+                              unawaited(_toggleStoredLayer(layer, value));
+                            },
+                            onMoveUp: () => unawaited(_moveLayer(layer, 1)),
+                            onMoveDown: () => unawaited(_moveLayer(layer, -1)),
+                            onDelete: () => unawaited(_deleteLayer(layer)),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDesktopLayerGrid(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -839,6 +1012,867 @@ class _CompactLayerToolbar extends StatelessWidget {
   }
 }
 
+bool _isMobileLandscape(BuildContext context) {
+  final size = MediaQuery.sizeOf(context);
+  return context.exampleFormFactor.isMobile && size.width > size.height;
+}
+
+Future<String?> _showLayerNamePrompt(
+  BuildContext context, {
+  required String initialValue,
+}) {
+  return showDialog<String>(
+    context: context,
+    builder: (context) => _LayerNamePromptDialog(
+      initialValue: initialValue,
+      fullscreen: _isMobileLandscape(context),
+    ),
+  );
+}
+
+Future<agus_maps_flutter.AgusDrawTool?> _showDrawToolPicker(
+  BuildContext context,
+) {
+  return showDialog<agus_maps_flutter.AgusDrawTool>(
+    context: context,
+    builder: (context) => const _DrawToolPickerDialog(),
+  );
+}
+
+String _drawToolName(agus_maps_flutter.AgusDrawTool tool) {
+  return switch (tool) {
+    agus_maps_flutter.AgusDrawTool.pin => 'point feature',
+    agus_maps_flutter.AgusDrawTool.segment => 'segment feature',
+    agus_maps_flutter.AgusDrawTool.line => 'line feature',
+    agus_maps_flutter.AgusDrawTool.polygon => 'polygon feature',
+    agus_maps_flutter.AgusDrawTool.none => 'map feature',
+  };
+}
+
+class _LayerNamePromptDialog extends StatefulWidget {
+  const _LayerNamePromptDialog({
+    required this.initialValue,
+    required this.fullscreen,
+  });
+
+  final String initialValue;
+  final bool fullscreen;
+
+  @override
+  State<_LayerNamePromptDialog> createState() => _LayerNamePromptDialogState();
+}
+
+class _LayerNamePromptDialogState extends State<_LayerNamePromptDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.of(context).pop(_controller.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.fullscreen) {
+      return Dialog.fullscreen(
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Create Drawing Layer'),
+            leading: IconButton(
+              tooltip: 'Cancel',
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close),
+            ),
+          ),
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: _LayerNamePromptBody(
+                controller: _controller,
+                autofocus: false,
+                onSubmitted: _submit,
+              ),
+            ),
+          ),
+          bottomNavigationBar: SafeArea(
+            minimum: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _submit,
+                  child: const Text('Create'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final size = MediaQuery.sizeOf(context);
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final maxHeight = (size.height - viewInsets.bottom - 48)
+        .clamp(
+          220.0,
+          420.0,
+        )
+        .toDouble();
+
+    return Dialog(
+      insetPadding: EdgeInsets.fromLTRB(24, 24, 24, 24 + viewInsets.bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 440, maxHeight: maxHeight),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Create Drawing Layer',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: _LayerNamePromptBody(
+                  controller: _controller,
+                  autofocus: true,
+                  onSubmitted: _submit,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _submit,
+                    child: const Text('Create'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LayerNamePromptBody extends StatelessWidget {
+  const _LayerNamePromptBody({
+    required this.controller,
+    required this.autofocus,
+    required this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final bool autofocus;
+  final VoidCallback onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      shrinkWrap: true,
+      padding: EdgeInsets.zero,
+      children: [
+        TextFormField(
+          controller: controller,
+          autofocus: autofocus,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Layer name',
+            helperText: 'Creates a DuckDB-backed editable drawing layer.',
+            border: OutlineInputBorder(),
+          ),
+          onFieldSubmitted: (_) => onSubmitted(),
+        ),
+      ],
+    );
+  }
+}
+
+class _DrawToolPickerDialog extends StatelessWidget {
+  const _DrawToolPickerDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final maxHeight = (size.height - 48).clamp(220.0, 420.0).toDouble();
+    return Dialog(
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 420, maxHeight: maxHeight),
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
+              child: Text(
+                'Choose feature type',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            _DrawToolListTile(
+              tool: agus_maps_flutter.AgusDrawTool.pin,
+              icon: Icons.add_location_alt_outlined,
+              label: 'Point',
+              description: 'One tapped map location.',
+            ),
+            _DrawToolListTile(
+              tool: agus_maps_flutter.AgusDrawTool.segment,
+              icon: Icons.linear_scale,
+              label: 'Segment',
+              description: 'Two vertices connected by a straight line.',
+            ),
+            _DrawToolListTile(
+              tool: agus_maps_flutter.AgusDrawTool.line,
+              icon: Icons.timeline,
+              label: 'Line',
+              description: 'Two or more vertices forming a path.',
+            ),
+            _DrawToolListTile(
+              tool: agus_maps_flutter.AgusDrawTool.polygon,
+              icon: Icons.polyline_outlined,
+              label: 'Polygon',
+              description: 'Three or more vertices forming a closed area.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawToolListTile extends StatelessWidget {
+  const _DrawToolListTile({
+    required this.tool,
+    required this.icon,
+    required this.label,
+    required this.description,
+  });
+
+  final agus_maps_flutter.AgusDrawTool tool;
+  final IconData icon;
+  final String label;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(label),
+      subtitle: Text(description),
+      onTap: () => Navigator.of(context).pop(tool),
+    );
+  }
+}
+
+class _MobileDrawSessionCard extends StatelessWidget {
+  const _MobileDrawSessionCard({
+    required this.activeTool,
+    required this.hasEditableLayer,
+    required this.activeLayerName,
+    required this.onToolChanged,
+  });
+
+  final agus_maps_flutter.AgusDrawTool activeTool;
+  final bool hasEditableLayer;
+  final String activeLayerName;
+  final ValueChanged<agus_maps_flutter.AgusDrawTool>? onToolChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final drawing = activeTool != agus_maps_flutter.AgusDrawTool.none;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: drawing
+            ? colorScheme.primaryContainer.withValues(alpha: 0.72)
+            : colorScheme.surfaceContainerHigh.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: drawing ? colorScheme.primary : colorScheme.outlineVariant,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  drawing
+                      ? Icons.edit_location_alt
+                      : Icons.edit_location_alt_outlined,
+                  color: drawing
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        drawing ? 'Drawing mode' : 'Active edit layer',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: drawing
+                              ? colorScheme.onPrimaryContainer
+                              : colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        activeLayerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: drawing
+                              ? colorScheme.onPrimaryContainer
+                              : colorScheme.onSurface,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!drawing)
+                  _MobileDrawToolMenu(
+                    enabled: hasEditableLayer,
+                    onToolChanged: onToolChanged,
+                  ),
+              ],
+            ),
+            if (drawing) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Creating ${_drawToolName(activeTool)}. Tap the map to add vertices. Pan/zoom still works. Use the floating check mark or X to finish.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ] else if (!hasEditableLayer) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Create or choose a layer before adding map features.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.error,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileDrawToolMenu extends StatelessWidget {
+  const _MobileDrawToolMenu({
+    required this.enabled,
+    required this.onToolChanged,
+  });
+
+  final bool enabled;
+  final ValueChanged<agus_maps_flutter.AgusDrawTool>? onToolChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<agus_maps_flutter.AgusDrawTool>(
+      tooltip: 'Add feature',
+      enabled: enabled && onToolChanged != null,
+      onSelected: onToolChanged,
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: agus_maps_flutter.AgusDrawTool.pin,
+          child: _MobileDrawToolMenuItem(
+            icon: Icons.add_location_alt_outlined,
+            label: 'Point',
+          ),
+        ),
+        PopupMenuItem(
+          value: agus_maps_flutter.AgusDrawTool.segment,
+          child: _MobileDrawToolMenuItem(
+            icon: Icons.linear_scale,
+            label: 'Segment',
+          ),
+        ),
+        PopupMenuItem(
+          value: agus_maps_flutter.AgusDrawTool.line,
+          child: _MobileDrawToolMenuItem(
+            icon: Icons.timeline,
+            label: 'Line',
+          ),
+        ),
+        PopupMenuItem(
+          value: agus_maps_flutter.AgusDrawTool.polygon,
+          child: _MobileDrawToolMenuItem(
+            icon: Icons.polyline_outlined,
+            label: 'Polygon',
+          ),
+        ),
+      ],
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: enabled
+              ? colorScheme.primary
+              : colorScheme.onSurface.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.add_location_alt_outlined,
+                color: enabled
+                    ? colorScheme.onPrimary
+                    : colorScheme.onSurface.withValues(alpha: 0.38),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Add',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: enabled
+                          ? colorScheme.onPrimary
+                          : colorScheme.onSurface.withValues(alpha: 0.38),
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileDrawToolMenuItem extends StatelessWidget {
+  const _MobileDrawToolMenuItem({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Text(label),
+      ],
+    );
+  }
+}
+
+class _CompactDrawToolMenu extends StatelessWidget {
+  const _CompactDrawToolMenu({
+    required this.enabled,
+    required this.onToolChanged,
+  });
+
+  final bool enabled;
+  final ValueChanged<agus_maps_flutter.AgusDrawTool>? onToolChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<agus_maps_flutter.AgusDrawTool>(
+      tooltip: 'Choose feature type',
+      enabled: enabled && onToolChanged != null,
+      onSelected: onToolChanged,
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: agus_maps_flutter.AgusDrawTool.pin,
+          child: _MobileDrawToolMenuItem(
+            icon: Icons.add_location_alt_outlined,
+            label: 'Point',
+          ),
+        ),
+        PopupMenuItem(
+          value: agus_maps_flutter.AgusDrawTool.segment,
+          child: _MobileDrawToolMenuItem(
+            icon: Icons.linear_scale,
+            label: 'Segment',
+          ),
+        ),
+        PopupMenuItem(
+          value: agus_maps_flutter.AgusDrawTool.line,
+          child: _MobileDrawToolMenuItem(
+            icon: Icons.timeline,
+            label: 'Line',
+          ),
+        ),
+        PopupMenuItem(
+          value: agus_maps_flutter.AgusDrawTool.polygon,
+          child: _MobileDrawToolMenuItem(
+            icon: Icons.polyline_outlined,
+            label: 'Polygon',
+          ),
+        ),
+      ],
+      child: TextButton.icon(
+        onPressed: null,
+        icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+        label: const Text('Add feature'),
+        style: TextButton.styleFrom(
+          foregroundColor: enabled
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).disabledColor,
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileLayerCard extends StatelessWidget {
+  const _MobileLayerCard({
+    required this.layer,
+    required this.features,
+    required this.active,
+    required this.expanded,
+    required this.selectedFeatureKey,
+    required this.onToggleExpanded,
+    required this.onActivateLayer,
+    required this.onAddFeature,
+    required this.onFeatureSelected,
+    required this.onEditFeature,
+    required this.onVisibleChanged,
+    required this.onMoveUp,
+    required this.onMoveDown,
+    required this.onDelete,
+  });
+
+  final agus_maps_flutter.AgusLayer layer;
+  final List<agus_maps_flutter.AgusLayerFeature> features;
+  final bool active;
+  final bool expanded;
+  final String? selectedFeatureKey;
+  final VoidCallback onToggleExpanded;
+  final VoidCallback onActivateLayer;
+  final VoidCallback onAddFeature;
+  final ValueChanged<agus_maps_flutter.AgusLayerFeature> onFeatureSelected;
+  final ValueChanged<agus_maps_flutter.AgusLayerFeature>? onEditFeature;
+  final ValueChanged<bool> onVisibleChanged;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: active
+            ? colorScheme.primaryContainer.withValues(alpha: 0.58)
+            : colorScheme.surfaceContainerLow.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: active ? colorScheme.primary : colorScheme.outlineVariant,
+        ),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: onActivateLayer,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: expanded ? 'Hide features' : 'Show features',
+                    onPressed: onToggleExpanded,
+                    icon: Icon(
+                      expanded ? Icons.expand_more : Icons.chevron_right,
+                    ),
+                  ),
+                  Checkbox.adaptive(
+                    value: layer.visible,
+                    onChanged: (value) => onVisibleChanged(value ?? false),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                layer.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  color: active
+                                      ? colorScheme.onPrimaryContainer
+                                      : colorScheme.onSurface,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            if (active) ...[
+                              const SizedBox(width: 6),
+                              const _ActiveLayerBadge(),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${features.length} features - z ${layer.zIndex}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: active
+                                ? colorScheme.onPrimaryContainer
+                                    .withValues(alpha: 0.78)
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<_MobileLayerAction>(
+                    tooltip: 'Layer actions',
+                    onSelected: (action) {
+                      switch (action) {
+                        case _MobileLayerAction.addFeature:
+                          onAddFeature();
+                        case _MobileLayerAction.raise:
+                          onMoveUp();
+                        case _MobileLayerAction.lower:
+                          onMoveDown();
+                        case _MobileLayerAction.delete:
+                          onDelete();
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: _MobileLayerAction.addFeature,
+                        child: _MobileLayerActionItem(
+                          icon: Icons.add_location_alt_outlined,
+                          label: 'Add feature',
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _MobileLayerAction.raise,
+                        child: _MobileLayerActionItem(
+                          icon: Icons.keyboard_arrow_up,
+                          label: 'Raise layer',
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _MobileLayerAction.lower,
+                        child: _MobileLayerActionItem(
+                          icon: Icons.keyboard_arrow_down,
+                          label: 'Lower layer',
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _MobileLayerAction.delete,
+                        child: _MobileLayerActionItem(
+                          icon: Icons.delete_outline,
+                          label: 'Delete layer',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (expanded) ...[
+            Divider(height: 1, color: colorScheme.outlineVariant),
+            if (features.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.add_location_alt_outlined,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'No features yet. Add one to draw it on the map.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: onAddFeature,
+                      child: const Text('Add'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              for (final feature in features)
+                _MobileFeatureTile(
+                  feature: feature,
+                  selected: selectedFeatureKey == _featureKey(feature),
+                  onSelected: () {
+                    onFeatureSelected(feature);
+                    onEditFeature?.call(feature);
+                  },
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+enum _MobileLayerAction { addFeature, raise, lower, delete }
+
+class _MobileLayerActionItem extends StatelessWidget {
+  const _MobileLayerActionItem({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Text(label),
+      ],
+    );
+  }
+}
+
+class _MobileFeatureTile extends StatelessWidget {
+  const _MobileFeatureTile({
+    required this.feature,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final agus_maps_flutter.AgusLayerFeature feature;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final title = _featureTitle(feature);
+
+    return InkWell(
+      onTap: onSelected,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: selected
+              ? colorScheme.secondaryContainer.withValues(alpha: 0.8)
+              : Colors.transparent,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 11, 12, 11),
+          child: Row(
+            children: [
+              Icon(
+                _featureIcon(feature.geometryKind),
+                size: 18,
+                color: selected
+                    ? colorScheme.onSecondaryContainer
+                    : colorScheme.secondary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: selected
+                            ? colorScheme.onSecondaryContainer
+                            : colorScheme.onSurface,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      _geometryKindLabel(feature.geometryKind),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: selected
+                            ? colorScheme.onSecondaryContainer
+                                .withValues(alpha: 0.75)
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.open_with,
+                size: 18,
+                color: selected
+                    ? colorScheme.onSecondaryContainer
+                    : colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _featureTitle(agus_maps_flutter.AgusLayerFeature feature) {
+    final title = feature.properties['title'];
+    if (title is String && title.trim().isNotEmpty) {
+      return title.trim();
+    }
+    final note = feature.properties['note'];
+    if (note is String && note.trim().isNotEmpty) {
+      return note.trim();
+    }
+    return 'Untitled feature';
+  }
+}
+
 class _CompactSectionLabel extends StatelessWidget {
   const _CompactSectionLabel({required this.label, required this.countLabel});
 
@@ -921,74 +1955,18 @@ class _DesktopDrawSessionCard extends StatelessWidget {
             if (activeTool == agus_maps_flutter.AgusDrawTool.none)
               Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: hasEditableLayer
-                      ? () => onToolChanged?.call(
-                            agus_maps_flutter.AgusDrawTool.pin,
-                          )
-                      : null,
-                  icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
-                  label: const Text('Start drawing'),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
+                child: _CompactDrawToolMenu(
+                  enabled: hasEditableLayer,
+                  onToolChanged: onToolChanged,
                 ),
               )
             else ...[
               Text(
-                'Drawing mode is active. Choose geometry, then use the map check/X controls to finish.',
+                'Creating ${_drawToolName(activeTool)}. Use the map check/X controls to finish or cancel before choosing another geometry type.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.primary,
                   fontWeight: FontWeight.w600,
                 ),
-              ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                children: [
-                  _DrawToolChip(
-                    label: 'Map',
-                    icon: Icons.pan_tool_alt_outlined,
-                    tool: agus_maps_flutter.AgusDrawTool.none,
-                    activeTool: activeTool,
-                    enabled: true,
-                    onToolChanged: onToolChanged,
-                  ),
-                  _DrawToolChip(
-                    label: 'Point',
-                    icon: Icons.add_location_alt_outlined,
-                    tool: agus_maps_flutter.AgusDrawTool.pin,
-                    activeTool: activeTool,
-                    enabled: hasEditableLayer,
-                    onToolChanged: onToolChanged,
-                  ),
-                  _DrawToolChip(
-                    label: 'Segment',
-                    icon: Icons.linear_scale,
-                    tool: agus_maps_flutter.AgusDrawTool.segment,
-                    activeTool: activeTool,
-                    enabled: hasEditableLayer,
-                    onToolChanged: onToolChanged,
-                  ),
-                  _DrawToolChip(
-                    label: 'Line',
-                    icon: Icons.timeline,
-                    tool: agus_maps_flutter.AgusDrawTool.line,
-                    activeTool: activeTool,
-                    enabled: hasEditableLayer,
-                    onToolChanged: onToolChanged,
-                  ),
-                  _DrawToolChip(
-                    label: 'Polygon',
-                    icon: Icons.polyline_outlined,
-                    tool: agus_maps_flutter.AgusDrawTool.polygon,
-                    activeTool: activeTool,
-                    enabled: hasEditableLayer,
-                    onToolChanged: onToolChanged,
-                  ),
-                ],
               ),
             ],
             if (!hasEditableLayer) ...[
@@ -1001,66 +1979,6 @@ class _DesktopDrawSessionCard extends StatelessWidget {
               ),
             ],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DrawToolChip extends StatelessWidget {
-  const _DrawToolChip({
-    required this.label,
-    required this.icon,
-    required this.tool,
-    required this.activeTool,
-    required this.enabled,
-    required this.onToolChanged,
-  });
-
-  final String label;
-  final IconData icon;
-  final agus_maps_flutter.AgusDrawTool tool;
-  final agus_maps_flutter.AgusDrawTool activeTool;
-  final bool enabled;
-  final ValueChanged<agus_maps_flutter.AgusDrawTool>? onToolChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final selected = activeTool == tool;
-    final foreground = !enabled
-        ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-        : selected
-            ? colorScheme.onPrimaryContainer
-            : colorScheme.onSurfaceVariant;
-    return InkWell(
-      onTap: enabled ? () => onToolChanged?.call(tool) : null,
-      borderRadius: BorderRadius.circular(4),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: selected ? colorScheme.primaryContainer : colorScheme.surface,
-          border: Border.all(
-            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
-          ),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 14, color: foreground),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: foreground,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

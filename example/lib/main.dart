@@ -144,42 +144,43 @@ class _MapEditBanner extends StatelessWidget {
 
     return Align(
       alignment: Alignment.topLeft,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: const [
-            BoxShadow(
-              blurRadius: 12,
-              color: Color(0x33000000),
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isError ? Icons.error_outline : Icons.open_with,
-                size: 16,
-                color: foreground,
-              ),
-              const SizedBox(width: 8),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Text(
-                  message,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: foreground,
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: const [
+              BoxShadow(
+                blurRadius: 12,
+                color: Color(0x33000000),
+                offset: Offset(0, 4),
               ),
             ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  isError ? Icons.error_outline : Icons.open_with,
+                  size: 16,
+                  color: foreground,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: foreground,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -493,6 +494,7 @@ class _MyAppState extends State<MyApp> {
   final WorkbenchController _workbenchController = WorkbenchController();
   final GlobalKey _mapViewportKey = GlobalKey();
   bool _duckDBLayerPanelVisible = true;
+  bool _mobileLayerManagerVisible = false;
 
   int? _bundledMwmVersion;
   String? _dataPath;
@@ -1375,7 +1377,11 @@ class _MyAppState extends State<MyApp> {
     if (controller == null) return;
     controller.setTool(tool);
     _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
-    setState(() {});
+    setState(() {
+      if (tool != agus_maps_flutter.AgusDrawTool.none) {
+        _mobileLayerManagerVisible = false;
+      }
+    });
   }
 
   void _editDuckDBFeature(agus_maps_flutter.AgusLayerFeature feature) {
@@ -1392,7 +1398,9 @@ class _MyAppState extends State<MyApp> {
     try {
       controller.beginEditFeature(feature);
       _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
-      setState(() {});
+      setState(() {
+        _mobileLayerManagerVisible = false;
+      });
       _log(
         'Editing feature vertices: ${feature.featureId}. '
         'Drag visible handles on the map to update geometry.',
@@ -1524,6 +1532,8 @@ class _MyAppState extends State<MyApp> {
       _searchOpen = !_searchOpen;
       if (!_searchOpen) {
         _clearSearchState();
+      } else {
+        _mobileLayerManagerVisible = false;
       }
     });
     if (_searchOpen) {
@@ -2316,6 +2326,10 @@ class _MyAppState extends State<MyApp> {
       title: 'Agus Maps',
       resizeToAvoidBottomInset: _currentTabIndex != 0,
       selectedIndex: _currentTabIndex,
+      bodySafeAreaTop: _currentTabIndex != 0,
+      bodySafeAreaLeft: _currentTabIndex != 0,
+      bodySafeAreaRight: _currentTabIndex != 0,
+      bodySafeAreaBottom: _currentTabIndex != 0,
       onDestinationSelected: (index) {
         setState(() {
           _currentTabIndex = index;
@@ -2568,6 +2582,29 @@ class _MyAppState extends State<MyApp> {
             : 248.0;
     final uiSpec = context.exampleUiSpec;
     final formFactor = uiSpec.formFactor;
+    final mediaPadding = MediaQuery.paddingOf(context);
+    final screenSize = MediaQuery.sizeOf(context);
+    final screenHeight = screenSize.height;
+    final mobileLandscape =
+        formFactor.isMobile && screenSize.width > screenSize.height;
+    final mobileSidePanelWidth = min(
+      390.0,
+      max(320.0, screenSize.width * 0.46),
+    );
+    final mobileLayerPanelHeight = min(420.0, max(280.0, screenHeight * 0.46));
+    final mobileOverlayTop = formFactor.isMobile ? mediaPadding.top + 10 : 12.0;
+    final mobileControlsRight = max(12.0, mediaPadding.right + 12) +
+        (mobileLandscape && (_mobileLayerManagerVisible || _placePage != null)
+            ? mobileSidePanelWidth + 12
+            : 0);
+    final effectiveControlsBottom = formFactor.isMobile
+        ? mobileLandscape
+            ? max(mediaPadding.bottom + 12, routePanelVisible ? 116.0 : 12.0)
+            : max(
+                controlsBottom,
+                _mobileLayerManagerVisible ? mobileLayerPanelHeight + 24 : 24.0,
+              )
+        : controlsBottom;
     final dockedPanelWidth = uiSpec.dockedPanelWidth;
     final dockedColumnWidth = max(uiSpec.searchOverlayWidth, dockedPanelWidth);
     final drawController = _duckDBDrawController;
@@ -2591,14 +2628,23 @@ class _MyAppState extends State<MyApp> {
           userScale: _mapScale,
           resizePolicy: agus_maps_flutter.AgusMapResizePolicy.stableViewport,
         ),
-        if (!useWorkbenchLayout && formFactor.isMobile)
-          Positioned(
-            top: 12,
-            left: 12,
-            right: 12,
-            child: _buildSearchOverlay(context),
-          )
-        else if (!useWorkbenchLayout)
+        if (!useWorkbenchLayout && formFactor.isMobile && _searchOpen)
+          if (mobileLandscape)
+            Positioned(
+              top: mobileOverlayTop,
+              bottom: mediaPadding.bottom + 10,
+              left: 12,
+              width: mobileSidePanelWidth,
+              child: _buildSearchOverlay(context, expandToFill: true),
+            )
+          else
+            Positioned(
+              top: mobileOverlayTop,
+              left: 12,
+              right: 12,
+              child: _buildSearchOverlay(context),
+            )
+        else if (!useWorkbenchLayout && !formFactor.isMobile)
           Positioned(
             top: 16,
             left: 16,
@@ -2641,7 +2687,7 @@ class _MyAppState extends State<MyApp> {
               ),
             ),
           ),
-        if (drawController != null)
+        if (drawController != null && !formFactor.isMobile)
           Positioned(
             left: 12,
             bottom: controlsBottom,
@@ -2667,7 +2713,7 @@ class _MyAppState extends State<MyApp> {
                     ? 12
                     : dockedColumnWidth + 28,
             right: 84,
-            top: 76,
+            top: formFactor.isMobile ? mediaPadding.top + 74 : 76,
             child: AnimatedBuilder(
               animation: drawController,
               builder: (context, child) {
@@ -2688,7 +2734,7 @@ class _MyAppState extends State<MyApp> {
                     ? 12
                     : dockedColumnWidth + 28,
             right: 84,
-            top: 12,
+            top: mobileOverlayTop,
             child: AnimatedBuilder(
               animation: drawController,
               builder: (context, child) {
@@ -2707,15 +2753,36 @@ class _MyAppState extends State<MyApp> {
               },
             ),
           ),
-        Positioned(
-          right: 12,
-          bottom: controlsBottom,
-          child: _buildMapControls(
-            context,
-            formFactor,
-            showLayerButton: !useWorkbenchLayout,
+        if (formFactor.isMobile)
+          Positioned(
+            top: mobileOverlayTop,
+            right: mobileControlsRight,
+            bottom: effectiveControlsBottom,
+            child: _buildMapControls(
+              context,
+              formFactor,
+              showLayerButton: !useWorkbenchLayout,
+            ),
+          )
+        else
+          Positioned(
+            right: 12,
+            bottom: effectiveControlsBottom,
+            child: _buildMapControls(
+              context,
+              formFactor,
+              showLayerButton: !useWorkbenchLayout,
+            ),
           ),
-        ),
+        if (!useWorkbenchLayout &&
+            formFactor.isMobile &&
+            _mobileLayerManagerVisible)
+          _buildMobileLayerManagerOverlay(
+            context,
+            mobileLayerPanelHeight,
+            mobileLandscape: mobileLandscape,
+            sidePanelWidth: mobileSidePanelWidth,
+          ),
         if (_navigationPlan != null)
           Positioned(
             left: 12,
@@ -2729,12 +2796,16 @@ class _MyAppState extends State<MyApp> {
             onClose: _closePlacePage,
             onRouteTo: () => unawaited(_previewRouteToPlace(_placePage!)),
             routeInProgress: _navigationActionInProgress,
+            mobileLandscape: mobileLandscape,
           ),
       ],
     );
   }
 
-  Widget _buildSearchOverlay(BuildContext context) {
+  Widget _buildSearchOverlay(
+    BuildContext context, {
+    bool expandToFill = false,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final viewInsets = MediaQuery.viewInsetsOf(context);
@@ -2743,12 +2814,51 @@ class _MyAppState extends State<MyApp> {
       120.0,
       min(220.0, screenHeight - viewInsets.bottom - 140.0),
     );
+    final hasSearchResults = _searchOpen && _searchController.text.isNotEmpty;
+    final resultPanel = _searchResults.isEmpty
+        ? Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                _nativeSearchRunning ? 'Searching...' : 'No results',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          )
+        : ListView.separated(
+            shrinkWrap: !expandToFill,
+            padding: EdgeInsets.zero,
+            itemCount: _searchResults.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final result = _searchResults[index];
+              return ListTile(
+                leading: Icon(_searchResultIcon(result)),
+                title: Text(result.title),
+                subtitle: Text(result.subtitle),
+                trailing: result.isSuggestion
+                    ? null
+                    : IconButton(
+                        tooltip: 'Route',
+                        icon: const Icon(Icons.alt_route),
+                        onPressed: _navigationActionInProgress
+                            ? null
+                            : () => unawaited(
+                                  _previewRouteToSearchResult(result),
+                                ),
+                      ),
+                onTap: () => _focusSearchResult(result),
+              );
+            },
+          );
+
     return Material(
       color: colorScheme.surface,
       elevation: 3,
       borderRadius: BorderRadius.circular(8),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: expandToFill ? MainAxisSize.max : MainAxisSize.min,
         children: [
           TextField(
             controller: _searchController,
@@ -2778,49 +2888,14 @@ class _MyAppState extends State<MyApp> {
               contentPadding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),
-          if (_searchOpen && _searchController.text.isNotEmpty)
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: resultPanelMaxHeight),
-              child: _searchResults.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          _nativeSearchRunning ? 'Searching...' : 'No results',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.zero,
-                      itemCount: _searchResults.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final result = _searchResults[index];
-                        return ListTile(
-                          leading: Icon(_searchResultIcon(result)),
-                          title: Text(result.title),
-                          subtitle: Text(result.subtitle),
-                          trailing: result.isSuggestion
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Route',
-                                  icon: const Icon(Icons.alt_route),
-                                  onPressed: _navigationActionInProgress
-                                      ? null
-                                      : () => unawaited(
-                                            _previewRouteToSearchResult(
-                                              result,
-                                            ),
-                                          ),
-                                ),
-                          onTap: () => _focusSearchResult(result),
-                        );
-                      },
-                    ),
-            ),
+          if (hasSearchResults)
+            if (expandToFill)
+              Expanded(child: resultPanel)
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: resultPanelMaxHeight),
+                child: resultPanel,
+              ),
         ],
       ),
     );
@@ -2938,36 +3013,205 @@ class _MyAppState extends State<MyApp> {
     };
   }
 
-  Future<void> _showLayerManagerSheet() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        final height = MediaQuery.sizeOf(context).height * 0.82;
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: height),
-            child: SingleChildScrollView(
-              child: AdaptiveLayerManager(
-                formFactor: ExampleFormFactor.mobile,
-                nativeLayerState: _mapLayerState,
-                buildings3dEnabled: _buildings3dEnabled,
-                onNativeLayerStateChanged: _updateMapLayerState,
-                onBuildings3dChanged: _updateBuildings3d,
-                layerStore: _duckDBLayerStore,
-                layerStoreStatus: _duckDBLayerStoreStatus,
-                onRenderingRefresh: _refreshDuckDBNativeLayers,
-                onEditFeature: _editDuckDBFeature,
-                onClose: () => Navigator.of(context).pop(),
+  Widget _buildMobileLayerManagerOverlay(
+    BuildContext context,
+    double panelHeight, {
+    required bool mobileLandscape,
+    required double sidePanelWidth,
+  }) {
+    final mediaPadding = MediaQuery.paddingOf(context);
+    if (mobileLandscape) {
+      return Positioned(
+        top: mediaPadding.top + 10,
+        right: mediaPadding.right + 10,
+        bottom: mediaPadding.bottom + 10,
+        width: sidePanelWidth,
+        child: AdaptiveLayerManager(
+          formFactor: ExampleFormFactor.mobile,
+          nativeLayerState: _mapLayerState,
+          buildings3dEnabled: _buildings3dEnabled,
+          onNativeLayerStateChanged: _updateMapLayerState,
+          onBuildings3dChanged: _updateBuildings3d,
+          layerStore: _duckDBLayerStore,
+          activeLayerId: _activeDuckDBLayerId,
+          activeDrawTool: _duckDBDrawController?.tool,
+          layerStoreStatus: _duckDBLayerStoreStatus,
+          onRenderingRefresh: _refreshDuckDBNativeLayers,
+          onActiveLayerChanged: _setActiveDuckDBLayer,
+          onDrawToolChanged: _setDuckDBDrawTool,
+          onEditFeature: _editDuckDBFeature,
+          onClose: () {
+            setState(() {
+              _mobileLayerManagerVisible = false;
+            });
+          },
+        ),
+      );
+    }
+
+    return Positioned(
+      left: 10,
+      right: 10,
+      bottom: 10,
+      height: panelHeight,
+      child: AdaptiveLayerManager(
+        formFactor: ExampleFormFactor.mobile,
+        nativeLayerState: _mapLayerState,
+        buildings3dEnabled: _buildings3dEnabled,
+        onNativeLayerStateChanged: _updateMapLayerState,
+        onBuildings3dChanged: _updateBuildings3d,
+        layerStore: _duckDBLayerStore,
+        activeLayerId: _activeDuckDBLayerId,
+        activeDrawTool: _duckDBDrawController?.tool,
+        layerStoreStatus: _duckDBLayerStoreStatus,
+        onRenderingRefresh: _refreshDuckDBNativeLayers,
+        onActiveLayerChanged: _setActiveDuckDBLayer,
+        onDrawToolChanged: _setDuckDBDrawTool,
+        onEditFeature: _editDuckDBFeature,
+        onClose: () {
+          setState(() {
+            _mobileLayerManagerVisible = false;
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildMobileMapToolButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback onPressed,
+    bool active = false,
+    Widget? iconWidget,
+    bool enabled = true,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final background = active
+        ? colorScheme.primaryContainer.withValues(alpha: 0.96)
+        : colorScheme.surface.withValues(alpha: 0.94);
+    final foreground = enabled
+        ? active
+            ? colorScheme.onPrimaryContainer
+            : colorScheme.onSurface
+        : colorScheme.onSurface.withValues(alpha: 0.38);
+    final borderColor = active
+        ? colorScheme.primary.withValues(alpha: 0.45)
+        : colorScheme.outlineVariant.withValues(alpha: 0.72);
+    final child = iconWidget ?? Icon(icon, color: foreground);
+
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: label,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 16,
+                color: Colors.black.withValues(alpha: 0.22),
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                blurRadius: 3,
+                color: Colors.black.withValues(alpha: 0.10),
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Material(
+            color: background,
+            shape: CircleBorder(side: BorderSide(color: borderColor)),
+            clipBehavior: Clip.antiAlias,
+            child: InkResponse(
+              onTap: enabled ? onPressed : null,
+              containedInkWell: true,
+              radius: 26,
+              child: SizedBox.square(
+                dimension: 48,
+                child: IconTheme(
+                  data: IconThemeData(color: foreground, size: 24),
+                  child: Center(child: child),
+                ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileDrawingActionButtons(
+    agus_maps_flutter.DuckDBLayerDrawController controller,
+  ) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, child) {
+        if (!controller.isEditing) return const SizedBox.shrink();
+        final buttons = <Widget>[
+          if (controller.isDrawing)
+            _buildMobileMapToolButton(
+              label: 'Undo vertex',
+              icon: Icons.undo,
+              enabled: controller.vertices.isNotEmpty &&
+                  !controller.isCommitting &&
+                  !controller.isEditingFeature,
+              onPressed: controller.undoLastVertex,
+            ),
+          _buildMobileMapToolButton(
+            label: 'Commit feature',
+            icon: Icons.check,
+            active: controller.canCommit,
+            enabled: controller.canCommit,
+            iconWidget: controller.isCommitting
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.check),
+            onPressed: () => unawaited(_commitDuckDBFeature(controller)),
+          ),
+          _buildMobileMapToolButton(
+            label: controller.isEditingFeature
+                ? 'Cancel feature edit'
+                : 'Cancel drawing',
+            icon: Icons.close,
+            active: true,
+            enabled: !controller.isCommitting,
+            onPressed: controller.cancel,
+          ),
+        ];
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var index = 0; index < buttons.length; index++) ...[
+              if (index > 0) const SizedBox(height: 10),
+              buttons[index],
+            ],
+          ],
         );
       },
     );
+  }
+
+  Future<void> _commitDuckDBFeature(
+    agus_maps_flutter.DuckDBLayerDrawController controller,
+  ) async {
+    try {
+      final featureId = await controller.commit();
+      if (featureId != null) {
+        _log('DuckDB feature committed: $featureId');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('Feature commit failed: $error')),
+      );
+    }
   }
 
   Widget _buildMapControls(
@@ -2976,6 +3220,101 @@ class _MyAppState extends State<MyApp> {
     required bool showLayerButton,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    if (formFactor.isMobile) {
+      final drawController = _duckDBDrawController;
+      final compactForOpenSheet = _mobileLayerManagerVisible ||
+          _placePage != null ||
+          _navigationPlan != null;
+      final buttons = <Widget>[
+        if (drawController != null)
+          _buildMobileDrawingActionButtons(drawController),
+        _buildMobileMapToolButton(
+          label: _searchOpen ? 'Close search' : 'Search',
+          icon: _searchOpen ? Icons.close : Icons.search,
+          active: _searchOpen,
+          onPressed: _toggleSearch,
+        ),
+        if (showLayerButton)
+          _buildMobileMapToolButton(
+            label: _mobileLayerManagerVisible ? 'Close layers' : 'Layers',
+            icon: _mobileLayerManagerVisible
+                ? Icons.layers
+                : Icons.layers_outlined,
+            active: _mobileLayerManagerVisible,
+            onPressed: () {
+              setState(() {
+                final nextVisible = !_mobileLayerManagerVisible;
+                _mobileLayerManagerVisible = nextVisible;
+                if (nextVisible && _searchOpen) {
+                  _searchOpen = false;
+                  _clearSearchState();
+                }
+              });
+            },
+          ),
+        if (!compactForOpenSheet) ...[
+          _buildMobileMapToolButton(
+            label: 'Zoom in',
+            icon: Icons.add,
+            onPressed: _zoomIn,
+          ),
+          _buildMobileMapToolButton(
+            label: 'Zoom out',
+            icon: Icons.remove,
+            onPressed: _zoomOut,
+          ),
+          _buildMobileMapToolButton(
+            label: 'Reset north',
+            icon: Icons.navigation,
+            iconWidget: ValueListenableBuilder<double>(
+              valueListenable: _currentBearing,
+              child: const Icon(Icons.navigation),
+              builder: (context, bearing, child) {
+                final safeBearing = bearing.isFinite ? bearing : 0.0;
+                final angle = -safeBearing * pi / 180;
+                if (angle == 0.0 || !angle.isFinite) {
+                  return child!;
+                }
+                return Transform.rotate(angle: angle, child: child);
+              },
+            ),
+            onPressed: _resetNorth,
+          ),
+        ],
+        _buildMobileMapToolButton(
+          label: 'Current position',
+          icon: Icons.my_location,
+          enabled: !_isLocating,
+          iconWidget: _isLocating
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.my_location),
+          onPressed: _centerOnCurrentPosition,
+        ),
+      ];
+
+      return ClipRect(
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: SingleChildScrollView(
+            reverse: true,
+            clipBehavior: Clip.hardEdge,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var index = 0; index < buttons.length; index++) ...[
+                  if (index > 0) const SizedBox(height: 10),
+                  buttons[index],
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Material(
       color: colorScheme.surface,
       elevation: 3,
@@ -2983,26 +3322,48 @@ class _MyAppState extends State<MyApp> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (showLayerButton) ...[
-            IconButton(
-              tooltip: 'Layers',
-              icon: Icon(
-                formFactor.isMobile
-                    ? Icons.layers_outlined
-                    : _duckDBLayerPanelVisible
-                        ? Icons.layers
-                        : Icons.layers_outlined,
-              ),
-              onPressed: () {
-                if (formFactor.isMobile) {
-                  unawaited(_showLayerManagerSheet());
-                  return;
-                }
-                setState(() {
-                  _duckDBLayerPanelVisible = !_duckDBLayerPanelVisible;
-                });
-              },
+          if (formFactor.isMobile) ...[
+            _buildMobileMapToolButton(
+              label: _searchOpen ? 'Close' : 'Search',
+              icon: _searchOpen ? Icons.close : Icons.search,
+              active: _searchOpen,
+              onPressed: _toggleSearch,
             ),
+            const Divider(height: 1),
+          ],
+          if (showLayerButton) ...[
+            if (formFactor.isMobile)
+              _buildMobileMapToolButton(
+                label: 'Layers',
+                icon: _mobileLayerManagerVisible
+                    ? Icons.layers
+                    : Icons.layers_outlined,
+                active: _mobileLayerManagerVisible,
+                onPressed: () {
+                  setState(() {
+                    final nextVisible = !_mobileLayerManagerVisible;
+                    _mobileLayerManagerVisible = nextVisible;
+                    if (nextVisible && _searchOpen) {
+                      _searchOpen = false;
+                      _clearSearchState();
+                    }
+                  });
+                },
+              )
+            else
+              IconButton(
+                tooltip: 'Layers',
+                icon: Icon(
+                  _duckDBLayerPanelVisible
+                      ? Icons.layers
+                      : Icons.layers_outlined,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _duckDBLayerPanelVisible = !_duckDBLayerPanelVisible;
+                  });
+                },
+              ),
             const Divider(height: 1),
           ],
           IconButton(

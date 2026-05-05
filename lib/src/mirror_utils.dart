@@ -9,6 +9,7 @@
 /// Used by both:
 /// - Runtime library (`lib/mirror_service.dart`) for Flutter apps
 /// - Build tools (`tool/map_downloader.dart`, `tool/check_mirrors.dart`)
+library;
 
 import 'dart:convert';
 import 'dart:io';
@@ -486,8 +487,12 @@ class MirrorService {
     String url,
     File destination, {
     void Function(int received, int total)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     try {
+      if (isCancelled?.call() ?? false) {
+        return false;
+      }
       final request = http.Request('GET', Uri.parse(url));
       final response = await _client.send(request);
 
@@ -503,6 +508,9 @@ class MirrorService {
 
       try {
         await for (final chunk in response.stream) {
+          if (isCancelled?.call() ?? false) {
+            return false;
+          }
           sink.add(chunk);
           received += chunk.length;
           onProgress?.call(received, contentLength);
@@ -528,7 +536,11 @@ class MirrorService {
     String url,
     File destination, {
     void Function(int received, int total)? onProgress,
+    bool Function()? isCancelled,
   }) async {
+    if (isCancelled?.call() ?? false) {
+      throw Exception('Download cancelled: $url');
+    }
     final request = http.Request('GET', Uri.parse(url));
     final response = await _client.send(request);
 
@@ -546,6 +558,9 @@ class MirrorService {
     final sink = destination.openWrite();
     try {
       await for (final chunk in response.stream) {
+        if (isCancelled?.call() ?? false) {
+          throw Exception('Download cancelled: $url');
+        }
         sink.add(chunk);
         received += chunk.length;
         onProgress?.call(received, contentLength);

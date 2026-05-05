@@ -110,6 +110,8 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
   // Track active downloads for limiting concurrent downloads
   final Set<String> _activeDownloads = {};
+  final Set<String> _downloadCancellationRequests = {};
+  final Set<String> _cancelledGroupDownloads = {};
 
   // Disk space
   int _availableSpaceBytes = 0;
@@ -151,6 +153,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
   @override
   void dispose() {
+    _downloadCancellationRequests.addAll(_activeDownloads);
     _connectivityTimer?.cancel();
     _searchController.dispose();
     _mirrorService.dispose();
@@ -556,7 +559,23 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
     for (final leaf in pendingRegions) {
       if (!mounted) return;
+      if (_cancelledGroupDownloads.contains(region.id)) break;
       await _downloadLeafRegion(leaf, showSnackBar: false);
+    }
+
+    final cancelled = _cancelledGroupDownloads.remove(region.id);
+    if (cancelled) {
+      _downloadCancellationRequests.removeAll(
+        pendingRegions.map((leaf) => leaf.name),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text('$actionLabel cancelled for ${region.displayName}')),
+        );
+      }
+      return;
     }
 
     if (mounted) {
@@ -573,6 +592,9 @@ class _DownloadsTabState extends State<DownloadsTab> {
   }) async {
     if (_selectedMirrorResult == null ||
         _selectedMirrorResult!.latestSnapshot == null) {
+      return;
+    }
+    if (_downloadCancellationRequests.remove(region.name)) {
       return;
     }
 
@@ -651,6 +673,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
       final bytesWritten = await _mirrorService.downloadToFile(
         url,
         tempFile,
+        isCancelled: () => _downloadCancellationRequests.contains(region.name),
         onProgress: (received, total) {
           if (mounted && total > 0) {
             setState(() {
@@ -702,6 +725,7 @@ class _DownloadsTabState extends State<DownloadsTab> {
         setState(() {
           _downloadProgress.remove(region.name);
           _activeDownloads.remove(region.name);
+          _downloadCancellationRequests.remove(region.name);
         });
         if (showSnackBar) {
           ScaffoldMessenger.of(
@@ -717,15 +741,58 @@ class _DownloadsTabState extends State<DownloadsTab> {
           );
         }
       }
-    } catch (e) {
+    } on DownloadCancelledException {
+      final snapshot = _selectedMirrorResult!.latestSnapshot!;
+      final mapsDir = _targetDirectory(region, snapshot.version);
+      final filePath = '${mapsDir.path}/${region.fileName}';
+      final tempFile = File('$filePath.download');
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
       if (mounted) {
         setState(() {
           _downloadProgress.remove(region.name);
           _activeDownloads.remove(region.name);
+          _downloadCancellationRequests.remove(region.name);
+        });
+        if (showSnackBar) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Cancelled ${region.displayName}')),
+          );
+        }
+      }
+    } catch (e) {
+      final snapshot = _selectedMirrorResult!.latestSnapshot!;
+      final mapsDir = _targetDirectory(region, snapshot.version);
+      final filePath = '${mapsDir.path}/${region.fileName}';
+      final tempFile = File('$filePath.download');
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+      if (mounted) {
+        setState(() {
+          _downloadProgress.remove(region.name);
+          _activeDownloads.remove(region.name);
+          _downloadCancellationRequests.remove(region.name);
           _downloadErrors[region.name] = e.toString();
         });
       }
     }
+  }
+
+  void _cancelDownload(MwmRegion region) {
+    setState(() {
+      if (region.isGroup) {
+        _cancelledGroupDownloads.add(region.id);
+        for (final leaf in region.leafRegions) {
+          if (_activeDownloads.contains(leaf.name)) {
+            _downloadCancellationRequests.add(leaf.name);
+          }
+        }
+      } else if (_activeDownloads.contains(region.name)) {
+        _downloadCancellationRequests.add(region.name);
+      }
+    });
   }
 
   Directory _targetDirectory(MwmRegion region, String snapshotVersion) {
@@ -1420,42 +1487,16 @@ class _DownloadsTabState extends State<DownloadsTab> {
     }
 
     if (_regions.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _hasInternet ? Icons.map_outlined : Icons.wifi_off,
-                size: 48,
-                color: Colors.grey,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                _hasInternet
-                    ? 'No regions available'
-                    : 'No Internet Connection',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _hasInternet
-                    ? 'Could not load map regions from mirror servers.\nTry selecting a different snapshot or tap Refresh.'
-                    : 'Connect to the internet to browse and download maps.',
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () => _init(forceRefresh: true),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Refresh'),
-              ),
-            ],
-          ),
+      return _DownloadsEmptyState(
+        icon: _hasInternet ? Icons.map_outlined : Icons.wifi_off,
+        title: _hasInternet ? 'No regions available' : 'No Internet Connection',
+        message: _hasInternet
+            ? 'Could not load map regions from mirror servers.\nTry selecting a different snapshot or tap Refresh.'
+            : 'Connect to the internet to browse and download maps.',
+        action: ElevatedButton.icon(
+          onPressed: () => _init(forceRefresh: true),
+          icon: const Icon(Icons.refresh),
+          label: const Text('Refresh'),
         ),
       );
     }
@@ -1464,29 +1505,11 @@ class _DownloadsTabState extends State<DownloadsTab> {
 
     // Show "no results" if search returned nothing
     if (_searchQuery.isNotEmpty && regionsToShow.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.search_off, size: 48, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text(
-                'No regions found',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'No regions match "$_searchQuery".\nTry a different search term.',
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
+      return _DownloadsEmptyState(
+        icon: Icons.search_off,
+        title: 'No regions found',
+        message:
+            'No regions match "$_searchQuery".\nTry a different search term.',
       );
     }
 
@@ -1867,17 +1890,22 @@ class _DownloadsTabState extends State<DownloadsTab> {
     double? progress,
   ) {
     if (region.isGroup && isDownloading) {
-      return const SizedBox(
+      return SizedBox(
         width: 32,
         child: Center(
-          child: Icon(Icons.downloading, size: 14),
+          child: _CompactDownloadIconButton(
+            tooltip: 'Cancel download',
+            icon: Icons.close,
+            color: Colors.red.shade500,
+            onPressed: () => _cancelDownload(region),
+          ),
         ),
       );
     }
 
     if (isDownloading && progress != null) {
       return SizedBox(
-        width: 54,
+        width: 82,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
@@ -1886,6 +1914,13 @@ class _DownloadsTabState extends State<DownloadsTab> {
             Text(
               '${(progress * 100).toInt()}%',
               style: Theme.of(context).textTheme.labelSmall,
+            ),
+            const SizedBox(width: 2),
+            _CompactDownloadIconButton(
+              tooltip: 'Cancel download',
+              icon: Icons.close,
+              color: Colors.red.shade500,
+              onPressed: () => _cancelDownload(region),
             ),
           ],
         ),
@@ -1954,30 +1989,42 @@ class _DownloadsTabState extends State<DownloadsTab> {
     double? progress,
   ) {
     if (region.isGroup && isDownloading) {
-      if (_usesStaticProgress) {
-        return const Icon(Icons.downloading_outlined, size: 18);
-      }
-      return const SizedBox.square(
-        dimension: 24,
-        child: CircularProgressIndicator(strokeWidth: 2),
+      return IconButton(
+        tooltip: 'Cancel download',
+        icon: const Icon(Icons.close),
+        color: Colors.red.shade500,
+        onPressed: () => _cancelDownload(region),
       );
     }
 
     if (isDownloading && progress != null) {
       return SizedBox(
-        width: 72,
+        width: 112,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(value: progress, strokeWidth: 2),
-            ),
+            if (_usesStaticProgress)
+              const Icon(Icons.downloading_outlined, size: 18)
+            else
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 2,
+                ),
+              ),
             const SizedBox(width: 4),
             Text(
               '${(progress * 100).toInt()}%',
               style: const TextStyle(fontSize: 11),
+            ),
+            IconButton(
+              tooltip: 'Cancel download',
+              icon: const Icon(Icons.close, size: 18),
+              color: Colors.red.shade500,
+              onPressed: () => _cancelDownload(region),
+              visualDensity: VisualDensity.compact,
             ),
           ],
         ),
@@ -2262,6 +2309,70 @@ class _StaticDesktopProgress extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DownloadsEmptyState extends StatelessWidget {
+  const _DownloadsEmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 190;
+        final theme = Theme.of(context);
+        final content = Padding(
+          padding: EdgeInsets.all(compact ? 12 : 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: compact ? 32 : 48,
+                color: Colors.grey,
+              ),
+              SizedBox(height: compact ? 8 : 16),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: compact
+                    ? theme.textTheme.titleSmall
+                    : theme.textTheme.titleMedium,
+              ),
+              SizedBox(height: compact ? 4 : 8),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                maxLines: compact ? 2 : null,
+                overflow: compact ? TextOverflow.ellipsis : null,
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+              ),
+              if (action != null) ...[
+                SizedBox(height: compact ? 8 : 16),
+                action!,
+              ],
+            ],
+          ),
+        );
+
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(child: content),
+          ),
+        );
+      },
     );
   }
 }
