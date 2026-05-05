@@ -48,7 +48,8 @@ viewports are tablet.
 8. **Camera gestures stay render-only.** Pan, zoom, and rotation must not run
    synchronous DuckDB queries or full Drape user-mark rebuilds on the gesture
    frame path. Project-layer rendering may refresh immediately after mutations,
-   but camera-driven refreshes must be debounced until the viewport is idle.
+   but camera-driven refreshes must be debounced until the viewport is idle and
+   skipped entirely when the renderable feature set is unchanged.
 
 ## Common mobile landscape pattern
 
