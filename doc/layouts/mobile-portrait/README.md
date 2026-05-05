@@ -70,8 +70,8 @@ Mobile portrait keeps the conventional Material shell ownership:
 ### Dialogs
 
 - Confirmations may use `AlertDialog`.
-- Text input dialogs must be constrained and scrollable because keyboard
-  insets can reduce available height.
+- Text input should use a full-screen route on phones because keyboard insets
+  can reduce compact dialogs below their intrinsic form height.
 - Long content, legal text, region lists, layer trees, and feature forms must
   not use plain `AlertDialog` on phones.
 
@@ -85,5 +85,5 @@ Mobile portrait keeps the conventional Material shell ownership:
 | Layer overlay capped height | Implemented | Current height is based on viewport height, but the minimum must be revisited for very small landscape heights. |
 | Place page scroll safety | Implemented | Place page content is height-capped and metadata scrolls internally. |
 | One feature creation path | Partially implemented | Mobile layer-row add actions now ask for geometry type. Remaining future work is to converge every non-layer shortcut through the same command service if new shortcuts are added. |
-| Height-safe dialogs | Partially implemented | Layer creation uses a bounded adaptive prompt. Downloads/About confirmations still need the shared prompt treatment. |
+| Height-safe dialogs | Partially implemented | Layer creation uses a full-screen mobile prompt. Downloads/About confirmations still need the shared prompt treatment. |
 | Manual portrait validation | Pending | Run the example on a phone, open every overlay, rotate back to portrait, and collect logs with `tee`. |

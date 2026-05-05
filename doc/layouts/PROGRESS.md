@@ -71,9 +71,11 @@ The first code pass implements the highest-risk map-tab surfaces:
 
 1. `example/lib/features/map/widgets/adaptive_layer_manager.dart`
    - Replaced the layer-name `AlertDialog` text field with an adaptive prompt.
-   - Mobile landscape uses a full-screen prompt route with scrollable body and
-     fixed actions, avoiding zero-height text-field constraints when the
-     keyboard appears.
+   - Mobile portrait and landscape use a full-screen prompt route with
+     scrollable body and fixed actions, avoiding zero-height and very short
+     text-field constraints when the keyboard appears.
+   - The create-layer async flow now checks that the layer manager is still
+     mounted after the prompt returns before calling `setState`.
    - Mobile layer-row `Add feature` no longer starts a default point directly;
      it opens a geometry picker for point, segment, line, or polygon.
    - Desktop `Add feature` also uses a geometry picker menu instead of
