@@ -104,7 +104,8 @@ Use a compact bottom card only for transient route status or place summary.
 The shared dialog policy for landscape phones:
 
 - `AlertDialog` is acceptable for two-action confirmations with short text.
-- Text input must use an adaptive prompt that sets max height and scrolls.
+- Text input must use a full-screen mobile route or side sheet, not a compact
+  centered dialog.
 - Long content must be a route or side sheet.
 - Dialog content must not use `Column(mainAxisSize: min)` without a scrollable
   wrapper when the content can grow.
@@ -133,7 +134,7 @@ This removes ambiguity and makes mobile, tablet, and desktop behavior match.
 | Scrollable right action column | Implemented | Current map controls use `SingleChildScrollView` in the right column. |
 | Downloads empty states | Implemented | No-regions and no-results states use compact scroll-safe content when the region-list viewport is short. |
 | Landscape-specific major panels | Partially implemented | Search and layers now use side panels on the map tab; route preview remains a shallow bottom card. |
-| Shared adaptive prompt | Partially implemented | Layer creation uses a full-screen landscape prompt; Downloads/About dialogs still need migration. |
+| Shared adaptive prompt | Partially implemented | Layer creation uses a full-screen mobile prompt in portrait and landscape; Downloads/About dialogs still need migration. |
 | Place page side sheet | Implemented | Place page uses a right side panel in mobile landscape and scrolls metadata internally. |
 | Layer creation geometry picker | Implemented | Mobile layer-row add actions now ask for point, segment, line, or polygon. |
 | Manual landscape validation | Pending | See `../PROGRESS.md` for the command and scenario list. |

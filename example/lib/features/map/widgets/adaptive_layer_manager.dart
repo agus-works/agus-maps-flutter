@@ -390,6 +390,7 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       context,
       initialValue: 'Drawing layer ${_layers.length + 1}',
     );
+    if (!mounted) return;
 
     final name = result?.trim();
     if (name == null || name.isEmpty) return;
@@ -1012,11 +1013,6 @@ class _CompactLayerToolbar extends StatelessWidget {
   }
 }
 
-bool _isMobileLandscape(BuildContext context) {
-  final size = MediaQuery.sizeOf(context);
-  return context.exampleFormFactor.isMobile && size.width > size.height;
-}
-
 Future<String?> _showLayerNamePrompt(
   BuildContext context, {
   required String initialValue,
@@ -1025,7 +1021,7 @@ Future<String?> _showLayerNamePrompt(
     context: context,
     builder: (context) => _LayerNamePromptDialog(
       initialValue: initialValue,
-      fullscreen: _isMobileLandscape(context),
+      fullscreen: context.exampleFormFactor.isMobile,
     ),
   );
 }
@@ -1095,13 +1091,15 @@ class _LayerNamePromptDialogState extends State<_LayerNamePromptDialog> {
             ),
           ),
           body: SafeArea(
-            child: Padding(
+            child: ListView(
               padding: const EdgeInsets.all(16),
-              child: _LayerNamePromptBody(
-                controller: _controller,
-                autofocus: false,
-                onSubmitted: _submit,
-              ),
+              children: [
+                _LayerNamePromptBody(
+                  controller: _controller,
+                  autofocus: false,
+                  onSubmitted: _submit,
+                ),
+              ],
             ),
           ),
           bottomNavigationBar: SafeArea(
@@ -1138,41 +1136,39 @@ class _LayerNamePromptDialogState extends State<_LayerNamePromptDialog> {
       insetPadding: EdgeInsets.fromLTRB(24, 24, 24, 24 + viewInsets.bottom),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: 440, maxHeight: maxHeight),
-        child: Padding(
+        child: ListView(
+          shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Create Drawing Layer',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: _LayerNamePromptBody(
-                  controller: _controller,
-                  autofocus: true,
-                  onSubmitted: _submit,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text(
+              'Create Drawing Layer',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            _LayerNamePromptBody(
+              controller: _controller,
+              autofocus: true,
+              onSubmitted: _submit,
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Cancel'),
                   ),
-                  const SizedBox(width: 8),
                   FilledButton(
                     onPressed: _submit,
                     child: const Text('Create'),
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1192,22 +1188,16 @@ class _LayerNamePromptBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      shrinkWrap: true,
-      padding: EdgeInsets.zero,
-      children: [
-        TextFormField(
-          controller: controller,
-          autofocus: autofocus,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Layer name',
-            helperText: 'Creates a DuckDB-backed editable drawing layer.',
-            border: OutlineInputBorder(),
-          ),
-          onFieldSubmitted: (_) => onSubmitted(),
-        ),
-      ],
+    return TextFormField(
+      controller: controller,
+      autofocus: autofocus,
+      textCapitalization: TextCapitalization.words,
+      decoration: const InputDecoration(
+        labelText: 'Layer name',
+        helperText: 'Creates a DuckDB-backed editable drawing layer.',
+        border: OutlineInputBorder(),
+      ),
+      onFieldSubmitted: (_) => onSubmitted(),
     );
   }
 }
