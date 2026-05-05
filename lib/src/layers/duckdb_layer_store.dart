@@ -405,10 +405,13 @@ class DuckDBLayerStore {
 
   /// Opens the app database, loads extensions, and runs migrations.
   void open() {
-    if (!openDuckDBAppDatabase(writablePath)) {
-      throw StateError('DuckDB open failed: ${duckDBLastError()}');
-    }
+    final openError = _openDuckDBAppDatabaseWithWalRecovery(
+      writablePath: writablePath,
+      databasePath: databasePath,
+    );
+    if (openError != null) throw StateError(openError);
     _repairLayerForeignKeyLimitations();
+    _executeChecked('CHECKPOINT;');
   }
 
   /// Inserts or updates a layer row.
@@ -727,8 +730,8 @@ CREATE TABLE agus.layer_features_without_fk (
   z_index INTEGER,
   min_zoom INTEGER,
   max_zoom INTEGER,
-  created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
-  updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+  created_at TIMESTAMP NOT NULL DEFAULT current_localtimestamp(),
+  updated_at TIMESTAMP NOT NULL DEFAULT current_localtimestamp(),
   deleted_at TIMESTAMP,
   PRIMARY KEY (layer_id, feature_id)
 );
@@ -758,7 +761,7 @@ CREATE TABLE agus.layer_metadata_without_fk (
   key VARCHAR NOT NULL,
   value VARCHAR NOT NULL,
   value_type VARCHAR NOT NULL DEFAULT 'string',
-  updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+  updated_at TIMESTAMP NOT NULL DEFAULT current_localtimestamp(),
   PRIMARY KEY (layer_id, key)
 );
 INSERT INTO agus.layer_metadata_without_fk
@@ -776,7 +779,7 @@ CREATE TABLE agus.layer_render_cache_without_fk (
   viewport_max_lat DOUBLE NOT NULL,
   zoom INTEGER NOT NULL,
   feature_count INTEGER NOT NULL DEFAULT 0,
-  generated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+  generated_at TIMESTAMP NOT NULL DEFAULT current_localtimestamp(),
   PRIMARY KEY (layer_id, cache_key)
 );
 INSERT INTO agus.layer_render_cache_without_fk
@@ -793,6 +796,58 @@ CREATE INDEX IF NOT EXISTS idx_agus_features_deleted
 
 COMMIT;
 ''');
+}
+
+String? _openDuckDBAppDatabaseWithWalRecovery({
+  required String writablePath,
+  required String databasePath,
+}) {
+  if (openDuckDBAppDatabase(writablePath)) {
+    return null;
+  }
+
+  final firstError = duckDBLastError();
+  if (!_isDuckDBWalReplayFailure(firstError)) {
+    return 'DuckDB open failed: $firstError';
+  }
+
+  closeDuckDB();
+  final walFile = File('$databasePath.wal');
+  if (!walFile.existsSync()) {
+    return 'DuckDB open failed: $firstError';
+  }
+
+  final timestamp = _backupTimestamp(DateTime.now().toUtc());
+  final recoveryDirectory = Directory(p.join(writablePath, 'duckdb_recovery'));
+  recoveryDirectory.createSync(recursive: true);
+
+  final databaseFile = File(databasePath);
+  if (databaseFile.existsSync()) {
+    databaseFile.copySync(
+      p.join(recoveryDirectory.path, 'agus_layers.$timestamp.duckdb'),
+    );
+  }
+
+  final quarantinedWalPath = p.join(
+    recoveryDirectory.path,
+    'agus_layers.$timestamp.duckdb.wal',
+  );
+  walFile.renameSync(quarantinedWalPath);
+
+  if (openDuckDBAppDatabase(writablePath)) {
+    return null;
+  }
+
+  final retryError = duckDBLastError();
+  return 'DuckDB open failed after quarantining an unreplayable WAL at '
+      '$quarantinedWalPath. First failure: $firstError. '
+      'Retry failure: $retryError';
+}
+
+bool _isDuckDBWalReplayFailure(String error) {
+  return error.contains('Failure while replaying WAL file') ||
+      error.contains('WriteAheadLogReplayer') ||
+      error.contains('.duckdb.wal');
 }
 
 bool _layerChildForeignKeysNeedRepair() {

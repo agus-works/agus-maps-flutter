@@ -687,6 +687,151 @@ flowchart TB
     Repair --> Store --> Toggle --> UI
 ```
 
+### May 5 DuckDB Native Render Viewport Fix
+
+The macOS log showed that feature commits succeeded, but every native renderer
+refresh still returned zero visible features:
+
+```text
+DuckDB feature committed: feature_...
+DuckDB layer renderer refreshed: 0 visible features.
+```
+
+The issue was in the native render-query viewport conversion. CoMaps
+`mercator::ToLatLon(RectD)` returns a rectangle whose X coordinates are
+latitudes and whose Y coordinates are longitudes. The DuckDB render copy API
+expects parameters in `min_lon, min_lat, max_lon, max_lat` order. Passing the
+`RectD` values through directly made the SQL bbox filter compare feature
+longitudes against viewport latitudes, which excluded committed features from
+the visible-feature query.
+
+macOS, iOS, and the Android/native shared implementation now convert the
+`RectD` into a named `DuckDBRenderViewport` before querying DuckDB.
+
+```mermaid
+flowchart LR
+    Commit["Feature commit\nWGS84 WKT + bbox"]
+    Viewport["CoMaps viewport"]
+    Convert["Native conversion\nRectD X=lat Y=lon\n-> lon/lat bbox"]
+    Query["DuckDB visible-feature query"]
+    Render["Drape user marks"]
+
+    Commit --> Query
+    Viewport --> Convert --> Query --> Render
+```
+
+### May 5 DuckDB WAL Replay Recovery
+
+After the layer child-table rebuild migration, macOS could show:
+
+```text
+DuckDB layer store unavailable - see DEBUG CONSOLE
+Failure while replaying WAL file ".../agus_layers.duckdb.wal"
+Calling DatabaseManager::GetDefaultDatabase with no default database set
+```
+
+The failure happened before Dart could run normal layer-store repair because
+DuckDB failed while opening the database and replaying its WAL. The likely
+trigger was a schema table rebuild left in the WAL across app restart. The layer
+store now detects this specific WAL replay failure, copies the checkpointed
+database to `duckdb_recovery/`, quarantines the unreplayable WAL in the same
+directory, and retries opening the checkpointed database. The native bridge also
+runs `CHECKPOINT` immediately after embedded migrations, and the Dart store
+checkpoints after any child-table foreign-key repair.
+
+```mermaid
+flowchart TB
+    Startup["Layer store startup"]
+    Open["openDuckDBAppDatabase"]
+    WalFail["WAL replay failure"]
+    Quarantine["Copy DB + move WAL\nto duckdb_recovery"]
+    Retry["Retry open"]
+    Migrations["Migrations / FK repair"]
+    Checkpoint["CHECKPOINT"]
+    Ready["Layer Manager ready"]
+
+    Startup --> Open
+    Open -. failure .-> WalFail --> Quarantine --> Retry
+    Open --> Migrations
+    Retry --> Migrations --> Checkpoint --> Ready
+```
+
+### May 5 Drape User-Mark Group Visibility Fix
+
+The WAL recovery run proved that the layer store opened and the native DuckDB
+query returned committed features:
+
+```text
+DuckDB layer renderer refreshed: 1 visible features.
+DuckDB feature committed: feature_...
+DuckDB layer renderer refreshed: 2 visible features.
+```
+
+The remaining disappearance after pressing the check mark was not a DuckDB
+query problem. Drape's `UserMarkGenerator` keeps user-mark group membership and
+group visibility as separate state. The DuckDB renderer was submitting group IDs
+and render data via `UpdateUserMarks`, but never made the custom DuckDB group
+visible. The backend therefore skipped that group during mark/line cache
+generation.
+
+macOS, iOS, and the Android/shared native implementation now call
+`ChangeVisibilityUserMarksGroup(kDuckDBRenderGroupId, true)` after updating the
+DuckDB marks provider.
+
+```mermaid
+flowchart LR
+    Refresh["Native DuckDB refresh"]
+    Data["UpdateUserMarks\nrender data + group ids"]
+    Visibility["ChangeVisibilityUserMarksGroup(true)"]
+    Cache["UserMarkGenerator\ncache visible groups"]
+    Map["Committed drawings remain visible"]
+
+    Refresh --> Data --> Cache
+    Refresh --> Visibility --> Cache --> Map
+```
+
+### May 5 Native Drape Interaction Architecture Follow-up
+
+Project-layer drawing and committed-feature vertex editing no longer paint
+visible geometry with Flutter widgets. That overlay approach could align screen
+positions, but sketches and handles still lived above the map texture and could
+feel detached from the Drape scene during pan, zoom, rotation, and desktop
+workbench resizing.
+
+The interaction visualization path now mirrors the committed rendering path:
+
+- A separate native `kDuckDBEditGroupId` user-mark group acts as the Drape
+  interaction group for both new sketches and selected-feature vertex handles.
+- Dart sends the current interaction mode and transient WKT through
+  `agus_duckdb_set_interaction_geometry_from_wkt()`.
+- The native bridge parses lon/lat vertex pairs into Mercator coordinates and
+  submits green drawing marks or orange edit marks to Drape.
+- `AgusMap` now exposes map-tap and captured-pointer hooks so drawing taps can
+  add vertices without placing an opaque Flutter overlay above the map. Mouse
+  drag, scroll zoom, touchpad pan/zoom/rotate, and other viewport gestures keep
+  flowing to CoMaps unless a pointer starts on an existing edit handle.
+- DuckDB remains the persistence source of truth; native interaction geometry is
+  transient viewport/edit state and is cleared when drawing/edit mode exits.
+
+```mermaid
+flowchart LR
+    Explorer["Feature row selected"]
+    Dart["DuckDBLayerDrawController\nWKT + edit session"]
+    Native["agus_duckdb_set_interaction_geometry_from_wkt"]
+    EditGroup["Drape interaction group\nsketch + edit marks"]
+    Pointer["AgusMap input observer\ntaps + captured drags"]
+    Store["DuckDBLayerStore.upsertFeature"]
+    Render["Committed Drape layer refresh"]
+
+    Explorer --> Dart --> Native --> EditGroup
+    EditGroup -. rendered by map camera .-> Pointer
+    Pointer --> Dart --> Store --> Render
+```
+
+The next architecture step is to move vertex hit-testing and drag events into
+native Drape/CoMaps callbacks so Flutter only coordinates UI state and
+persistence.
+
 ## Current File Map
 
 ### Dependency and Build Pins
@@ -1311,13 +1456,42 @@ Status: Android initial renderer implementation completed and compile-validated;
 
 ### 7. Dart Layer API and Reusable UI
 
-Status: initial reusable draw/layer UI completed and compile-validated on Android.
+Status: reusable draw/layer UI now includes committed-feature vertex editing and
+a compact layer/feature Explorer tree in the example workbench.
 
 - Completed: added `DuckDBLayerDrawController` for pins, segments, lines, and polygon sketches with vertex editing, metadata capture, WKT generation, bbox calculation, and commit-to-`DuckDBLayerStore`.
 - Completed: added reusable `DuckDBLayerDrawOverlay`, `DuckDBLayerDrawToolbar`, `DuckDBLayerMetadataForm`, and `DuckDBLayerPanel` widgets.
 - Completed: added Android `screenPointToLatLon()` projection so draw overlays can convert captured pointer positions to WGS84 before committing features.
 - Completed: example app creates a default `user_draw` layer, enables the draw toolbar on the map, captures pointer events while drawing, refreshes native Drape rendering after commits, and exposes layer visibility/order plus database backup through the layer panel.
+- Completed: desktop Layer Manager project layers now render as a compact
+  Explorer tree with expandable feature rows instead of a flat layer-only table.
+- Completed: map presentation controls moved out of Explorer into a dedicated
+  Activity Bar destination.
+- Completed: committed point, segment, line, and polygon features can enter a
+  vertex-edit mode from the feature row. Native Drape renders selected vertices
+  in a separate edit-handle group while the current Flutter input bridge captures
+  drags, rewrites the same feature id with updated WKT/bbox through
+  `DuckDBLayerStore`, then refreshes committed native Drape rendering.
+- Completed: committed-feature edit visuals moved from Flutter-painted handles
+  to transient Drape user marks, so handles are map-scene primitives that stay
+  anchored through pan, zoom, and rotation.
 - Validated: regenerated FFI bindings, `dart analyze lib/agus_maps_flutter.dart lib/src/layers/duckdb_layer_store.dart lib/src/layers/duckdb_draw_controller.dart lib/src/layers/duckdb_layer_widgets.dart example/lib/main.dart`, `flutter build apk --debug --target-platform android-arm64` from `example/`, and `flutter build macos --debug` from `example/`.
+
+```mermaid
+flowchart LR
+    Store["DuckDBLayerStore\nlayers + features"]
+    Explorer["AdaptiveLayerManager\nExplorer tree viewport"]
+    Select["Feature row selection"]
+    EditGroup["Drape edit handles\nnative user marks"]
+    Camera["Map camera\npan / zoom / rotation"]
+    Move["Vertex edit mode\nDuckDBLayerDrawController"]
+    Upsert["upsertFeature\nsame feature_id, new WKT/bbox"]
+    Render["refreshDuckDBMapLayers\nDrape group refresh"]
+
+    Store --> Explorer --> Select --> EditGroup --> Move --> Upsert --> Store
+    Camera --> EditGroup
+    Upsert --> Render
+```
 
 - Add public layer models/services under `lib/`.
 - Add reusable layer/draw widgets under `lib/src/layers/`.

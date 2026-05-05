@@ -1,8 +1,12 @@
 part of '../../agus_maps_flutter.dart';
 
-/// Pointer-capturing overlay for drawing features above [AgusMap].
+/// Deprecated no-op overlay kept for compatibility.
+///
+/// Project-layer drawing is rendered by native Drape user-mark groups. Pointer
+/// input is observed by [AgusMap] so drag gestures can continue to pan/zoom the
+/// native map while taps add drawing vertices.
 class DuckDBLayerDrawOverlay extends StatelessWidget {
-  /// Creates a draw overlay bound to [controller].
+  /// Creates a compatibility overlay bound to [controller].
   const DuckDBLayerDrawOverlay({
     super.key,
     required this.controller,
@@ -17,38 +21,7 @@ class DuckDBLayerDrawOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final color = accentColor ?? colorScheme.primary;
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        if (!controller.isDrawing) {
-          return const SizedBox.shrink();
-        }
-
-        return Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (event) {
-            unawaited(controller.handlePointerDown(event.localPosition));
-          },
-          onPointerMove: (event) {
-            unawaited(controller.handlePointerMove(event.localPosition));
-          },
-          onPointerUp: (_) => controller.handlePointerUp(),
-          onPointerCancel: (_) => controller.handlePointerUp(),
-          child: CustomPaint(
-            painter: _DuckDBDrawPainter(
-              tool: controller.tool,
-              vertices: controller.vertices,
-              selectedVertexIndex: controller.selectedVertexIndex,
-              color: color,
-              surfaceColor: colorScheme.surface,
-            ),
-            child: const SizedBox.expand(),
-          ),
-        );
-      },
-    );
+    return const SizedBox.shrink();
   }
 }
 
@@ -96,7 +69,9 @@ class DuckDBLayerDrawToolbar extends StatelessWidget {
           IconButton(
             tooltip: 'Undo vertex',
             icon: const Icon(Icons.undo),
-            onPressed: controller.vertices.isEmpty || controller.isCommitting
+            onPressed: controller.vertices.isEmpty ||
+                    controller.isCommitting ||
+                    controller.isEditingFeature
                 ? null
                 : controller.undoLastVertex,
           ),
@@ -125,9 +100,11 @@ class DuckDBLayerDrawToolbar extends StatelessWidget {
                 : null,
           ),
           IconButton(
-            tooltip: 'Cancel drawing',
+            tooltip: controller.isEditingFeature
+                ? 'Cancel feature edit'
+                : 'Cancel drawing',
             icon: const Icon(Icons.close),
-            onPressed: controller.isDrawing ? controller.cancel : null,
+            onPressed: controller.isEditing ? controller.cancel : null,
           ),
         ];
 
@@ -491,93 +468,5 @@ class _ToolbarDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Divider(height: 1);
-  }
-}
-
-class _DuckDBDrawPainter extends CustomPainter {
-  _DuckDBDrawPainter({
-    required this.tool,
-    required this.vertices,
-    required this.selectedVertexIndex,
-    required this.color,
-    required this.surfaceColor,
-  });
-
-  final AgusDrawTool tool;
-  final List<AgusDrawPoint> vertices;
-  final int? selectedVertexIndex;
-  final Color color;
-  final Color surfaceColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (vertices.isEmpty) return;
-
-    final path = Path()
-      ..moveTo(
-        vertices.first.screenPosition.dx,
-        vertices.first.screenPosition.dy,
-      );
-    for (final vertex in vertices.skip(1)) {
-      path.lineTo(vertex.screenPosition.dx, vertex.screenPosition.dy);
-    }
-    if (tool == AgusDrawTool.polygon && vertices.length > 2) {
-      path.close();
-    }
-
-    if (tool == AgusDrawTool.polygon && vertices.length > 2) {
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = color.withValues(alpha: 0.14)
-          ..style = PaintingStyle.fill,
-      );
-    }
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..strokeWidth = 3
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
-
-    for (var index = 0; index < vertices.length; index++) {
-      final selected = selectedVertexIndex == index;
-      final center = vertices[index].screenPosition;
-      canvas.drawCircle(
-        center,
-        selected ? 9 : 7,
-        Paint()
-          ..color = surfaceColor
-          ..style = PaintingStyle.fill,
-      );
-      canvas.drawCircle(
-        center,
-        selected ? 9 : 7,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = selected ? 3 : 2,
-      );
-      canvas.drawCircle(
-        center,
-        3,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.fill,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DuckDBDrawPainter oldDelegate) {
-    return oldDelegate.tool != tool ||
-        oldDelegate.vertices != vertices ||
-        oldDelegate.selectedVertexIndex != selectedVertexIndex ||
-        oldDelegate.color != color ||
-        oldDelegate.surfaceColor != surfaceColor;
   }
 }

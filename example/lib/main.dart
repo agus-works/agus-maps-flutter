@@ -125,6 +125,68 @@ class MapSearchResult {
   }
 }
 
+class _MapEditBanner extends StatelessWidget {
+  const _MapEditBanner({
+    required this.message,
+    required this.isError,
+  });
+
+  final String message;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final background =
+        isError ? colorScheme.errorContainer : colorScheme.primaryContainer;
+    final foreground =
+        isError ? colorScheme.onErrorContainer : colorScheme.onPrimaryContainer;
+
+    return Align(
+      alignment: Alignment.topLeft,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: const [
+            BoxShadow(
+              blurRadius: 12,
+              color: Color(0x33000000),
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isError ? Icons.error_outline : Icons.open_with,
+                size: 16,
+                color: foreground,
+              ),
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Text(
+                  message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: foreground,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DesktopActivityEmptyState extends StatelessWidget {
   const _DesktopActivityEmptyState({
     required this.icon,
@@ -435,6 +497,7 @@ class _MyAppState extends State<MyApp> {
   int? _bundledMwmVersion;
   String? _dataPath;
   Timer? _bearingTimer;
+  Timer? _editHandleProjectionTimer;
   Timer? _searchDebounceTimer;
   Timer? _searchPollTimer;
   Timer? _navigationPollTimer;
@@ -472,6 +535,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _bearingTimer?.cancel();
+    _editHandleProjectionTimer?.cancel();
     _searchDebounceTimer?.cancel();
     _searchPollTimer?.cancel();
     _navigationPollTimer?.cancel();
@@ -1145,6 +1209,7 @@ class _MyAppState extends State<MyApp> {
     _applyNativeNavigationSettings();
     _enableDuckDBNativeLayerRendering();
     _startBearingUpdates();
+    _startEditHandleProjectionUpdates();
 
     // Re-register all previously downloaded maps from MwmStorage
     // This is crucial: downloaded maps are only stored as metadata,
@@ -1237,6 +1302,8 @@ class _MyAppState extends State<MyApp> {
         store: store,
         layerId: _activeDuckDBLayerId,
         projector: _projectDrawPoint,
+        coordinateProjector: _projectMapCoordinate,
+        nativeEditGeometryRenderer: _renderDuckDBEditGeometry,
         onCommitted: _refreshDuckDBNativeLayers,
       );
 
@@ -1290,6 +1357,8 @@ class _MyAppState extends State<MyApp> {
       store: store,
       layerId: layerId,
       projector: _projectDrawPoint,
+      coordinateProjector: _projectMapCoordinate,
+      nativeEditGeometryRenderer: _renderDuckDBEditGeometry,
       onCommitted: _refreshDuckDBNativeLayers,
     )..setTool(previousTool);
 
@@ -1309,12 +1378,92 @@ class _MyAppState extends State<MyApp> {
     setState(() {});
   }
 
+  void _editDuckDBFeature(agus_maps_flutter.AgusLayerFeature feature) {
+    if (feature.layerId != _activeDuckDBLayerId) {
+      _setActiveDuckDBLayer(feature.layerId);
+    }
+
+    final controller = _duckDBDrawController;
+    if (controller == null) {
+      _log('Move ignored because the DuckDB draw controller is unavailable.');
+      return;
+    }
+
+    try {
+      controller.beginEditFeature(feature);
+      _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
+      setState(() {});
+      _log(
+        'Editing feature vertices: ${feature.featureId}. '
+        'Drag visible handles on the map to update geometry.',
+      );
+    } catch (error, stackTrace) {
+      _log('Feature edit setup failed: $error\n$stackTrace');
+    }
+  }
+
   agus_maps_flutter.AgusLatLon? _projectDrawPoint(Offset localPosition) {
     final pixelRatio = View.of(context).devicePixelRatio;
     return agus_maps_flutter.screenPointToLatLon(
       localPosition.dx * pixelRatio,
       localPosition.dy * pixelRatio,
     );
+  }
+
+  Offset? _projectMapCoordinate(agus_maps_flutter.AgusLatLon coordinate) {
+    final pixelRatio = View.of(context).devicePixelRatio;
+    final physicalOffset = agus_maps_flutter.latLonToScreenPoint(
+      coordinate.lat,
+      coordinate.lon,
+    );
+    if (physicalOffset == null) return null;
+    return physicalOffset / pixelRatio;
+  }
+
+  bool _handleDuckDBMapTap(Offset localPosition) {
+    return _duckDBDrawController?.handleMapTap(localPosition) ?? false;
+  }
+
+  bool _handleDuckDBMapPointerDown(Offset localPosition) {
+    return _duckDBDrawController?.handlePointerDown(localPosition) ?? false;
+  }
+
+  void _handleDuckDBMapPointerMove(Offset localPosition) {
+    final controller = _duckDBDrawController;
+    if (controller == null) return;
+    unawaited(controller.handlePointerMove(localPosition));
+  }
+
+  void _handleDuckDBMapPointerUp(Offset localPosition) {
+    final controller = _duckDBDrawController;
+    if (controller == null) return;
+    unawaited(controller.handlePointerUp());
+  }
+
+  void _renderDuckDBEditGeometry(
+    agus_maps_flutter.AgusDrapeInteractionMode mode,
+    String? geometryWkt,
+  ) {
+    if (!_nativeSurfaceReady ||
+        !(Platform.isMacOS || Platform.isIOS || Platform.isAndroid)) {
+      return;
+    }
+    if (mode == agus_maps_flutter.AgusDrapeInteractionMode.inactive ||
+        geometryWkt == null) {
+      agus_maps_flutter.clearDuckDBEditHandles();
+      return;
+    }
+    agus_maps_flutter.setDuckDBInteractionGeometryFromWkt(mode, geometryWkt);
+  }
+
+  String _drawToolLabel(agus_maps_flutter.AgusDrawTool tool) {
+    return switch (tool) {
+      agus_maps_flutter.AgusDrawTool.pin => 'point',
+      agus_maps_flutter.AgusDrawTool.segment => 'segment',
+      agus_maps_flutter.AgusDrawTool.line => 'line',
+      agus_maps_flutter.AgusDrawTool.polygon => 'polygon',
+      agus_maps_flutter.AgusDrawTool.none => 'map',
+    };
   }
 
   Future<void> _refreshDuckDBNativeLayers() async {
@@ -1343,6 +1492,17 @@ class _MyAppState extends State<MyApp> {
       if (bearing == null) return;
       if ((bearing - _currentBearing.value).abs() < 0.25) return;
       _currentBearing.value = bearing;
+    });
+  }
+
+  void _startEditHandleProjectionUpdates() {
+    _editHandleProjectionTimer?.cancel();
+    _editHandleProjectionTimer =
+        Timer.periodic(const Duration(milliseconds: 33), (_) {
+      if (!mounted || !_nativeSurfaceReady) return;
+      final controller = _duckDBDrawController;
+      if (controller == null || !controller.isEditingFeature) return;
+      controller.reprojectEditedFeatureVertices();
     });
   }
 
@@ -2253,6 +2413,14 @@ class _MyAppState extends State<MyApp> {
           onRenderingRefresh: _refreshDuckDBNativeLayers,
           onActiveLayerChanged: _setActiveDuckDBLayer,
           onDrawToolChanged: _setDuckDBDrawTool,
+          onEditFeature: _editDuckDBFeature,
+        ),
+      WorkbenchActivity.mapPresentation => AdaptiveMapPresentationPanel(
+          formFactor: ExampleFormFactor.desktop,
+          nativeLayerState: _mapLayerState,
+          buildings3dEnabled: _buildings3dEnabled,
+          onNativeLayerStateChanged: _updateMapLayerState,
+          onBuildings3dChanged: _updateBuildings3d,
         ),
       WorkbenchActivity.search => _buildDesktopSearchActivity(context),
       WorkbenchActivity.favorites => _buildDesktopFavoritesActivity(context),
@@ -2414,17 +2582,15 @@ class _MyAppState extends State<MyApp> {
           initialZoom: kDefaultLocation.zoom,
           onMapReady: _onMapReady,
           onPlacePage: _handlePlacePage,
+          onMapTap: _handleDuckDBMapTap,
+          onMapPointerDown: _handleDuckDBMapPointerDown,
+          onMapPointerMove: _handleDuckDBMapPointerMove,
+          onMapPointerUp: _handleDuckDBMapPointerUp,
           controller: _mapController,
           isVisible: isVisible,
           userScale: _mapScale,
           resizePolicy: agus_maps_flutter.AgusMapResizePolicy.stableViewport,
         ),
-        if (drawController != null)
-          Positioned.fill(
-            child: agus_maps_flutter.DuckDBLayerDrawOverlay(
-              controller: drawController,
-            ),
-          ),
         if (!useWorkbenchLayout && formFactor.isMobile)
           Positioned(
             top: 12,
@@ -2462,6 +2628,7 @@ class _MyAppState extends State<MyApp> {
                         onRenderingRefresh: _refreshDuckDBNativeLayers,
                         onActiveLayerChanged: _setActiveDuckDBLayer,
                         onDrawToolChanged: _setDuckDBDrawTool,
+                        onEditFeature: _editDuckDBFeature,
                         onClose: () {
                           setState(() {
                             _duckDBLayerPanelVisible = false;
@@ -2478,11 +2645,17 @@ class _MyAppState extends State<MyApp> {
           Positioned(
             left: 12,
             bottom: controlsBottom,
-            child: agus_maps_flutter.DuckDBLayerDrawToolbar(
-              controller: drawController,
-              axis: uiSpec.mapToolbarAxis,
-              onCommitted: (featureId) {
-                _log('DuckDB feature committed: $featureId');
+            child: AnimatedBuilder(
+              animation: drawController,
+              builder: (context, child) {
+                if (!drawController.isEditing) return const SizedBox.shrink();
+                return agus_maps_flutter.DuckDBLayerDrawToolbar(
+                  controller: drawController,
+                  axis: uiSpec.mapToolbarAxis,
+                  onCommitted: (featureId) {
+                    _log('DuckDB feature committed: $featureId');
+                  },
+                );
               },
             ),
           ),
@@ -2503,6 +2676,33 @@ class _MyAppState extends State<MyApp> {
                 }
                 return agus_maps_flutter.DuckDBLayerMetadataForm(
                   controller: drawController,
+                );
+              },
+            ),
+          ),
+        if (drawController != null)
+          Positioned(
+            left: useWorkbenchLayout
+                ? 12
+                : formFactor.isMobile
+                    ? 12
+                    : dockedColumnWidth + 28,
+            right: 84,
+            top: 12,
+            child: AnimatedBuilder(
+              animation: drawController,
+              builder: (context, child) {
+                final error = drawController.lastError;
+                if (!drawController.isEditing && error == null) {
+                  return const SizedBox.shrink();
+                }
+                final message = drawController.isDrawing
+                    ? 'Drawing ${_drawToolLabel(drawController.tool)}: '
+                        'click to add vertices; drag to pan; check to commit or X to cancel.'
+                    : 'Editing feature: drag visible vertices on the map.';
+                return _MapEditBanner(
+                  message: error ?? message,
+                  isError: error != null,
                 );
               },
             ),
@@ -2760,6 +2960,7 @@ class _MyAppState extends State<MyApp> {
                 layerStore: _duckDBLayerStore,
                 layerStoreStatus: _duckDBLayerStoreStatus,
                 onRenderingRefresh: _refreshDuckDBNativeLayers,
+                onEditFeature: _editDuckDBFeature,
                 onClose: () => Navigator.of(context).pop(),
               ),
             ),

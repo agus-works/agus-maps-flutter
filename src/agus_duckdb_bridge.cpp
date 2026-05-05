@@ -1003,6 +1003,12 @@ FFI_PLUGIN_EXPORT int32_t agus_duckdb_open_app_database(char const * writablePat
     return 0;
   }
 
+  if (!ExecuteDuckDBLocked("CHECKPOINT;"))
+  {
+    CloseDuckDBLocked();
+    return 0;
+  }
+
   ClearDuckDBError();
   return 1;
 }

@@ -82,12 +82,19 @@ cleanly at intersections.
 Desktop Layer Manager is a compact GIS layer dock, not a nested card tree.
 It should expose:
 
-- Map presentation toggles as a property grid.
-- Project layers as a full-width compact table.
+- Project layers as a full-width compact Explorer tree.
 - An obvious **New Layer** action.
-- Active edit layer selection by row click.
+- Active edit layer selection by row click, with a clear selected-for-editing
+  treatment similar to Figma/Penpot layer rows: highlighted row, left accent rail,
+  and compact `EDIT` badge.
+- Individual feature rows below expanded layers, with geometry icons and compact
+  per-feature actions.
 - Drawing session tools using GIS terms: map interaction, point, segment, line,
   and polygon.
+
+Map presentation is not part of the Explorer activity. It has its own Activity
+Bar destination and compact property grid for basemap/runtime overlays such as
+3D buildings, outdoors, contour lines, and subway.
 
 The **New Layer** command depends on the DuckDB project layer store, not on the
 native renderer. If native Drape rendering is unavailable on a platform, layer
@@ -112,16 +119,54 @@ new-layer creation, and feature commits should report failures in the Layer
 Manager or active scaffold message area. They must not rely on unhandled async
 exceptions, because those become red screens on desktop debug runs.
 
+Feature commits and native rendering are separate steps. A commit writes WGS84
+geometry and bbox metadata to DuckDB; the renderer then queries visible features
+using the current map viewport. Desktop diagnostics should keep logging both
+events so a successful commit followed by `0 visible features` can be traced as a
+viewport/query problem rather than a drawing-tool failure.
+
+If DuckDB startup fails because an unreplayable WAL is quarantined and retried,
+the Layer Manager should continue to present the same store status model:
+`Starting`, `Ready`, or `Unavailable`. Detailed recovery paths belong in the
+DEBUG CONSOLE and schema docs, not in dense desktop pane chrome.
+
+For drawing UX, transient sketches and committed map rendering must both be
+native Drape visuals. Flutter must not paint map geometry, vertex handles, or
+rubber-band sketch lines above the map texture. Pressing the check mark should
+clear the transient Drape interaction group only after the feature has been
+persisted and handed to the committed native Drape user-mark group.
+
+The project-layer Explorer follows the same viewport-over-state model as the
+workbench. Layer rows and feature rows read from `DuckDBLayerStore`; they do not
+own geometry. Selecting a draw tool enters drawing mode and submits transient
+sketch WKT to a native Drape interaction group. Taps add vertices; mouse/touchpad
+drag continues to pan the native map because drawing taps are observed by
+`AgusMap` instead of an opaque Flutter overlay. Selecting a feature enters
+committed-feature edit mode and submits its stored WKT to the same native
+interaction group in edit state. The visible vertex handles are map-native user
+marks, so panning, zooming, and rotation move them with the map instead of
+leaving Flutter-painted widgets floating above the workbench. Flutter currently
+remains the pointer-input bridge only for dragging an existing handle; on pointer
+release, the app rewrites the same feature id with updated WKT and bbox values in
+DuckDB, refreshes the committed Drape layer group, and keeps selected
+layer/feature state global rather than pane-local.
+
 ```mermaid
 flowchart TB
     Toolbar["Layer Manager toolbar\nNew Layer, refresh, backup"]
-    Presentation["Map presentation property grid"]
     Session["Edit session\nactive layer + draw tools"]
-    Layers["Project layers table\nvisibility, name, feature count, z-order"]
+    Active["Active layer row\naccent rail + EDIT badge"]
+    Layers["Project layer Explorer\nvisibility, name, feature count, z-order"]
+    Feature["Feature row\nselect + edit vertices"]
+    Camera["Native map camera\npan, zoom, rotation"]
+    Handles["Drape interaction group\nsketch + edit marks"]
+    Store["DuckDBLayerStore\ngeometry + attributes"]
+    Renderer["Native Drape renderer"]
 
-    Toolbar --> Presentation
-    Presentation --> Session
-    Session --> Layers
+    Toolbar --> Session
+    Session --> Active --> Layers --> Feature --> Handles
+    Camera --> Handles
+    Handles --> Store --> Renderer
 ```
 
 Tablet can keep the grouped layer tree with larger rows. Mobile should keep the

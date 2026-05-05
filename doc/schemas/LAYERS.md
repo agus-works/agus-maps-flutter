@@ -60,6 +60,56 @@ Project layer count comes from `DuckDBLayerStore.listLayers()`, not from the
 native renderer. A renderer failure must not make project layers appear as zero
 if the store has opened successfully.
 
+## Feature Explorer and Drape interaction state
+
+The Layer Manager Explorer is a viewport over DuckDB project-layer state:
+
+1. Layer rows come from `DuckDBLayerStore.listLayers()`.
+2. Expanded layer children come from `DuckDBLayerStore.listFeatures(layerId)`.
+3. Feature selection is UI/editing state, not persisted geometry state.
+4. Drawing and edit visuals are submitted to native Drape interaction state.
+5. Geometry edits are written through `DuckDBLayerStore.upsertFeature()`.
+6. Native rendering is refreshed after a successful edit.
+
+New sketching and committed feature editing use the same draw controller state
+machine:
+
+| Mode | Native state | Input behavior | Persistence |
+| --- | --- | --- | --- |
+| Map | inactive | All gestures go to CoMaps. | None. |
+| Drawing | drawing | Taps add vertices; drag/pinch/scroll gestures still pan, zoom, and rotate CoMaps. | Check mark writes a new feature. |
+| Feature edit | editing | Pointer-down on a vertex handle captures that pointer for drag; other gestures remain map gestures. | Pointer up rewrites the same feature id. |
+
+Visible sketch and edit handles belong to native Drape, not Flutter. Dart sends
+transient WKT and mode through `agus_duckdb_set_interaction_geometry_from_wkt()`.
+The native bridge parses lon/lat vertex pairs into Mercator points and submits
+colored point/line marks to `kDuckDBEditGroupId`, which now acts as the Drape
+interaction group. Drawing mode uses green marks; committed feature editing uses
+orange marks. Because Drape renders those handles in the map scene, they stay
+anchored during pan, zoom, and rotation. Flutter currently observes map taps and
+captures only vertex-drag pointers; native hit-testing/drag callbacks should
+replace that input bridge in a later milestone.
+
+```mermaid
+flowchart LR
+    Explorer["Layer Manager Explorer\nlayer + feature rows"]
+    Select["Select feature row"]
+    EditGroup["Drape interaction group\nsketch + edit marks"]
+    Camera["Map camera changes\npan / zoom / rotation"]
+    Move["Map input observer\ntaps add, handle drags edit"]
+    Draft["AgusLayerFeatureDraft\nsame feature_id + new WKT/bbox"]
+    Store["DuckDBLayerStore.upsertFeature"]
+    Renderer["refreshDuckDBMapLayers"]
+    Drape["Committed Drape user-mark group"]
+
+    Explorer --> Select --> EditGroup --> Move --> Draft --> Store --> Renderer --> Drape
+    Camera --> EditGroup
+```
+
+The committed edit scope covers point, segment, line, and polygon features.
+Multi-geometry and polygon-hole editing should extend this workflow with nested
+vertex/ring selection rather than introducing a second persistence path.
+
 ## New Layer command lifecycle
 
 The New Layer command is UI-driven but writes through `DuckDBLayerStore`. The
@@ -146,3 +196,113 @@ flowchart TB
     Metadata -. layer_id value .-> Parent
     Cache -. layer_id value .-> Parent
 ```
+
+## Native render viewport contract
+
+`agus_duckdb_copy_render_features_page()` expects its bounding box parameters in
+WGS84 longitude/latitude order:
+
+```text
+min_lon, min_lat, max_lon, max_lat
+```
+
+CoMaps `mercator::ToLatLon(RectD)` returns a `RectD` whose X coordinates are
+latitudes and whose Y coordinates are longitudes. Native DuckDB render refresh
+code must therefore translate that rectangle into named longitude/latitude
+fields before querying `agus.layer_features`.
+
+If the values are passed through directly, a feature can be committed
+successfully but excluded from rendering because the SQL bbox filter compares a
+feature longitude against the viewport latitude range. On Gibraltar this appears
+as repeated refreshes with zero visible features after successful commits:
+
+```text
+DuckDB feature committed: feature_...
+DuckDB layer renderer refreshed: 0 visible features.
+```
+
+```mermaid
+flowchart LR
+    Screen["Current CoMaps viewport\nMercator RectD"]
+    LatLonRect["mercator::ToLatLon(RectD)\nX = lat, Y = lon"]
+    QueryBox["DuckDB query bbox\nlon/lat named fields"]
+    SQL["agus.layer_features bbox filter"]
+    Drape["Drape user marks"]
+
+    Screen --> LatLonRect --> QueryBox --> SQL --> Drape
+```
+
+## Drape user-mark group visibility
+
+The native refresh path has two independent responsibilities after DuckDB
+returns visible features:
+
+1. Submit point/line render data and the DuckDB user-mark group membership.
+2. Mark the DuckDB user-mark group visible in Drape.
+
+CoMaps stores user-mark group membership separately from user-mark group
+visibility. A refresh can therefore return a positive visible-feature count and
+still paint nothing if `ChangeVisibilityUserMarksGroup(..., true)` is not sent
+for the DuckDB group.
+
+```text
+DuckDB layer renderer refreshed: 2 visible features.
+```
+
+The log above means the DuckDB query and feature parsing succeeded. If no marks
+are visible on the map, inspect the Drape group handoff before changing the
+DuckDB query or draw controller.
+
+```mermaid
+flowchart LR
+    Query["DuckDB visible features"]
+    Provider["DuckDBMarksProvider\nids + render data"]
+    Group["Drape group membership"]
+    Visible["Drape group visibility"]
+    Cache["UserMarkGenerator cache"]
+    Paint["Painted map marks"]
+
+    Query --> Provider
+    Provider --> Group --> Cache
+    Provider --> Visible --> Cache
+    Cache --> Paint
+```
+
+## WAL replay recovery
+
+Layer schema migrations can rebuild DuckDB child tables. If the app process is
+interrupted before DuckDB checkpoints those table changes, the next startup may
+need to replay `agus_layers.duckdb.wal`. A DuckDB internal WAL replay failure
+can prevent the project layer store from opening and leaves the Layer Manager in
+the unavailable state:
+
+```text
+DuckDB open failed: Failed to open DuckDB database: ... agus_layers.duckdb
+Failure while replaying WAL file ".../agus_layers.duckdb.wal"
+```
+
+The layer store handles this narrowly:
+
+1. Only WAL replay failures are eligible for automatic recovery.
+2. The current database file is copied to `duckdb_recovery/`.
+3. The unreplayable WAL is moved to `duckdb_recovery/`.
+4. The app retries opening the checkpointed database file.
+5. Native migrations and Dart repair logic run again, then checkpoint the
+   database to avoid leaving schema rebuilds only in the WAL.
+
+```mermaid
+flowchart TB
+    Open["DuckDBLayerStore.open"]
+    Fail["WAL replay failure"]
+    Backup["Copy database\nquarantine WAL"]
+    Retry["Retry open checkpointed DB"]
+    Migrate["Run migrations / repair"]
+    Checkpoint["CHECKPOINT"]
+    UI["Layer Manager ready"]
+
+    Open --> Fail --> Backup --> Retry --> Migrate --> Checkpoint --> UI
+```
+
+The recovery can discard only changes that existed solely in the unreplayable
+WAL. It preserves the checkpointed database and keeps the quarantined WAL for
+manual forensic recovery if needed.

@@ -593,6 +593,7 @@ class _ThinSeparator extends StatelessWidget {
 String _activityLabel(WorkbenchActivity activity) {
   return switch (activity) {
     WorkbenchActivity.explorer => 'Explorer',
+    WorkbenchActivity.mapPresentation => 'Map Presentation',
     WorkbenchActivity.search => 'Search',
     WorkbenchActivity.favorites => 'Favorites',
     WorkbenchActivity.downloads => 'Downloads',
@@ -608,6 +609,7 @@ String _activityTitle(WorkbenchActivity activity) {
 IconData _activityIcon(WorkbenchActivity activity) {
   return switch (activity) {
     WorkbenchActivity.explorer => Icons.account_tree_outlined,
+    WorkbenchActivity.mapPresentation => Icons.public_outlined,
     WorkbenchActivity.search => Icons.search,
     WorkbenchActivity.favorites => Icons.favorite_border,
     WorkbenchActivity.downloads => Icons.download_outlined,

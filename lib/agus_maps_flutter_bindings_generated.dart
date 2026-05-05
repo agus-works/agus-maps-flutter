@@ -208,6 +208,30 @@ class AgusMapsFlutterBindings {
       int Function(
           double, double, ffi.Pointer<ffi.Double>, ffi.Pointer<ffi.Double>)>();
 
+  /// Converts WGS84 coordinates to physical screen coordinates using the latest
+  /// native viewport. Returns 1 when values were written.
+  int comaps_latlon_to_screen(
+    double lat,
+    double lon,
+    ffi.Pointer<ffi.Double> physical_x,
+    ffi.Pointer<ffi.Double> physical_y,
+  ) {
+    return _comaps_latlon_to_screen(
+      lat,
+      lon,
+      physical_x,
+      physical_y,
+    );
+  }
+
+  late final _comaps_latlon_to_screenPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int Function(ffi.Double, ffi.Double, ffi.Pointer<ffi.Double>,
+              ffi.Pointer<ffi.Double>)>>('comaps_latlon_to_screen');
+  late final _comaps_latlon_to_screen = _comaps_latlon_to_screenPtr.asFunction<
+      int Function(
+          double, double, ffi.Pointer<ffi.Double>, ffi.Pointer<ffi.Double>)>();
+
   /// Relative zoom controls centered on the visible viewport.
   void comaps_zoom_in(
     int animated,
@@ -1299,6 +1323,54 @@ class AgusMapsFlutterBindings {
           'agus_duckdb_refresh_render_layers');
   late final _agus_duckdb_refresh_render_layers =
       _agus_duckdb_refresh_render_layersPtr.asFunction<int Function()>();
+
+  /// Renders selected-feature edit handles in a separate native Drape user-mark
+  /// group. The WKT is parsed for lon/lat vertex pairs and is not persisted here.
+  void agus_duckdb_set_edit_handles_from_wkt(
+    ffi.Pointer<ffi.Char> geometryWkt,
+  ) {
+    return _agus_duckdb_set_edit_handles_from_wkt(
+      geometryWkt,
+    );
+  }
+
+  late final _agus_duckdb_set_edit_handles_from_wktPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Char>)>>(
+          'agus_duckdb_set_edit_handles_from_wkt');
+  late final _agus_duckdb_set_edit_handles_from_wkt =
+      _agus_duckdb_set_edit_handles_from_wktPtr
+          .asFunction<void Function(ffi.Pointer<ffi.Char>)>();
+
+  /// Native Drape interaction state: 0 = inactive, 1 = drawing, 2 = editing.
+  /// The WKT is transient interaction geometry; Dart/DuckDB still own persistence.
+  void agus_duckdb_set_interaction_geometry_from_wkt(
+    int interactionMode,
+    ffi.Pointer<ffi.Char> geometryWkt,
+  ) {
+    return _agus_duckdb_set_interaction_geometry_from_wkt(
+      interactionMode,
+      geometryWkt,
+    );
+  }
+
+  late final _agus_duckdb_set_interaction_geometry_from_wktPtr =
+      _lookup<
+              ffi.NativeFunction<
+                  ffi.Void Function(ffi.Int32, ffi.Pointer<ffi.Char>)>>(
+          'agus_duckdb_set_interaction_geometry_from_wkt');
+  late final _agus_duckdb_set_interaction_geometry_from_wkt =
+      _agus_duckdb_set_interaction_geometry_from_wktPtr
+          .asFunction<void Function(int, ffi.Pointer<ffi.Char>)>();
+
+  void agus_duckdb_clear_edit_handles() {
+    return _agus_duckdb_clear_edit_handles();
+  }
+
+  late final _agus_duckdb_clear_edit_handlesPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>(
+          'agus_duckdb_clear_edit_handles');
+  late final _agus_duckdb_clear_edit_handles =
+      _agus_duckdb_clear_edit_handlesPtr.asFunction<void Function()>();
 
   /// Enables or disables viewport-driven DuckDB render refreshes on platforms that
   /// implement native Drape integration.

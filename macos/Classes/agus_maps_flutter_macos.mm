@@ -96,8 +96,14 @@ namespace
 double constexpr kDegreesPerRadian = 180.0 / 3.14159265358979323846;
 double constexpr kRadiansPerDegree = 3.14159265358979323846 / 180.0;
 kml::MarkGroupId constexpr kDuckDBRenderGroupId = 1ULL << 60;
+kml::MarkGroupId constexpr kDuckDBEditGroupId = kDuckDBRenderGroupId + 1;
 kml::MarkId constexpr kDuckDBPointMarkIdBase = kDuckDBRenderGroupId + 1;
 kml::TrackId constexpr kDuckDBLineMarkIdBase = kDuckDBRenderGroupId + (1ULL << 20);
+kml::MarkId constexpr kDuckDBEditPointMarkIdBase = kDuckDBEditGroupId + 1;
+kml::TrackId constexpr kDuckDBEditLineMarkIdBase = kDuckDBEditGroupId + (1ULL << 20);
+int32_t constexpr kDuckDBInteractionInactive = 0;
+int32_t constexpr kDuckDBInteractionDrawing = 1;
+int32_t constexpr kDuckDBInteractionEditingFeature = 2;
 int32_t constexpr kDuckDBRenderFetchBatchSize = 1000;
 int32_t constexpr kDuckDBRenderFetchMaxFeatures = 10000;
 auto constexpr kDuckDBViewportRefreshInterval = std::chrono::milliseconds(250);
@@ -111,23 +117,32 @@ struct DuckDBRenderableGeometry {
     std::vector<m2::PointD> points;
 };
 
+struct DuckDBRenderViewport {
+    double minLon = 0.0;
+    double minLat = 0.0;
+    double maxLon = 0.0;
+    double maxLat = 0.0;
+};
+
 class DuckDBPointMark final : public df::UserPointMark {
 public:
     DuckDBPointMark(kml::MarkId id, m2::PointD const & pivot, int minZoom,
-                    int zIndex)
+                    int zIndex, kml::MarkGroupId groupId = kDuckDBRenderGroupId,
+                    dp::Color color = dp::Color(0, 122, 255, 255),
+                    float radius = 6.5f)
         : df::UserPointMark(id), m_pivot(pivot), m_minZoom(std::max(1, minZoom)),
-          m_zIndex(zIndex) {
+          m_zIndex(zIndex), m_groupId(groupId) {
         auto const visualScale = static_cast<float>(df::VisualParams::Instance().GetVisualScale());
         df::ColoredSymbolViewParams params;
         params.m_outlineColor = dp::Color::White();
-        params.m_outlineWidth = 1.5f * visualScale;
-        params.m_radiusInPixels = 6.5f * visualScale;
-        params.m_color = dp::Color(0, 122, 255, 255);
+        params.m_outlineWidth = 2.0f * visualScale;
+        params.m_radiusInPixels = radius * visualScale;
+        params.m_color = color;
         m_coloredSymbols.m_needOverlay = false;
         m_coloredSymbols.m_zoomInfo.emplace(1, params);
     }
 
-    kml::MarkGroupId GetGroupId() const override { return kDuckDBRenderGroupId; }
+    kml::MarkGroupId GetGroupId() const override { return m_groupId; }
     bool IsDirty() const override { return m_dirty; }
     void ResetChanges() const override { m_dirty = false; }
     bool IsVisible() const override { return true; }
@@ -165,6 +180,7 @@ private:
     m2::PointD m_pivot;
     int m_minZoom;
     int m_zIndex;
+    kml::MarkGroupId m_groupId;
     ColoredSymbolZoomInfo m_coloredSymbols;
     mutable bool m_dirty = true;
 };
@@ -172,21 +188,24 @@ private:
 class DuckDBLineMark final : public df::UserLineMark {
 public:
     DuckDBLineMark(kml::TrackId id, std::vector<m2::PointD> points, int minZoom,
-                   int zIndex)
+                   int zIndex, kml::MarkGroupId groupId = kDuckDBRenderGroupId,
+                   dp::Color color = dp::Color(0, 122, 255, 220),
+                   float width = 4.0f)
         : df::UserLineMark(id), m_points(std::move(points)),
-          m_minZoom(std::max(1, minZoom)), m_zIndex(zIndex) {
+          m_minZoom(std::max(1, minZoom)), m_zIndex(zIndex),
+          m_groupId(groupId), m_color(color) {
         auto const visualScale = static_cast<float>(df::VisualParams::Instance().GetVisualScale());
-        m_width = 4.0f * visualScale;
+        m_width = width * visualScale;
     }
 
-    kml::MarkGroupId GetGroupId() const override { return kDuckDBRenderGroupId; }
+    kml::MarkGroupId GetGroupId() const override { return m_groupId; }
     bool IsDirty() const override { return m_dirty; }
     void ResetChanges() const override { m_dirty = false; }
     int GetMinZoom() const override { return m_minZoom; }
     df::DepthLayer GetDepthLayer() const override { return df::DepthLayer::UserLineLayer; }
     size_t GetLayerCount() const override { return 1; }
     dp::Color GetColor(size_t /* layerIndex */) const override {
-        return dp::Color(0, 122, 255, 220);
+        return m_color;
     }
     float GetWidth(size_t /* layerIndex */) const override { return m_width; }
     float GetDepth(size_t /* layerIndex */) const override {
@@ -203,12 +222,17 @@ private:
     float m_width = 4.0f;
     int m_minZoom;
     int m_zIndex;
+    kml::MarkGroupId m_groupId;
+    dp::Color m_color;
     mutable bool m_dirty = true;
 };
 
 class DuckDBMarksProvider final : public df::UserMarksProvider {
 public:
-    DuckDBMarksProvider() { m_allGroups.insert(kDuckDBRenderGroupId); }
+    DuckDBMarksProvider() {
+        m_allGroups.insert(kDuckDBRenderGroupId);
+        m_allGroups.insert(kDuckDBEditGroupId);
+    }
 
     void SetFeatures(std::vector<DuckDBRenderableGeometry> const & features) {
         m_pointMarks.clear();
@@ -216,11 +240,18 @@ public:
         m_pointIds.clear();
         m_lineIds.clear();
         m_createdPointIds.clear();
+        m_createdPointIds.insert(m_editPointIds.begin(), m_editPointIds.end());
         m_createdLineIds.clear();
+        m_createdLineIds.insert(m_editLineIds.begin(), m_editLineIds.end());
         m_updatedPointIds.clear();
+        m_updatedPointIds.insert(m_editPointIds.begin(), m_editPointIds.end());
         m_updatedLineIds.clear();
+        m_updatedLineIds.insert(m_editLineIds.begin(), m_editLineIds.end());
         m_updatedGroups.clear();
         m_updatedGroups.insert(kDuckDBRenderGroupId);
+        if (m_editVisible) {
+            m_updatedGroups.insert(kDuckDBEditGroupId);
+        }
 
         size_t pointIndex = 0;
         size_t lineIndex = 0;
@@ -241,6 +272,47 @@ public:
         }
     }
 
+    void SetEditHandles(std::vector<m2::PointD> const & points, int32_t interactionMode) {
+        m_editPointMarks.clear();
+        m_editLineMarks.clear();
+        m_editPointIds.clear();
+        m_editLineIds.clear();
+        m_createdPointIds.clear();
+        m_createdLineIds.clear();
+        m_updatedPointIds.clear();
+        m_updatedLineIds.clear();
+        m_updatedGroups.clear();
+        m_updatedGroups.insert(kDuckDBEditGroupId);
+        m_interactionMode = interactionMode;
+        m_editVisible = m_interactionMode != kDuckDBInteractionInactive && !points.empty();
+        auto const color = m_interactionMode == kDuckDBInteractionDrawing
+            ? dp::Color(0, 200, 120, 255)
+            : dp::Color(255, 149, 0, 255);
+        auto const lineColor = m_interactionMode == kDuckDBInteractionDrawing
+            ? dp::Color(0, 200, 120, 220)
+            : dp::Color(255, 149, 0, 220);
+
+        size_t index = 0;
+        for (auto const & point : points) {
+            auto const id = kDuckDBEditPointMarkIdBase + index++;
+            m_editPointIds.insert(id);
+            m_createdPointIds.insert(id);
+            m_updatedPointIds.insert(id);
+            m_editPointMarks.emplace(id, std::make_unique<DuckDBPointMark>(
+                id, point, 1, 65535, kDuckDBEditGroupId,
+                color, 8.0f));
+        }
+        if (points.size() > 1) {
+            auto const id = kDuckDBEditLineMarkIdBase;
+            m_editLineIds.insert(id);
+            m_createdLineIds.insert(id);
+            m_updatedLineIds.insert(id);
+            m_editLineMarks.emplace(id, std::make_unique<DuckDBLineMark>(
+                id, points, 1, 65535, kDuckDBEditGroupId,
+                lineColor, 3.0f));
+        }
+    }
+
     kml::GroupIdSet GetAllGroupIds() const override { return m_allGroups; }
     kml::GroupIdSet const & GetUpdatedGroupIds() const override { return m_updatedGroups; }
     kml::GroupIdSet const & GetRemovedGroupIds() const override { return m_emptyGroups; }
@@ -253,21 +325,30 @@ public:
     kml::TrackIdSet const & GetRemovedLineIds() const override { return m_removedLineIds; }
     kml::TrackIdSet const & GetUpdatedLineIds() const override { return m_updatedLineIds; }
     kml::MarkIdSet const & GetGroupPointIds(kml::MarkGroupId groupId) const override {
-        return groupId == kDuckDBRenderGroupId ? m_pointIds : m_emptyPointIds;
+        if (groupId == kDuckDBRenderGroupId) return m_pointIds;
+        if (groupId == kDuckDBEditGroupId) return m_editPointIds;
+        return m_emptyPointIds;
     }
     df::UserPointMark const * GetUserPointMark(kml::MarkId markId) const override {
         auto const found = m_pointMarks.find(markId);
-        return found == m_pointMarks.end() ? nullptr : found->second.get();
+        if (found != m_pointMarks.end()) return found->second.get();
+        auto const editFound = m_editPointMarks.find(markId);
+        return editFound == m_editPointMarks.end() ? nullptr : editFound->second.get();
     }
     kml::TrackIdSet const & GetGroupLineIds(kml::MarkGroupId groupId) const override {
-        return groupId == kDuckDBRenderGroupId ? m_lineIds : m_emptyLineIds;
+        if (groupId == kDuckDBRenderGroupId) return m_lineIds;
+        if (groupId == kDuckDBEditGroupId) return m_editLineIds;
+        return m_emptyLineIds;
     }
     df::UserLineMark const * GetUserLineMark(kml::TrackId lineId) const override {
         auto const found = m_lineMarks.find(lineId);
-        return found == m_lineMarks.end() ? nullptr : found->second.get();
+        if (found != m_lineMarks.end()) return found->second.get();
+        auto const editFound = m_editLineMarks.find(lineId);
+        return editFound == m_editLineMarks.end() ? nullptr : editFound->second.get();
     }
     bool IsGroupVisible(kml::MarkGroupId groupId) const override {
-        return groupId == kDuckDBRenderGroupId;
+        return groupId == kDuckDBRenderGroupId ||
+               (groupId == kDuckDBEditGroupId && m_editVisible);
     }
 
 private:
@@ -275,8 +356,10 @@ private:
     kml::GroupIdSet m_updatedGroups;
     kml::GroupIdSet m_emptyGroups;
     kml::MarkIdSet m_pointIds;
+    kml::MarkIdSet m_editPointIds;
     kml::MarkIdSet m_emptyPointIds;
     kml::TrackIdSet m_lineIds;
+    kml::TrackIdSet m_editLineIds;
     kml::TrackIdSet m_emptyLineIds;
     kml::MarkIdSet m_createdPointIds;
     kml::MarkIdSet m_removedPointIds;
@@ -285,7 +368,11 @@ private:
     kml::TrackIdSet m_removedLineIds;
     kml::TrackIdSet m_updatedLineIds;
     std::map<kml::MarkId, std::unique_ptr<DuckDBPointMark>> m_pointMarks;
+    std::map<kml::MarkId, std::unique_ptr<DuckDBPointMark>> m_editPointMarks;
     std::map<kml::TrackId, std::unique_ptr<DuckDBLineMark>> m_lineMarks;
+    std::map<kml::TrackId, std::unique_ptr<DuckDBLineMark>> m_editLineMarks;
+    int32_t m_interactionMode = kDuckDBInteractionInactive;
+    bool m_editVisible = false;
 };
 
 std::mutex g_duckDBRenderMutex;
@@ -340,6 +427,16 @@ int ClampZoom(int zoom) {
     return zoom;
 }
 
+DuckDBRenderViewport GetDuckDBRenderViewport() {
+    auto const latLonRect = mercator::ToLatLon(g_framework->GetCurrentViewport());
+    return {
+        std::min(latLonRect.minY(), latLonRect.maxY()),
+        std::min(latLonRect.minX(), latLonRect.maxX()),
+        std::max(latLonRect.minY(), latLonRect.maxY()),
+        std::max(latLonRect.minX(), latLonRect.maxX()),
+    };
+}
+
 int32_t RefreshDuckDBRenderLayersInternal() {
     std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
     if (!g_framework || !g_drapeEngineCreated || agus_duckdb_is_open() == 0) {
@@ -351,7 +448,7 @@ int32_t RefreshDuckDBRenderLayersInternal() {
         return -1;
     }
 
-    auto const viewport = mercator::ToLatLon(g_framework->GetCurrentViewport());
+    auto const viewport = GetDuckDBRenderViewport();
     auto const zoom = ClampZoom(g_framework->GetDrawScale());
     std::vector<DuckDBRenderableGeometry> renderableFeatures;
     renderableFeatures.reserve(kDuckDBRenderFetchBatchSize);
@@ -364,7 +461,7 @@ int32_t RefreshDuckDBRenderLayersInternal() {
         AgusDuckDBRenderFeature * features = nullptr;
         int32_t featureCount = 0;
         if (agus_duckdb_copy_render_features_page(
-                viewport.minX(), viewport.minY(), viewport.maxX(), viewport.maxY(),
+                viewport.minLon, viewport.minLat, viewport.maxLon, viewport.maxLat,
                 zoom, batchLimit, queryOffset, &features, &featureCount) == 0) {
             return -2;
         }
@@ -394,12 +491,39 @@ int32_t RefreshDuckDBRenderLayersInternal() {
     }
     g_duckDBMarksProvider->SetFeatures(renderableFeatures);
 
-    engine->ClearUserMarksGroup(kDuckDBRenderGroupId);
     engine->UpdateUserMarks(g_duckDBMarksProvider.get(), true);
+    engine->ChangeVisibilityUserMarksGroup(kDuckDBRenderGroupId, true);
     engine->InvalidateUserMarks();
     g_lastDuckDBRenderRefresh = std::chrono::steady_clock::now();
     WakeRenderer();
     return static_cast<int32_t>(renderableFeatures.size());
+}
+
+void UpdateDuckDBEditHandlesInternal(char const * wkt, int32_t interactionMode) {
+    std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+    auto engine = g_framework->GetDrapeEngine();
+    if (!engine) {
+        return;
+    }
+
+    if (!g_duckDBMarksProvider) {
+        g_duckDBMarksProvider = std::make_unique<DuckDBMarksProvider>();
+    }
+    auto const points = ParseWktMercatorPoints(wkt);
+    g_duckDBMarksProvider->SetEditHandles(points, interactionMode);
+    engine->UpdateUserMarks(g_duckDBMarksProvider.get(), true);
+    engine->ChangeVisibilityUserMarksGroup(
+        kDuckDBEditGroupId,
+        interactionMode != kDuckDBInteractionInactive && !points.empty());
+    engine->InvalidateUserMarks();
+    WakeRenderer();
+}
+
+void ClearDuckDBEditHandlesInternal() {
+    UpdateDuckDBEditHandlesInternal(nullptr, kDuckDBInteractionInactive);
 }
 
 bool ShouldRefreshDuckDBRenderOnViewportChange() {
@@ -1008,6 +1132,27 @@ FFI_PLUGIN_EXPORT int comaps_screen_to_latlon(
     return 1;
 }
 
+FFI_PLUGIN_EXPORT int comaps_latlon_to_screen(
+    double lat,
+    double lon,
+    double* physical_x,
+    double* physical_y) {
+    if (!physical_x || !physical_y) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(g_viewportMutex);
+    if (!g_currentScreen) {
+        return 0;
+    }
+
+    auto const screenPoint = g_currentScreen->GtoP(
+        mercator::FromLatLon(lat, lon));
+    *physical_x = screenPoint.x;
+    *physical_y = screenPoint.y;
+    return 1;
+}
+
 FFI_PLUGIN_EXPORT void comaps_zoom_in(int animated) {
     if (!g_framework || !g_drapeEngineCreated) {
         return;
@@ -1387,6 +1532,19 @@ FFI_PLUGIN_EXPORT int32_t agus_duckdb_refresh_render_layers(void) {
     return RefreshDuckDBRenderLayersInternal();
 }
 
+FFI_PLUGIN_EXPORT void agus_duckdb_set_edit_handles_from_wkt(char const * geometryWkt) {
+    UpdateDuckDBEditHandlesInternal(geometryWkt, kDuckDBInteractionEditingFeature);
+}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_set_interaction_geometry_from_wkt(
+    int32_t interactionMode, char const * geometryWkt) {
+    UpdateDuckDBEditHandlesInternal(geometryWkt, interactionMode);
+}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_clear_edit_handles(void) {
+    ClearDuckDBEditHandlesInternal();
+}
+
 FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t enabled) {
     if (enabled != 0) {
         {
@@ -1404,6 +1562,7 @@ FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t enabled) {
         auto engine = g_framework->GetDrapeEngine();
         if (engine) {
             engine->ClearUserMarksGroup(kDuckDBRenderGroupId);
+            engine->ClearUserMarksGroup(kDuckDBEditGroupId);
             engine->InvalidateUserMarks();
             WakeRenderer();
         }
