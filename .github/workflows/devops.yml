@@ -132,6 +132,11 @@ jobs:
       - name: Upload CoMaps to Cache
         if: steps.clone-comaps.outputs.cloned == 'true'
         run: |
+          if [ -z "${{ secrets.AZ_URL }}" ]; then
+            echo "AZ_URL secret is not configured; skipping CoMaps cache upload."
+            exit 0
+          fi
+
           echo "Uploading pristine CoMaps to Azure Blob Storage cache..."
 
           # Install azcopy
@@ -718,6 +723,11 @@ jobs:
       - name: Upload CoMaps to Cache
         if: steps.clone-comaps.outputs.cloned == 'true'
         run: |
+          if [ -z "${{ secrets.AZ_URL }}" ]; then
+            echo "AZ_URL secret is not configured; skipping CoMaps cache upload."
+            exit 0
+          fi
+
           echo "Uploading pristine CoMaps to Azure Blob Storage cache..."
 
           # Install azcopy
@@ -1192,6 +1202,11 @@ jobs:
       - name: Upload CoMaps to Cache
         if: steps.clone-comaps.outputs.cloned == 'true'
         run: |
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.AZ_URL }}")) {
+            Write-Host "AZ_URL secret is not configured; skipping CoMaps cache upload."
+            exit 0
+          }
+
           Write-Host "Uploading pristine CoMaps to Azure Blob Storage cache..."
 
           if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
@@ -1766,6 +1781,11 @@ jobs:
       - name: Upload CoMaps to Cache
         if: steps.clone-comaps.outputs.cloned == 'true'
         run: |
+          if [ -z "${{ secrets.AZ_URL }}" ]; then
+            echo "AZ_URL secret is not configured; skipping CoMaps cache upload."
+            exit 0
+          fi
+
           echo "Uploading pristine CoMaps to Azure Blob Storage cache..."
 
           # Install azcopy
