@@ -45,6 +45,10 @@ viewports are tablet.
 7. **Safe-area ownership is explicit.** Shell elements that consume unsafe
    regions, such as the mobile landscape navigation strip, must prevent body
    pages from applying the same safe-area inset a second time.
+8. **Camera gestures stay render-only.** Pan, zoom, and rotation must not run
+   synchronous DuckDB queries or full Drape user-mark rebuilds on the gesture
+   frame path. Project-layer rendering may refresh immediately after mutations,
+   but camera-driven refreshes must be debounced until the viewport is idle.
 
 ## Common mobile landscape pattern
 

@@ -27,6 +27,14 @@ separate layout contract for every transient surface.
 | Forms | Use full-height side sheets or full-screen routes for text entry. Plain centered dialogs are allowed only when their content is smaller than the safe height. |
 | Keyboard | Text input must either resize within a side sheet or use a route where the body scrolls above keyboard insets. |
 
+## Map rendering rules
+
+- Camera gestures must stay smooth even while DuckDB project layers are enabled.
+- Pan, zoom, and rotation must not synchronously query DuckDB or rebuild Drape
+  user marks from inside the viewport listener.
+- DuckDB-backed Drape rendering refreshes immediately after project-layer
+  mutations, then debounces camera-driven refreshes until the viewport is idle.
+
 ## Safe-area ownership
 
 Mobile landscape uses split safe-area ownership:
@@ -132,6 +140,7 @@ This removes ambiguity and makes mobile, tablet, and desktop behavior match.
 | Left navigation strip | Implemented | Existing `AdaptiveAppScaffold` uses a side strip for mobile landscape. |
 | Orientation-aware body safe area | Implemented | `AdaptiveBodySafeArea` removes duplicate left and bottom padding from mobile landscape tab bodies while keeping right padding. |
 | Scrollable right action column | Implemented | Current map controls use `SingleChildScrollView` in the right column. |
+| Android camera rendering stability | Implemented | DuckDB viewport refreshes are debounced until camera idle, and Drape user-mark updates no longer force first-time rebuilds after initial publication. |
 | Downloads empty states | Implemented | No-regions and no-results states use compact scroll-safe content when the region-list viewport is short. |
 | Landscape-specific major panels | Partially implemented | Search and layers now use side panels on the map tab; route preview remains a shallow bottom card. |
 | Shared adaptive prompt | Partially implemented | Layer creation uses a full-screen mobile prompt in portrait and landscape; Downloads/About dialogs still need migration. |

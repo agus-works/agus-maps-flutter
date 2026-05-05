@@ -34,6 +34,7 @@ FFI_PLUGIN_EXPORT int sum_long_running(int a, int b) {
 #include <memory>
 #include <mutex>
 #include <set>
+#include <iterator>
 #include <thread>
 #include <vector>
 #include <cmath>
@@ -123,8 +124,18 @@ int32_t constexpr kDuckDBInteractionEditingFeature = 2;
 int32_t constexpr kDuckDBRenderFetchBatchSize = 1000;
 int32_t constexpr kDuckDBRenderFetchMaxFeatures = 10000;
 auto constexpr kDuckDBViewportRefreshInterval = std::chrono::milliseconds(250);
+auto constexpr kDuckDBViewportIdleRefreshDelay = std::chrono::milliseconds(450);
 
 void WakeRenderer();
+
+template <typename Set>
+void AssignSetDifference(Set const & left, Set const & right, Set & output) {
+    output.clear();
+    std::set_difference(
+        left.begin(), left.end(),
+        right.begin(), right.end(),
+        std::inserter(output, output.end()));
+}
 
 struct DuckDBRenderableGeometry {
     bool isPoint = false;
@@ -251,18 +262,16 @@ public:
     }
 
     void SetFeatures(std::vector<DuckDBRenderableGeometry> const & features) {
+        auto const previousPointIds = m_pointIds;
+        auto const previousLineIds = m_lineIds;
         m_pointMarks.clear();
         m_lineMarks.clear();
         m_pointIds.clear();
         m_lineIds.clear();
         m_createdPointIds.clear();
-        m_createdPointIds.insert(m_editPointIds.begin(), m_editPointIds.end());
         m_createdLineIds.clear();
-        m_createdLineIds.insert(m_editLineIds.begin(), m_editLineIds.end());
         m_updatedPointIds.clear();
-        m_updatedPointIds.insert(m_editPointIds.begin(), m_editPointIds.end());
         m_updatedLineIds.clear();
-        m_updatedLineIds.insert(m_editLineIds.begin(), m_editLineIds.end());
         m_updatedGroups.clear();
         m_updatedGroups.insert(kDuckDBRenderGroupId);
         if (m_editVisible) {
@@ -286,9 +295,19 @@ public:
                     id, feature.points, feature.minZoom, feature.zIndex));
             }
         }
+
+        AssignSetDifference(m_pointIds, previousPointIds, m_createdPointIds);
+        AssignSetDifference(previousPointIds, m_pointIds, m_removedPointIds);
+        AssignSetDifference(m_lineIds, previousLineIds, m_createdLineIds);
+        AssignSetDifference(previousLineIds, m_lineIds, m_removedLineIds);
+
+        m_updatedPointIds = m_pointIds;
+        m_updatedLineIds = m_lineIds;
     }
 
     void SetEditHandles(std::vector<m2::PointD> const & points, int32_t interactionMode) {
+        auto const previousEditPointIds = m_editPointIds;
+        auto const previousEditLineIds = m_editLineIds;
         m_editPointMarks.clear();
         m_editLineMarks.clear();
         m_editPointIds.clear();
@@ -321,12 +340,18 @@ public:
         if (points.size() > 1) {
             auto const id = kDuckDBEditLineMarkIdBase;
             m_editLineIds.insert(id);
-            m_createdLineIds.insert(id);
-            m_updatedLineIds.insert(id);
             m_editLineMarks.emplace(id, std::make_unique<DuckDBLineMark>(
                 id, points, 1, 65535, kDuckDBEditGroupId,
                 lineColor, 3.0f));
         }
+
+        AssignSetDifference(m_editPointIds, previousEditPointIds, m_createdPointIds);
+        AssignSetDifference(previousEditPointIds, m_editPointIds, m_removedPointIds);
+        AssignSetDifference(m_editLineIds, previousEditLineIds, m_createdLineIds);
+        AssignSetDifference(previousEditLineIds, m_editLineIds, m_removedLineIds);
+
+        m_updatedPointIds = m_editPointIds;
+        m_updatedLineIds = m_editLineIds;
     }
 
     kml::GroupIdSet GetAllGroupIds() const override { return m_allGroups; }
@@ -394,7 +419,10 @@ private:
 std::mutex g_duckDBRenderMutex;
 std::unique_ptr<DuckDBMarksProvider> g_duckDBMarksProvider;
 bool g_duckDBRenderingEnabled = false;
+bool g_duckDBMarksPublished = false;
 std::chrono::steady_clock::time_point g_lastDuckDBRenderRefresh;
+std::atomic<uint64_t> g_duckDBViewportGeneration{0};
+std::atomic<bool> g_duckDBViewportRefreshScheduled{false};
 std::mutex g_viewportMutex;
 std::unique_ptr<ScreenBase> g_currentScreen;
 
@@ -507,7 +535,9 @@ int32_t RefreshDuckDBRenderLayersInternal() {
     }
     g_duckDBMarksProvider->SetFeatures(renderableFeatures);
 
-    engine->UpdateUserMarks(g_duckDBMarksProvider.get(), true);
+    bool const firstUpdate = !g_duckDBMarksPublished;
+    engine->UpdateUserMarks(g_duckDBMarksProvider.get(), firstUpdate);
+    g_duckDBMarksPublished = true;
     engine->ChangeVisibilityUserMarksGroup(kDuckDBRenderGroupId, true);
     engine->InvalidateUserMarks();
     g_lastDuckDBRenderRefresh = std::chrono::steady_clock::now();
@@ -549,6 +579,39 @@ bool ShouldRefreshDuckDBRenderOnViewportChange() {
     }
     auto const now = std::chrono::steady_clock::now();
     return now - g_lastDuckDBRenderRefresh >= kDuckDBViewportRefreshInterval;
+}
+
+void ScheduleDuckDBRenderRefreshAfterViewportIdle() {
+    {
+        std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+        if (!g_duckDBRenderingEnabled) {
+            return;
+        }
+    }
+
+    g_duckDBViewportGeneration.fetch_add(1, std::memory_order_relaxed);
+    bool expected = false;
+    if (!g_duckDBViewportRefreshScheduled.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+        return;
+    }
+
+    std::thread([]() {
+        while (true) {
+            auto const observedGeneration =
+                g_duckDBViewportGeneration.load(std::memory_order_relaxed);
+            std::this_thread::sleep_for(kDuckDBViewportIdleRefreshDelay);
+            if (observedGeneration ==
+                g_duckDBViewportGeneration.load(std::memory_order_relaxed)) {
+                break;
+            }
+        }
+
+        g_duckDBViewportRefreshScheduled.store(false, std::memory_order_release);
+        if (ShouldRefreshDuckDBRenderOnViewportChange()) {
+            RefreshDuckDBRenderLayersInternal();
+        }
+    }).detach();
 }
 
 double NormalizeBearingDegrees(double degrees) {
@@ -602,9 +665,7 @@ void SetViewportTracking() {
             std::lock_guard<std::mutex> lock(g_viewportMutex);
             g_currentScreen = std::make_unique<ScreenBase>(screen);
         }
-        if (ShouldRefreshDuckDBRenderOnViewportChange()) {
-            RefreshDuckDBRenderLayersInternal();
-        }
+        ScheduleDuckDBRenderRefreshAfterViewportIdle();
     });
 }
 
@@ -1887,6 +1948,7 @@ FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t enabled) {
 
     std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
     g_duckDBRenderingEnabled = false;
+    g_duckDBMarksPublished = false;
     g_duckDBMarksProvider.reset();
     if (g_framework && g_drapeEngineCreated) {
         auto engine = g_framework->GetDrapeEngine();
