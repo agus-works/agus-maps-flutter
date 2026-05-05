@@ -83,7 +83,7 @@ zero height.
 | Draw/edit feature | Add vertices and commit/cancel without hiding the map. | Use native Drape marks. Floating undo/commit/cancel buttons live in the right control column. Drawing metadata is a compact top banner or side form. |
 | Map presentation | Toggle 3D buildings, outdoors, contour lines, and subway. | Use the same side-sheet pattern as project layers or expose in Settings. Never mix presentation toggles into "Add feature". |
 | Favorites | Jump to a saved location. | Favorites screen uses the same left navigation strip and a scrollable list in the remaining area. Row heights can be slightly denser than portrait. |
-| Downloads | Browse regions and manage downloads. | Downloads screen should use two vertical zones only if height allows; otherwise header controls wrap and the region tree owns the scroll. Empty states must compact and scroll inside the region-list viewport. Confirmation dialogs must be height-safe. |
+| Downloads | Browse regions and manage downloads. | Downloads screen should use two vertical zones only if height allows; otherwise header controls wrap and the region tree owns the scroll. Catalog, mirror, search, expansion, and active download progress state must survive rotation. Empty states must compact and scroll inside the region-list viewport. Confirmation dialogs must be height-safe. |
 | Settings | Configure app and map behavior. | Settings screen uses scrollable sections. Segmented controls and dropdown menus wrap or move to one control per line. |
 | About | Inspect attribution and licenses. | Use routes and scroll views. URL copy prompts must be scrollable and constrained. |
 
@@ -143,6 +143,7 @@ This removes ambiguity and makes mobile, tablet, and desktop behavior match.
 | Orientation-aware body safe area | Implemented | `AdaptiveBodySafeArea` removes duplicate left and bottom padding from mobile landscape tab bodies while keeping right padding. |
 | Scrollable right action column | Implemented | Current map controls use `SingleChildScrollView` in the right column. |
 | Android camera rendering stability | Implemented | DuckDB viewport refreshes are debounced until camera idle, unchanged idle refreshes are no-ops, and Drape user-mark updates no longer force first-time rebuilds after initial publication. |
+| Downloads rotation state | Implemented | `DownloadsTab` has a stable app-owned key so its catalog, mirror, search, expansion, and progress state survive portrait/landscape shell swaps. |
 | Downloads empty states | Implemented | No-regions and no-results states use compact scroll-safe content when the region-list viewport is short. |
 | Landscape-specific major panels | Partially implemented | Search and layers now use side panels on the map tab; route preview remains a shallow bottom card. |
 | Shared adaptive prompt | Partially implemented | Layer creation uses a full-screen mobile prompt in portrait and landscape; Downloads/About dialogs still need migration. |

@@ -117,6 +117,10 @@ The first code pass implements the highest-risk map-tab surfaces:
    - DuckDB-backed Drape user marks now use first-time publication only once and
      report created, updated, and removed ids on later refreshes.
    - Explicit project-layer mutations still refresh native rendering immediately.
+8. `example/lib/main.dart`
+   - `DownloadsTab` now uses a stable app-owned key so mobile portrait/landscape
+     shell swaps do not reset loaded mirrors, catalog regions, search text,
+     expanded rows, errors, or active download progress.
 
 ## Manual validation command
 
