@@ -50,6 +50,10 @@ viewports are tablet.
    frame path. Project-layer rendering may refresh immediately after mutations,
    but camera-driven refreshes must be debounced until the viewport is idle and
    skipped entirely when the renderable feature set is unchanged.
+9. **State ownership survives layout swaps.** Orientation changes may reparent
+   the shell, but long-lived feature state such as Downloads catalog data,
+   mirrors, search, expanded rows, and active progress must keep stable widget
+   identity and must not reset just because placement changes.
 
 ## Common mobile landscape pattern
 

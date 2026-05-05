@@ -493,6 +493,7 @@ class _MyAppState extends State<MyApp> {
   String _duckDBLayerStoreStatus = 'DuckDB layer store is starting';
   final WorkbenchController _workbenchController = WorkbenchController();
   final GlobalKey _mapViewportKey = GlobalKey();
+  final GlobalKey _downloadsTabKey = GlobalKey(debugLabel: 'downloads-tab');
   bool _duckDBLayerPanelVisible = true;
   bool _mobileLayerManagerVisible = false;
 
@@ -3726,6 +3727,7 @@ class _MyAppState extends State<MyApp> {
       return const Center(child: CircularProgressIndicator());
     }
     return DownloadsTab(
+      key: _downloadsTabKey,
       mwmStorage: _mwmStorage!,
       dataPath: dataPath,
       isVisible: isVisible,

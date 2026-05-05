@@ -44,7 +44,7 @@ Mobile portrait keeps the conventional Material shell ownership:
 | Draw/edit feature | Place vertices and commit/cancel geometry. | Native Drape shows sketch/edit marks. Floating drawing buttons show undo, commit, and cancel. The geometry type is locked until commit or cancel. |
 | Map presentation | Toggle basemap overlays. | Presentation controls live in Settings or a dedicated map presentation panel, not mixed into project layer creation. |
 | Favorites | Jump to a saved location. | Favorites tab is a scrollable list with large rows. Tapping a row switches to Map and moves the camera. |
-| Downloads | Browse and manage map files. | Downloads tab has a header, search, mirror/snapshot controls, status chips, and a region tree. Empty states are scroll-safe inside the list viewport. Row actions stay at the trailing edge and destructive actions confirm first. |
+| Downloads | Browse and manage map files. | Downloads tab has a header, search, mirror/snapshot controls, status chips, and a region tree. Catalog, mirror, search, expansion, and active download progress state survive rotation. Empty states are scroll-safe inside the list viewport. Row actions stay at the trailing edge and destructive actions confirm first. |
 | Settings | Configure appearance, map labels, navigation, routing, and storage. | Settings tab is a single scrollable column of cards. Controls keep 48 logical pixel touch targets. |
 | About | Inspect attribution and licenses. | About tab uses scrollable cards; long license text opens a full route, not a cramped dialog. |
 
