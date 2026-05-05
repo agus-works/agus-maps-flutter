@@ -140,7 +140,12 @@ The following videos showcase the **Agus Maps plugin** running on various platfo
         <br><strong>🐧 Linux</strong>
       </a>
     </td>
-    <td width="50%"></td>
+    <td align="center" width="50%">
+      <a href="https://youtu.be/m_pS7_WK5Cg">
+        <img src="https://img.youtube.com/vi/m_pS7_WK5Cg/maxresdefault.jpg" alt="Android Landscape Demo" width="100%">
+        <br><strong>📱 Android Landscape</strong>
+      </a>
+    </td>
   </tr>
 </table>
 
