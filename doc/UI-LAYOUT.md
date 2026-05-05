@@ -11,7 +11,7 @@ of the same GIS workflows.
 | --- | --- | --- | --- |
 | Desktop | Mouse, keyboard, touchpad | VS Code-style workbench with docked panes | Compact, one-line rows, thin separators |
 | Tablet | Touch with optional pointer/keyboard | Docked panels and larger controls | Medium density, larger targets |
-| Mobile | Touch | Map-first screens, modal sheets, simplified panels | Comfortable density, large targets |
+| Mobile | Touch | Map-first screens with compact floating tools and partial-height overlays | Comfortable density, large targets |
 
 Desktop is a resolved form factor, not only an operating-system label. macOS,
 Linux, and Windows use the VS Code-style workbench at desktop widths, but narrow
@@ -169,8 +169,82 @@ flowchart TB
     Handles --> Store --> Renderer
 ```
 
-Tablet can keep the grouped layer tree with larger rows. Mobile should keep the
-modal sheet pattern and avoid exposing every desktop control at once.
+Tablet can keep the grouped layer tree with larger rows. Mobile uses a
+map-first layer overlay instead of a full modal route. The map remains visible
+behind the layer UI, the overlay is capped to roughly the lower half of the
+screen, and selecting a draw tool or feature returns focus to the map so native
+Drape sketch/edit handles have enough usable space.
+
+Mobile Layer Manager feature parity is expressed through a different shape, not
+through a reduced model:
+
+- **New layer** is a prominent full-width action at the top of the overlay.
+- **Active edit layer** is shown in a touch card with an Add menu for point,
+  segment, line, and polygon creation.
+- **Project layers** appear as large touch cards with visibility, active/edit
+  selection, feature count, z-order actions, delete, and nested feature rows.
+- **Feature rows** remain children of their layer and select/edit the same
+  persisted DuckDB feature ids used on desktop.
+- Drawing tools stay hidden until an Add action enters drawing mode; then the
+  map banner and native Drape interaction group make the mode explicit.
+
+```mermaid
+flowchart TB
+    Tools["Floating map tools\nsearch, layers, zoom, locate"]
+    LayerOverlay["Mobile layer overlay\npartial height"]
+    ActiveLayer["Active edit layer card"]
+    LayerCards["Layer cards\nvisibility + actions"]
+    Features["Nested feature rows"]
+    Map["Native map remains visible"]
+    Drape["Drape drawing/edit visuals"]
+
+    Tools --> LayerOverlay
+    LayerOverlay --> ActiveLayer --> LayerCards --> Features
+    LayerOverlay -. capped height .-> Map
+    ActiveLayer --> Drape
+    Features --> Drape
+```
+
+Mobile search starts as a labeled floating tool in the map tool stack. Tapping
+it opens the compact search bar and puts the UI in search context; tapping the
+same control or the search close button clears search state and returns to
+normal map context. The mobile layer entry point is also labeled instead of
+being icon-only, because touch users cannot rely on desktop hover tooltips.
+Opening search closes the mobile layer overlay, and opening the layer overlay
+closes search, so narrow screens do not stack competing panels over the map.
+
+Mobile overlays must follow a strict hit-test contract: only visible controls
+and panels may sit above `AgusMap`. Closed search/layer panels must not leave
+zero-width or transparent desktop/tablet panes in the mobile stack, and the map
+texture listener must remain hit-testable across the whole visible map so pan,
+pinch zoom, rotation, and drawing taps continue to reach native CoMaps/Drape.
+
+The mobile map tab uses the CoMaps iPhone pattern: the native map consumes the
+full available map viewport, including top, bottom, left, and right safe-area
+regions. Flutter overlays remain offset inside safe readable positions. This
+edge-to-edge rule is scoped to the map tab; Downloads, Settings, About, and
+other content tabs keep normal safe-area padding.
+
+Floating map actions on mobile are independent circular icon buttons, not a
+shared group backplate. Each control uses theme-aware fill, border, icon color,
+semantic labels, tooltips for pointer users, and button shadow that works in
+light and dark modes. When a lower sheet such as Layers or a place page is open,
+secondary camera buttons may collapse away so the remaining Search, Layers, and
+Locate controls stay above the sheet instead of spanning into the unsafe top
+area. On small landscape phones, the right-side floating action stack is
+vertically scrollable and clipped to its safe map column so all actions remain
+reachable without covering the whole map.
+
+Mobile drawing sessions lock geometry type once a feature is started. The layer
+sheet is only the entry point for choosing point, segment, line, or polygon.
+After that choice, the sheet closes and the map shows only floating action
+buttons for undo, commit, and cancel; changing from polygon to another geometry
+requires cancelling or committing and starting a separate feature.
+
+Mobile tabs are icon-only. Portrait phones use an icon-only bottom navigation
+bar. Landscape phones move those tabs into a vertically scrollable left strip
+inside the safe area so camera islands and rounded corners do not hide the
+navigation affordances.
 
 Tablet navigation uses the same side-rail placement as desktop/tablet adaptive
 apps, but it must be flush and square-edged. Avoid rounded floating rail chrome
@@ -221,6 +295,8 @@ Desktop Downloads should feel like a file explorer or VS Code tree:
 - Folder/leaf icons with disclosure controls.
 - Status text in a secondary column.
 - Right-aligned compact actions for download, update, and delete.
+- Active downloads expose a cancel action that aborts the stream and removes the
+  temporary `.download` file before it can be registered as a map.
 - Static icons and determinate progress bars instead of indeterminate animated
   spinners on desktop release builds.
 

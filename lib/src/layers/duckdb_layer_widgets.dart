@@ -135,8 +135,10 @@ class DuckDBLayerDrawToolbar extends StatelessWidget {
         backgroundColor: selected ? colorScheme.primaryContainer : null,
         foregroundColor: selected ? colorScheme.onPrimaryContainer : null,
       ),
-      onPressed:
-          controller.isCommitting ? null : () => controller.setTool(tool),
+      onPressed: controller.isCommitting ||
+              (controller.isEditing && controller.tool != tool)
+          ? null
+          : () => controller.setTool(tool),
     );
   }
 }

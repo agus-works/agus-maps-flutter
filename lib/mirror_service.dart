@@ -53,6 +53,18 @@ class Mirror {
   String toString() => 'Mirror($name, ${latencyMs}ms, available=$isAvailable)';
 }
 
+/// Thrown when a streaming map download is cancelled by the caller.
+class DownloadCancelledException implements Exception {
+  /// Creates a cancellation exception for [url].
+  const DownloadCancelledException(this.url);
+
+  /// Download URL that was cancelled.
+  final String url;
+
+  @override
+  String toString() => 'Download cancelled: $url';
+}
+
 /// Service for discovering and downloading MWM files from CoMaps CDN servers.
 ///
 /// CoMaps CDN URL structure: `<base>/maps/<version>/<file>`
@@ -230,7 +242,12 @@ class MirrorService {
     String url,
     File destination, {
     void Function(int received, int total)? onProgress,
+    bool Function()? isCancelled,
   }) async {
+    if (isCancelled?.call() ?? false) {
+      throw DownloadCancelledException(url);
+    }
+
     final request = http.Request('GET', Uri.parse(url));
     final response = await _client.send(request);
 
@@ -248,6 +265,9 @@ class MirrorService {
     final sink = destination.openWrite();
     try {
       await for (final chunk in response.stream) {
+        if (isCancelled?.call() ?? false) {
+          throw DownloadCancelledException(url);
+        }
         sink.add(chunk);
         received += chunk.length;
         onProgress?.call(received, contentLength);

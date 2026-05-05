@@ -2397,6 +2397,7 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
         }
 
         return Listener(
+          behavior: HitTestBehavior.opaque,
           onPointerDown: _handlePointerDown,
           onPointerMove: _handlePointerMove,
           onPointerUp: _handlePointerUp,

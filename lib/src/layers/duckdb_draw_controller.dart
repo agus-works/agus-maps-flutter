@@ -170,6 +170,14 @@ class DuckDBLayerDrawController extends ChangeNotifier {
   /// Selects the active draw tool.
   void setTool(AgusDrawTool tool) {
     if (_tool == tool && _editingFeature == null) return;
+    if (_editingFeature == null &&
+        _tool != AgusDrawTool.none &&
+        tool != AgusDrawTool.none) {
+      _lastError =
+          'Finish or cancel the current feature before choosing another geometry type.';
+      notifyListeners();
+      return;
+    }
     _tool = tool;
     _editingFeature = null;
     _vertices.clear();

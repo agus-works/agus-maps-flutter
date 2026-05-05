@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../adaptive/form_factor.dart';
+import 'adaptive_body_safe_area.dart';
 
 /// Navigation metadata for [AdaptiveAppScaffold].
 class AdaptiveScaffoldDestination {
@@ -24,6 +25,10 @@ class AdaptiveAppScaffold extends StatelessWidget {
     required this.destinations,
     required this.onDestinationSelected,
     required this.body,
+    this.bodySafeAreaTop = true,
+    this.bodySafeAreaLeft = true,
+    this.bodySafeAreaRight = true,
+    this.bodySafeAreaBottom = true,
     this.resizeToAvoidBottomInset = true,
   });
 
@@ -32,12 +37,41 @@ class AdaptiveAppScaffold extends StatelessWidget {
   final List<AdaptiveScaffoldDestination> destinations;
   final ValueChanged<int> onDestinationSelected;
   final Widget body;
+  final bool bodySafeAreaTop;
+  final bool bodySafeAreaLeft;
+  final bool bodySafeAreaRight;
+  final bool bodySafeAreaBottom;
   final bool resizeToAvoidBottomInset;
 
   @override
   Widget build(BuildContext context) {
     final uiSpec = context.exampleUiSpec;
-    final bodyChild = SafeArea(child: body);
+    final size = MediaQuery.sizeOf(context);
+    final mobileLandscape =
+        uiSpec.formFactor.isMobile && size.width > size.height;
+    final bodyChild = AdaptiveBodySafeArea(
+      top: bodySafeAreaTop,
+      left: bodySafeAreaLeft,
+      right: bodySafeAreaRight,
+      bottom: bodySafeAreaBottom,
+      child: body,
+    );
+
+    if (mobileLandscape) {
+      return Scaffold(
+        resizeToAvoidBottomInset: resizeToAvoidBottomInset,
+        body: Row(
+          children: [
+            _MobileLandscapeNavigationStrip(
+              selectedIndex: selectedIndex,
+              destinations: destinations,
+              onDestinationSelected: onDestinationSelected,
+            ),
+            Expanded(child: bodyChild),
+          ],
+        ),
+      );
+    }
 
     if (uiSpec.formFactor.isMobile) {
       return Scaffold(
@@ -45,6 +79,7 @@ class AdaptiveAppScaffold extends StatelessWidget {
         body: bodyChild,
         bottomNavigationBar: NavigationBar(
           selectedIndex: selectedIndex,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
           onDestinationSelected: onDestinationSelected,
           destinations: [
             for (final destination in destinations)
@@ -74,6 +109,63 @@ class AdaptiveAppScaffold extends StatelessWidget {
           const VerticalDivider(width: 1),
           Expanded(child: bodyChild),
         ],
+      ),
+    );
+  }
+}
+
+class _MobileLandscapeNavigationStrip extends StatelessWidget {
+  const _MobileLandscapeNavigationStrip({
+    required this.selectedIndex,
+    required this.destinations,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final List<AdaptiveScaffoldDestination> destinations;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final padding = MediaQuery.paddingOf(context);
+    final stripWidth = padding.left + 58;
+
+    return Material(
+      color: colorScheme.surface.withValues(alpha: 0.94),
+      child: SizedBox(
+        width: stripWidth,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(
+            left: padding.left,
+            top: padding.top + 8,
+            bottom: padding.bottom + 8,
+          ),
+          child: Column(
+            children: [
+              for (var index = 0; index < destinations.length; index++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: IconButton(
+                    tooltip: destinations[index].label,
+                    isSelected: selectedIndex == index,
+                    selectedIcon: destinations[index].selectedIcon,
+                    icon: destinations[index].icon,
+                    style: IconButton.styleFrom(
+                      backgroundColor: selectedIndex == index
+                          ? colorScheme.primaryContainer
+                          : Colors.transparent,
+                      foregroundColor: selectedIndex == index
+                          ? colorScheme.onPrimaryContainer
+                          : colorScheme.onSurfaceVariant,
+                      minimumSize: const Size.square(46),
+                    ),
+                    onPressed: () => onDestinationSelected(index),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

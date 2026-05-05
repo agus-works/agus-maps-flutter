@@ -911,6 +911,195 @@ git --no-pager diff --check \
 Results: the workflow YAML parsed, the DuckDB migration manifest was up to date,
 and `git diff --check` reported no whitespace errors.
 
+### May 5 Mobile Layer Manager and Search Follow-up
+
+The iPhone 15 log showed the previous mobile layer button attempted to open a
+`showModalBottomSheet` from `_MyAppState.context`, which is above the
+`MaterialApp` created by the same widget. That produced:
+
+```text
+Unhandled Exception: No MaterialLocalizations found.
+_MyAppState._showLayerManagerSheet
+```
+
+The fix replaces the modal sheet path with a map-local overlay built inside the
+MaterialApp descendant tree. The new mobile layer UI is a partial-height overlay
+that keeps the native map visible behind it and closes automatically when the
+user starts drawing or selects a feature for editing.
+
+```mermaid
+flowchart TB
+    Map["AgusMap\nnative map texture"]
+    Tools["Floating tool stack\nsearch + layers + zoom"]
+    Search["Compact search context"]
+    Layers["Mobile layer overlay\npartial height"]
+    Active["Active edit layer card"]
+    Tree["Layer cards + nested features"]
+    Drape["Native Drape interaction group"]
+
+    Map --> Tools
+    Tools --> Search
+    Tools --> Layers
+    Layers --> Active --> Drape
+    Layers --> Tree --> Drape
+    Search -. closes .-> Layers
+    Layers -. closes .-> Search
+```
+
+Behavioral changes:
+
+- Search no longer occupies the top of the mobile map by default. It starts as a
+  floating search icon and opens/closes as an explicit search context.
+- The layer button now toggles the mobile layer overlay instead of presenting a
+  modal bottom sheet.
+- Mobile layers have feature parity with desktop through touch-first cards:
+  create layer, select active edit layer, toggle visibility, raise/lower/delete,
+  add features, and inspect/select nested features.
+- Starting a new feature or editing an existing feature closes the overlay so the
+  map has enough visible space for native Drape sketch/edit handles.
+
+Validation for this pass:
+
+```bash
+dart format example/lib/main.dart \
+  example/lib/features/map/widgets/adaptive_layer_manager.dart \
+  2>&1 | tee ./output.mobile-layer-ui-analyze.log
+
+cd example && \
+  flutter analyze lib/main.dart \
+    lib/features/map/widgets/adaptive_layer_manager.dart \
+  2>&1 | tee -a ../output.mobile-layer-ui-analyze.log
+```
+
+Results: formatting completed and targeted Flutter analysis reported no issues.
+
+### May 5 Mobile Map Hit Testing and Tool Clarity Follow-up
+
+The next iPhone report showed the native map loaded, but the user could not
+discover how to invoke tools and touch map interactions appeared blocked. The
+latest `output.log` did not contain a Flutter exception or native Drape startup
+failure; it showed a valid map surface, texture registration, and DuckDB render
+enablement. That pointed to Flutter overlay/hit-test structure rather than a
+native map initialization issue.
+
+The fix tightens the mobile map stack:
+
+- The desktop/tablet search/layer overlay branch no longer builds on mobile
+  when search is closed. Closed mobile search/layer state now removes that
+  subtree instead of leaving a zero-width desktop-style pane in the map stack.
+- The `AgusMap` texture listener uses opaque hit testing so the visible native
+  map remains the touch target for pan, pinch zoom, rotation, and drawing taps.
+- Mobile Search and Layers controls now render as compact labeled buttons rather
+  than icon-only controls, because hover tooltips are not discoverable on touch
+  devices.
+
+```mermaid
+flowchart TB
+    Stack["Mobile map Stack"]
+    Map["AgusMap listener\nopaque hit target"]
+    Tools["Visible labeled tools\nSearch + Layers"]
+    Search["Search overlay\nonly when open"]
+    Layers["Layer overlay\nonly when open"]
+    Native["Native CoMaps/Drape\ngesture + drawing input"]
+
+    Stack --> Map --> Native
+    Stack --> Tools
+    Tools --> Search
+    Tools --> Layers
+    Search -. mutually exclusive .-> Layers
+```
+
+### May 5 iOS Mobile Edge-to-Edge Map and Floating Actions
+
+The iPhone device log `output.ios-debug.log` showed native map and DuckDB
+rendering startup succeeded, then Flutter reported a layout exception:
+
+```text
+A RenderFlex overflowed by 167 pixels on the right.
+Row:file:///.../example/lib/main.dart:161
+creator: Row <- Padding <- DecoratedBox <- Align <- _MapEditBanner
+```
+
+The overflow was in the drawing/edit banner. Its row used `mainAxisSize.min`
+with a fixed text max width, so the banner could exceed the narrow mobile
+constraints when drawing text was active.
+
+The mobile layout pass now follows the CoMaps iPhone structure more closely:
+
+- The map tab body opts out of the top safe-area inset so the native map texture
+  reaches the status-bar edge. Non-map tabs keep normal safe-area padding.
+- Search, edit banners, and other Flutter overlays add their own top safe-area
+  offsets so controls remain readable over the edge-to-edge map.
+- Mobile map actions are individual floating circular icon buttons with
+  theme-aware fill, border, semantics, and shadows instead of one shared
+  rectangular backplate.
+- When a lower sheet is open, secondary camera controls collapse away so Search,
+  Layers, and Locate stay above the sheet without overflowing vertically.
+- `_MapEditBanner` now constrains the whole banner and lets message text expand
+  within the available width, preventing the logged horizontal overflow.
+
+```mermaid
+flowchart TB
+    Screen["iPhone screen"]
+    Map["Map tab AgusMap\nextends behind top safe area"]
+    SafeOverlay["Safe-positioned overlays\nsearch + edit banner"]
+    Floating["Independent floating action icons\nshadowed circles"]
+    Sheet["Lower sheet\nlayers/place/routing"]
+    Compact["Compact action stack\nsearch/layers/locate"]
+
+    Screen --> Map
+    Screen --> SafeOverlay
+    Screen --> Floating
+    Sheet --> Compact
+    Floating -. collapses near sheet .-> Compact
+```
+
+### May 5 Mobile Small-Screen Fit and Download Cancellation
+
+The next mobile layout pass covers two related operational issues:
+
+- Map downloads in the example app were stream-only operations with progress but
+  no user cancellation path.
+- On portrait phones, the layer-manager feature type selector and map floating
+  actions could compete for the same visual space after choosing polygon or
+  another geometry type.
+
+Implementation direction:
+
+- `MirrorService.downloadToFile()` now accepts a cancellation callback and
+  throws `DownloadCancelledException` when the example requests cancellation.
+- The example Downloads tab tracks cancellation requests per active MWM leaf,
+  offers cancel actions for leaf and group downloads, and deletes partial
+  `.download` files on cancellation or failure before the map engine can register
+  them.
+- Drawing feature type is locked after the user chooses point, segment, line, or
+  polygon. The user must commit or cancel before starting another geometry type.
+- Mobile map drawing actions move into the same floating circular icon language
+  as Search/Layers/Locate: undo, commit, and cancel appear on the map while the
+  layer sheet is closed.
+- Portrait and landscape phone controls are safe-area aware. The map action
+  stack is vertically scrollable and clipped; landscape tabs move to an
+  icon-only, vertically scrollable left strip inside the safe area.
+
+```mermaid
+flowchart TB
+    Download["Download row"]
+    Token["Cancellation request"]
+    Stream["MirrorService stream"]
+    Temp["Temporary .download file"]
+    Clean["Delete temp file"]
+    Layer["Layer sheet\nchoose geometry once"]
+    Map["Map drawing mode"]
+    Actions["Floating undo/check/X"]
+    Nav["Mobile icon tabs\nbottom portrait / left landscape"]
+
+    Download --> Token --> Stream
+    Stream --> Temp
+    Token -. cancelled .-> Clean
+    Layer --> Map --> Actions
+    Nav --> Map
+```
+
 ## Current File Map
 
 ### Dependency and Build Pins
