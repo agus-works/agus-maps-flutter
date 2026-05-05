@@ -107,6 +107,13 @@ The first code pass implements the highest-risk map-tab surfaces:
    - Downloads no-regions and no-results states now compact at short heights and
      scroll within the region-list viewport instead of using a fixed centered
      `Column`.
+7. `src/agus_maps_flutter.cpp`
+   - Android DuckDB layer refreshes from viewport changes are now debounced until
+     the camera is idle instead of running synchronous DuckDB queries and Drape
+     user-mark rebuilds during pan, zoom, or rotation frames.
+   - DuckDB-backed Drape user marks now use first-time publication only once and
+     report created, updated, and removed ids on later refreshes.
+   - Explicit project-layer mutations still refresh native rendering immediately.
 
 ## Manual validation command
 

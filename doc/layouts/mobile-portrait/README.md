@@ -48,6 +48,15 @@ Mobile portrait keeps the conventional Material shell ownership:
 | Settings | Configure appearance, map labels, navigation, routing, and storage. | Settings tab is a single scrollable column of cards. Controls keep 48 logical pixel touch targets. |
 | About | Inspect attribution and licenses. | About tab uses scrollable cards; long license text opens a full route, not a cramped dialog. |
 
+## Map rendering rules
+
+- Pan, pinch, and rotate must stay on the native map rendering path without
+  synchronous DuckDB layer refreshes.
+- DuckDB-backed Drape layer refreshes may run immediately after feature commits,
+  layer visibility changes, or layer ordering changes.
+- Camera-driven DuckDB refreshes must be debounced until the viewport is idle so
+  Android `Texture` frames are not interrupted mid-gesture.
+
 ## Standard surface rules
 
 ### Bottom sheets
