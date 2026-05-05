@@ -90,6 +90,12 @@ anchored during pan, zoom, and rotation. Flutter currently observes map taps and
 captures only vertex-drag pointers; native hit-testing/drag callbacks should
 replace that input bridge in a later milestone.
 
+Linux and Windows currently export the same DuckDB/Drape layer ABI as safe
+unavailable stubs. This keeps the desktop native symbol surface aligned with the
+header while Dart continues to gate DuckDB persistence and native layer rendering
+to Apple and Android. Full Linux/Windows parity requires wiring DuckDB packaging,
+store startup, and Drape user-mark providers on those platforms.
+
 ```mermaid
 flowchart LR
     Explorer["Layer Manager Explorer\nlayer + feature rows"]

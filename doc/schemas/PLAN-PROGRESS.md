@@ -832,6 +832,85 @@ The next architecture step is to move vertex hit-testing and drag events into
 native Drape/CoMaps callbacks so Flutter only coordinates UI state and
 persistence.
 
+Linux and Windows cannot be built from the macOS workstation, but a final static
+desktop parity check was completed:
+
+- Both `src/agus_maps_flutter_linux.cpp` and `src/agus_maps_flutter_win.cpp`
+  now mention every `FFI_PLUGIN_EXPORT` symbol declared in
+  `src/agus_maps_flutter.h`.
+- DuckDB/Drape layer bridge functions are exported on Linux and Windows as safe
+  stubs that return unavailable/no-op results until full desktop DuckDB
+  packaging/rendering is wired.
+- Existing Linux/Windows screen projection APIs remain present, so the Dart
+  drawing input model has the platform hooks it needs once DuckDB rendering is
+  enabled there.
+- Dart still gates DuckDB persistence and native DuckDB layer rendering to Apple
+  and Android, so the new stubs preserve ABI safety without pretending Linux or
+  Windows persistence is ready.
+
+### May 5 GitHub Actions CI Sanity Check
+
+The final workflow pass reviewed `.github/workflows/devops.yml` against the
+current native drawing, DuckDB, and desktop platform changes.
+
+```mermaid
+flowchart TB
+    Detect["detect-tag"]
+    Apple["Build iOS and macOS\nCoMaps + DuckDB XCFrameworks"]
+    Android["Build Android on Linux\nDuckDB folded into libagus_maps_flutter.so"]
+    Linux["Build Linux\nCoMaps FFI library + desktop app"]
+    Windows["Build Windows\nreuses Linux assets + builds x64 DLL"]
+    Release["Release\nunified SDK + app artifacts"]
+
+    Detect --> Apple
+    Detect --> Android
+    Detect --> Linux
+    Linux --> Windows
+    Apple --> Release
+    Android --> Release
+    Linux --> Release
+    Windows --> Release
+```
+
+Findings:
+
+- Workflow pins match the build tool defaults for CoMaps, DuckDB,
+  duckdb-spatial, Flutter, CMake, and the Android NDK.
+- CI does not regenerate ffigen bindings, so the committed
+  `lib/agus_maps_flutter_bindings_generated.dart` remains the source consumed by
+  Flutter analysis/builds.
+- `dart run tool/build.dart` regenerates and checks the embedded DuckDB
+  migration manifest before native platform builds, and
+  `src/agus_duckdb_migrations.inc` is current for the reviewable SQL files.
+- Apple jobs package both `CoMaps.xcframework` and `DuckDB.xcframework`, then
+  force the example iOS/macOS CocoaPods builds to use the prebuilt frameworks and
+  extracted headers.
+- Android CI builds ABI-specific DuckDB static archive bundles first, then links
+  them into the per-ABI `libagus_maps_flutter.so` package consumed by the
+  release app build.
+- Linux and Windows CI package the current source-built native library outputs;
+  their DuckDB/Drape layer functions are safe ABI stubs until full desktop
+  persistence is enabled.
+- Azure Blob cache upload is optional. If `AZ_URL` is not configured, cache-miss
+  jobs now keep the fresh clone and skip the upload step instead of failing the
+  build after a successful clone.
+
+Validation for this pass:
+
+```bash
+ruby -e "require 'yaml'; YAML.load_file('.github/workflows/devops.yml')" \
+  2>&1 | tee ./output.ci-sanity.log
+
+dart run tool/build.dart --check-duckdb-migrations \
+  2>&1 | tee -a ./output.ci-sanity.log
+
+git --no-pager diff --check \
+  2>&1 | tee -a ./output.ci-sanity.log
+```
+
+Results: the workflow YAML parsed, the DuckDB migration manifest was up to date,
+and `git diff --check` reported no whitespace errors.
+
 ## Current File Map
 
 ### Dependency and Build Pins

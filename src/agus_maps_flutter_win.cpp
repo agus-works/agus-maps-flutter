@@ -687,6 +687,74 @@ FFI_PLUGIN_EXPORT int comaps_latlon_to_screen(
     return 1;
 }
 
+FFI_PLUGIN_EXPORT const char* agus_duckdb_library_version(void) { return ""; }
+
+FFI_PLUGIN_EXPORT const char* agus_duckdb_last_error(void) {
+    return "DuckDB bridge is not wired on Windows yet.";
+}
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_open_app_database(const char* /* writablePath */) { return 0; }
+
+FFI_PLUGIN_EXPORT void agus_duckdb_close(void) {}
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_is_open(void) { return 0; }
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_load_required_extensions(void) { return 0; }
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_execute(const char* /* sql */) { return 0; }
+
+FFI_PLUGIN_EXPORT const char* agus_duckdb_query_json(const char* /* sql */) { return nullptr; }
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_validate_render_query(const char* /* sql */) { return 0; }
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features(
+    double /* min_lon */,
+    double /* min_lat */,
+    double /* max_lon */,
+    double /* max_lat */,
+    int32_t /* zoom */,
+    AgusDuckDBRenderFeature** out_features,
+    int32_t* out_count) {
+    if (out_features) *out_features = nullptr;
+    if (out_count) *out_count = 0;
+    return 0;
+}
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features_page(
+    double /* min_lon */,
+    double /* min_lat */,
+    double /* max_lon */,
+    double /* max_lat */,
+    int32_t /* zoom */,
+    int32_t /* limit */,
+    int32_t /* offset */,
+    AgusDuckDBRenderFeature** out_features,
+    int32_t* out_count) {
+    if (out_features) *out_features = nullptr;
+    if (out_count) *out_count = 0;
+    return 0;
+}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_free_render_features(
+    AgusDuckDBRenderFeature* /* features */,
+    int32_t /* count */) {}
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_refresh_render_layers(void) { return -1; }
+
+FFI_PLUGIN_EXPORT void agus_duckdb_set_edit_handles_from_wkt(const char* /* geometryWkt */) {}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_set_interaction_geometry_from_wkt(
+    int32_t /* interactionMode */,
+    const char* /* geometryWkt */) {}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_clear_edit_handles(void) {}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t /* enabled */) {}
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_apply_migration_file(const char* /* path */) { return 0; }
+
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_run_migrations(void) { return 0; }
+
 FFI_PLUGIN_EXPORT void comaps_zoom_in(int animated) {
     if (!g_framework || !g_drapeEngineCreated) {
         return;
