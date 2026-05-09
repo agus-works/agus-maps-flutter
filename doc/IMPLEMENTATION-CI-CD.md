@@ -6,7 +6,18 @@ This document outlines the implementation plan for splitting the Android build p
 
 ### Status Update (v0.1.17+)
 
-The CI pipeline now uses Dart hooks (`tool/build.dart`) as the primary build orchestrator. Legacy bootstrap/build scripts referenced in the historical plan below were removed; only `scripts/build_all.*` and `scripts/bundle_headers.sh` remain as wrappers around the Dart build tool. For the current CI implementation, refer to [.github/workflows/devops.yml](.github/workflows/devops.yml).
+The CI pipeline now uses Dart hooks (`tool/build.dart`) as the primary build orchestrator. Legacy bootstrap/build scripts referenced in the historical plan below were removed; only `scripts/build_all.*` and `scripts/bundle_headers.sh` remain as wrappers around the Dart build tool. For the current CI implementation, refer to [../.github/workflows/devops.yml](../.github/workflows/devops.yml).
+
+### Melos Workspace Notes
+
+The repository now uses Melos and Pub Workspaces. CI dependency setup should run from the repository root:
+
+```bash
+flutter pub get
+dart run melos bootstrap
+```
+
+Do not run separate `flutter pub get` commands inside `example/`; Pub Workspace resolution writes the root package configuration for all workspace members. Native build and packaging steps still run from their previous directories, so existing CoMaps, DuckDB, platform, and release artifact paths remain unchanged.
 
 ### Apple Build Notes (April 2026)
 
@@ -446,4 +457,3 @@ The `agus_maps_flutter` package relies on pre-compiled binaries hosted on GitHub
       ```
 
 > **Note (v0.1.3+)**: Consumers must manually download binaries from GitHub Releases before building. The build systems are detection-only and do not auto-download.
-

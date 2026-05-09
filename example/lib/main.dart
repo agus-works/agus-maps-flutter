@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
+import 'package:agus_design/agus_design.dart';
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 import 'package:agus_maps_flutter/mwm_storage.dart';
 import 'package:geolocator/geolocator.dart';
@@ -2504,17 +2505,8 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       scaffoldMessengerKey: _scaffoldMessengerKey,
       themeMode: _interfaceThemeMode,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AgusThemeData.light().toThemeData(),
+      darkTheme: AgusThemeData.dark().toThemeData(),
       home: Builder(
         builder: (context) {
           return _buildShellForFormFactor(context);

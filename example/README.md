@@ -94,8 +94,9 @@ env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
 Then build the example:
 
 ```bash
+flutter pub get 2>&1 | tee ./output.log
+dart run melos bootstrap 2>&1 | tee -a ./output.log
 cd example
-flutter pub get 2>&1 | tee ../output.log
 
 # iOS simulator debug build, no launch.
 flutter build ios --debug --no-codesign 2>&1 | tee ../output.log

@@ -7,6 +7,13 @@ environment:
   sdk: ^3.6.0
   flutter: '>=3.3.0'
 
+workspace:
+  - example
+  - packages/agus_design
+  - packages/agus_design/example
+  - tool/skin_generator_tool
+  - widgetbook
+
 dependencies:
   flutter:
     sdk: flutter
@@ -32,7 +39,50 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  melos: ^7.0.0
   yaml_edit: ^2.1.1
+
+melos:
+  useRootAsPackage: true
+  ide:
+    intellij:
+      enabled: false
+  categories:
+    plugin:
+      - .
+    apps:
+      - example
+    packages:
+      - packages/**
+    tools:
+      - tool/**
+    widgetbook:
+      - widgetbook
+    design:
+      - packages/agus_design
+      - packages/agus_design/example
+      - widgetbook
+  scripts:
+    analyze:
+      description: Analyze workspace packages that have a clean analyzer baseline.
+      run: dart run melos exec -c 1 --ignore=agus_maps_flutter --ignore=skin_generator_tool -- flutter analyze .
+    test:
+      description: Run Flutter tests for packages that have a test directory.
+      run: dart run melos exec -c 1 --dir-exists=test -- flutter test
+    design:analyze:
+      description: Analyze only the fast Agus design package and Widgetbook.
+      steps:
+        - dart run melos exec --scope=agus_design -- flutter analyze .
+        - dart run melos exec --scope=agus_design_widgetbook -- flutter analyze .
+    design:test:
+      description: Run tests for the fast Agus design package only.
+      run: dart run melos exec --scope=agus_design -- flutter test
+    generate:
+      description: Generate build_runner outputs for packages that use generators.
+      run: dart run melos exec -c 1 --depends-on=build_runner -- dart run build_runner build --delete-conflicting-outputs
+    widgetbook:
+      description: Run the Agus design Widgetbook on Chrome.
+      run: dart run melos exec --scope=agus_design_widgetbook -- flutter run -d chrome
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
