@@ -529,14 +529,22 @@ Future<void> buildWindowsLibrary({
     throw Exception('Build output not found: $dllName');
   }
 
-  // Copy zlib1.dll runtime dependency from vcpkg
+  // Copy zlib1.dll runtime dependency from available Windows dependency roots.
   // This DLL is required at runtime by agus_maps_flutter.dll
-  final zlibDllPaths = [
+  final zlibDllPaths = <String>[
     // Manifest mode: vcpkg_installed/x64-windows/bin/zlib1.dll
     path.join(vcpkgInstalledDir, 'x64-windows', 'bin', 'zlib1.dll'),
     // Classic mode: vcpkg/installed/x64-windows/bin/zlib1.dll
     path.join(vcpkg, 'installed', 'x64-windows', 'bin', 'zlib1.dll'),
   ];
+  final msys2Root = Platform.environment['MSYS2_ROOT'];
+  if (msys2Root != null && msys2Root.isNotEmpty) {
+    zlibDllPaths.add(path.join(msys2Root, 'mingw64', 'bin', 'zlib1.dll'));
+  }
+  zlibDllPaths.addAll([
+    r'C:\msys64\mingw64\bin\zlib1.dll',
+    r'C:\tools\msys64\mingw64\bin\zlib1.dll',
+  ]);
 
   var zlibCopied = false;
   for (final zlibPath in zlibDllPaths) {
