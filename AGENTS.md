@@ -13,6 +13,45 @@
 1. when running builds, please wait for the entire command to finish and do not poll commands for progress. wait entire until they're done.
 1. please make sure that your commands are known not to take user input in advance. if you know a command will take user input, then please ask me to run it instead and then try to guide me on the answers to inputs in advance.
 
+### Melos Monorepo Guidance
+
+This repository is now a Melos-based Flutter/Dart monorepo. Treat the root
+`pubspec.yaml` as the source of truth for workspace membership and Melos
+configuration; there may not be a separate `melos.yaml`.
+
+1. Prefer root-level Melos commands for workspace tasks: `dart run melos
+   bootstrap`, `dart run melos run analyze`, `dart run melos run test`,
+   `dart run melos run generate`, `dart run melos run design:analyze`, and
+   `dart run melos run design:test`.
+1. Use `dart run melos exec --scope=<package_name> -- <command>` for
+   package-scoped commands instead of manually `cd`-ing between packages.
+1. The root package is included in the workspace via `useRootAsPackage: true`.
+   When changing dependencies, update the `pubspec.yaml` for the package that
+   owns the code and then refresh the workspace from the repository root.
+1. Current workspace members include the plugin root, `example`,
+   `packages/agus_design`, `packages/agus_design/example`,
+   `tool/skin_generator_tool`, and `widgetbook`.
+1. Keep package boundaries clear. Shared reusable Flutter UI belongs in
+   `packages/agus_design`; app/example-specific wiring belongs in the consuming
+   app package.
+
+### Design System Guidance
+
+All design-system implementation must be based on `packages/agus_design`.
+
+1. Do not create parallel design tokens, duplicate theme extensions, or one-off
+   component libraries in `lib/`, `example/`, `widgetbook/`, or other packages.
+   If a reusable visual primitive, token, theme, layout, or component is needed,
+   implement or extend it in `packages/agus_design` first.
+1. Consume the design system through `package:agus_design/agus_design.dart`.
+   Prefer exported APIs such as `AgusThemeData`, Agus color/dimension tokens,
+   workbench layout primitives, and reusable Agus components.
+1. Use `packages/agus_design/example` for package-level examples and `widgetbook`
+   for interactive component coverage and design review.
+1. When changing the design system, run the design-focused Melos scripts from the
+   repository root where practical: `dart run melos run design:analyze` and
+   `dart run melos run design:test`.
+
 ### Thirdparty Patching Mechanism
 
 **IMPORTANT:** The `./thirdparty/comaps` directory contains a git checkout of the CoMaps project with local modifications. These modifications are tracked via patch files in `./patches/comaps/`. Do not run patch update scripts at `./scripts` command automatically! Please update or create new patches. Always be precise, surgical, and anal about editing patches! Do not run scripts that will edit/modify all patches!
@@ -95,8 +134,17 @@ mobile platforms.
   common issues. Use the `analyze_files` tool to run the linter.
 
 ## Project Structure
-* **Standard Structure:** Assumes a standard Flutter project structure with
-  `lib/main.dart` as the primary application entry point.
+* **Monorepo Structure:** This is a Melos-managed Flutter/Dart monorepo. Always
+  inspect the root `pubspec.yaml` workspace and Melos configuration before
+  assuming package locations or command targets.
+* **Root Package:** The repository root is also a workspace package
+  (`useRootAsPackage: true`) for the Flutter plugin.
+* **Workspace Packages:** App, package, tool, design-system, and Widgetbook
+  code live in separate workspace members. Keep changes in the package that owns
+  the affected behavior.
+* **Design System Package:** Shared UI foundations and reusable components live
+  in `packages/agus_design` and should be consumed by other packages instead of
+  reimplemented locally.
 
 ## Flutter style guide
 * **SOLID Principles:** Apply SOLID principles throughout the codebase.
@@ -115,20 +163,29 @@ mobile platforms.
   `go_router`.
 
 ## Package Management
-* **Pub Tool:** To manage packages, use the `pub` tool, if available.
+* **Melos Workspace:** Manage packages from the repository root with Melos-aware
+  commands whenever possible.
+* **Bootstrap:** After dependency or workspace changes, refresh packages with
+  `dart run melos bootstrap`.
+* **Package Ownership:** Add, remove, or override dependencies in the
+  `pubspec.yaml` of the workspace package that owns the code using that
+  dependency.
+* **Scoped Commands:** Use `dart run melos exec --scope=<package_name> --
+  <command>` for package-scoped `flutter pub`, `dart pub`, analysis, tests, and
+  generation tasks.
 * **External Packages:** If a new feature requires an external package, use the
   `pub_dev_search` tool, if it is available. Otherwise, identify the most
   suitable and stable package from pub.dev.
-* **Adding Dependencies:** To add a regular dependency, use the `pub` tool, if
-  it is available. Otherwise, run `flutter pub add <package_name>`.
-* **Adding Dev Dependencies:** To add a development dependency, use the `pub`
-  tool, if it is available, with `dev:<package name>`. Otherwise, run `flutter
-  pub add dev:<package_name>`.
-* **Dependency Overrides:** To add a dependency override, use the `pub` tool, if
-  it is available, with `override:<package name>:1.0.0`. Otherwise, run `flutter
-  pub add override:<package_name>:1.0.0`.
-* **Removing Dependencies:** To remove a dependency, use the `pub` tool, if it
-  is available. Otherwise, run `dart pub remove <package_name>`.
+* **Adding Dependencies:** To add a regular dependency, target the owning
+  package, for example `dart run melos exec --scope=<package_name> -- flutter
+  pub add <dependency>`.
+* **Adding Dev Dependencies:** Add development dependencies in the owning package
+  with `flutter pub add dev:<dependency>` through a Melos scoped command.
+* **Dependency Overrides:** Avoid dependency overrides unless necessary. If one
+  is needed, add it to the relevant package or workspace root intentionally and
+  document why.
+* **Removing Dependencies:** Remove dependencies from the owning package through
+  a Melos scoped command, then bootstrap from the root.
 
 ## Code Quality
 * **Code structure:** Adhere to maintainable code structure and separation of
@@ -385,16 +442,21 @@ linter:
   `build_runner` is listed as a dev dependency in `pubspec.yaml`.
 * **Code Generation Tasks:** Use `build_runner` for all code generation tasks,
   such as for `json_serializable`.
+* **Workspace Generation:** Prefer the root Melos script `dart run melos run
+  generate` for workspace-wide generator output.
 * **Running Build Runner:** After modifying files that require code generation,
-  run the build command:
+  run the package-scoped build command when a narrower target is appropriate:
 
   ```shell
-  dart run build_runner build --delete-conflicting-outputs
+  dart run melos exec --scope=<package_name> -- dart run build_runner build --delete-conflicting-outputs
   ```
 
 ## Testing
-* **Running Tests:** To run tests, use the `run_tests` tool if it is available,
-  otherwise use `flutter test`.
+* **Running Tests:** From the repository root, prefer `dart run melos run test`
+  for workspace tests or `dart run melos exec --scope=<package_name> -- flutter
+  test` for package-scoped tests.
+* **Design Tests:** For design-system changes, run `dart run melos run
+  design:test`.
 * **Unit Tests:** Use `package:test` for unit tests.
 * **Widget Tests:** Use `package:flutter_test` for widget tests.
 * **Integration Tests:** Use `package:integration_test` for integration tests.
@@ -418,6 +480,17 @@ linter:
 * **Coverage:** Aim for high test coverage.
 
 ## Visual Design & Theming
+* **Design System Source:** All reusable design-system work belongs in
+  `packages/agus_design` and must be consumed with
+  `package:agus_design/agus_design.dart`.
+* **No Parallel Systems:** Do not implement app-local copies of Agus tokens,
+  themes, workbench primitives, or reusable components outside
+  `packages/agus_design`.
+* **Theme Usage:** Prefer `AgusThemeData` and exported Agus color, dimension,
+  layout, settings, editor, and component APIs before creating new Material
+  styles directly in a consuming app.
+* **Widgetbook Coverage:** Add or update Widgetbook coverage in `widgetbook`
+  when introducing reusable visual components or meaningful design states.
 * **UI Design:** Build beautiful and intuitive user interfaces that follow
   modern design guidelines.
 * **Responsiveness:** Ensure the app is mobile responsive and adapts to
