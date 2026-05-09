@@ -6,6 +6,7 @@ Thank you for your interest in contributing! This document provides technical de
 
 ```
 agus_maps_flutter/
+├── pubspec.yaml             # Melos/Pub Workspace root and plugin package
 ├── src/                    # Native C++ source code
 │   ├── agus_maps_flutter.cpp   # Main FFI implementation
 │   ├── agus_maps_flutter.h     # FFI header (used by ffigen)
@@ -21,11 +22,19 @@ agus_maps_flutter/
 ├── macos/                  # macOS platform integration (Metal + CocoaPods)
 ├── windows/                # Windows platform integration (Win32/OpenGL)
 ├── example/                # Demo Flutter application
+├── packages/
+│   └── agus_design/        # Shared design system package
+├── widgetbook/             # Widgetbook app for the design system
 ├── thirdparty/             # External dependencies (CoMaps engine)
 ├── patches/                # Patches applied to CoMaps
 ├── scripts/                # Build and setup automation
 └── doc/                   # Documentation
 ```
+
+The repository is a Melos-managed Pub Workspace. The root plugin remains at `.`
+with `melos.useRootAsPackage: true` so existing native build paths stay stable.
+See [MONOREPO.md](MONOREPO.md) and [WIDGETBOOK.md](WIDGETBOOK.md) for workspace
+commands and design-system workflows.
 
 ## Building and Bundling Native Code
 
@@ -72,6 +81,7 @@ dart run ffigen --config ffigen.yaml
 - Ninja build system
 - Python 3 with the `protobuf` module (`pip install protobuf`)
 - Git (with ability to initialize submodules)
+- Melos via the root dev dependency (`dart run melos ...`)
 - **macOS** for iOS, macOS, and Android builds
 - **Windows** with PowerShell 7+ and Git Bash (data generation) for Windows and Android builds
 - **Linux** (Ubuntu 22.04+ or equivalent) for Linux and Android builds
@@ -105,6 +115,10 @@ cd agus-maps-flutter
 # Run unified build script (builds ALL targets from source)
 ./scripts/build_all.sh
 
+# Workspace dependency setup
+flutter pub get
+dart run melos bootstrap
+
 # Build and run example
 cd example
 flutter run -d <device>  # iOS Simulator, Android device, or macOS
@@ -118,6 +132,10 @@ cd agus-maps-flutter
 
 # Run unified build script (builds ALL targets from source)
 .\scripts\build_all.ps1
+
+# Workspace dependency setup
+flutter pub get
+dart run melos bootstrap
 
 # Build and run example
 cd example
@@ -136,6 +154,10 @@ sudo apt-get install build-essential cmake ninja-build clang \
 
 # Run unified build script (builds ALL targets from source)
 ./scripts/build_all.sh
+
+# Workspace dependency setup
+flutter pub get
+dart run melos bootstrap
 
 # Build and run example
 cd example
@@ -178,9 +200,9 @@ env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
 After rebuilding iOS binaries, refresh the example workspace:
 
 ```bash
-cd example
-flutter pub get 2>&1 | tee ../output.log
-cd ios
+flutter pub get 2>&1 | tee ./output.log
+dart run melos bootstrap 2>&1 | tee -a ./output.log
+cd example/ios
 pod install 2>&1 | tee -a ../../output.log
 ```
 

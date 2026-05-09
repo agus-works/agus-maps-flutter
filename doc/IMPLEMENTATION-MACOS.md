@@ -20,9 +20,9 @@ env -u AGUS_MAPS_HOME AGUS_MAPS_BUILD_MODE=contributor \
   dart run tool/build.dart --build-binaries --platform macos 2>&1 | tee ./output.log
 
 # 2. Install Flutter and CocoaPods dependencies.
-cd example
-flutter pub get 2>&1 | tee ../output.log
-cd macos
+flutter pub get 2>&1 | tee ./output.log
+dart run melos bootstrap 2>&1 | tee -a ./output.log
+cd example/macos
 pod install 2>&1 | tee -a ../../output.log
 
 # 3. Run in debug mode
