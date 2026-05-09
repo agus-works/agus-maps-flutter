@@ -1598,16 +1598,41 @@ jobs:
         shell: pwsh
         run: |
           # zlib1.dll is a runtime dependency required by agus_maps_flutter.dll
-          $zlibSrc = "C:\vcpkg\installed\x64-windows\bin\zlib1.dll"
-          $zlibDest = "build\agus-binaries-windows\x64\zlib1.dll"
+          $zlibDestDir = "build\agus-binaries-windows\x64"
+          $zlibDest = Join-Path $zlibDestDir "zlib1.dll"
 
-          if (Test-Path $zlibSrc) {
+          New-Item -ItemType Directory -Path $zlibDestDir -Force | Out-Null
+
+          if (Test-Path $zlibDest) {
+            $size = [math]::Round((Get-Item $zlibDest).Length / 1KB, 2)
+            Write-Host "✓ zlib1.dll already bundled (${size}KB): $zlibDest"
+          } else {
+            $zlibCandidates = @()
+            if ($env:GITHUB_WORKSPACE) {
+              $zlibCandidates += (Join-Path $env:GITHUB_WORKSPACE "vcpkg_installed\x64-windows\bin\zlib1.dll")
+            }
+            if ($env:VCPKG_ROOT) {
+              $zlibCandidates += (Join-Path $env:VCPKG_ROOT "installed\x64-windows\bin\zlib1.dll")
+            }
+            if ($env:MSYS2_ROOT) {
+              $zlibCandidates += (Join-Path $env:MSYS2_ROOT "mingw64\bin\zlib1.dll")
+            }
+            $zlibCandidates += @(
+              "C:\vcpkg\installed\x64-windows\bin\zlib1.dll",
+              "C:\msys64\mingw64\bin\zlib1.dll",
+              "C:\tools\msys64\mingw64\bin\zlib1.dll"
+            )
+
+            $zlibSrc = $zlibCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+            if (-not $zlibSrc) {
+              Write-Error "zlib1.dll not found. Searched locations:`n  - $($zlibCandidates -join "`n  - ")"
+              exit 1
+            }
+
             Copy-Item -Path $zlibSrc -Destination $zlibDest -Force
             $size = [math]::Round((Get-Item $zlibDest).Length / 1KB, 2)
-            Write-Host "✓ Copied zlib1.dll (${size}KB)"
-          } else {
-            Write-Error "zlib1.dll not found at: $zlibSrc"
-            exit 1
+            Write-Host "✓ Copied zlib1.dll (${size}KB) from: $zlibSrc"
           }
 
           Write-Host "=== Windows Binaries ==="
