@@ -42,6 +42,22 @@ class AgusThemeData {
       onSurface: colors.editorForeground,
     );
 
+    final noMaterialButtonOverlay = WidgetStateProperty.all<Color>(
+      Colors.transparent,
+    );
+    final textButtonStyle = ButtonStyle(
+      splashFactory: NoSplash.splashFactory,
+      overlayColor: noMaterialButtonOverlay,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      foregroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return colors.sideBarForeground.withValues(alpha: 0.42);
+        }
+        return colors.sideBarForeground;
+      }),
+    );
+
     return ThemeData(
       platform: TargetPlatform.android,
       useMaterial3: false,
@@ -59,6 +75,15 @@ class AgusThemeData {
       iconTheme: IconThemeData(
         color: colors.sideBarForeground,
         size: dimensions.iconSize,
+      ),
+      textButtonTheme: TextButtonThemeData(style: textButtonStyle),
+      elevatedButtonTheme: ElevatedButtonThemeData(style: textButtonStyle),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: textButtonStyle),
+      filledButtonTheme: FilledButtonThemeData(style: textButtonStyle),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          splashFactory: NoSplash.splashFactory,
+        ).copyWith(overlayColor: noMaterialButtonOverlay),
       ),
       textTheme: _textTheme(colors),
       inputDecorationTheme: InputDecorationTheme(

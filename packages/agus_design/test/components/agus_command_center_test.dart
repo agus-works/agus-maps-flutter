@@ -35,6 +35,23 @@ void main() {
     ];
   }
 
+  test('command item supports fuzzy matching and label highlights', () {
+    const item = AgusCommandItem(
+      id: 'new-file',
+      label: 'New File',
+      keywords: ['create document'],
+    );
+
+    final fuzzy = item.match('nf');
+    final keyword = item.match('doc');
+
+    expect(fuzzy, isNotNull);
+    expect(fuzzy!.labelIndexes, containsAll(<int>[0, 4]));
+    expect(keyword, isNotNull);
+    expect(keyword!.labelIndexes, isEmpty);
+    expect(item.match('zz'), isNull);
+  });
+
   testWidgets('command bar renders prompt and trailing shortcut', (
     tester,
   ) async {
@@ -122,5 +139,80 @@ void main() {
 
     expect(selected, 'inbox');
     expect(find.text('NAVIGATION'), findsNothing);
+  });
+
+  testWidgets('command dialog fuzzy-filters and ranks matching items', (
+    tester,
+  ) async {
+    await pumpAgusWidget(
+      tester,
+      const SizedBox(
+        width: 460,
+        child: AgusCommandDialog(
+          groups: [
+            AgusCommandGroup(
+              heading: 'Actions',
+              items: [
+                AgusCommandItem(
+                  id: 'open-file',
+                  label: 'Open File',
+                  keywords: ['document'],
+                ),
+                AgusCommandItem(id: 'new-file', label: 'New File'),
+                AgusCommandItem(id: 'settings', label: 'Settings'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'nf');
+    await tester.pumpAndSettle();
+
+    expect(find.text('New File'), findsOneWidget);
+    expect(find.text('Settings'), findsNothing);
+  });
+
+  testWidgets('command dialog appends async provider results for query', (
+    tester,
+  ) async {
+    String? selected;
+
+    await pumpAgusWidget(
+      tester,
+      SizedBox(
+        width: 460,
+        child: AgusCommandDialog(
+          groups: const [],
+          asyncProviders: [
+            (query) async => [
+              AgusCommandGroup(
+                heading: 'Locations',
+                items: [
+                  AgusCommandItem(
+                    id: 'search-$query',
+                    label: 'Search Location: $query',
+                    icon: Icons.place_outlined,
+                    onSelected: () => selected = query,
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'Gibraltar');
+    await tester.pumpAndSettle();
+
+    expect(find.text('LOCATIONS'), findsOneWidget);
+    await tester.tap(find.text('Search Location: Gibraltar'));
+    await tester.pumpAndSettle();
+
+    expect(selected, 'Gibraltar');
   });
 }

@@ -8,6 +8,27 @@ import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 import '../../../shared/adaptive/form_factor.dart';
 import '../../../shared/widgets/panel_surface.dart';
 
+@immutable
+class MwmLayerInfo {
+  const MwmLayerInfo({
+    required this.regionName,
+    required this.snapshotVersion,
+    required this.fileSize,
+    required this.filePath,
+    required this.isBundled,
+    this.visible = true,
+  });
+
+  final String regionName;
+  final String snapshotVersion;
+  final int fileSize;
+  final String filePath;
+  final bool isBundled;
+  final bool visible;
+}
+
+enum MwmLayerOrderMode { byMap, byDate }
+
 /// Adaptive layer tree inspired by GIS desktop layer docks.
 class AdaptiveMapPresentationPanel extends StatelessWidget {
   const AdaptiveMapPresentationPanel({
@@ -203,9 +224,18 @@ class AdaptiveLayerManager extends StatefulWidget {
     this.activeDrawTool,
     this.onRenderingRefresh,
     this.onActiveLayerChanged,
+    this.onActiveFeatureChanged,
     this.onDrawToolChanged,
     this.onEditFeature,
     this.layerStoreStatus,
+    this.layerStoreRevision = 0,
+    this.mwmLayers = const <MwmLayerInfo>[],
+    this.mwmLayerOrderMode = MwmLayerOrderMode.byMap,
+    this.onMwmLayerVisibilityChanged,
+    this.onMwmLayerDeleted,
+    this.onMwmLayerUpdated,
+    this.onMwmLayerFocused,
+    this.onMwmLayerOrderChanged,
     this.onClose,
   });
 
@@ -219,9 +249,20 @@ class AdaptiveLayerManager extends StatefulWidget {
   final agus_maps_flutter.AgusDrawTool? activeDrawTool;
   final Future<void> Function()? onRenderingRefresh;
   final ValueChanged<String>? onActiveLayerChanged;
+  final ValueChanged<agus_maps_flutter.AgusLayerFeature?>?
+      onActiveFeatureChanged;
   final ValueChanged<agus_maps_flutter.AgusDrawTool>? onDrawToolChanged;
   final ValueChanged<agus_maps_flutter.AgusLayerFeature>? onEditFeature;
   final String? layerStoreStatus;
+  final int layerStoreRevision;
+  final List<MwmLayerInfo> mwmLayers;
+  final MwmLayerOrderMode mwmLayerOrderMode;
+  final void Function(String regionName, bool visible)?
+      onMwmLayerVisibilityChanged;
+  final ValueChanged<MwmLayerInfo>? onMwmLayerDeleted;
+  final ValueChanged<MwmLayerInfo>? onMwmLayerUpdated;
+  final ValueChanged<MwmLayerInfo>? onMwmLayerFocused;
+  final ValueChanged<MwmLayerOrderMode>? onMwmLayerOrderChanged;
   final VoidCallback? onClose;
 
   @override
@@ -257,7 +298,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
   @override
   void didUpdateWidget(covariant AdaptiveLayerManager oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.layerStore != widget.layerStore) {
+    if (oldWidget.layerStore != widget.layerStore ||
+        oldWidget.layerStoreRevision != widget.layerStoreRevision) {
       _reload();
     }
   }
@@ -274,6 +316,7 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
 
   void _selectFeature(agus_maps_flutter.AgusLayerFeature feature) {
     widget.onActiveLayerChanged?.call(feature.layerId);
+    widget.onActiveFeatureChanged?.call(feature);
     setState(() {
       _selectedFeatureKey = _featureKey(feature);
       _message =
@@ -381,6 +424,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       final remainingLayers = store.listLayers();
       if (remainingLayers.isNotEmpty) {
         widget.onActiveLayerChanged?.call(remainingLayers.first.layerId);
+      } else {
+        widget.onActiveFeatureChanged?.call(null);
       }
     }
     await widget.onRenderingRefresh?.call();
@@ -619,6 +664,7 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final storeReady = widget.layerStore != null;
+    final mwmLayerCount = widget.mwmLayers.length;
 
     return ColoredBox(
       color: colorScheme.surface,
@@ -655,7 +701,6 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
                           (layer) => layer.layerId == widget.activeLayerId,
                         ),
                         activeLayerName: _activeLayerName(),
-                        onToolChanged: widget.onDrawToolChanged,
                       ),
                     ),
                   ),
@@ -678,6 +723,35 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
                       ),
                     ],
                     child: _buildDesktopLayerGrid(context),
+                  ),
+                  AgusView(
+                    id: 'mwm-maps',
+                    title: 'MWM Maps',
+                    icon: Icons.public,
+                    countLabel: '$mwmLayerCount',
+                    actions: [
+                      AgusButton.icon(
+                        icon:
+                            widget.mwmLayerOrderMode == MwmLayerOrderMode.byMap
+                                ? Icons.sort_by_alpha
+                                : Icons.calendar_month_outlined,
+                        tooltip:
+                            widget.mwmLayerOrderMode == MwmLayerOrderMode.byMap
+                                ? 'Order MWM maps by date'
+                                : 'Order MWM maps by map',
+                        onPressed: widget.onMwmLayerOrderChanged == null
+                            ? null
+                            : () {
+                                widget.onMwmLayerOrderChanged!(
+                                  widget.mwmLayerOrderMode ==
+                                          MwmLayerOrderMode.byMap
+                                      ? MwmLayerOrderMode.byDate
+                                      : MwmLayerOrderMode.byMap,
+                                );
+                              },
+                      ),
+                    ],
+                    child: _buildDesktopMwmLayerGrid(context),
                   ),
                   if (_message.isNotEmpty)
                     AgusView(
@@ -928,11 +1002,97 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
         onColumnReorder: (columns) {
           setState(() => _desktopLayerColumns = columns);
         },
+        onContextMenuRequested: _showDesktopLayerTreeContextMenu,
         onVisibilityChanged: (id, visibility) {
           unawaited(_setDesktopLayerVisibility(id, visibility));
         },
       ),
     );
+  }
+
+  Widget _buildDesktopMwmLayerGrid(BuildContext context) {
+    if (widget.mwmLayers.isEmpty) {
+      return const AgusEmptyState(
+        icon: Icons.public,
+        title: 'No MWM layers',
+        message:
+            'Downloaded and bundled CoMaps MWM files appear here after registration.',
+      );
+    }
+
+    return SizedBox(
+      height: 220,
+      child: AgusTreeView(
+        labelColumnTitle: 'Map',
+        labelColumnWidth: 190,
+        minLabelColumnWidth: 140,
+        columns: const [
+          AgusTreeColumn(id: 'source', label: 'Source', width: 86),
+          AgusTreeColumn(id: 'size', label: 'Size', width: 70),
+          AgusTreeColumn(id: 'version', label: 'Version', width: 86),
+        ],
+        expandedIds: {
+          for (final layer in widget.mwmLayers) 'mwm:${layer.regionName}',
+        },
+        nodes: [
+          for (final layer in widget.mwmLayers)
+            AgusTreeNode(
+              id: 'mwm:${layer.regionName}',
+              label: layer.regionName,
+              icon: Icons.map_outlined,
+              expanded: true,
+              visibility: layer.isBundled
+                  ? AgusTreeVisibilityState.locked
+                  : layer.visible
+                      ? AgusTreeVisibilityState.visible
+                      : AgusTreeVisibilityState.hidden,
+              badgeLabel: layer.isBundled ? 'BUNDLED' : 'DOWNLOADED',
+              columnValues: {
+                'source': layer.isBundled ? 'Bundled' : 'Local',
+                'size': _formatBytes(layer.fileSize),
+                'version': layer.snapshotVersion,
+              },
+              children: [
+                AgusTreeNode(
+                  id: 'mwm:${layer.regionName}:${layer.snapshotVersion}',
+                  label: layer.snapshotVersion,
+                  icon: Icons.calendar_month_outlined,
+                  visibility: layer.isBundled
+                      ? AgusTreeVisibilityState.locked
+                      : layer.visible
+                          ? AgusTreeVisibilityState.visible
+                          : AgusTreeVisibilityState.hidden,
+                  columnValues: {
+                    'source': layer.isBundled ? 'Bundled' : 'Downloaded',
+                    'size': _formatBytes(layer.fileSize),
+                    'version': layer.snapshotVersion,
+                  },
+                ),
+              ],
+            ),
+        ],
+        onContextMenuRequested: _showDesktopMwmLayerContextMenu,
+        onVisibilityChanged: (id, visibility) {
+          final layer = _mwmLayerFromTreeId(id);
+          if (layer == null) return;
+          widget.onMwmLayerVisibilityChanged?.call(
+            layer.regionName,
+            visibility == AgusTreeVisibilityState.visible,
+          );
+        },
+      ),
+    );
+  }
+
+  MwmLayerInfo? _mwmLayerFromTreeId(String id) {
+    if (!id.startsWith('mwm:')) return null;
+    final parts = id.split(':');
+    if (parts.length < 2) return null;
+    final regionName = parts[1];
+    for (final layer in widget.mwmLayers) {
+      if (layer.regionName == regionName) return layer;
+    }
+    return null;
   }
 
   List<AgusTreeNode> _desktopLayerTreeNodes() {
@@ -1008,6 +1168,212 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
         layer, visibility == AgusTreeVisibilityState.visible);
   }
 
+  Future<void> _showDesktopLayerTreeContextMenu(
+    String id,
+    Offset globalPosition,
+  ) async {
+    final entries = _desktopLayerTreeContextMenuItems(id);
+    if (entries.isEmpty) return;
+
+    final selectedAction = await showAgusContextMenu<_DesktopLayerTreeAction>(
+      context: context,
+      globalPosition: globalPosition,
+      entries: entries,
+    );
+    if (selectedAction == null) return;
+    await _handleDesktopLayerTreeContextAction(id, selectedAction);
+  }
+
+  Future<void> _showDesktopMwmLayerContextMenu(
+    String id,
+    Offset globalPosition,
+  ) async {
+    final layer = _mwmLayerFromTreeId(id);
+    if (layer == null) return;
+
+    final selectedAction = await showAgusContextMenu<_MwmLayerTreeAction>(
+      context: context,
+      globalPosition: globalPosition,
+      entries: [
+        AgusContextMenuAction(
+          value: _MwmLayerTreeAction.toggleVisibility,
+          icon: layer.visible
+              ? Icons.visibility_off_outlined
+              : Icons.visibility_outlined,
+          label: layer.isBundled
+              ? 'Bundled Map Always Visible'
+              : layer.visible
+                  ? 'Hide Map Layer'
+                  : 'Show Map Layer',
+          enabled: !layer.isBundled,
+        ),
+        const AgusContextMenuAction(
+          value: _MwmLayerTreeAction.focus,
+          icon: Icons.my_location,
+          label: 'Focus Map',
+        ),
+        const AgusContextMenuSeparator(),
+        const AgusContextMenuAction(
+          value: _MwmLayerTreeAction.update,
+          icon: Icons.system_update_alt,
+          label: 'Update from Mirror...',
+        ),
+        AgusContextMenuAction(
+          value: _MwmLayerTreeAction.delete,
+          icon: Icons.delete_outline,
+          label: layer.isBundled ? 'Delete Bundled Map' : 'Delete Download',
+          enabled: !layer.isBundled,
+          destructive: true,
+        ),
+        const AgusContextMenuSeparator(),
+        AgusContextMenuAction(
+          value: _MwmLayerTreeAction.orderByMap,
+          icon: Icons.sort_by_alpha,
+          label: 'Order by Map',
+          enabled: widget.mwmLayerOrderMode != MwmLayerOrderMode.byMap,
+        ),
+        AgusContextMenuAction(
+          value: _MwmLayerTreeAction.orderByDate,
+          icon: Icons.calendar_month_outlined,
+          label: 'Order by Date',
+          enabled: widget.mwmLayerOrderMode != MwmLayerOrderMode.byDate,
+        ),
+      ],
+    );
+    if (selectedAction == null) return;
+
+    switch (selectedAction) {
+      case _MwmLayerTreeAction.toggleVisibility:
+        widget.onMwmLayerVisibilityChanged
+            ?.call(layer.regionName, !layer.visible);
+      case _MwmLayerTreeAction.focus:
+        widget.onMwmLayerFocused?.call(layer);
+      case _MwmLayerTreeAction.update:
+        widget.onMwmLayerUpdated?.call(layer);
+      case _MwmLayerTreeAction.delete:
+        widget.onMwmLayerDeleted?.call(layer);
+      case _MwmLayerTreeAction.orderByMap:
+        widget.onMwmLayerOrderChanged?.call(MwmLayerOrderMode.byMap);
+      case _MwmLayerTreeAction.orderByDate:
+        widget.onMwmLayerOrderChanged?.call(MwmLayerOrderMode.byDate);
+    }
+  }
+
+  List<AgusContextMenuEntry<_DesktopLayerTreeAction>>
+      _desktopLayerTreeContextMenuItems(String id) {
+    if (id.startsWith('layer:')) {
+      final layer = _layerByTreeId(id);
+      if (layer == null) return const [];
+      return [
+        const AgusContextMenuAction(
+          value: _DesktopLayerTreeAction.addFeature,
+          icon: Icons.add_location_alt_outlined,
+          label: 'Add Feature...',
+        ),
+        AgusContextMenuAction(
+          value: _DesktopLayerTreeAction.toggleVisibility,
+          icon: layer.visible
+              ? Icons.visibility_off_outlined
+              : Icons.visibility_outlined,
+          label: layer.visible ? 'Hide Layer' : 'Show Layer',
+        ),
+        const AgusContextMenuSeparator(),
+        const AgusContextMenuAction(
+          value: _DesktopLayerTreeAction.raise,
+          icon: Icons.arrow_upward,
+          label: 'Raise Layer',
+        ),
+        const AgusContextMenuAction(
+          value: _DesktopLayerTreeAction.lower,
+          icon: Icons.arrow_downward,
+          label: 'Lower Layer',
+        ),
+        const AgusContextMenuSeparator(),
+        const AgusContextMenuAction(
+          value: _DesktopLayerTreeAction.delete,
+          icon: Icons.delete_outline,
+          label: 'Delete Layer',
+          destructive: true,
+        ),
+      ];
+    }
+
+    if (_featureByTreeId(id) != null) {
+      return const [
+        AgusContextMenuAction(
+          value: _DesktopLayerTreeAction.addFeature,
+          icon: Icons.add_location_alt_outlined,
+          label: 'Add Feature...',
+        ),
+        AgusContextMenuAction(
+          value: _DesktopLayerTreeAction.editFeature,
+          icon: Icons.edit_location_alt_outlined,
+          label: 'Edit Feature Vertices',
+        ),
+      ];
+    }
+
+    return const [];
+  }
+
+  Future<void> _handleDesktopLayerTreeContextAction(
+    String id,
+    _DesktopLayerTreeAction action,
+  ) async {
+    if (id.startsWith('layer:')) {
+      final layer = _layerByTreeId(id);
+      if (layer == null) return;
+      switch (action) {
+        case _DesktopLayerTreeAction.addFeature:
+          await _startFeatureForLayer(layer.layerId);
+        case _DesktopLayerTreeAction.toggleVisibility:
+          await _toggleStoredLayer(layer, !layer.visible);
+        case _DesktopLayerTreeAction.raise:
+          await _moveLayer(layer, 1);
+        case _DesktopLayerTreeAction.lower:
+          await _moveLayer(layer, -1);
+        case _DesktopLayerTreeAction.delete:
+          await _deleteLayer(layer);
+        case _DesktopLayerTreeAction.editFeature:
+          return;
+      }
+      return;
+    }
+
+    final feature = _featureByTreeId(id);
+    if (feature == null) return;
+    switch (action) {
+      case _DesktopLayerTreeAction.addFeature:
+        await _startFeatureForLayer(feature.layerId);
+      case _DesktopLayerTreeAction.editFeature:
+        _selectFeature(feature);
+        widget.onEditFeature?.call(feature);
+      case _DesktopLayerTreeAction.toggleVisibility ||
+            _DesktopLayerTreeAction.raise ||
+            _DesktopLayerTreeAction.lower ||
+            _DesktopLayerTreeAction.delete:
+        return;
+    }
+  }
+
+  agus_maps_flutter.AgusLayer? _layerByTreeId(String id) {
+    if (!id.startsWith('layer:')) return null;
+    final layerId = id.substring('layer:'.length);
+    for (final layer in _layers) {
+      if (layer.layerId == layerId) return layer;
+    }
+    return null;
+  }
+
+  agus_maps_flutter.AgusLayerFeature? _featureByTreeId(String id) {
+    for (final features in _featuresByLayer.values) {
+      for (final feature in features) {
+        if (_featureKey(feature) == id) return feature;
+      }
+    }
+    return null;
+  }
+
   String _featureLabel(agus_maps_flutter.AgusLayerFeature feature) {
     final name = feature.properties['name'];
     if (name is String && name.trim().isNotEmpty) {
@@ -1022,6 +1388,24 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
     }
     return 'No editable layer selected';
   }
+}
+
+enum _DesktopLayerTreeAction {
+  addFeature,
+  editFeature,
+  toggleVisibility,
+  raise,
+  lower,
+  delete,
+}
+
+enum _MwmLayerTreeAction {
+  toggleVisibility,
+  focus,
+  update,
+  delete,
+  orderByMap,
+  orderByDate,
 }
 
 class _CompactLayerToolbar extends StatelessWidget {
@@ -1582,67 +1966,6 @@ class _MobileDrawToolMenuItem extends StatelessWidget {
   }
 }
 
-class _CompactDrawToolMenu extends StatelessWidget {
-  const _CompactDrawToolMenu({
-    required this.enabled,
-    required this.onToolChanged,
-  });
-
-  final bool enabled;
-  final ValueChanged<agus_maps_flutter.AgusDrawTool>? onToolChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<agus_maps_flutter.AgusDrawTool>(
-      tooltip: 'Choose feature type',
-      enabled: enabled && onToolChanged != null,
-      onSelected: onToolChanged,
-      itemBuilder: (context) => const [
-        PopupMenuItem(
-          value: agus_maps_flutter.AgusDrawTool.pin,
-          child: _MobileDrawToolMenuItem(
-            icon: Icons.add_location_alt_outlined,
-            label: 'Point',
-          ),
-        ),
-        PopupMenuItem(
-          value: agus_maps_flutter.AgusDrawTool.segment,
-          child: _MobileDrawToolMenuItem(
-            icon: Icons.linear_scale,
-            label: 'Segment',
-          ),
-        ),
-        PopupMenuItem(
-          value: agus_maps_flutter.AgusDrawTool.line,
-          child: _MobileDrawToolMenuItem(
-            icon: Icons.timeline,
-            label: 'Line',
-          ),
-        ),
-        PopupMenuItem(
-          value: agus_maps_flutter.AgusDrawTool.polygon,
-          child: _MobileDrawToolMenuItem(
-            icon: Icons.polyline_outlined,
-            label: 'Polygon',
-          ),
-        ),
-      ],
-      child: TextButton.icon(
-        onPressed: null,
-        icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
-        label: const Text('Add feature'),
-        style: TextButton.styleFrom(
-          foregroundColor: enabled
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).disabledColor,
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-        ),
-      ),
-    );
-  }
-}
-
 class _MobileLayerCard extends StatelessWidget {
   const _MobileLayerCard({
     required this.layer,
@@ -1997,13 +2320,11 @@ class _DesktopDrawSessionCard extends StatelessWidget {
     required this.activeTool,
     required this.hasEditableLayer,
     required this.activeLayerName,
-    required this.onToolChanged,
   });
 
   final agus_maps_flutter.AgusDrawTool activeTool;
   final bool hasEditableLayer;
   final String activeLayerName;
-  final ValueChanged<agus_maps_flutter.AgusDrawTool>? onToolChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -2039,11 +2360,15 @@ class _DesktopDrawSessionCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             if (activeTool == agus_maps_flutter.AgusDrawTool.none)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: _CompactDrawToolMenu(
-                  enabled: hasEditableLayer,
-                  onToolChanged: onToolChanged,
+              Text(
+                hasEditableLayer
+                    ? 'Right-click a layer or feature and choose Add Feature... to start drawing.'
+                    : 'Create or select a project layer before drawing.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: hasEditableLayer
+                      ? colorScheme.onSurfaceVariant
+                      : colorScheme.error,
+                  fontWeight: FontWeight.w600,
                 ),
               )
             else ...[
@@ -2052,15 +2377,6 @@ class _DesktopDrawSessionCard extends StatelessWidget {
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.primary,
                   fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-            if (!hasEditableLayer) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Create or select a project layer before drawing.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.error,
                 ),
               ),
             ],
@@ -2624,6 +2940,16 @@ String _layerKindLabel(agus_maps_flutter.AgusLayerKind kind) {
     agus_maps_flutter.AgusLayerKind.comapsSupported => 'CoMaps',
     agus_maps_flutter.AgusLayerKind.duckdbQuery => 'DuckDB',
   };
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  final kib = bytes / 1024;
+  if (kib < 1024) return '${kib.toStringAsFixed(1)} KiB';
+  final mib = kib / 1024;
+  if (mib < 1024) return '${mib.toStringAsFixed(1)} MiB';
+  final gib = mib / 1024;
+  return '${gib.toStringAsFixed(1)} GiB';
 }
 
 IconData _featureIcon(agus_maps_flutter.AgusGeometryKind kind) {

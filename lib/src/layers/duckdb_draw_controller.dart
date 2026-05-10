@@ -214,7 +214,12 @@ class DuckDBLayerDrawController extends ChangeNotifier {
 
   /// Reprojects committed-feature edit handles after map camera movement.
   void reprojectEditedFeatureVertices() {
-    if (_editingFeature == null || _vertices.isEmpty) return;
+    reprojectVertices();
+  }
+
+  /// Reprojects current draw/edit vertices after map camera movement.
+  void reprojectVertices() {
+    if (_vertices.isEmpty) return;
 
     final projectCoordinate = coordinateProjector;
     if (projectCoordinate == null) return;
