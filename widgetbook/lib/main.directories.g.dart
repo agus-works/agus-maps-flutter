@@ -110,6 +110,17 @@ final directories = <_widgetbook.WidgetbookNode>[
         name: 'surfaces',
         children: [
           _widgetbook.WidgetbookComponent(
+            name: 'AgusButton',
+            useCases: [
+              _widgetbook.WidgetbookUseCase(
+                name: 'Button variants',
+                builder:
+                    _agus_design_widgetbook_use_cases_components_surfaces_use_cases
+                        .buildAgusButtonUseCase,
+              ),
+            ],
+          ),
+          _widgetbook.WidgetbookComponent(
             name: 'AgusCommandBar',
             useCases: [
               _widgetbook.WidgetbookUseCase(
@@ -161,6 +172,17 @@ final directories = <_widgetbook.WidgetbookNode>[
                 builder:
                     _agus_design_widgetbook_use_cases_components_surfaces_use_cases
                         .buildAgusEmptyStateUseCase,
+              ),
+            ],
+          ),
+          _widgetbook.WidgetbookComponent(
+            name: 'AgusInputBox',
+            useCases: [
+              _widgetbook.WidgetbookUseCase(
+                name: 'Input and search boxes',
+                builder:
+                    _agus_design_widgetbook_use_cases_components_surfaces_use_cases
+                        .buildAgusInputBoxUseCase,
               ),
             ],
           ),
@@ -220,7 +242,7 @@ final directories = <_widgetbook.WidgetbookNode>[
             ],
           ),
           _widgetbook.WidgetbookComponent(
-            name: 'AgusViewContainer',
+            name: 'AgusViewPaneContainer',
             useCases: [
               _widgetbook.WidgetbookUseCase(
                 name: 'View container',

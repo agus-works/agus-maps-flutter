@@ -7,6 +7,89 @@ import 'package:widgetbook_annotation/widgetbook_annotation.dart' as widgetbook;
 import '../../src/catalog_data.dart';
 
 @widgetbook.UseCase(
+  name: 'Button variants',
+  type: AgusButton,
+  path: '[Components]/surfaces',
+)
+Widget buildAgusButtonUseCase(BuildContext context) {
+  final enabled = context.knobs.boolean(label: 'Enabled', initialValue: true);
+  final showIcon = context.knobs.boolean(
+    label: 'Show icon',
+    initialValue: true,
+  );
+  final variant = context.knobs.object.dropdown<AgusButtonVariant>(
+    label: 'Variant',
+    initialOption: AgusButtonVariant.secondary,
+    options: AgusButtonVariant.values,
+    labelBuilder: (variant) => variant.name,
+  );
+
+  return previewFrame(
+    context,
+    width: 420,
+    height: 120,
+    child: Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        AgusButton(
+          label: 'Run Command',
+          icon: showIcon ? Icons.play_arrow : null,
+          variant: variant,
+          onPressed: enabled ? () {} : null,
+        ),
+        AgusButton(
+          label: 'Cancel',
+          variant: AgusButtonVariant.subtle,
+          onPressed: enabled ? () {} : null,
+        ),
+        AgusButton.icon(
+          icon: Icons.refresh,
+          tooltip: 'Refresh',
+          onPressed: enabled ? () {} : null,
+        ),
+      ],
+    ),
+  );
+}
+
+@widgetbook.UseCase(
+  name: 'Input and search boxes',
+  type: AgusInputBox,
+  path: '[Components]/surfaces',
+)
+Widget buildAgusInputBoxUseCase(BuildContext context) {
+  final enabled = context.knobs.boolean(label: 'Enabled', initialValue: true);
+  final query = context.knobs.string(
+    label: 'Initial search text',
+    initialValue: 'Gibraltar',
+  );
+
+  return previewFrame(
+    context,
+    width: 420,
+    height: 150,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AgusInputBox(
+          placeholder: 'Layer name',
+          enabled: enabled,
+          leading: const Icon(Icons.layers_outlined),
+        ),
+        const SizedBox(height: 12),
+        AgusSearchBox(
+          key: ValueKey(query),
+          controller: TextEditingController(text: query),
+          enabled: enabled,
+          placeholder: 'Search map',
+        ),
+      ],
+    ),
+  );
+}
+
+@widgetbook.UseCase(
   name: 'Window title bar',
   type: AgusTitleBar,
   path: '[Components]/surfaces',

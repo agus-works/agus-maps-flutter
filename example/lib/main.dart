@@ -10,6 +10,7 @@ import 'dart:ui' as ui;
 
 import 'package:agus_design/agus_design.dart';
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
+import 'package:agus_maps_flutter/mirror_service.dart';
 import 'package:agus_maps_flutter/mwm_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
@@ -409,6 +410,8 @@ class _NavigationPlan {
   });
 }
 
+enum _PendingDrawingDecision { stay, cancel, commit }
+
 /// Default location when app starts.
 ///
 /// Keep this inside the bundled Gibraltar map so a clean install does not ask
@@ -457,7 +460,9 @@ class _MyAppState extends State<MyApp> {
   agus_maps_flutter.DuckDBLayerStore? _duckDBLayerStore;
   agus_maps_flutter.DuckDBLayerDrawController? _duckDBDrawController;
   String _activeDuckDBLayerId = _userDrawLayerId;
+  agus_maps_flutter.AgusLayerFeature? _activeDuckDBFeature;
   String _duckDBLayerStoreStatus = 'DuckDB layer store is starting';
+  int _duckDBLayerRevision = 0;
   final WorkbenchController _workbenchController = WorkbenchController();
   final GlobalKey _mapViewportKey = GlobalKey();
   final GlobalKey _downloadsTabKey = GlobalKey(debugLabel: 'downloads-tab');
@@ -488,6 +493,10 @@ class _MyAppState extends State<MyApp> {
 
   // MWM storage for tracking downloaded maps
   MwmStorage? _mwmStorage;
+  final Set<String> _hiddenMwmLayerRegions = <String>{};
+  MwmLayerOrderMode _mwmLayerOrderMode = MwmLayerOrderMode.byMap;
+  CachedDownloadsData? _commandDownloadsCache;
+  bool _commandDownloadsLoading = false;
 
   @override
   void initState() {
@@ -542,6 +551,8 @@ class _MyAppState extends State<MyApp> {
       'navigation_avoid_ferries';
   static const String _prefsKeyNavigationAvoidUnpaved =
       'navigation_avoid_unpaved';
+  static const String _prefsKeyHiddenMwmLayers = 'hidden_mwm_layers';
+  static const String _prefsKeyMwmLayerOrder = 'mwm_layer_order_mode';
 
   Future<void> _loadSettings() async {
     try {
@@ -555,6 +566,12 @@ class _MyAppState extends State<MyApp> {
       );
       final mapLanguage = prefs.getString(_prefsKeyMapLanguage) ?? '';
       final buildings3d = prefs.getBool(_prefsKeyBuildings3d) ?? false;
+      final hiddenMwmLayers =
+          prefs.getStringList(_prefsKeyHiddenMwmLayers) ?? const <String>[];
+      final mwmLayerOrder = MwmLayerOrderMode.values.firstWhere(
+        (mode) => mode.name == prefs.getString(_prefsKeyMwmLayerOrder),
+        orElse: () => MwmLayerOrderMode.byMap,
+      );
       final layers = agus_maps_flutter.MapLayerState(
         outdoors: prefs.getBool(_prefsKeyLayerOutdoors) ?? false,
         isolines: prefs.getBool(_prefsKeyLayerIsolines) ?? false,
@@ -588,6 +605,10 @@ class _MyAppState extends State<MyApp> {
         _mapAppearanceMode = mapAppearance;
         _mapLanguageCode = mapLanguage;
         _buildings3dEnabled = buildings3d;
+        _hiddenMwmLayerRegions
+          ..clear()
+          ..addAll(hiddenMwmLayers);
+        _mwmLayerOrderMode = mwmLayerOrder;
         _mapLayerState = layers;
         _navigationSettings = navigationSettings;
       });
@@ -1128,6 +1149,7 @@ class _MyAppState extends State<MyApp> {
         _status = 'Data ready - creating map...';
         _dataReady = true;
       });
+      unawaited(_refreshCommandDownloadsFeed());
     } catch (e, stackTrace) {
       _log('ERROR: $e\n$stackTrace');
       if (!mounted) return;
@@ -1191,6 +1213,10 @@ class _MyAppState extends State<MyApp> {
       for (final metadata in allMaps) {
         // Skip bundled maps (already registered above)
         if (metadata.isBundled) continue;
+        if (_hiddenMwmLayerRegions.contains(metadata.regionName)) {
+          _log('Skipping hidden downloaded map ${metadata.regionName}');
+          continue;
+        }
 
         if (!await File(metadata.filePath).exists()) {
           _log(
@@ -1335,9 +1361,65 @@ class _MyAppState extends State<MyApp> {
     _duckDBDrawController?.dispose();
     setState(() {
       _activeDuckDBLayerId = layerId;
+      _activeDuckDBFeature = null;
       _duckDBDrawController = controller;
     });
     _log('Active edit layer changed: $layerId');
+  }
+
+  Future<void> _requestActiveDuckDBLayer(String layerId) async {
+    final controller = _duckDBDrawController;
+    if (controller == null ||
+        layerId == _activeDuckDBLayerId ||
+        !controller.isEditing) {
+      _setActiveDuckDBLayer(layerId);
+      return;
+    }
+
+    final canCommitPendingDrawing =
+        controller.isDrawing && controller.canCommit;
+    final decision = await showDialog<_PendingDrawingDecision>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Switch active layer?'),
+        content: const Text(
+          'A drawing or feature edit is in progress. Commit or cancel it before '
+          'switching to another active layer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_PendingDrawingDecision.stay),
+            child: const Text('Stay'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_PendingDrawingDecision.cancel),
+            child: const Text('Cancel drawing'),
+          ),
+          FilledButton(
+            onPressed: canCommitPendingDrawing
+                ? () =>
+                    Navigator.of(context).pop(_PendingDrawingDecision.commit)
+                : null,
+            child: const Text('Commit'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted ||
+        decision == null ||
+        decision == _PendingDrawingDecision.stay) {
+      return;
+    }
+    if (decision == _PendingDrawingDecision.commit) {
+      await controller.commit();
+    } else {
+      controller.cancel();
+    }
+    if (!mounted) return;
+    _setActiveDuckDBLayer(layerId);
   }
 
   void _setDuckDBDrawTool(agus_maps_flutter.AgusDrawTool tool) {
@@ -1352,9 +1434,12 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _editDuckDBFeature(agus_maps_flutter.AgusLayerFeature feature) {
+  Future<void> _editDuckDBFeature(
+    agus_maps_flutter.AgusLayerFeature feature,
+  ) async {
     if (feature.layerId != _activeDuckDBLayerId) {
-      _setActiveDuckDBLayer(feature.layerId);
+      await _requestActiveDuckDBLayer(feature.layerId);
+      if (!mounted || feature.layerId != _activeDuckDBLayerId) return;
     }
 
     final controller = _duckDBDrawController;
@@ -1367,6 +1452,7 @@ class _MyAppState extends State<MyApp> {
       controller.beginEditFeature(feature);
       _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
       setState(() {
+        _activeDuckDBFeature = feature;
         _mobileLayerManagerVisible = false;
       });
       _log(
@@ -1450,6 +1536,11 @@ class _MyAppState extends State<MyApp> {
     try {
       final count = agus_maps_flutter.refreshDuckDBMapLayers();
       _log('DuckDB layer renderer refreshed: $count visible features.');
+      if (mounted) {
+        setState(() {
+          _duckDBLayerRevision++;
+        });
+      }
     } catch (error, stackTrace) {
       _log(
         'DuckDB layer renderer refresh failed; '
@@ -1477,8 +1568,8 @@ class _MyAppState extends State<MyApp> {
         Timer.periodic(const Duration(milliseconds: 33), (_) {
       if (!mounted || !_nativeSurfaceReady) return;
       final controller = _duckDBDrawController;
-      if (controller == null || !controller.isEditingFeature) return;
-      controller.reprojectEditedFeatureVertices();
+      if (controller == null || !controller.isEditing) return;
+      controller.reprojectVertices();
     });
   }
 
@@ -1509,6 +1600,27 @@ class _MyAppState extends State<MyApp> {
         if (mounted) _searchFocusNode.requestFocus();
       });
     }
+  }
+
+  void _openSearch([String? query]) {
+    if (query != null && query != _searchController.text) {
+      _searchController.text = query;
+      _searchController.selection = TextSelection.collapsed(
+        offset: _searchController.text.length,
+      );
+      _onSearchChanged(query);
+    }
+    if (!_searchOpen) {
+      setState(() {
+        _searchOpen = true;
+        _mobileLayerManagerVisible = false;
+      });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_searchFocusNode.hasFocus) {
+        _searchFocusNode.requestFocus();
+      }
+    });
   }
 
   void _onSearchChanged(String query) {
@@ -2374,8 +2486,298 @@ class _MyAppState extends State<MyApp> {
         panelBuilder: _buildWorkbenchPanel,
         secondarySideBarBuilder: _buildWorkbenchSecondarySideBar,
         statusBarBuilder: _buildWorkbenchStatusBar,
+        commandGroups: _buildWorkbenchCommandGroups(),
+        commandAsyncProviders: _buildWorkbenchCommandAsyncProviders(),
       ),
     );
+  }
+
+  List<AgusCommandAsyncProvider> _buildWorkbenchCommandAsyncProviders() {
+    return [
+      (query) async {
+        final trimmed = query.trim();
+        if (trimmed.length < 2) return const <AgusCommandGroup>[];
+        return [
+          AgusCommandGroup(
+            heading: 'Location Search',
+            items: [
+              AgusCommandItem(
+                id: 'location-search-$trimmed',
+                label: 'Search Location: $trimmed',
+                icon: Icons.place_outlined,
+                keywords: const ['native', 'place', 'address', 'coordinates'],
+                onSelected: () {
+                  _workbenchController.selectActivity(WorkbenchActivity.search);
+                  _openSearch(trimmed);
+                },
+              ),
+            ],
+          ),
+        ];
+      },
+    ];
+  }
+
+  List<AgusCommandGroup> _buildWorkbenchCommandGroups() {
+    AgusCommandItem activityCommand({
+      required String id,
+      required String label,
+      required IconData icon,
+      required WorkbenchActivity activity,
+      List<String> keywords = const <String>[],
+    }) {
+      return AgusCommandItem(
+        id: id,
+        label: label,
+        icon: icon,
+        keywords: keywords,
+        onSelected: () {
+          _workbenchController.selectActivity(activity);
+        },
+      );
+    }
+
+    AgusCommandItem drawCommand({
+      required agus_maps_flutter.AgusDrawTool tool,
+      required String label,
+      required IconData icon,
+      List<String> keywords = const <String>[],
+    }) {
+      return AgusCommandItem(
+        id: 'draw-${tool.name}',
+        label: label,
+        icon: icon,
+        keywords: keywords,
+        enabled: _duckDBLayerStore != null,
+        onSelected: () {
+          _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
+          _workbenchController.selectActivity(WorkbenchActivity.explorer);
+          _setDuckDBDrawTool(tool);
+        },
+      );
+    }
+
+    AgusCommandItem favoriteCommand(FavoriteLocation favorite) {
+      return AgusCommandItem(
+        id: 'favorite-${favorite.name.toLowerCase()}',
+        label: 'Focus ${favorite.name}',
+        icon: Icons.center_focus_strong,
+        keywords: [
+          'map',
+          'location',
+          favorite.lat.toStringAsFixed(4),
+          favorite.lon.toStringAsFixed(4),
+        ],
+        onSelected: () {
+          _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
+          _mapController.moveToLocation(
+            favorite.lat,
+            favorite.lon,
+            favorite.zoom,
+          );
+          setState(() {
+            _currentTabIndex = 0;
+          });
+        },
+      );
+    }
+
+    AgusCommandItem mwmLayerCommand(MwmLayerInfo layer) {
+      return AgusCommandItem(
+        id: 'mwm-layer-${layer.regionName}',
+        label: 'Focus MWM Map: ${layer.regionName}',
+        icon: Icons.map_outlined,
+        keywords: [
+          'mwm',
+          'layer',
+          'focus',
+          layer.snapshotVersion,
+          if (layer.isBundled) 'bundled' else 'downloaded',
+        ],
+        onSelected: () => _focusMwmLayer(layer),
+      );
+    }
+
+    AgusCommandItem mwmDownloadCommand(MwmRegion region) {
+      final downloaded = _mwmStorage?.getByRegion(region.name);
+      final latestVersion = _commandDownloadsCache?.snapshotVersion;
+      final hasUpdate = downloaded != null &&
+          latestVersion != null &&
+          (_mwmStorage?.hasUpdate(region.name, latestVersion) ?? false);
+      return AgusCommandItem(
+        id: 'mwm-download-${region.name}',
+        label: downloaded == null
+            ? 'Download Map: ${region.displayName}'
+            : hasUpdate
+                ? 'Update Map: ${region.displayName}'
+                : 'Open Downloaded Map: ${region.displayName}',
+        icon: downloaded == null
+            ? Icons.download_outlined
+            : hasUpdate
+                ? Icons.system_update_alt
+                : Icons.map_outlined,
+        keywords: [
+          'mwm',
+          'comaps',
+          'download',
+          'map',
+          region.name,
+          if (downloaded != null) 'installed',
+          if (hasUpdate) 'update',
+        ],
+        onSelected: () {
+          if (downloaded != null && !hasUpdate) {
+            _focusMwmLayer(
+              MwmLayerInfo(
+                regionName: downloaded.regionName,
+                snapshotVersion: downloaded.snapshotVersion,
+                fileSize: downloaded.fileSize,
+                filePath: downloaded.filePath,
+                isBundled: downloaded.isBundled,
+                visible:
+                    !_hiddenMwmLayerRegions.contains(downloaded.regionName),
+              ),
+            );
+            return;
+          }
+          unawaited(_downloadMwmRegionFromCommand(region));
+        },
+      );
+    }
+
+    final mwmLayers = _mwmLayerInfos();
+    final cachedMwmRegions = _commandDownloadsCache == null
+        ? <MwmRegion>[]
+        : _flattenMwmRegions(_commandDownloadsCache!.regions)
+            .where((region) => region.name != 'WorldCoasts')
+            .toList();
+    cachedMwmRegions.sort((a, b) => a.displayName.compareTo(b.displayName));
+
+    return [
+      AgusCommandGroup(
+        heading: 'Navigation',
+        items: [
+          activityCommand(
+            id: 'show-project-layers',
+            label: 'Show Project Layers',
+            icon: Icons.account_tree_outlined,
+            activity: WorkbenchActivity.explorer,
+            keywords: const ['explorer', 'layers', 'duckdb'],
+          ),
+          AgusCommandItem(
+            id: 'search-map',
+            label: 'Search Map',
+            icon: Icons.search,
+            keywords: const ['places', 'coordinates', 'favorites'],
+            onSelected: () {
+              _workbenchController.selectActivity(WorkbenchActivity.search);
+              _openSearch();
+            },
+          ),
+          activityCommand(
+            id: 'show-downloads',
+            label: 'Show Downloads',
+            icon: Icons.download_outlined,
+            activity: WorkbenchActivity.downloads,
+            keywords: const ['maps', 'mwm', 'update'],
+          ),
+          activityCommand(
+            id: 'show-favorites',
+            label: 'Show Favorites',
+            icon: Icons.favorite_border,
+            activity: WorkbenchActivity.favorites,
+            keywords: const ['locations', 'places'],
+          ),
+          activityCommand(
+            id: 'open-settings',
+            label: 'Open Settings',
+            icon: Icons.settings_outlined,
+            activity: WorkbenchActivity.settings,
+            keywords: const ['preferences'],
+          ),
+        ],
+      ),
+      AgusCommandGroup(
+        heading: 'Workbench',
+        items: [
+          AgusCommandItem(
+            id: 'open-map-editor',
+            label: 'Open Map Editor',
+            icon: Icons.map_outlined,
+            keywords: const ['editor'],
+            onSelected: () {
+              _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
+            },
+          ),
+          AgusCommandItem(
+            id: 'toggle-panel',
+            label: 'Toggle Panel',
+            icon: Icons.horizontal_split_outlined,
+            keywords: const ['bottom', 'debug', 'poi'],
+            onSelected: _workbenchController.togglePanel,
+          ),
+          AgusCommandItem(
+            id: 'toggle-secondary-sidebar',
+            label: 'Toggle Properties Sidebar',
+            icon: Icons.vertical_split_outlined,
+            keywords: const ['inspector', 'right pane'],
+            onSelected: _workbenchController.toggleSecondarySideBar,
+          ),
+        ],
+      ),
+      AgusCommandGroup(
+        heading: 'Drawing',
+        items: [
+          drawCommand(
+            tool: agus_maps_flutter.AgusDrawTool.pin,
+            label: 'Draw Point Feature',
+            icon: Icons.add_location_alt_outlined,
+          ),
+          drawCommand(
+            tool: agus_maps_flutter.AgusDrawTool.segment,
+            label: 'Draw Segment Feature',
+            icon: Icons.linear_scale,
+          ),
+          drawCommand(
+            tool: agus_maps_flutter.AgusDrawTool.line,
+            label: 'Draw Line Feature',
+            icon: Icons.timeline,
+          ),
+          drawCommand(
+            tool: agus_maps_flutter.AgusDrawTool.polygon,
+            label: 'Draw Polygon Feature',
+            icon: Icons.polyline_outlined,
+          ),
+        ],
+      ),
+      AgusCommandGroup(
+        heading: 'Map Focus',
+        items: [for (final favorite in kFavorites) favoriteCommand(favorite)],
+      ),
+      if (mwmLayers.isNotEmpty)
+        AgusCommandGroup(
+          heading: 'MWM Layers',
+          items: [for (final layer in mwmLayers) mwmLayerCommand(layer)],
+        ),
+      AgusCommandGroup(
+        heading: _commandDownloadsLoading
+            ? 'MWM Downloads (loading)'
+            : 'MWM Downloads',
+        items: [
+          AgusCommandItem(
+            id: 'refresh-mwm-command-feed',
+            label: 'Refresh MWM Catalog',
+            icon: Icons.refresh,
+            keywords: const ['downloads', 'maps', 'mirror', 'cache'],
+            enabled: !_commandDownloadsLoading,
+            onSelected: () {
+              unawaited(_refreshCommandDownloadsFeed(forceNetwork: true));
+            },
+          ),
+          for (final region in cachedMwmRegions) mwmDownloadCommand(region),
+        ],
+      ),
+    ];
   }
 
   AgusStatusBar _buildWorkbenchStatusBar(
@@ -2384,6 +2786,8 @@ class _MyAppState extends State<MyApp> {
   ) {
     final layerStoreReady = _duckDBLayerStore != null;
     final hasError = _status.toLowerCase().startsWith('error');
+    final activeLayerName = _activeDuckDBLayerName();
+    final activeFeatureName = _activeDuckDBFeatureName();
 
     return AgusStatusBar(
       leftItems: [
@@ -2416,6 +2820,16 @@ class _MyAppState extends State<MyApp> {
           progress: !layerStoreReady,
         ),
         AgusStatusBarItem(
+          id: 'active-layer',
+          label: 'Layer: $activeLayerName',
+          icon: Icons.layers_outlined,
+        ),
+        AgusStatusBarItem(
+          id: 'active-feature',
+          label: 'Feature: $activeFeatureName',
+          icon: Icons.polyline_outlined,
+        ),
+        AgusStatusBarItem(
           id: 'map-scale',
           label: '${_mapScale.toStringAsFixed(2)}x',
           icon: Icons.zoom_in_map,
@@ -2427,6 +2841,364 @@ class _MyAppState extends State<MyApp> {
         ),
       ],
     );
+  }
+
+  String _activeDuckDBLayerName() {
+    final store = _duckDBLayerStore;
+    if (store == null) return _activeDuckDBLayerId;
+    for (final layer in store.listLayers()) {
+      if (layer.layerId == _activeDuckDBLayerId) return layer.name;
+    }
+    return _activeDuckDBLayerId;
+  }
+
+  String _activeDuckDBFeatureName() {
+    final feature = _activeDuckDBFeature;
+    if (feature == null) return 'None';
+    final title = feature.properties['title'];
+    if (title is String && title.trim().isNotEmpty) return title.trim();
+    return feature.featureId;
+  }
+
+  List<MwmLayerInfo> _mwmLayerInfos() {
+    final storage = _mwmStorage;
+    if (storage == null) return const <MwmLayerInfo>[];
+    final maps = List<MwmMetadata>.from(storage.getAll())
+      ..sort((a, b) {
+        return switch (_mwmLayerOrderMode) {
+          MwmLayerOrderMode.byMap => () {
+              final byRegion = a.regionName.compareTo(b.regionName);
+              if (byRegion != 0) return byRegion;
+              return b.snapshotVersion.compareTo(a.snapshotVersion);
+            }(),
+          MwmLayerOrderMode.byDate => () {
+              final byVersion = b.snapshotVersion.compareTo(a.snapshotVersion);
+              if (byVersion != 0) return byVersion;
+              return a.regionName.compareTo(b.regionName);
+            }(),
+        };
+      });
+    return [
+      for (final metadata in maps)
+        MwmLayerInfo(
+          regionName: metadata.regionName,
+          snapshotVersion: metadata.snapshotVersion,
+          fileSize: metadata.fileSize,
+          filePath: metadata.filePath,
+          isBundled: metadata.isBundled,
+          visible: metadata.isBundled ||
+              !_hiddenMwmLayerRegions.contains(metadata.regionName),
+        ),
+    ];
+  }
+
+  Future<void> _setMwmLayerVisibility(
+    String regionName,
+    bool visible,
+  ) async {
+    final metadata = _mwmStorage?.getByRegion(regionName);
+    if (!visible && metadata?.isBundled == true) {
+      _hiddenMwmLayerRegions.remove(regionName);
+      _showSnackBar(
+        'Bundled map $regionName cannot be hidden until native MWM '
+        'unregistration is available.',
+      );
+      return;
+    }
+
+    if (visible) {
+      _hiddenMwmLayerRegions.remove(regionName);
+    } else {
+      _hiddenMwmLayerRegions.add(regionName);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _prefsKeyHiddenMwmLayers,
+      _hiddenMwmLayerRegions.toList()..sort(),
+    );
+
+    if (visible) {
+      if (metadata != null && !metadata.isBundled) {
+        _registerMwmMetadata(metadata);
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {});
+    _showSnackBar(
+      visible
+          ? 'Enabled $regionName. Downloaded maps are registered immediately.'
+          : 'Disabled $regionName. It will be skipped on the next map startup.',
+    );
+  }
+
+  Future<void> _setMwmLayerOrderMode(MwmLayerOrderMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsKeyMwmLayerOrder, mode.name);
+    if (!mounted) return;
+    setState(() {
+      _mwmLayerOrderMode = mode;
+    });
+  }
+
+  void _focusMwmLayer(MwmLayerInfo layer) {
+    final fix = _knownLocationForMapName(layer.regionName);
+    if (fix != null) {
+      _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
+      _mapController.moveToLocation(fix.lat, fix.lon, fix.zoom);
+      _showSnackBar(fix.message ?? 'Focused ${layer.regionName}');
+      return;
+    }
+    _workbenchController.selectActivity(WorkbenchActivity.search);
+    _openSearch(layer.regionName);
+    _showSnackBar('Searching for ${layer.regionName}');
+  }
+
+  Future<void> _deleteMwmLayer(MwmLayerInfo layer) async {
+    final storage = _mwmStorage;
+    if (storage == null) return;
+    final result = await storage.deleteMap(layer.regionName);
+    if (!mounted) return;
+    setState(() {});
+    _showSnackBar(
+      result.success
+          ? 'Deleted ${layer.regionName}'
+          : result.error ?? 'Could not delete ${layer.regionName}',
+    );
+  }
+
+  void _updateMwmLayer(MwmLayerInfo layer) {
+    final region = _cachedRegionByName(layer.regionName);
+    if (region == null) {
+      _workbenchController.selectActivity(WorkbenchActivity.downloads);
+      _showSnackBar('Open Downloads to refresh ${layer.regionName}.');
+      return;
+    }
+    unawaited(_downloadMwmRegionFromCommand(region));
+  }
+
+  MwmRegion? _cachedRegionByName(String regionName) {
+    final cache = _commandDownloadsCache;
+    if (cache == null) return null;
+    for (final region in _flattenMwmRegions(cache.regions)) {
+      if (region.name == regionName) return region;
+    }
+    return null;
+  }
+
+  List<MwmRegion> _flattenMwmRegions(List<MwmRegion> regions) {
+    return [
+      for (final region in regions)
+        if (region.isGroup) ..._flattenMwmRegions(region.children) else region,
+    ];
+  }
+
+  _LocationFix? _knownLocationForMapName(String regionName) {
+    final normalized = regionName.toLowerCase().replaceAll('_', ' ');
+    if (normalized == 'gibraltar') {
+      return const _LocationFix(
+        lat: 36.1407,
+        lon: -5.3535,
+        zoom: 14,
+        message: 'Focused Gibraltar',
+      );
+    }
+    if (normalized == 'world' || normalized == 'worldcoasts') {
+      return const _LocationFix(
+        lat: 20,
+        lon: 0,
+        zoom: 2,
+        message: 'Focused the world map',
+      );
+    }
+    for (final favorite in kFavorites) {
+      if (favorite.name.toLowerCase() == normalized) {
+        return _LocationFix(
+          lat: favorite.lat,
+          lon: favorite.lon,
+          zoom: favorite.zoom,
+          message: 'Focused ${favorite.name}',
+        );
+      }
+    }
+    return null;
+  }
+
+  int _registerMwmMetadata(MwmMetadata metadata) {
+    final parsed = int.tryParse(metadata.snapshotVersion);
+    return parsed != null
+        ? agus_maps_flutter.registerSingleMapWithVersion(
+            metadata.filePath,
+            parsed,
+          )
+        : agus_maps_flutter.registerSingleMap(metadata.filePath);
+  }
+
+  void _showSnackBar(String message) {
+    _scaffoldMessengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _refreshCommandDownloadsFeed({bool forceNetwork = false}) async {
+    if (_commandDownloadsLoading) return;
+    if (!mounted) return;
+    setState(() {
+      _commandDownloadsLoading = true;
+    });
+    final cacheService = DownloadsCacheService();
+    try {
+      final cached = await cacheService.loadCache();
+      if (cached != null && mounted) {
+        setState(() {
+          _commandDownloadsCache = cached;
+        });
+      }
+      if (cached != null && (!forceNetwork || !cached.isStale())) {
+        if (!mounted) return;
+        setState(() {
+          _commandDownloadsLoading = false;
+        });
+        return;
+      }
+
+      final mirrorService = MirrorService();
+      await mirrorService.measureLatencies();
+      final mirror = mirrorService.getFastestMirror();
+      if (mirror == null) {
+        if (!mounted) return;
+        setState(() {
+          _commandDownloadsCache = cached;
+          _commandDownloadsLoading = false;
+        });
+        return;
+      }
+      final snapshots = await mirrorService.getSnapshots(mirror);
+      if (snapshots.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _commandDownloadsCache = cached;
+          _commandDownloadsLoading = false;
+        });
+        return;
+      }
+      final snapshot = snapshots.first;
+      final countries = await mirrorService.getCountriesData(mirror, snapshot);
+      final fresh = CachedDownloadsData(
+        mirrorName: mirror.name,
+        mirrorBaseUrl: mirror.baseUrl,
+        snapshotVersion: snapshot.version,
+        regions: countries.regions,
+        cachedAt: DateTime.now(),
+      );
+      await cacheService.saveCache(fresh);
+      if (!mounted) return;
+      setState(() {
+        _commandDownloadsCache = fresh;
+        _commandDownloadsLoading = false;
+      });
+    } catch (e) {
+      _log('Warning: Failed to refresh command downloads feed: $e');
+      if (!mounted) return;
+      setState(() {
+        _commandDownloadsLoading = false;
+      });
+    }
+  }
+
+  Future<void> _downloadMwmRegionFromCommand(MwmRegion region) async {
+    final cache = _commandDownloadsCache;
+    final storage = _mwmStorage;
+    final dataPath = _dataPath;
+    if (cache == null || storage == null || dataPath == null) {
+      _workbenchController.selectActivity(WorkbenchActivity.downloads);
+      _showSnackBar('Downloads are still preparing.');
+      return;
+    }
+
+    final existing = storage.getByRegion(region.name);
+    if (existing != null &&
+        !storage.hasUpdate(region.name, cache.snapshotVersion)) {
+      _showSnackBar('${region.displayName} is already downloaded.');
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _status = existing == null
+          ? 'Downloading ${region.displayName}...'
+          : 'Updating ${region.displayName}...';
+    });
+
+    final mirrorService = MirrorService(customMirrors: [cache.mirror]);
+    final url =
+        mirrorService.getDownloadUrl(cache.mirror, cache.snapshot, region);
+    final mapsDir =
+        _targetMwmDirectory(region, cache.snapshotVersion, dataPath);
+    final filePath = '${mapsDir.path}/${region.fileName}';
+    final tempFile = File('$filePath.download');
+    final finalFile = File(filePath);
+    try {
+      await mapsDir.create(recursive: true);
+      final bytesWritten = await mirrorService.downloadToFile(url, tempFile);
+      if (region.sizeBytes > 0 && bytesWritten != region.sizeBytes) {
+        await tempFile.delete();
+        throw Exception(
+          'Downloaded size mismatch: expected ${region.sizeBytes} bytes, '
+          'got $bytesWritten bytes',
+        );
+      }
+      if (await finalFile.exists()) {
+        await finalFile.delete();
+      }
+      await tempFile.rename(filePath);
+      await storage.upsert(
+        MwmMetadata(
+          regionName: region.name,
+          snapshotVersion: cache.snapshotVersion,
+          fileSize: bytesWritten,
+          downloadDate: DateTime.now(),
+          filePath: filePath,
+          isBundled: false,
+        ),
+      );
+      final metadata = storage.getByRegion(region.name);
+      if (metadata != null && !_hiddenMwmLayerRegions.contains(region.name)) {
+        _registerMwmMetadata(metadata);
+      }
+      agus_maps_flutter.invalidateMap();
+      agus_maps_flutter.forceRedraw();
+      if (!mounted) return;
+      setState(() {
+        _status = 'Map ready!';
+      });
+      _showSnackBar(
+        existing == null
+            ? 'Downloaded ${region.displayName}'
+            : 'Updated ${region.displayName}',
+      );
+    } catch (e) {
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+      if (!mounted) return;
+      setState(() {
+        _status = 'Map ready!';
+      });
+      _showSnackBar('Failed to download ${region.displayName}: $e');
+    }
+  }
+
+  Directory _targetMwmDirectory(
+    MwmRegion region,
+    String snapshotVersion,
+    String dataPath,
+  ) {
+    if (region.fileName == 'World.mwm' ||
+        region.fileName == 'WorldCoasts.mwm') {
+      return Directory(dataPath);
+    }
+    return Directory('$dataPath/$snapshotVersion');
   }
 
   Widget _buildWorkbenchActivity(
@@ -2444,10 +3216,31 @@ class _MyAppState extends State<MyApp> {
           activeLayerId: _activeDuckDBLayerId,
           activeDrawTool: _duckDBDrawController?.tool,
           layerStoreStatus: _duckDBLayerStoreStatus,
+          layerStoreRevision: _duckDBLayerRevision,
+          mwmLayers: _mwmLayerInfos(),
+          mwmLayerOrderMode: _mwmLayerOrderMode,
+          onMwmLayerVisibilityChanged: (regionName, visible) {
+            unawaited(_setMwmLayerVisibility(regionName, visible));
+          },
+          onMwmLayerDeleted: (layer) {
+            unawaited(_deleteMwmLayer(layer));
+          },
+          onMwmLayerUpdated: _updateMwmLayer,
+          onMwmLayerFocused: _focusMwmLayer,
+          onMwmLayerOrderChanged: (mode) {
+            unawaited(_setMwmLayerOrderMode(mode));
+          },
           onRenderingRefresh: _refreshDuckDBNativeLayers,
-          onActiveLayerChanged: _setActiveDuckDBLayer,
+          onActiveLayerChanged: (layerId) {
+            unawaited(_requestActiveDuckDBLayer(layerId));
+          },
+          onActiveFeatureChanged: (feature) {
+            setState(() {
+              _activeDuckDBFeature = feature;
+            });
+          },
           onDrawToolChanged: _setDuckDBDrawTool,
-          onEditFeature: _editDuckDBFeature,
+          onEditFeature: (feature) => unawaited(_editDuckDBFeature(feature)),
         ),
       WorkbenchActivity.mapPresentation => AdaptiveMapPresentationPanel(
           formFactor: ExampleFormFactor.desktop,
@@ -2682,10 +3475,34 @@ class _MyAppState extends State<MyApp> {
                         activeLayerId: _activeDuckDBLayerId,
                         activeDrawTool: drawController?.tool,
                         layerStoreStatus: _duckDBLayerStoreStatus,
+                        layerStoreRevision: _duckDBLayerRevision,
+                        mwmLayers: _mwmLayerInfos(),
+                        mwmLayerOrderMode: _mwmLayerOrderMode,
+                        onMwmLayerVisibilityChanged: (regionName, visible) {
+                          unawaited(
+                            _setMwmLayerVisibility(regionName, visible),
+                          );
+                        },
+                        onMwmLayerDeleted: (layer) {
+                          unawaited(_deleteMwmLayer(layer));
+                        },
+                        onMwmLayerUpdated: _updateMwmLayer,
+                        onMwmLayerFocused: _focusMwmLayer,
+                        onMwmLayerOrderChanged: (mode) {
+                          unawaited(_setMwmLayerOrderMode(mode));
+                        },
                         onRenderingRefresh: _refreshDuckDBNativeLayers,
-                        onActiveLayerChanged: _setActiveDuckDBLayer,
+                        onActiveLayerChanged: (layerId) {
+                          unawaited(_requestActiveDuckDBLayer(layerId));
+                        },
+                        onActiveFeatureChanged: (feature) {
+                          setState(() {
+                            _activeDuckDBFeature = feature;
+                          });
+                        },
                         onDrawToolChanged: _setDuckDBDrawTool,
-                        onEditFeature: _editDuckDBFeature,
+                        onEditFeature: (feature) =>
+                            unawaited(_editDuckDBFeature(feature)),
                         onClose: () {
                           setState(() {
                             _duckDBLayerPanelVisible = false;
@@ -2696,6 +3513,12 @@ class _MyAppState extends State<MyApp> {
                   ],
                 ],
               ),
+            ),
+          ),
+        if (drawController != null && !formFactor.isMobile)
+          Positioned.fill(
+            child: agus_maps_flutter.DuckDBLayerDrawOverlay(
+              controller: drawController,
             ),
           ),
         if (drawController != null && !formFactor.isMobile)
@@ -2818,7 +3641,7 @@ class _MyAppState extends State<MyApp> {
     bool expandToFill = false,
   }) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colors = AgusThemeData.colorsOf(context);
     final viewInsets = MediaQuery.viewInsetsOf(context);
     final screenHeight = MediaQuery.sizeOf(context).height;
     final resultPanelMaxHeight = max(
@@ -2841,73 +3664,72 @@ class _MyAppState extends State<MyApp> {
             shrinkWrap: !expandToFill,
             padding: EdgeInsets.zero,
             itemCount: _searchResults.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: colors.sideBarBorder),
             itemBuilder: (context, index) {
               final result = _searchResults[index];
-              return ListTile(
-                leading: Icon(_searchResultIcon(result)),
-                title: Text(result.title),
-                subtitle: Text(result.subtitle),
-                trailing: result.isSuggestion
-                    ? null
-                    : IconButton(
-                        tooltip: 'Route',
-                        icon: const Icon(Icons.alt_route),
-                        onPressed: _navigationActionInProgress
-                            ? null
-                            : () => unawaited(
-                                  _previewRouteToSearchResult(result),
-                                ),
-                      ),
+              return _DesktopSearchResultRow(
+                result: result,
+                icon: _searchResultIcon(result),
+                routeEnabled:
+                    !_navigationActionInProgress && !result.isSuggestion,
                 onTap: () => _focusSearchResult(result),
+                onRoute: result.isSuggestion
+                    ? null
+                    : () => unawaited(_previewRouteToSearchResult(result)),
               );
             },
           );
 
     return Material(
-      color: colorScheme.surface,
+      color: colors.sideBarBackground,
       elevation: 3,
-      borderRadius: BorderRadius.circular(8),
-      child: Column(
-        mainAxisSize: expandToFill ? MainAxisSize.max : MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _searchController,
-            focusNode: _searchFocusNode,
-            onChanged: _onSearchChanged,
-            onTap: () {
-              if (!_searchOpen) _toggleSearch();
-            },
-            decoration: InputDecoration(
-              hintText: 'Search map',
-              prefixIcon: IconButton(
-                tooltip: _searchOpen ? 'Close search' : 'Open search',
-                icon: Icon(_searchOpen ? Icons.close : Icons.search),
-                onPressed: _toggleSearch,
-              ),
-              suffixIcon: _searchController.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Clear search',
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                        _onSearchChanged('');
+      borderRadius: BorderRadius.circular(4),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: colors.sideBarBorder),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Column(
+          mainAxisSize: expandToFill ? MainAxisSize.max : MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: AgusSearchBox(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      placeholder: 'Search map',
+                      onTap: _openSearch,
+                      onChanged: _onSearchChanged,
+                      onSubmitted: (_) {
+                        if (_searchResults.isNotEmpty) {
+                          _focusSearchResult(_searchResults.first);
+                        }
                       },
                     ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-          ),
-          if (hasSearchResults)
-            if (expandToFill)
-              Expanded(child: resultPanel)
-            else
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: resultPanelMaxHeight),
-                child: resultPanel,
+                  ),
+                  const SizedBox(width: 6),
+                  AgusButton.icon(
+                    icon: _searchOpen ? Icons.close : Icons.search,
+                    tooltip: _searchOpen ? 'Close search' : 'Open search',
+                    onPressed: _toggleSearch,
+                  ),
+                ],
               ),
-        ],
+            ),
+            if (hasSearchResults)
+              if (expandToFill)
+                Expanded(child: resultPanel)
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: resultPanelMaxHeight),
+                  child: resultPanel,
+                ),
+          ],
+        ),
       ),
     );
   }
@@ -2923,56 +3745,26 @@ class _MyAppState extends State<MyApp> {
       child: Column(
         children: [
           SizedBox(
-            height: 34,
+            height: 42,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(color: colorScheme.outlineVariant),
                 ),
               ),
-              child: TextField(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                style: theme.textTheme.bodySmall,
-                onChanged: _onSearchChanged,
-                onTap: () {
-                  if (!_searchOpen) {
-                    setState(() {
-                      _searchOpen = true;
-                    });
-                  }
-                },
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: 'Search',
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  prefixIcon: const Icon(Icons.search, size: 16),
-                  prefixIconConstraints: const BoxConstraints(
-                    minWidth: 30,
-                    minHeight: 30,
-                  ),
-                  suffixIcon: _searchController.text.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Clear search',
-                          visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 30,
-                            height: 30,
-                          ),
-                          padding: EdgeInsets.zero,
-                          iconSize: 16,
-                          onPressed: () {
-                            _searchController.clear();
-                            _onSearchChanged('');
-                          },
-                          icon: const Icon(Icons.close),
-                        ),
-                  suffixIconConstraints: const BoxConstraints(
-                    minWidth: 30,
-                    minHeight: 30,
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.all(7),
+                child: AgusSearchBox(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  placeholder: 'Search',
+                  onTap: _openSearch,
+                  onChanged: _onSearchChanged,
+                  onSubmitted: (_) {
+                    if (_searchResults.isNotEmpty) {
+                      _focusSearchResult(_searchResults.first);
+                    }
+                  },
                 ),
               ),
             ),
@@ -3049,6 +3841,19 @@ class _MyAppState extends State<MyApp> {
           activeLayerId: _activeDuckDBLayerId,
           activeDrawTool: _duckDBDrawController?.tool,
           layerStoreStatus: _duckDBLayerStoreStatus,
+          mwmLayers: _mwmLayerInfos(),
+          mwmLayerOrderMode: _mwmLayerOrderMode,
+          onMwmLayerVisibilityChanged: (regionName, visible) {
+            unawaited(_setMwmLayerVisibility(regionName, visible));
+          },
+          onMwmLayerDeleted: (layer) {
+            unawaited(_deleteMwmLayer(layer));
+          },
+          onMwmLayerUpdated: _updateMwmLayer,
+          onMwmLayerFocused: _focusMwmLayer,
+          onMwmLayerOrderChanged: (mode) {
+            unawaited(_setMwmLayerOrderMode(mode));
+          },
           onRenderingRefresh: _refreshDuckDBNativeLayers,
           onActiveLayerChanged: _setActiveDuckDBLayer,
           onDrawToolChanged: _setDuckDBDrawTool,
@@ -3077,6 +3882,19 @@ class _MyAppState extends State<MyApp> {
         activeLayerId: _activeDuckDBLayerId,
         activeDrawTool: _duckDBDrawController?.tool,
         layerStoreStatus: _duckDBLayerStoreStatus,
+        mwmLayers: _mwmLayerInfos(),
+        mwmLayerOrderMode: _mwmLayerOrderMode,
+        onMwmLayerVisibilityChanged: (regionName, visible) {
+          unawaited(_setMwmLayerVisibility(regionName, visible));
+        },
+        onMwmLayerDeleted: (layer) {
+          unawaited(_deleteMwmLayer(layer));
+        },
+        onMwmLayerUpdated: _updateMwmLayer,
+        onMwmLayerFocused: _focusMwmLayer,
+        onMwmLayerOrderChanged: (mode) {
+          unawaited(_setMwmLayerOrderMode(mode));
+        },
         onRenderingRefresh: _refreshDuckDBNativeLayers,
         onActiveLayerChanged: _setActiveDuckDBLayer,
         onDrawToolChanged: _setDuckDBDrawTool,
@@ -3745,6 +4563,7 @@ class _MyAppState extends State<MyApp> {
       isVisible: isVisible,
       onMapsChanged: () {
         setState(() {});
+        unawaited(_refreshCommandDownloadsFeed());
       },
     );
   }

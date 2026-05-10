@@ -44,6 +44,8 @@ class VSCodeWorkbench extends StatelessWidget {
     required this.panelBuilder,
     required this.secondarySideBarBuilder,
     this.statusBarBuilder,
+    this.commandGroups = const <AgusCommandGroup>[],
+    this.commandAsyncProviders = const <AgusCommandAsyncProvider>[],
   });
 
   /// Global workbench state.
@@ -64,6 +66,12 @@ class VSCodeWorkbench extends StatelessWidget {
   /// Optional status-bar builder.
   final WorkbenchStatusBarBuilder? statusBarBuilder;
 
+  /// Commands exposed in the title-bar command center.
+  final List<AgusCommandGroup> commandGroups;
+
+  /// Query-driven command providers exposed in the title-bar command center.
+  final List<AgusCommandAsyncProvider> commandAsyncProviders;
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -79,8 +87,10 @@ class VSCodeWorkbench extends StatelessWidget {
           bottomPanel: _buildBottomPanel(context, state),
           statusBar: statusBarBuilder?.call(context, state) ??
               _buildDefaultStatusBar(state),
-          commandCenter: const AgusCommandCenter(
+          commandCenter: AgusCommandCenter(
             prompt: 'Search maps, commands, and layers',
+            groups: commandGroups,
+            asyncProviders: commandAsyncProviders,
           ),
           showPrimarySidebar: state.primarySideBarVisible,
           showSecondarySidebar: state.secondarySideBarVisible,
@@ -212,48 +222,34 @@ class VSCodeWorkbench extends StatelessWidget {
     BuildContext context,
     WorkbenchLayoutState state,
   ) {
-    return AgusPane(
-      header: Row(
-        children: [
-          Expanded(
-            child: AgusEditorTabBar(
-              tabs: [
-                for (final tab in state.secondarySideBarTabOrder)
-                  AgusEditorTab(
-                    id: tab.id,
-                    label: tab.label,
-                    icon: tab.icon,
-                    closable: false,
-                  ),
-              ],
-              selectedId: state.activeSecondarySideBarTab.id,
-              onSelected: (id) {
-                controller.selectSecondarySideBarTab(
-                  _workbenchSecondarySideBarTabById(id),
-                );
-              },
-              onReorder: (tabs) {
-                controller.reorderSecondarySideBarTabs([
-                  for (final tab in tabs)
-                    _workbenchSecondarySideBarTabById(tab.id),
-                ]);
-              },
+    return AgusViewPaneContainer(
+      views: [
+        for (final tab in state.secondarySideBarTabOrder)
+          AgusViewPane(
+            id: tab.id,
+            title: tab.label,
+            icon: tab.icon,
+            initiallyExpanded: true,
+            actions: tab == state.secondarySideBarTabOrder.first
+                ? [
+                    _PaneActionButton(
+                      tooltip: 'Hide Secondary Side Bar',
+                      icon: Icons.close,
+                      onPressed: controller.toggleSecondarySideBar,
+                    ),
+                  ]
+                : const <Widget>[],
+            child: KeyedSubtree(
+              key: ValueKey(tab),
+              child: secondarySideBarBuilder(context, tab),
             ),
           ),
-          _PaneActionButton(
-            tooltip: 'Hide Secondary Side Bar',
-            icon: Icons.close,
-            onPressed: controller.toggleSecondarySideBar,
-          ),
-        ],
-      ),
-      child: KeyedSubtree(
-        key: ValueKey(state.activeSecondarySideBarTab),
-        child: secondarySideBarBuilder(
-          context,
-          state.activeSecondarySideBarTab,
-        ),
-      ),
+      ],
+      onToggle: (id) {
+        controller.selectSecondarySideBarTab(
+          _workbenchSecondarySideBarTabById(id),
+        );
+      },
     );
   }
 

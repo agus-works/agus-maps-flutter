@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../theme/agus_theme_data.dart';
 
-/// Immutable data for a collapsible workbench view.
+/// Immutable data for a collapsible workbench view pane.
 ///
 /// Visual Studio Code calls the accordion sections in side bars "Views" and
-/// the host that contains them a "View Container".
+/// the host that contains them a "ViewPaneContainer".
 @immutable
-class AgusView {
-  /// Creates a view rendered by [AgusViewContainer].
-  const AgusView({
+class AgusViewPane {
+  /// Creates a view pane rendered by [AgusViewPaneContainer].
+  const AgusViewPane({
     required this.id,
     required this.title,
     required this.child,
@@ -41,10 +41,13 @@ class AgusView {
   final Widget child;
 }
 
-/// A VS Code-like view container for vertical side-bar panes.
-class AgusViewContainer extends StatefulWidget {
-  /// Creates a view container.
-  const AgusViewContainer({
+/// Backward-compatible alias for the VS Code-style view pane model.
+typedef AgusView = AgusViewPane;
+
+/// A VS Code-like view pane container for vertical side-bar panes.
+class AgusViewPaneContainer extends StatefulWidget {
+  /// Creates a view pane container.
+  const AgusViewPaneContainer({
     required this.views,
     this.expandedIds,
     this.onToggle,
@@ -56,7 +59,7 @@ class AgusViewContainer extends StatefulWidget {
   }) : assert(headerHeight >= 0);
 
   /// Views rendered from top to bottom.
-  final List<AgusView> views;
+  final List<AgusViewPane> views;
 
   /// Controlled expanded view ids.
   ///
@@ -80,10 +83,13 @@ class AgusViewContainer extends StatefulWidget {
   final String emptyLabel;
 
   @override
-  State<AgusViewContainer> createState() => _AgusViewContainerState();
+  State<AgusViewPaneContainer> createState() => _AgusViewPaneContainerState();
 }
 
-class _AgusViewContainerState extends State<AgusViewContainer> {
+/// Backward-compatible alias for the VS Code-style view pane container.
+typedef AgusViewContainer = AgusViewPaneContainer;
+
+class _AgusViewPaneContainerState extends State<AgusViewPaneContainer> {
   late Set<String> _expandedIds = _initialExpandedIds();
 
   Set<String> get _effectiveExpandedIds {
@@ -91,7 +97,7 @@ class _AgusViewContainerState extends State<AgusViewContainer> {
   }
 
   @override
-  void didUpdateWidget(covariant AgusViewContainer oldWidget) {
+  void didUpdateWidget(covariant AgusViewPaneContainer oldWidget) {
     super.didUpdateWidget(oldWidget);
     final viewIds = widget.views.map((view) => view.id).toSet();
     if (widget.expandedIds == null) {
@@ -129,7 +135,8 @@ class _AgusViewContainerState extends State<AgusViewContainer> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final view in widget.views) _AgusViewSection(view: view),
+          for (final (index, view) in widget.views.indexed)
+            _AgusViewPaneSection(view: view, showTopBorder: index > 0),
         ],
       ),
     );
@@ -164,85 +171,96 @@ class _AgusViewContainerState extends State<AgusViewContainer> {
   }
 }
 
-class _AgusViewSection extends StatelessWidget {
-  const _AgusViewSection({required this.view});
+class _AgusViewPaneSection extends StatelessWidget {
+  const _AgusViewPaneSection({required this.view, required this.showTopBorder});
 
-  final AgusView view;
+  final AgusViewPane view;
+  final bool showTopBorder;
 
   @override
   Widget build(BuildContext context) {
-    final state = context.findAncestorStateOfType<_AgusViewContainerState>()!;
+    final state = context
+        .findAncestorStateOfType<_AgusViewPaneContainerState>()!;
     final expanded = state._effectiveExpandedIds.contains(view.id);
     final colors = AgusThemeData.colorsOf(context);
     final dimensions = AgusThemeData.dimensionsOf(context);
     final textTheme = Theme.of(context).textTheme;
 
-    return Column(
+    return DecoratedBox(
       key: ValueKey('agus-view-${view.id}'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Semantics(
-          button: true,
-          expanded: expanded,
-          label: view.title,
-          child: Material(
-            color: colors.sideBarBackground,
-            child: InkWell(
-              hoverColor: colors.hoverBackground,
-              onTap: () => state._toggleView(view.id),
-              child: SizedBox(
-                height: state.widget.headerHeight,
-                child: Row(
-                  children: [
-                    const SizedBox(width: 2),
-                    Icon(
-                      expanded
-                          ? Icons.keyboard_arrow_down
-                          : Icons.keyboard_arrow_right,
-                      size: dimensions.iconSize,
-                      color: colors.sideBarForeground,
-                    ),
-                    const SizedBox(width: 2),
-                    if (view.icon != null) ...[
+      decoration: BoxDecoration(
+        border: Border(
+          top: showTopBorder
+              ? BorderSide(color: colors.sideBarBorder)
+              : BorderSide.none,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            button: true,
+            expanded: expanded,
+            label: view.title,
+            child: Material(
+              color: colors.sideBarBackground,
+              child: InkWell(
+                hoverColor: colors.hoverBackground,
+                onTap: () => state._toggleView(view.id),
+                child: SizedBox(
+                  height: state.widget.headerHeight,
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 2),
                       Icon(
-                        view.icon,
+                        expanded
+                            ? Icons.keyboard_arrow_down
+                            : Icons.keyboard_arrow_right,
                         size: dimensions.iconSize,
                         color: colors.sideBarForeground,
                       ),
-                      const SizedBox(width: 6),
-                    ],
-                    Expanded(
-                      child: Text(
-                        view.title.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.labelMedium?.copyWith(
+                      const SizedBox(width: 2),
+                      if (view.icon != null) ...[
+                        Icon(
+                          view.icon,
+                          size: dimensions.iconSize,
                           color: colors.sideBarForeground,
-                          fontWeight: FontWeight.w700,
                         ),
-                      ),
-                    ),
-                    if (view.countLabel != null) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        view.countLabel!,
-                        style: textTheme.labelSmall?.copyWith(
-                          color: colors.sideBarForeground.withValues(
-                            alpha: 0.72,
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          view.title.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.labelMedium?.copyWith(
+                            color: colors.sideBarForeground,
+                            fontWeight: FontWeight.w700,
                           ),
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
+                      if (view.countLabel != null) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          view.countLabel!,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: colors.sideBarForeground.withValues(
+                              alpha: 0.72,
+                            ),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      ...view.actions,
                     ],
-                    ...view.actions,
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        if (expanded) view.child,
-      ],
+          if (expanded) view.child,
+        ],
+      ),
     );
   }
 }

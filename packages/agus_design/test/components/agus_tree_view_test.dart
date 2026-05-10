@@ -1,6 +1,5 @@
-import 'dart:ui';
-
 import 'package:agus_design/agus_design.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -487,5 +486,31 @@ void main() {
 
     expect(renamedLabel, 'Renamed Child');
     expect(deletedId, 'child');
+  });
+
+  testWidgets('tree view reports secondary tap context menu requests', (
+    tester,
+  ) async {
+    String? requestedId;
+    Offset? requestedPosition;
+
+    await pumpAgusWidget(
+      tester,
+      AgusTreeView(
+        expandedIds: const {'root'},
+        nodes: nodes,
+        onContextMenuRequested: (id, position) {
+          requestedId = id;
+          requestedPosition = position;
+        },
+      ),
+    );
+
+    final childPosition = tester.getCenter(find.text('Child'));
+    await tester.tapAt(childPosition, buttons: kSecondaryMouseButton);
+    await tester.pump();
+
+    expect(requestedId, 'child');
+    expect(requestedPosition, childPosition);
   });
 }

@@ -2,6 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/agus_theme_data.dart';
+import 'agus_input.dart';
+
+typedef AgusCommandAsyncProvider =
+    Future<List<AgusCommandGroup>> Function(String query);
+
+@immutable
+class AgusCommandMatch {
+  const AgusCommandMatch({
+    required this.score,
+    this.labelIndexes = const <int>{},
+  });
+
+  final int score;
+  final Set<int> labelIndexes;
+}
 
 @immutable
 class AgusCommandItem {
@@ -26,14 +41,87 @@ class AgusCommandItem {
   final VoidCallback? onSelected;
 
   bool matches(String query) {
-    final normalized = query.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return true;
+    return match(query) != null;
+  }
+
+  AgusCommandMatch? match(String query) {
+    final terms = query
+        .trim()
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty)
+        .toList(growable: false);
+    if (terms.isEmpty) {
+      return const AgusCommandMatch(score: 0);
     }
 
-    return label.toLowerCase().contains(normalized) ||
-        keywords.any((keyword) => keyword.toLowerCase().contains(normalized));
+    final labelLower = label.toLowerCase();
+    var score = 0;
+    final labelIndexes = <int>{};
+    for (final term in terms) {
+      final labelSubstringIndex = labelLower.indexOf(term);
+      if (labelSubstringIndex >= 0) {
+        for (var i = 0; i < term.length; i++) {
+          labelIndexes.add(labelSubstringIndex + i);
+        }
+        score += labelSubstringIndex * 2;
+        continue;
+      }
+
+      final labelFuzzy = _fuzzyIndexes(labelLower, term);
+      if (labelFuzzy != null) {
+        labelIndexes.addAll(labelFuzzy);
+        score += 40 + _fuzzyGapPenalty(labelFuzzy);
+        continue;
+      }
+
+      final keywordSubstringIndex = keywords.indexWhere(
+        (keyword) => keyword.toLowerCase().contains(term),
+      );
+      if (keywordSubstringIndex >= 0) {
+        score += 90 + keywordSubstringIndex;
+        continue;
+      }
+
+      final keywordFuzzyIndex = keywords.indexWhere(
+        (keyword) => _fuzzyIndexes(keyword.toLowerCase(), term) != null,
+      );
+      if (keywordFuzzyIndex >= 0) {
+        score += 130 + keywordFuzzyIndex;
+        continue;
+      }
+
+      return null;
+    }
+
+    score += label.length;
+    if (!enabled) {
+      score += 10000;
+    }
+    return AgusCommandMatch(score: score, labelIndexes: labelIndexes);
   }
+}
+
+List<int>? _fuzzyIndexes(String haystack, String needle) {
+  if (needle.isEmpty) return const <int>[];
+  final indexes = <int>[];
+  var searchStart = 0;
+  for (final codeUnit in needle.codeUnits) {
+    final index = haystack.indexOf(String.fromCharCode(codeUnit), searchStart);
+    if (index < 0) return null;
+    indexes.add(index);
+    searchStart = index + 1;
+  }
+  return indexes;
+}
+
+int _fuzzyGapPenalty(List<int> indexes) {
+  if (indexes.length < 2) return 0;
+  var penalty = 0;
+  for (var i = 1; i < indexes.length; i++) {
+    penalty += indexes[i] - indexes[i - 1] - 1;
+  }
+  return penalty;
 }
 
 @immutable
@@ -239,6 +327,7 @@ class AgusCommandDialog extends StatefulWidget {
     this.autofocus = true,
     this.onDismissRequested,
     this.onItemSelected,
+    this.asyncProviders = const <AgusCommandAsyncProvider>[],
     super.key,
   });
 
@@ -249,6 +338,7 @@ class AgusCommandDialog extends StatefulWidget {
   final bool autofocus;
   final VoidCallback? onDismissRequested;
   final ValueChanged<AgusCommandItem>? onItemSelected;
+  final List<AgusCommandAsyncProvider> asyncProviders;
 
   @override
   State<AgusCommandDialog> createState() => _AgusCommandDialogState();
@@ -261,6 +351,8 @@ class _AgusCommandDialogState extends State<AgusCommandDialog> {
   final Map<String, GlobalKey> _itemKeys = <String, GlobalKey>{};
 
   int _highlightedIndex = 0;
+  int _asyncGeneration = 0;
+  List<AgusCommandGroup> _asyncGroups = const <AgusCommandGroup>[];
 
   @override
   void initState() {
@@ -346,52 +438,13 @@ class _AgusCommandDialogState extends State<AgusCommandDialog> {
                     horizontal: 12,
                     vertical: 8,
                   ),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors.inputBackground,
-                      border: Border.all(color: colors.inputBorder),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.search,
-                            size: 14,
-                            color: colors.sideBarForeground.withValues(
-                              alpha: 0.72,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: _queryController,
-                              focusNode: _inputFocusNode,
-                              autofocus: widget.autofocus,
-                              onChanged: (_) {
-                                setState(() => _highlightedIndex = 0);
-                              },
-                              onSubmitted: (_) => _selectHighlighted(),
-                              onTapOutside: (_) =>
-                                  widget.onDismissRequested?.call(),
-                              decoration: InputDecoration(
-                                border: InputBorder.none,
-                                hintText: widget.prompt,
-                                isDense: true,
-                                hintStyle: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: colors.sideBarForeground
-                                          .withValues(alpha: 0.5),
-                                    ),
-                              ),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: colors.sideBarForeground),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  child: AgusSearchBox(
+                    controller: _queryController,
+                    focusNode: _inputFocusNode,
+                    autofocus: widget.autofocus,
+                    placeholder: widget.prompt,
+                    onChanged: _handleQueryChanged,
+                    onSubmitted: (_) => _selectHighlighted(),
                   ),
                 ),
                 Divider(height: 1, thickness: 1, color: colors.sideBarBorder),
@@ -443,6 +496,7 @@ class _AgusCommandDialogState extends State<AgusCommandDialog> {
                                       highlightedIndex >= 0 &&
                                       filteredItems[highlightedIndex].id ==
                                           item.id,
+                                  query: _queryController.text,
                                   onHover: () => _setHighlightedItem(item.id),
                                   onSelected: () => _select(item),
                                 ),
@@ -461,16 +515,29 @@ class _AgusCommandDialogState extends State<AgusCommandDialog> {
   List<AgusCommandGroup> get _filteredGroups {
     final query = _queryController.text;
     return [
-      for (final group in widget.groups)
-        if (group.items.any((item) => item.matches(query)))
+      for (final group in [...widget.groups, ..._asyncGroups])
+        if (_rankedItems(group.items, query).isNotEmpty)
           AgusCommandGroup(
             heading: group.heading,
-            items: [
-              for (final item in group.items)
-                if (item.matches(query)) item,
-            ],
+            items: _rankedItems(group.items, query),
           ),
     ];
+  }
+
+  List<AgusCommandItem> _rankedItems(
+    List<AgusCommandItem> items,
+    String query,
+  ) {
+    final ranked = [
+      for (final item in items)
+        if (item.match(query) case final match?) (item: item, match: match),
+    ];
+    ranked.sort((a, b) {
+      final byScore = a.match.score.compareTo(b.match.score);
+      if (byScore != 0) return byScore;
+      return a.item.label.compareTo(b.item.label);
+    });
+    return [for (final rankedItem in ranked) rankedItem.item];
   }
 
   List<AgusCommandItem> _filteredItems(List<AgusCommandGroup> groups) {
@@ -505,6 +572,48 @@ class _AgusCommandDialogState extends State<AgusCommandDialog> {
     }
 
     return _highlightedIndex;
+  }
+
+  void _handleQueryChanged(String query) {
+    setState(() => _highlightedIndex = 0);
+    _refreshAsyncGroups(query);
+  }
+
+  void _refreshAsyncGroups(String query) {
+    final providers = widget.asyncProviders;
+    final trimmed = query.trim();
+    final generation = ++_asyncGeneration;
+    if (providers.isEmpty || trimmed.isEmpty) {
+      if (_asyncGroups.isNotEmpty) {
+        setState(() => _asyncGroups = const <AgusCommandGroup>[]);
+      }
+      return;
+    }
+
+    Future.wait([for (final provider in providers) provider(trimmed)]).then(
+      (groups) {
+        if (!mounted || generation != _asyncGeneration) return;
+        setState(() {
+          _asyncGroups = [
+            for (final providerGroups in groups) ...providerGroups,
+          ];
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'agus_design',
+            context: ErrorDescription(
+              'while resolving command async providers',
+            ),
+          ),
+        );
+        if (!mounted || generation != _asyncGeneration) return;
+        setState(() => _asyncGroups = const <AgusCommandGroup>[]);
+      },
+    );
   }
 
   void _moveHighlight(int delta) {
@@ -578,6 +687,7 @@ class AgusCommandCenter extends StatefulWidget {
     this.trailing,
     this.controller,
     this.groups = const <AgusCommandGroup>[],
+    this.asyncProviders = const <AgusCommandAsyncProvider>[],
     this.emptyStateLabel = 'No matching commands.',
     this.openShortcut,
     this.openShortcutLabel,
@@ -590,6 +700,7 @@ class AgusCommandCenter extends StatefulWidget {
   final Widget? trailing;
   final AgusCommandController? controller;
   final List<AgusCommandGroup> groups;
+  final List<AgusCommandAsyncProvider> asyncProviders;
   final String emptyStateLabel;
   final ShortcutActivator? openShortcut;
   final String? openShortcutLabel;
@@ -637,6 +748,8 @@ class _AgusCommandCenterState extends State<AgusCommandCenter> {
   @override
   Widget build(BuildContext context) {
     final effectiveTrailing = widget.trailing ?? _buildDefaultTrailing(context);
+    final hasCommands =
+        widget.groups.isNotEmpty || widget.asyncProviders.isNotEmpty;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -650,15 +763,15 @@ class _AgusCommandCenterState extends State<AgusCommandCenter> {
             controller: _portalController,
             overlayChildBuilder: _buildOverlay,
             child: Semantics(
-              button: widget.groups.isNotEmpty,
+              button: hasCommands,
               label: widget.prompt,
               child: AgusCommandBar(
                 prompt: widget.prompt,
                 leadingIcon: widget.leadingIcon,
                 trailing: effectiveTrailing,
                 active: _controller.isOpen,
-                enabled: widget.groups.isNotEmpty,
-                onPressed: widget.groups.isEmpty ? null : _controller.toggle,
+                enabled: hasCommands,
+                onPressed: hasCommands ? _controller.toggle : null,
               ),
             ),
           ),
@@ -668,7 +781,7 @@ class _AgusCommandCenterState extends State<AgusCommandCenter> {
   }
 
   Widget? _buildDefaultTrailing(BuildContext context) {
-    if (widget.groups.isEmpty) {
+    if (widget.groups.isEmpty && widget.asyncProviders.isEmpty) {
       return null;
     }
 
@@ -717,6 +830,7 @@ class _AgusCommandCenterState extends State<AgusCommandCenter> {
               width: _overlayWidth,
               child: AgusCommandDialog(
                 groups: widget.groups,
+                asyncProviders: widget.asyncProviders,
                 prompt: widget.prompt,
                 emptyStateLabel: widget.emptyStateLabel,
                 maxHeight: widget.maxOverlayHeight,
@@ -745,6 +859,7 @@ class _AgusCommandItemTile extends StatefulWidget {
   const _AgusCommandItemTile({
     required this.item,
     required this.selected,
+    required this.query,
     required this.onSelected,
     required this.onHover,
     super.key,
@@ -752,6 +867,7 @@ class _AgusCommandItemTile extends StatefulWidget {
 
   final AgusCommandItem item;
   final bool selected;
+  final String query;
   final VoidCallback onSelected;
   final VoidCallback onHover;
 
@@ -777,17 +893,22 @@ class _AgusCommandItemTileState extends State<_AgusCommandItemTile> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: MouseRegion(
+        cursor: widget.item.enabled
+            ? SystemMouseCursors.click
+            : SystemMouseCursors.basic,
         onEnter: (_) {
           widget.onHover();
           setState(() => _hovered = true);
         },
         onExit: (_) => setState(() => _hovered = false),
-        child: Material(
-          color: background,
-          borderRadius: BorderRadius.circular(4),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(4),
-            onTap: widget.item.enabled ? widget.onSelected : null,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.item.enabled ? widget.onSelected : null,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(4),
+            ),
             child: SizedBox(
               height: 30,
               child: Padding(
@@ -802,13 +923,10 @@ class _AgusCommandItemTileState extends State<_AgusCommandItemTile> {
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        widget.item.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodySmall?.copyWith(color: foreground),
+                      child: _CommandHighlightedLabel(
+                        label: widget.item.label,
+                        match: widget.item.match(widget.query),
+                        foreground: foreground,
                       ),
                     ),
                     if (widget.item.shortcutLabel != null)
@@ -830,6 +948,55 @@ class _AgusCommandItemTileState extends State<_AgusCommandItemTile> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CommandHighlightedLabel extends StatelessWidget {
+  const _CommandHighlightedLabel({
+    required this.label,
+    required this.match,
+    required this.foreground,
+  });
+
+  final String label;
+  final AgusCommandMatch? match;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = Theme.of(
+      context,
+    ).textTheme.bodySmall?.copyWith(color: foreground);
+    final indexes = match?.labelIndexes ?? const <int>{};
+    if (indexes.isEmpty) {
+      return Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: baseStyle,
+      );
+    }
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          for (var i = 0; i < label.length; i++)
+            TextSpan(
+              text: label[i],
+              style: indexes.contains(i)
+                  ? baseStyle?.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w800,
+                      decoration: TextDecoration.underline,
+                      decorationColor: foreground.withValues(alpha: 0.7),
+                    )
+                  : baseStyle,
+            ),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

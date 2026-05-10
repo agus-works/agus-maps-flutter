@@ -15,6 +15,10 @@ enum AgusTreeVisibilityState { visible, hidden, mixed, locked }
 typedef AgusTreeColumnReorderCallback =
     void Function(List<AgusTreeColumn> columns);
 
+/// Called when a tree row requests a context menu.
+typedef AgusTreeNodeContextMenuCallback =
+    void Function(String id, Offset globalPosition);
+
 @immutable
 class AgusTreeVisibilityIcons {
   const AgusTreeVisibilityIcons({
@@ -169,6 +173,7 @@ class AgusTreeView extends StatefulWidget {
     this.onRename,
     this.onDelete,
     this.onVisibilityChanged,
+    this.onContextMenuRequested,
     this.onLabelColumnResize,
     this.onColumnResize,
     this.onColumnReorder,
@@ -196,6 +201,7 @@ class AgusTreeView extends StatefulWidget {
   final ValueChanged<String>? onDelete;
   final void Function(String id, AgusTreeVisibilityState visibility)?
   onVisibilityChanged;
+  final AgusTreeNodeContextMenuCallback? onContextMenuRequested;
   final ValueChanged<double>? onLabelColumnResize;
   final void Function(String columnId, double width)? onColumnResize;
 
@@ -374,6 +380,7 @@ class _AgusTreeViewState extends State<AgusTreeView> {
           onRenameCancelled: _cancelRename,
           onDelete: widget.onDelete,
           onVisibilityChanged: widget.onVisibilityChanged,
+          onContextMenuRequested: widget.onContextMenuRequested,
         );
       },
     );
@@ -418,6 +425,7 @@ class _AgusTreeViewState extends State<AgusTreeView> {
           onRenameCancelled: _cancelRename,
           onDelete: widget.onDelete,
           onVisibilityChanged: widget.onVisibilityChanged,
+          onContextMenuRequested: widget.onContextMenuRequested,
         );
       },
     );
@@ -847,6 +855,7 @@ class _TreeRowView extends StatelessWidget {
     this.onRenameCancelled,
     this.onDelete,
     this.onVisibilityChanged,
+    this.onContextMenuRequested,
   });
 
   final AgusTreeNode node;
@@ -871,6 +880,7 @@ class _TreeRowView extends StatelessWidget {
   final ValueChanged<String>? onDelete;
   final void Function(String id, AgusTreeVisibilityState visibility)?
   onVisibilityChanged;
+  final AgusTreeNodeContextMenuCallback? onContextMenuRequested;
 
   @override
   Widget build(BuildContext context) {
@@ -896,6 +906,7 @@ class _TreeRowView extends StatelessWidget {
       onRenameCancelled: onRenameCancelled,
       onDelete: onDelete,
       onVisibilityChanged: onVisibilityChanged,
+      onContextMenuRequested: onContextMenuRequested,
     );
   }
 }
@@ -923,6 +934,7 @@ class _InteractiveTreeRowView extends StatefulWidget {
     this.onRenameCancelled,
     this.onDelete,
     this.onVisibilityChanged,
+    this.onContextMenuRequested,
   });
 
   final AgusTreeNode node;
@@ -947,6 +959,7 @@ class _InteractiveTreeRowView extends StatefulWidget {
   final ValueChanged<String>? onDelete;
   final void Function(String id, AgusTreeVisibilityState visibility)?
   onVisibilityChanged;
+  final AgusTreeNodeContextMenuCallback? onContextMenuRequested;
 
   @override
   State<_InteractiveTreeRowView> createState() =>
@@ -980,67 +993,76 @@ class _InteractiveTreeRowViewState extends State<_InteractiveTreeRowView> {
                 : _hovered
                 ? colors.hoverBackground.withValues(alpha: 0.65)
                 : Colors.transparent,
-            child: InkWell(
-              hoverColor: Colors.transparent,
-              onTap: widget.node.disabled
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onSecondaryTapDown: widget.onContextMenuRequested == null
                   ? null
-                  : () => widget.onSelected?.call(widget.node.id),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: widget.labelColumnWidth,
-                    child: _TreeLabelCell(
-                      node: widget.node,
-                      depth: widget.depth,
-                      expanded: widget.expanded,
-                      foreground: foreground,
-                      visibilityIcons: widget.visibilityIcons,
-                      isEditing: widget.isEditing,
-                      renameController: widget.renameController,
-                      hovered: _hovered,
-                      onToggle: widget.onToggle,
-                      onVisibilityChanged: widget.onVisibilityChanged,
-                      onLabelPointerDown: widget.onLabelPointerDown,
-                      onRenameSubmitted: widget.onRenameSubmitted,
-                      onRenameCancelled: widget.onRenameCancelled,
-                      onDelete: widget.onDelete,
+                  : (details) => widget.onContextMenuRequested!(
+                      widget.node.id,
+                      details.globalPosition,
                     ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onHorizontalDragUpdate: (details) => widget
-                          .onHorizontalDragDelta(details.primaryDelta ?? 0),
-                      child: ClipRect(
-                        child: Transform.translate(
-                          offset: Offset(-widget.horizontalOffset, 0),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            widthFactor: 1,
-                            child: OverflowBox(
+              child: InkWell(
+                hoverColor: Colors.transparent,
+                onTap: widget.node.disabled
+                    ? null
+                    : () => widget.onSelected?.call(widget.node.id),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: widget.labelColumnWidth,
+                      child: _TreeLabelCell(
+                        node: widget.node,
+                        depth: widget.depth,
+                        expanded: widget.expanded,
+                        foreground: foreground,
+                        visibilityIcons: widget.visibilityIcons,
+                        isEditing: widget.isEditing,
+                        renameController: widget.renameController,
+                        hovered: _hovered,
+                        onToggle: widget.onToggle,
+                        onVisibilityChanged: widget.onVisibilityChanged,
+                        onLabelPointerDown: widget.onLabelPointerDown,
+                        onRenameSubmitted: widget.onRenameSubmitted,
+                        onRenameCancelled: widget.onRenameCancelled,
+                        onDelete: widget.onDelete,
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onHorizontalDragUpdate: (details) => widget
+                            .onHorizontalDragDelta(details.primaryDelta ?? 0),
+                        child: ClipRect(
+                          child: Transform.translate(
+                            offset: Offset(-widget.horizontalOffset, 0),
+                            child: Align(
                               alignment: Alignment.centerLeft,
-                              minWidth: widget.scrollableWidth,
-                              maxWidth: widget.scrollableWidth,
-                              child: SizedBox(
-                                width: widget.scrollableWidth,
-                                child: Row(
-                                  children: [
-                                    for (
-                                      var index = 0;
-                                      index < widget.columns.length;
-                                      index++
-                                    )
-                                      _TreeMetricCell(
-                                        column: widget.columns[index],
-                                        width: widget.columnWidths[index],
-                                        value:
-                                            widget.node.columnValues[widget
-                                                .columns[index]
-                                                .id] ??
-                                            '—',
-                                        foreground: foreground,
-                                      ),
-                                  ],
+                              widthFactor: 1,
+                              child: OverflowBox(
+                                alignment: Alignment.centerLeft,
+                                minWidth: widget.scrollableWidth,
+                                maxWidth: widget.scrollableWidth,
+                                child: SizedBox(
+                                  width: widget.scrollableWidth,
+                                  child: Row(
+                                    children: [
+                                      for (
+                                        var index = 0;
+                                        index < widget.columns.length;
+                                        index++
+                                      )
+                                        _TreeMetricCell(
+                                          column: widget.columns[index],
+                                          width: widget.columnWidths[index],
+                                          value:
+                                              widget.node.columnValues[widget
+                                                  .columns[index]
+                                                  .id] ??
+                                              '—',
+                                          foreground: foreground,
+                                        ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -1048,8 +1070,8 @@ class _InteractiveTreeRowViewState extends State<_InteractiveTreeRowView> {
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

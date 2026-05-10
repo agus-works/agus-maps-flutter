@@ -21,7 +21,88 @@ class DuckDBLayerDrawOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, child) {
+          return CustomPaint(
+            painter: _DuckDBLayerDrawPreviewPainter(
+              vertices: controller.vertices,
+              tool: controller.tool,
+              selectedVertexIndex: controller.selectedVertexIndex,
+              color: accentColor ?? colorScheme.primary,
+              surfaceColor: colorScheme.surface,
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DuckDBLayerDrawPreviewPainter extends CustomPainter {
+  const _DuckDBLayerDrawPreviewPainter({
+    required this.vertices,
+    required this.tool,
+    required this.selectedVertexIndex,
+    required this.color,
+    required this.surfaceColor,
+  });
+
+  final List<AgusDrawPoint> vertices;
+  final AgusDrawTool tool;
+  final int? selectedVertexIndex;
+  final Color color;
+  final Color surfaceColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (tool == AgusDrawTool.none || vertices.isEmpty) return;
+
+    final linePaint = Paint()
+      ..color = color.withValues(alpha: 0.88)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final fillPaint = Paint()
+      ..color = surfaceColor.withValues(alpha: 0.9)
+      ..style = PaintingStyle.fill;
+    final vertexPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    if (vertices.length > 1) {
+      final path = Path()
+        ..moveTo(
+          vertices.first.screenPosition.dx,
+          vertices.first.screenPosition.dy,
+        );
+      for (final vertex in vertices.skip(1)) {
+        path.lineTo(vertex.screenPosition.dx, vertex.screenPosition.dy);
+      }
+      if (tool == AgusDrawTool.polygon && vertices.length >= 3) {
+        path.close();
+      }
+      canvas.drawPath(path, linePaint);
+    }
+
+    for (var index = 0; index < vertices.length; index++) {
+      final vertex = vertices[index];
+      final radius = selectedVertexIndex == index ? 5.5 : 4.5;
+      canvas.drawCircle(vertex.screenPosition, radius + 1.5, fillPaint);
+      canvas.drawCircle(vertex.screenPosition, radius, vertexPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DuckDBLayerDrawPreviewPainter oldDelegate) {
+    return oldDelegate.vertices != vertices ||
+        oldDelegate.tool != tool ||
+        oldDelegate.selectedVertexIndex != selectedVertexIndex ||
+        oldDelegate.color != color ||
+        oldDelegate.surfaceColor != surfaceColor;
   }
 }
 

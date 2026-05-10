@@ -20,6 +20,21 @@ void main() {
         editorBuilder: (_, tab) => Text('editor:${tab.name}'),
         panelBuilder: (_, tab) => Text('panel:${tab.name}'),
         secondarySideBarBuilder: (_, tab) => Text('side:${tab.name}'),
+        commandGroups: [
+          AgusCommandGroup(
+            heading: 'Workbench',
+            items: [
+              AgusCommandItem(
+                id: 'show-search',
+                label: 'Show Search',
+                icon: Icons.search,
+                onSelected: () {
+                  controller.selectActivity(WorkbenchActivity.search);
+                },
+              ),
+            ],
+          ),
+        ],
         statusBarBuilder: (_, state) => AgusStatusBar(
           leftItems: [
             AgusStatusBarItem(
@@ -38,11 +53,13 @@ void main() {
 
     expect(find.byType(AgusWorkbench), findsOneWidget);
     expect(find.byType(AgusPanelTabBar), findsNothing);
-    expect(find.byType(AgusEditorTabBar), findsNWidgets(3));
+    expect(find.byType(AgusEditorTabBar), findsNWidgets(2));
+    expect(find.byType(AgusViewPaneContainer), findsOneWidget);
     expect(find.text('activity:explorer'), findsOneWidget);
     expect(find.text('editor:map'), findsOneWidget);
     expect(find.text('panel:pointOfInterest'), findsOneWidget);
     expect(find.text('side:properties'), findsOneWidget);
+    expect(find.text('side:inspector'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
@@ -76,6 +93,12 @@ void main() {
     await tester.tap(find.byTooltip('Hide Panel'));
     await tester.pumpAndSettle();
     expect(controller.state.panelVisible, isFalse);
+
+    await tester.tap(find.text('Search maps, commands, and layers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show Search'));
+    await tester.pumpAndSettle();
+    expect(controller.state.activeActivity, WorkbenchActivity.search);
   });
 
   testWidgets('workbench renders reordered tabs with content keyed by tab id', (
@@ -114,15 +137,16 @@ void main() {
     final blankRect = tester.getRect(_tabText(0, 'Blank'));
     final debugRect = tester.getRect(_tabText(1, 'Debug Console'));
     final pointRect = tester.getRect(_tabText(1, 'Point of Interest'));
-    final inspectorRect = tester.getRect(_tabText(2, 'Inspector'));
-    final propertiesRect = tester.getRect(_tabText(2, 'Properties'));
+    final inspectorRect = tester.getRect(find.text('INSPECTOR'));
+    final propertiesRect = tester.getRect(find.text('PROPERTIES'));
 
     expect(mapRect.left, lessThan(blankRect.left));
     expect(debugRect.left, lessThan(pointRect.left));
-    expect(inspectorRect.left, lessThan(propertiesRect.left));
+    expect(inspectorRect.top, lessThan(propertiesRect.top));
     expect(find.text('editor:map'), findsOneWidget);
     expect(find.text('panel:pointOfInterest'), findsOneWidget);
     expect(find.text('side:properties'), findsOneWidget);
+    expect(find.text('side:inspector'), findsOneWidget);
   });
 }
 
