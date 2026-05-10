@@ -10,6 +10,11 @@ enum AgusTreeColumnAlignment { start, center, end }
 
 enum AgusTreeVisibilityState { visible, hidden, mixed, locked }
 
+/// Called with the reordered metric columns after a tree header column is
+/// dragged and dropped.
+typedef AgusTreeColumnReorderCallback =
+    void Function(List<AgusTreeColumn> columns);
+
 @immutable
 class AgusTreeVisibilityIcons {
   const AgusTreeVisibilityIcons({
@@ -166,6 +171,7 @@ class AgusTreeView extends StatefulWidget {
     this.onVisibilityChanged,
     this.onLabelColumnResize,
     this.onColumnResize,
+    this.onColumnReorder,
     super.key,
   }) : assert(labelColumnWidth >= 0),
        assert(minLabelColumnWidth >= 0),
@@ -193,12 +199,19 @@ class AgusTreeView extends StatefulWidget {
   final ValueChanged<double>? onLabelColumnResize;
   final void Function(String columnId, double width)? onColumnResize;
 
+  /// Called with reordered metric columns when a non-label column is dragged.
+  ///
+  /// The label column is locked outside [columns], so it always remains first.
+  final AgusTreeColumnReorderCallback? onColumnReorder;
+
   @override
   State<AgusTreeView> createState() => _AgusTreeViewState();
 }
 
 class _AgusTreeViewState extends State<AgusTreeView> {
   final ScrollController _horizontalController = ScrollController();
+  final Map<String, GlobalKey> _columnHeaderKeys = <String, GlobalKey>{};
+  OverlayEntry? _columnDragFeedbackOverlay;
 
   String? _editingId;
   String? _lastRenameTapId;
@@ -206,6 +219,9 @@ class _AgusTreeViewState extends State<AgusTreeView> {
   TextEditingController? _renameController;
   late double _labelColumnWidth;
   late Map<String, double> _columnWidths;
+  String? _draggedColumnId;
+  _TreeColumnDropIntent? _columnDropIntent;
+  Offset? _latestColumnDragPosition;
 
   double _horizontalOffset = 0;
 
@@ -220,6 +236,9 @@ class _AgusTreeViewState extends State<AgusTreeView> {
   @override
   void didUpdateWidget(covariant AgusTreeView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _columnHeaderKeys.removeWhere(
+      (id, _) => !widget.columns.any((column) => column.id == id),
+    );
     if (oldWidget.labelColumnWidth != widget.labelColumnWidth ||
         oldWidget.minLabelColumnWidth != widget.minLabelColumnWidth ||
         oldWidget.maxLabelColumnWidth != widget.maxLabelColumnWidth) {
@@ -234,6 +253,7 @@ class _AgusTreeViewState extends State<AgusTreeView> {
 
   @override
   void dispose() {
+    _hideColumnDragFeedbackOverlay();
     _horizontalController
       ..removeListener(_handleHorizontalScroll)
       ..dispose();
@@ -295,8 +315,16 @@ class _AgusTreeViewState extends State<AgusTreeView> {
               horizontalController: _horizontalController,
               scrollableWidth: scrollableWidth,
               labelResizable: widget.resizableColumns,
+              columnReorderable: widget.onColumnReorder != null,
+              draggedColumnId: _draggedColumnId,
+              columnDropIntent: _columnDropIntent,
               onLabelResizeDelta: _resizeLabelColumnBy,
               onColumnResizeDelta: _resizeColumnBy,
+              keyForColumn: _keyForColumnHeader,
+              onColumnDragStart: _startColumnDrag,
+              onColumnDragUpdate: _updateColumnDrag,
+              onColumnDragEnd: _finishColumnDrag,
+              onColumnDragCancel: _cancelColumnDrag,
             ),
             if (constraints.hasBoundedHeight)
               Expanded(child: rowList)
@@ -561,6 +589,199 @@ class _AgusTreeViewState extends State<AgusTreeView> {
     widget.onColumnResize?.call(column.id, nextWidth);
   }
 
+  GlobalKey _keyForColumnHeader(String columnId) {
+    return _columnHeaderKeys.putIfAbsent(columnId, GlobalKey.new);
+  }
+
+  void _startColumnDrag(String columnId, Offset globalPosition) {
+    _showColumnDragFeedbackOverlay();
+    setState(() {
+      _draggedColumnId = columnId;
+      _latestColumnDragPosition = globalPosition;
+      _columnDropIntent = _columnDropIntentAtPosition(globalPosition);
+    });
+    _columnDragFeedbackOverlay?.markNeedsBuild();
+  }
+
+  void _updateColumnDrag(Offset globalPosition) {
+    setState(() {
+      _latestColumnDragPosition = globalPosition;
+      _columnDropIntent = _columnDropIntentAtPosition(globalPosition);
+    });
+    _columnDragFeedbackOverlay?.markNeedsBuild();
+  }
+
+  void _finishColumnDrag() {
+    final draggedColumnId = _draggedColumnId;
+    final dropIntent = _columnDropIntent;
+    _cancelColumnDrag();
+
+    if (draggedColumnId == null || dropIntent == null) {
+      return;
+    }
+
+    _reorderColumn(draggedColumnId, dropIntent);
+  }
+
+  void _cancelColumnDrag() {
+    _hideColumnDragFeedbackOverlay();
+    setState(() {
+      _draggedColumnId = null;
+      _columnDropIntent = null;
+      _latestColumnDragPosition = null;
+    });
+  }
+
+  void _reorderColumn(
+    String draggedColumnId,
+    _TreeColumnDropIntent dropIntent,
+  ) {
+    final onColumnReorder = widget.onColumnReorder;
+    if (onColumnReorder == null || draggedColumnId == dropIntent.targetId) {
+      return;
+    }
+
+    final oldIndex = widget.columns.indexWhere(
+      (column) => column.id == draggedColumnId,
+    );
+    final targetIndex = widget.columns.indexWhere(
+      (column) => column.id == dropIntent.targetId,
+    );
+    if (oldIndex == -1 || targetIndex == -1) {
+      return;
+    }
+
+    final insertionIndex = dropIntent.side == _TreeColumnDropSide.before
+        ? targetIndex
+        : targetIndex + 1;
+    final newIndex = oldIndex < insertionIndex
+        ? insertionIndex - 1
+        : insertionIndex;
+    if (oldIndex == newIndex) {
+      return;
+    }
+
+    final reorderedColumns = List<AgusTreeColumn>.of(widget.columns);
+    final draggedColumn = reorderedColumns.removeAt(oldIndex);
+    reorderedColumns.insert(newIndex, draggedColumn);
+    onColumnReorder(List<AgusTreeColumn>.unmodifiable(reorderedColumns));
+  }
+
+  _TreeColumnDropIntent? _columnDropIntentAtPosition(Offset globalPosition) {
+    String? firstColumnId;
+    String? lastColumnId;
+    Rect? firstColumnRect;
+    Rect? lastColumnRect;
+
+    for (final column in widget.columns) {
+      final targetContext = _columnHeaderKeys[column.id]?.currentContext;
+      final renderObject = targetContext?.findRenderObject();
+      if (renderObject is! RenderBox) {
+        continue;
+      }
+
+      final columnRect =
+          renderObject.localToGlobal(Offset.zero) & renderObject.size;
+      firstColumnId ??= column.id;
+      firstColumnRect ??= columnRect;
+      lastColumnId = column.id;
+      lastColumnRect = columnRect;
+
+      if (columnRect.contains(globalPosition)) {
+        final side = globalPosition.dx < columnRect.center.dx
+            ? _TreeColumnDropSide.before
+            : _TreeColumnDropSide.after;
+        return _TreeColumnDropIntent(targetId: column.id, side: side);
+      }
+    }
+
+    if (firstColumnId == null ||
+        firstColumnRect == null ||
+        lastColumnRect == null) {
+      return null;
+    }
+
+    final withinHeaderHeight =
+        globalPosition.dy >= firstColumnRect.top &&
+        globalPosition.dy <= firstColumnRect.bottom;
+    if (!withinHeaderHeight) {
+      return null;
+    }
+
+    if (globalPosition.dx < firstColumnRect.left) {
+      return _TreeColumnDropIntent(
+        targetId: firstColumnId,
+        side: _TreeColumnDropSide.before,
+      );
+    }
+    if (lastColumnId != null && globalPosition.dx > lastColumnRect.right) {
+      return _TreeColumnDropIntent(
+        targetId: lastColumnId,
+        side: _TreeColumnDropSide.after,
+      );
+    }
+
+    return null;
+  }
+
+  void _showColumnDragFeedbackOverlay() {
+    if (_columnDragFeedbackOverlay != null) {
+      return;
+    }
+
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) {
+      return;
+    }
+
+    _columnDragFeedbackOverlay = OverlayEntry(
+      builder: (overlayContext) {
+        final column = _draggedColumn;
+        final globalPosition = _latestColumnDragPosition;
+        if (column == null || globalPosition == null) {
+          return const SizedBox.shrink();
+        }
+
+        final dimensions = AgusThemeData.dimensionsOf(overlayContext);
+        final overlayBox = overlay.context.findRenderObject() as RenderBox?;
+        final overlayPosition =
+            overlayBox?.globalToLocal(globalPosition) ?? globalPosition;
+
+        return Positioned(
+          left: overlayPosition.dx + 12,
+          top: overlayPosition.dy - dimensions.treeRowHeight / 2,
+          child: IgnorePointer(
+            child: _TreeColumnDragFeedback(
+              column: column,
+              width: _widthFor(column),
+            ),
+          ),
+        );
+      },
+    );
+    overlay.insert(_columnDragFeedbackOverlay!);
+  }
+
+  void _hideColumnDragFeedbackOverlay() {
+    _columnDragFeedbackOverlay?.remove();
+    _columnDragFeedbackOverlay = null;
+  }
+
+  AgusTreeColumn? get _draggedColumn {
+    final draggedColumnId = _draggedColumnId;
+    if (draggedColumnId == null) {
+      return null;
+    }
+
+    for (final column in widget.columns) {
+      if (column.id == draggedColumnId) {
+        return column;
+      }
+    }
+
+    return null;
+  }
+
   void _handleHorizontalScroll() {
     if (_horizontalController.offset == _horizontalOffset) {
       return;
@@ -591,6 +812,16 @@ class _VisibleTreeRow {
 
   final AgusTreeNode node;
   final int depth;
+}
+
+enum _TreeColumnDropSide { before, after }
+
+@immutable
+class _TreeColumnDropIntent {
+  const _TreeColumnDropIntent({required this.targetId, required this.side});
+
+  final String targetId;
+  final _TreeColumnDropSide side;
 }
 
 class _TreeRowView extends StatelessWidget {
@@ -1108,8 +1339,16 @@ class _TreeHeaderRow extends StatelessWidget {
     required this.horizontalController,
     required this.scrollableWidth,
     required this.labelResizable,
+    required this.columnReorderable,
+    required this.draggedColumnId,
+    required this.columnDropIntent,
     required this.onLabelResizeDelta,
     required this.onColumnResizeDelta,
+    required this.keyForColumn,
+    required this.onColumnDragStart,
+    required this.onColumnDragUpdate,
+    required this.onColumnDragEnd,
+    required this.onColumnDragCancel,
   });
 
   final String label;
@@ -1119,8 +1358,16 @@ class _TreeHeaderRow extends StatelessWidget {
   final ScrollController horizontalController;
   final double scrollableWidth;
   final bool labelResizable;
+  final bool columnReorderable;
+  final String? draggedColumnId;
+  final _TreeColumnDropIntent? columnDropIntent;
   final ValueChanged<double> onLabelResizeDelta;
   final void Function(AgusTreeColumn column, double delta) onColumnResizeDelta;
+  final GlobalKey Function(String columnId) keyForColumn;
+  final void Function(String columnId, Offset globalPosition) onColumnDragStart;
+  final ValueChanged<Offset> onColumnDragUpdate;
+  final VoidCallback onColumnDragEnd;
+  final VoidCallback onColumnDragCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -1179,11 +1426,7 @@ class _TreeHeaderRow extends StatelessWidget {
                     child: Row(
                       children: [
                         for (var index = 0; index < columns.length; index++)
-                          _TreeHeaderMetricCell(
-                            column: columns[index],
-                            width: columnWidths[index],
-                            onResizeDelta: onColumnResizeDelta,
-                          ),
+                          _buildMetricColumn(index),
                       ],
                     ),
                   ),
@@ -1191,6 +1434,147 @@ class _TreeHeaderRow extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricColumn(int index) {
+    final column = columns[index];
+    final cell = _TreeHeaderMetricCell(
+      column: column,
+      width: columnWidths[index],
+      onResizeDelta: onColumnResizeDelta,
+    );
+    final keyedCell = KeyedSubtree(key: keyForColumn(column.id), child: cell);
+
+    if (!columnReorderable) {
+      return keyedCell;
+    }
+
+    final dropSide = columnDropIntent?.targetId == column.id
+        ? columnDropIntent?.side
+        : null;
+
+    return _TreeColumnDropIndicator(
+      active: dropSide != null && draggedColumnId != column.id,
+      side: dropSide ?? _TreeColumnDropSide.before,
+      targetId: column.id,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (details) =>
+            onColumnDragStart(column.id, details.globalPosition),
+        onHorizontalDragUpdate: (details) =>
+            onColumnDragUpdate(details.globalPosition),
+        onHorizontalDragEnd: (_) => onColumnDragEnd(),
+        onHorizontalDragCancel: onColumnDragCancel,
+        child: Opacity(
+          opacity: draggedColumnId == column.id ? 0.35 : 1,
+          child: keyedCell,
+        ),
+      ),
+    );
+  }
+}
+
+class _TreeColumnDropIndicator extends StatelessWidget {
+  const _TreeColumnDropIndicator({
+    required this.active,
+    required this.side,
+    required this.targetId,
+    required this.child,
+  });
+
+  final bool active;
+  final _TreeColumnDropSide side;
+  final String targetId;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AgusThemeData.colorsOf(context);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        if (active)
+          Positioned(
+            key: ValueKey<String>(
+              'agus-tree-column-drop-$targetId-${side.name}',
+            ),
+            top: 3,
+            bottom: 3,
+            left: side == _TreeColumnDropSide.before ? -1.5 : null,
+            right: side == _TreeColumnDropSide.after ? -1.5 : null,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.focusBorder,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.focusBorder.withValues(alpha: 0.65),
+                    blurRadius: 6,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: const SizedBox(width: 3),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _TreeColumnDragFeedback extends StatelessWidget {
+  const _TreeColumnDragFeedback({required this.column, required this.width});
+
+  final AgusTreeColumn column;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AgusThemeData.colorsOf(context);
+    final dimensions = AgusThemeData.dimensionsOf(context);
+
+    return Material(
+      key: const ValueKey<String>('agus-tree-column-drag-feedback'),
+      type: MaterialType.transparency,
+      child: Opacity(
+        opacity: 0.92,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.sideBarBackground,
+            border: Border.all(color: colors.focusBorder),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: SizedBox(
+            width: width,
+            height: dimensions.treeRowHeight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Align(
+                alignment: _alignmentFor(column.alignment),
+                child: Text(
+                  column.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colors.sideBarForeground.withValues(alpha: 0.8),
+                    letterSpacing: 0.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

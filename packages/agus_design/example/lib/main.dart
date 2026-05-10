@@ -61,6 +61,35 @@ class _KitchenSinkWorkbenchState extends State<KitchenSinkWorkbench> {
   bool showPrimarySidebar = true;
   bool showSecondarySidebar = true;
   bool showPanel = true;
+  List<AgusEditorTab> editorTabs = const [
+    AgusEditorTab(
+      id: 'plan',
+      label: 'PLAN.md',
+      icon: Icons.description,
+      dirty: true,
+    ),
+    AgusEditorTab(
+      id: 'theme',
+      label: 'agus_theme_data.dart',
+      icon: Icons.code,
+      pinned: true,
+    ),
+    AgusEditorTab(
+      id: 'settings',
+      label: 'settings_schema.dart',
+      icon: Icons.code,
+      preview: true,
+    ),
+    AgusEditorTab(
+      id: 'workbench',
+      label: 'agus_workbench.dart',
+      icon: Icons.code,
+    ),
+  ];
+
+  List<AgusTreeColumn> treeColumns = List<AgusTreeColumn>.from(
+    agusMetricTreeColumns,
+  );
 
   late List<AgusTreeNode> sceneNodes;
   late Set<String> expandedTreeIds;
@@ -291,12 +320,13 @@ class _KitchenSinkWorkbenchState extends State<KitchenSinkWorkbench> {
           title: 'Scene Graph',
           child: AgusTreeView(
             labelColumnTitle: 'Layer',
-            columns: agusMetricTreeColumns,
+            columns: treeColumns,
             nodes: sceneNodes,
             expandedIds: expandedTreeIds,
             selectionMode: AgusTreeSelectionMode.multiple,
             selectedIds: selectedSceneNodeIds,
             selectedId: selectedSceneNodeId,
+            onColumnReorder: (columns) => setState(() => treeColumns = columns),
             onSelected: (id) => setState(() => selectedSceneNodeId = id),
             onSelectionChanged: (ids) =>
                 setState(() => selectedSceneNodeIds = ids),
@@ -427,31 +457,8 @@ class _KitchenSinkWorkbenchState extends State<KitchenSinkWorkbench> {
           selectedId: selectedTab,
           onSelected: (id) => setState(() => selectedTab = id),
           onClose: (id) => setState(() => selectedTab = 'plan'),
-          tabs: const [
-            AgusEditorTab(
-              id: 'plan',
-              label: 'PLAN.md',
-              icon: Icons.description,
-              dirty: true,
-            ),
-            AgusEditorTab(
-              id: 'theme',
-              label: 'agus_theme_data.dart',
-              icon: Icons.code,
-              pinned: true,
-            ),
-            AgusEditorTab(
-              id: 'settings',
-              label: 'settings_schema.dart',
-              icon: Icons.code,
-              preview: true,
-            ),
-            AgusEditorTab(
-              id: 'workbench',
-              label: 'agus_workbench.dart',
-              icon: Icons.code,
-            ),
-          ],
+          onReorder: (tabs) => setState(() => editorTabs = tabs),
+          tabs: editorTabs,
         ),
         Expanded(
           child: AgusEditorHost(

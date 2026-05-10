@@ -193,4 +193,157 @@ void main() {
     expect(scrollView.scrollDirection, Axis.horizontal);
     expect(find.byType(Listener), findsWidgets);
   });
+
+  testWidgets('editor tab bar reorders a first tab to the max boundary', (
+    tester,
+  ) async {
+    List<String>? reorderedIds;
+
+    await pumpAgusWidget(
+      tester,
+      AgusEditorTabBar(
+        selectedId: 'a',
+        onReorder: (tabs) {
+          reorderedIds = [for (final tab in tabs) tab.id];
+        },
+        tabs: const [
+          AgusEditorTab(id: 'a', label: 'Tab A'),
+          AgusEditorTab(id: 'b', label: 'Tab B'),
+          AgusEditorTab(id: 'c', label: 'Tab C'),
+        ],
+      ),
+      size: const Size(500, 80),
+    );
+    await tester.pumpAndSettle();
+
+    final firstTabCenter = tester.getCenter(find.text('Tab A'));
+    final lastTabRect = tester.getRect(find.text('Tab C'));
+    final gesture = await tester.startGesture(firstTabCenter);
+    await tester.pump();
+    await gesture.moveTo(Offset(lastTabRect.right + 16, lastTabRect.center.dy));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(reorderedIds, ['b', 'c', 'a']);
+  });
+
+  testWidgets('editor tab bar shows feedback and side-aware drop marker', (
+    tester,
+  ) async {
+    await pumpAgusWidget(
+      tester,
+      AgusEditorTabBar(
+        selectedId: 'a',
+        onReorder: (_) {},
+        tabs: const [
+          AgusEditorTab(id: 'a', label: 'Tab A'),
+          AgusEditorTab(id: 'b', label: 'Tab B'),
+          AgusEditorTab(id: 'c', label: 'Tab C'),
+        ],
+      ),
+      size: const Size(500, 80),
+    );
+    await tester.pumpAndSettle();
+
+    final firstTabCenter = tester.getCenter(find.text('Tab A'));
+    final lastTabRect = tester.getRect(find.text('Tab C'));
+    final gesture = await tester.startGesture(firstTabCenter);
+    await tester.pump();
+    await gesture.moveTo(Offset(lastTabRect.right - 2, lastTabRect.center.dy));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('agus-editor-tab-drag-feedback')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('agus-editor-tab-drop-c-after')),
+      findsOneWidget,
+    );
+
+    await gesture.moveTo(Offset(lastTabRect.left + 2, lastTabRect.center.dy));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('agus-editor-tab-drop-c-before')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('agus-editor-tab-drop-c-after')),
+      findsNothing,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('editor tab bar reorders a last tab to the min boundary', (
+    tester,
+  ) async {
+    List<String>? reorderedIds;
+
+    await pumpAgusWidget(
+      tester,
+      AgusEditorTabBar(
+        selectedId: 'c',
+        onReorder: (tabs) {
+          reorderedIds = [for (final tab in tabs) tab.id];
+        },
+        tabs: const [
+          AgusEditorTab(id: 'a', label: 'Tab A'),
+          AgusEditorTab(id: 'b', label: 'Tab B'),
+          AgusEditorTab(id: 'c', label: 'Tab C'),
+        ],
+      ),
+      size: const Size(500, 80),
+    );
+    await tester.pumpAndSettle();
+
+    final lastTabCenter = tester.getCenter(find.text('Tab C'));
+    final firstTabRect = tester.getRect(find.text('Tab A'));
+    final gesture = await tester.startGesture(lastTabCenter);
+    await tester.pump();
+    await gesture.moveTo(
+      Offset(firstTabRect.left - 16, firstTabRect.center.dy),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(reorderedIds, ['c', 'a', 'b']);
+  });
+
+  testWidgets('editor tab bar does not reorder when dropped on itself', (
+    tester,
+  ) async {
+    var reorderCount = 0;
+
+    await pumpAgusWidget(
+      tester,
+      AgusEditorTabBar(
+        selectedId: 'b',
+        onReorder: (_) => reorderCount++,
+        tabs: const [
+          AgusEditorTab(id: 'a', label: 'Tab A'),
+          AgusEditorTab(id: 'b', label: 'Tab B'),
+          AgusEditorTab(id: 'c', label: 'Tab C'),
+        ],
+      ),
+      size: const Size(500, 80),
+    );
+    await tester.pumpAndSettle();
+
+    final selectedTabRect = tester.getRect(find.text('Tab B'));
+    final gesture = await tester.startGesture(selectedTabRect.center);
+    await tester.pump();
+    await gesture.moveTo(
+      Offset(selectedTabRect.right - 2, selectedTabRect.center.dy),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(reorderCount, 0);
+  });
 }

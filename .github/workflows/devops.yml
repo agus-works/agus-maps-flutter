@@ -244,6 +244,9 @@ jobs:
           AGUS_MAPS_BUILD_MODE: contributor
         run: dart run tool/build.dart --no-cache
 
+      - name: Run Workspace Tests
+        run: dart run melos run test --no-select
+
       - name: Ensure Boost Flat Headers
         run: |
           BOOST_DIR="thirdparty/comaps/3party/boost"
@@ -914,6 +917,9 @@ jobs:
         run: |
           dart run tool/build.dart --no-cache
 
+      - name: Run Workspace Tests
+        run: dart run melos run test --no-select
+
       - name: Disk Usage Checkpoint (Post-Bootstrap)
         run: |
           echo "=== Disk Usage (Post-Bootstrap) ==="
@@ -1546,6 +1552,9 @@ jobs:
           dart run tool/build.dart --no-cache
         shell: pwsh
 
+      - name: Run Workspace Tests
+        run: dart run melos run test --no-select
+
       - name: Verify Symbols Atlas
         run: |
           $symbolsRoot = "example\assets\comaps_data\symbols\xxhdpi"
@@ -1916,6 +1925,9 @@ jobs:
           AGUS_MAPS_BUILD_MODE: contributor
         run: |
           dart run tool/build.dart --no-cache
+
+      - name: Run Workspace Tests
+        run: dart run melos run test --no-select
 
       # ======================================================================
       # Build Linux Native Libraries

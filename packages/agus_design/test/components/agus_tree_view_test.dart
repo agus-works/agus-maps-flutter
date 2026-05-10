@@ -181,6 +181,212 @@ void main() {
     expect(find.text('128'), findsOneWidget);
   });
 
+  testWidgets(
+    'tree view reorders metric columns and keeps row values with headers',
+    (tester) async {
+      List<AgusTreeColumn> columns = const [
+        AgusTreeColumn(id: 'features', label: 'Features', width: 88),
+        AgusTreeColumn(id: 'segments', label: 'Segments', width: 88),
+        AgusTreeColumn(id: 'vertices', label: 'Vertices', width: 88),
+      ];
+      List<String>? reorderedIds;
+
+      await pumpAgusWidget(
+        tester,
+        StatefulBuilder(
+          builder: (context, setState) {
+            return SizedBox(
+              width: 520,
+              height: 140,
+              child: AgusTreeView(
+                labelColumnTitle: 'Layer',
+                columns: columns,
+                nodes: const [
+                  AgusTreeNode(
+                    id: 'root',
+                    label: 'Root layer',
+                    icon: Icons.folder,
+                    columnValues: {
+                      'features': '4',
+                      'segments': '24',
+                      'vertices': '128',
+                    },
+                  ),
+                ],
+                onColumnReorder: (nextColumns) {
+                  reorderedIds = [for (final column in nextColumns) column.id];
+                  setState(() => columns = nextColumns);
+                },
+              ),
+            );
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final verticesHeaderCenter = tester.getCenter(find.text('Vertices'));
+      final featuresHeaderRect = tester.getRect(find.text('Features'));
+      final gesture = await tester.startGesture(verticesHeaderCenter);
+      await tester.pump();
+      await gesture.moveTo(
+        Offset(featuresHeaderRect.left - 12, featuresHeaderRect.center.dy),
+      );
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(reorderedIds, ['vertices', 'features', 'segments']);
+
+      final layerRect = tester.getRect(find.text('Layer'));
+      final verticesRect = tester.getRect(find.text('Vertices'));
+      final featuresRect = tester.getRect(find.text('Features'));
+      final segmentsRect = tester.getRect(find.text('Segments'));
+      expect(layerRect.left, lessThan(verticesRect.left));
+      expect(verticesRect.left, lessThan(featuresRect.left));
+      expect(featuresRect.left, lessThan(segmentsRect.left));
+
+      final verticesValueRect = tester.getRect(find.text('128'));
+      final featuresValueRect = tester.getRect(find.text('4'));
+      final segmentsValueRect = tester.getRect(find.text('24'));
+      expect(verticesValueRect.left, lessThan(featuresValueRect.left));
+      expect(featuresValueRect.left, lessThan(segmentsValueRect.left));
+    },
+  );
+
+  testWidgets('tree view keeps label column locked when metrics move left', (
+    tester,
+  ) async {
+    List<AgusTreeColumn> columns = const [
+      AgusTreeColumn(id: 'features', label: 'Features', width: 88),
+      AgusTreeColumn(id: 'segments', label: 'Segments', width: 88),
+      AgusTreeColumn(id: 'vertices', label: 'Vertices', width: 88),
+    ];
+    List<String>? reorderedIds;
+
+    await pumpAgusWidget(
+      tester,
+      StatefulBuilder(
+        builder: (context, setState) {
+          return SizedBox(
+            width: 520,
+            height: 140,
+            child: AgusTreeView(
+              labelColumnTitle: 'Layer',
+              columns: columns,
+              nodes: const [
+                AgusTreeNode(
+                  id: 'root',
+                  label: 'Root layer',
+                  icon: Icons.folder,
+                  columnValues: {
+                    'features': '4',
+                    'segments': '24',
+                    'vertices': '128',
+                  },
+                ),
+              ],
+              onColumnReorder: (nextColumns) {
+                reorderedIds = [for (final column in nextColumns) column.id];
+                setState(() => columns = nextColumns);
+              },
+            ),
+          );
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final segmentsHeaderCenter = tester.getCenter(find.text('Segments'));
+    final labelHeaderRect = tester.getRect(find.text('Layer'));
+    final gesture = await tester.startGesture(segmentsHeaderCenter);
+    await tester.pump();
+    await gesture.moveTo(labelHeaderRect.center);
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(reorderedIds, ['segments', 'features', 'vertices']);
+
+    final layerRect = tester.getRect(find.text('Layer'));
+    final segmentsRect = tester.getRect(find.text('Segments'));
+    expect(layerRect.left, lessThan(segmentsRect.left));
+  });
+
+  testWidgets('tree view shows column drag feedback and drop side marker', (
+    tester,
+  ) async {
+    await pumpAgusWidget(
+      tester,
+      SizedBox(
+        width: 520,
+        height: 140,
+        child: AgusTreeView(
+          labelColumnTitle: 'Layer',
+          columns: const [
+            AgusTreeColumn(id: 'features', label: 'Features', width: 88),
+            AgusTreeColumn(id: 'segments', label: 'Segments', width: 88),
+            AgusTreeColumn(id: 'vertices', label: 'Vertices', width: 88),
+          ],
+          nodes: const [
+            AgusTreeNode(
+              id: 'root',
+              label: 'Root layer',
+              icon: Icons.folder,
+              columnValues: {
+                'features': '4',
+                'segments': '24',
+                'vertices': '128',
+              },
+            ),
+          ],
+          onColumnReorder: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final featuresHeaderCenter = tester.getCenter(find.text('Features'));
+    final verticesHeaderRect = tester.getRect(find.text('Vertices'));
+    final gesture = await tester.startGesture(featuresHeaderCenter);
+    await tester.pump();
+    await gesture.moveTo(
+      Offset(verticesHeaderRect.right - 2, verticesHeaderRect.center.dy),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('agus-tree-column-drag-feedback')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('agus-tree-column-drop-vertices-after'),
+      ),
+      findsOneWidget,
+    );
+
+    await gesture.moveTo(
+      Offset(verticesHeaderRect.left + 2, verticesHeaderRect.center.dy),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('agus-tree-column-drop-vertices-before'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('agus-tree-column-drop-vertices-after'),
+      ),
+      findsNothing,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('tree view clips deep label affordances in narrow widths', (
     tester,
   ) async {
