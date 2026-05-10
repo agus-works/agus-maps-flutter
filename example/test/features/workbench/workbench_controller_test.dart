@@ -55,4 +55,44 @@ void main() {
     expect(controller.state.secondarySideBarWidth, 560);
     expect(controller.state.panelHeight, 520);
   });
+
+  test('tab reordering normalizes ids and preserves active selections', () {
+    final controller = WorkbenchController();
+
+    controller.selectEditorTab(WorkbenchEditorTab.map);
+    controller.selectPanelTab(WorkbenchPanelTab.debugConsole);
+    controller
+        .selectSecondarySideBarTab(WorkbenchSecondarySideBarTab.inspector);
+
+    controller.reorderEditorTabs([
+      WorkbenchEditorTab.map,
+      WorkbenchEditorTab.map,
+    ]);
+    controller.reorderPanelTabs([
+      WorkbenchPanelTab.debugConsole,
+      WorkbenchPanelTab.pointOfInterest,
+    ]);
+    controller.reorderSecondarySideBarTabs([
+      WorkbenchSecondarySideBarTab.inspector,
+    ]);
+
+    expect(controller.state.editorTabOrder, [
+      WorkbenchEditorTab.map,
+      WorkbenchEditorTab.blank,
+    ]);
+    expect(controller.state.panelTabOrder, [
+      WorkbenchPanelTab.debugConsole,
+      WorkbenchPanelTab.pointOfInterest,
+    ]);
+    expect(controller.state.secondarySideBarTabOrder, [
+      WorkbenchSecondarySideBarTab.inspector,
+      WorkbenchSecondarySideBarTab.properties,
+    ]);
+    expect(controller.state.activeEditorTab, WorkbenchEditorTab.map);
+    expect(controller.state.activePanelTab, WorkbenchPanelTab.debugConsole);
+    expect(
+      controller.state.activeSecondarySideBarTab,
+      WorkbenchSecondarySideBarTab.inspector,
+    );
+  });
 }

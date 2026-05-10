@@ -33,10 +33,12 @@ void main() {
           ],
         ),
       ),
+      size: const Size(1600, 900),
     );
 
     expect(find.byType(AgusWorkbench), findsOneWidget);
-    expect(find.byType(AgusPanelTabBar), findsNWidgets(2));
+    expect(find.byType(AgusPanelTabBar), findsNothing);
+    expect(find.byType(AgusEditorTabBar), findsNWidgets(3));
     expect(find.text('activity:explorer'), findsOneWidget);
     expect(find.text('editor:map'), findsOneWidget);
     expect(find.text('panel:pointOfInterest'), findsOneWidget);
@@ -51,27 +53,82 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.state.primarySideBarVisible, isFalse);
 
-    await tester.tap(find.text('Blank'));
+    await tester.tap(_tabText(0, 'Blank'));
     await tester.pumpAndSettle();
     expect(controller.state.activeEditorTab, WorkbenchEditorTab.blank);
     expect(find.text('editor:blank'), findsOneWidget);
 
-    await tester.tap(find.text('DEBUG CONSOLE'));
+    await tester.tap(_tabText(1, 'Debug Console'));
     await tester.pumpAndSettle();
     expect(controller.state.activePanelTab, WorkbenchPanelTab.debugConsole);
     expect(controller.state.panelVisible, isTrue);
     expect(find.text('panel:debugConsole'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Hide Panel'));
-    await tester.pumpAndSettle();
-    expect(controller.state.panelVisible, isFalse);
-
-    await tester.tap(find.text('INSPECTOR'));
+    controller
+        .selectSecondarySideBarTab(WorkbenchSecondarySideBarTab.inspector);
     await tester.pumpAndSettle();
     expect(
       controller.state.activeSecondarySideBarTab,
       WorkbenchSecondarySideBarTab.inspector,
     );
     expect(find.text('side:inspector'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Hide Panel'));
+    await tester.pumpAndSettle();
+    expect(controller.state.panelVisible, isFalse);
   });
+
+  testWidgets('workbench renders reordered tabs with content keyed by tab id', (
+    tester,
+  ) async {
+    final controller = WorkbenchController(
+      state: const WorkbenchLayoutState(
+        activeEditorTab: WorkbenchEditorTab.map,
+        activePanelTab: WorkbenchPanelTab.pointOfInterest,
+        activeSecondarySideBarTab: WorkbenchSecondarySideBarTab.properties,
+        editorTabOrder: [WorkbenchEditorTab.map, WorkbenchEditorTab.blank],
+        panelTabOrder: [
+          WorkbenchPanelTab.debugConsole,
+          WorkbenchPanelTab.pointOfInterest,
+        ],
+        secondarySideBarTabOrder: [
+          WorkbenchSecondarySideBarTab.inspector,
+          WorkbenchSecondarySideBarTab.properties,
+        ],
+      ),
+    );
+
+    await pumpExampleWidget(
+      tester,
+      VSCodeWorkbench(
+        controller: controller,
+        activityBuilder: (_, activity) => Text('activity:${activity.name}'),
+        editorBuilder: (_, tab) => Text('editor:${tab.name}'),
+        panelBuilder: (_, tab) => Text('panel:${tab.name}'),
+        secondarySideBarBuilder: (_, tab) => Text('side:${tab.name}'),
+      ),
+      size: const Size(1600, 900),
+    );
+
+    final mapRect = tester.getRect(_tabText(0, 'Map'));
+    final blankRect = tester.getRect(_tabText(0, 'Blank'));
+    final debugRect = tester.getRect(_tabText(1, 'Debug Console'));
+    final pointRect = tester.getRect(_tabText(1, 'Point of Interest'));
+    final inspectorRect = tester.getRect(_tabText(2, 'Inspector'));
+    final propertiesRect = tester.getRect(_tabText(2, 'Properties'));
+
+    expect(mapRect.left, lessThan(blankRect.left));
+    expect(debugRect.left, lessThan(pointRect.left));
+    expect(inspectorRect.left, lessThan(propertiesRect.left));
+    expect(find.text('editor:map'), findsOneWidget);
+    expect(find.text('panel:pointOfInterest'), findsOneWidget);
+    expect(find.text('side:properties'), findsOneWidget);
+  });
+}
+
+Finder _tabText(int tabBarIndex, String text) {
+  return find.descendant(
+    of: find.byType(AgusEditorTabBar).at(tabBarIndex),
+    matching: find.text(text),
+  );
 }

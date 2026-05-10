@@ -131,8 +131,13 @@ class VSCodeWorkbench extends StatelessWidget {
 
   Widget _buildEditor(BuildContext context, WorkbenchLayoutState state) {
     final tabs = [
-      for (final tab in WorkbenchEditorTab.values)
-        AgusEditorTab(id: tab.id, label: tab.label, icon: tab.icon),
+      for (final tab in state.editorTabOrder)
+        AgusEditorTab(
+          id: tab.id,
+          label: tab.label,
+          icon: tab.icon,
+          closable: false,
+        ),
     ];
 
     return AgusEditorHost(
@@ -145,6 +150,11 @@ class VSCodeWorkbench extends StatelessWidget {
             selectedId: state.activeEditorTab.id,
             onSelected: (id) {
               controller.selectEditorTab(_workbenchEditorTabById(id));
+            },
+            onReorder: (tabs) {
+              controller.reorderEditorTabs([
+                for (final tab in tabs) _workbenchEditorTabById(tab.id),
+              ]);
             },
           ),
           Expanded(
@@ -160,16 +170,30 @@ class VSCodeWorkbench extends StatelessWidget {
 
   Widget _buildBottomPanel(BuildContext context, WorkbenchLayoutState state) {
     return AgusPane(
-      header: AgusPanelTabBar(
-        tabs: [
-          for (final tab in WorkbenchPanelTab.values)
-            AgusPanelTab(id: tab.id, label: tab.label, icon: tab.icon),
-        ],
-        selectedId: state.activePanelTab.id,
-        onSelected: (id) {
-          controller.selectPanelTab(_workbenchPanelTabById(id));
-        },
-        trailing: [
+      header: Row(
+        children: [
+          Expanded(
+            child: AgusEditorTabBar(
+              tabs: [
+                for (final tab in state.panelTabOrder)
+                  AgusEditorTab(
+                    id: tab.id,
+                    label: tab.label,
+                    icon: tab.icon,
+                    closable: false,
+                  ),
+              ],
+              selectedId: state.activePanelTab.id,
+              onSelected: (id) {
+                controller.selectPanelTab(_workbenchPanelTabById(id));
+              },
+              onReorder: (tabs) {
+                controller.reorderPanelTabs([
+                  for (final tab in tabs) _workbenchPanelTabById(tab.id),
+                ]);
+              },
+            ),
+          ),
           _PaneActionButton(
             tooltip: 'Hide Panel',
             icon: Icons.close,
@@ -189,18 +213,33 @@ class VSCodeWorkbench extends StatelessWidget {
     WorkbenchLayoutState state,
   ) {
     return AgusPane(
-      header: AgusPanelTabBar(
-        tabs: [
-          for (final tab in WorkbenchSecondarySideBarTab.values)
-            AgusPanelTab(id: tab.id, label: tab.label, icon: tab.icon),
-        ],
-        selectedId: state.activeSecondarySideBarTab.id,
-        onSelected: (id) {
-          controller.selectSecondarySideBarTab(
-            _workbenchSecondarySideBarTabById(id),
-          );
-        },
-        trailing: [
+      header: Row(
+        children: [
+          Expanded(
+            child: AgusEditorTabBar(
+              tabs: [
+                for (final tab in state.secondarySideBarTabOrder)
+                  AgusEditorTab(
+                    id: tab.id,
+                    label: tab.label,
+                    icon: tab.icon,
+                    closable: false,
+                  ),
+              ],
+              selectedId: state.activeSecondarySideBarTab.id,
+              onSelected: (id) {
+                controller.selectSecondarySideBarTab(
+                  _workbenchSecondarySideBarTabById(id),
+                );
+              },
+              onReorder: (tabs) {
+                controller.reorderSecondarySideBarTabs([
+                  for (final tab in tabs)
+                    _workbenchSecondarySideBarTabById(tab.id),
+                ]);
+              },
+            ),
+          ),
           _PaneActionButton(
             tooltip: 'Hide Secondary Side Bar',
             icon: Icons.close,

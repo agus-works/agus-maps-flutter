@@ -8,6 +8,7 @@ export 'src/components/agus_sidebar.dart';
 export 'src/components/agus_status_bar.dart';
 export 'src/components/agus_tree_view.dart';
 export 'src/components/agus_title_bar.dart';
+export 'src/components/agus_view_container.dart';
 export 'src/editor/agus_editor_host.dart';
 export 'src/layout/agus_split_view.dart';
 export 'src/layout/agus_workbench.dart';

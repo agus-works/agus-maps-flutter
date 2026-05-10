@@ -43,6 +43,18 @@ class WorkbenchLayoutState {
     this.activeEditorTab = WorkbenchEditorTab.map,
     this.activePanelTab = WorkbenchPanelTab.pointOfInterest,
     this.activeSecondarySideBarTab = WorkbenchSecondarySideBarTab.properties,
+    this.editorTabOrder = const [
+      WorkbenchEditorTab.blank,
+      WorkbenchEditorTab.map,
+    ],
+    this.panelTabOrder = const [
+      WorkbenchPanelTab.pointOfInterest,
+      WorkbenchPanelTab.debugConsole,
+    ],
+    this.secondarySideBarTabOrder = const [
+      WorkbenchSecondarySideBarTab.properties,
+      WorkbenchSecondarySideBarTab.inspector,
+    ],
     this.primarySideBarWidth = 340,
     this.secondarySideBarWidth = 320,
     this.panelHeight = 260,
@@ -69,6 +81,15 @@ class WorkbenchLayoutState {
   /// Active Secondary Side Bar tab.
   final WorkbenchSecondarySideBarTab activeSecondarySideBarTab;
 
+  /// Current visual order for Editor Area tabs.
+  final List<WorkbenchEditorTab> editorTabOrder;
+
+  /// Current visual order for bottom Panel tabs.
+  final List<WorkbenchPanelTab> panelTabOrder;
+
+  /// Current visual order for Secondary Side Bar tabs.
+  final List<WorkbenchSecondarySideBarTab> secondarySideBarTabOrder;
+
   /// Width of the Primary Side Bar in logical pixels.
   final double primarySideBarWidth;
 
@@ -87,6 +108,9 @@ class WorkbenchLayoutState {
     WorkbenchEditorTab? activeEditorTab,
     WorkbenchPanelTab? activePanelTab,
     WorkbenchSecondarySideBarTab? activeSecondarySideBarTab,
+    List<WorkbenchEditorTab>? editorTabOrder,
+    List<WorkbenchPanelTab>? panelTabOrder,
+    List<WorkbenchSecondarySideBarTab>? secondarySideBarTabOrder,
     double? primarySideBarWidth,
     double? secondarySideBarWidth,
     double? panelHeight,
@@ -102,6 +126,10 @@ class WorkbenchLayoutState {
       activePanelTab: activePanelTab ?? this.activePanelTab,
       activeSecondarySideBarTab:
           activeSecondarySideBarTab ?? this.activeSecondarySideBarTab,
+      editorTabOrder: editorTabOrder ?? this.editorTabOrder,
+      panelTabOrder: panelTabOrder ?? this.panelTabOrder,
+      secondarySideBarTabOrder:
+          secondarySideBarTabOrder ?? this.secondarySideBarTabOrder,
       primarySideBarWidth: primarySideBarWidth ?? this.primarySideBarWidth,
       secondarySideBarWidth:
           secondarySideBarWidth ?? this.secondarySideBarWidth,
@@ -147,9 +175,27 @@ class WorkbenchController extends ChangeNotifier {
     _setState(_state.copyWith(activeEditorTab: tab));
   }
 
+  /// Reorders Editor Area tabs while preserving all known tabs exactly once.
+  void reorderEditorTabs(List<WorkbenchEditorTab> tabs) {
+    _setState(
+      _state.copyWith(
+        editorTabOrder: _normalizedOrder(tabs, WorkbenchEditorTab.values),
+      ),
+    );
+  }
+
   /// Selects a bottom Panel tab and ensures the Panel is visible.
   void selectPanelTab(WorkbenchPanelTab tab) {
     _setState(_state.copyWith(activePanelTab: tab, panelVisible: true));
+  }
+
+  /// Reorders bottom Panel tabs while preserving all known tabs exactly once.
+  void reorderPanelTabs(List<WorkbenchPanelTab> tabs) {
+    _setState(
+      _state.copyWith(
+        panelTabOrder: _normalizedOrder(tabs, WorkbenchPanelTab.values),
+      ),
+    );
   }
 
   /// Selects a Secondary Side Bar tab and ensures the side bar is visible.
@@ -158,6 +204,18 @@ class WorkbenchController extends ChangeNotifier {
       _state.copyWith(
         activeSecondarySideBarTab: tab,
         secondarySideBarVisible: true,
+      ),
+    );
+  }
+
+  /// Reorders Secondary Side Bar tabs while preserving all known tabs once.
+  void reorderSecondarySideBarTabs(List<WorkbenchSecondarySideBarTab> tabs) {
+    _setState(
+      _state.copyWith(
+        secondarySideBarTabOrder: _normalizedOrder(
+          tabs,
+          WorkbenchSecondarySideBarTab.values,
+        ),
       ),
     );
   }
@@ -229,5 +287,20 @@ class WorkbenchController extends ChangeNotifier {
 
   static double _clamp(double value, double min, double max) {
     return math.max(min, math.min(max, value));
+  }
+
+  static List<T> _normalizedOrder<T>(List<T> nextOrder, List<T> defaultOrder) {
+    final nextItems = <T>[];
+    for (final item in nextOrder) {
+      if (defaultOrder.contains(item) && !nextItems.contains(item)) {
+        nextItems.add(item);
+      }
+    }
+    for (final item in defaultOrder) {
+      if (!nextItems.contains(item)) {
+        nextItems.add(item);
+      }
+    }
+    return List.unmodifiable(nextItems);
   }
 }
