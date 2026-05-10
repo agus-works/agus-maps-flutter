@@ -220,6 +220,17 @@ final directories = <_widgetbook.WidgetbookNode>[
             ],
           ),
           _widgetbook.WidgetbookComponent(
+            name: 'AgusViewContainer',
+            useCases: [
+              _widgetbook.WidgetbookUseCase(
+                name: 'View container',
+                builder:
+                    _agus_design_widgetbook_use_cases_components_surfaces_use_cases
+                        .buildAgusViewContainerUseCase,
+              ),
+            ],
+          ),
+          _widgetbook.WidgetbookComponent(
             name: 'AgusViewSection',
             useCases: [
               _widgetbook.WidgetbookUseCase(

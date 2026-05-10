@@ -7,6 +7,12 @@ Future<void> pumpExampleWidget(
   Widget child, {
   Size size = const Size(1200, 800),
 }) {
+  tester.view
+    ..devicePixelRatio = 1
+    ..physicalSize = size;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
   return tester.pumpWidget(
     MaterialApp(
       theme: AgusThemeData.dark().toThemeData(),

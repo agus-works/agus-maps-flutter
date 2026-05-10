@@ -202,6 +202,124 @@ Widget buildAgusViewSectionUseCase(BuildContext context) {
 }
 
 @widgetbook.UseCase(
+  name: 'View container',
+  type: AgusViewContainer,
+  path: '[Components]/surfaces',
+)
+Widget buildAgusViewContainerUseCase(BuildContext context) {
+  final width = context.knobs.int.slider(
+    label: 'Preview width',
+    initialValue: 360,
+    min: 220,
+    max: 520,
+    divisions: 6,
+  );
+  final openEditorsExpanded = context.knobs.boolean(
+    label: 'Open Editors expanded',
+    initialValue: true,
+  );
+  final projectLayersExpanded = context.knobs.boolean(
+    label: 'Project Layers expanded',
+    initialValue: true,
+  );
+  final outlineExpanded = context.knobs.boolean(
+    label: 'Outline expanded',
+    initialValue: false,
+  );
+  final showActions = context.knobs.boolean(
+    label: 'Show view actions',
+    initialValue: true,
+  );
+  final emptyTimeline = context.knobs.boolean(
+    label: 'Empty timeline',
+    initialValue: false,
+  );
+
+  return previewFrame(
+    context,
+    width: width.toDouble(),
+    height: 520,
+    padding: EdgeInsets.zero,
+    child: AgusViewContainer(
+      views: [
+        AgusView(
+          id: 'open-editors',
+          title: 'Open Editors',
+          icon: Icons.file_copy_outlined,
+          countLabel: '2',
+          initiallyExpanded: openEditorsExpanded,
+          child: const Padding(
+            padding: EdgeInsets.all(10),
+            child: Text('map.dart\nsettings_tab.dart'),
+          ),
+        ),
+        AgusView(
+          id: 'project-layers',
+          title: 'Project Layers',
+          icon: Icons.layers_outlined,
+          countLabel: '4',
+          initiallyExpanded: projectLayersExpanded,
+          actions: showActions
+              ? const [
+                  Icon(Icons.add, size: 16),
+                  SizedBox(width: 8),
+                  Icon(Icons.refresh, size: 16),
+                  SizedBox(width: 6),
+                ]
+              : const <Widget>[],
+          child: SizedBox(
+            height: 220,
+            child: TreeViewPreview(
+              key: const ValueKey('view-container-tree'),
+              nodes: buildExplorerTreeDemo(seed: 21).nodes,
+              columns: agusMetricTreeColumns,
+              labelColumnTitle: 'Layer',
+              enableMutations: true,
+            ),
+          ),
+        ),
+        AgusView(
+          id: 'outline',
+          title: 'Outline',
+          icon: Icons.account_tree_outlined,
+          initiallyExpanded: outlineExpanded,
+          child: const Padding(
+            padding: EdgeInsets.all(10),
+            child: Text('SettingsTab\n_buildDesktopWorkbench\n_buildMap'),
+          ),
+        ),
+        AgusView(
+          id: 'timeline',
+          title: 'Timeline',
+          icon: Icons.history,
+          countLabel: emptyTimeline ? '0' : '3',
+          initiallyExpanded: !emptyTimeline,
+          child: emptyTimeline
+              ? const AgusEmptyState(
+                  title: 'No timeline entries',
+                  message: 'Changes appear here when files are edited.',
+                )
+              : const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: Text('Created layer\nRenamed route\nUpdated style'),
+                ),
+        ),
+        const AgusView(
+          id: 'npm-scripts',
+          title: 'NPM Scripts',
+          icon: Icons.terminal,
+          initiallyExpanded: false,
+          child: Padding(
+            padding: EdgeInsets.all(10),
+            child: Text('build\nlint\ntest'),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+@widgetbook.UseCase(
   name: 'Editor host',
   type: AgusEditorHost,
   path: '[Components]/surfaces',

@@ -237,6 +237,11 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       const <agus_maps_flutter.AgusLayer>[];
   Map<String, List<agus_maps_flutter.AgusLayerFeature>> _featuresByLayer =
       const <String, List<agus_maps_flutter.AgusLayerFeature>>{};
+  List<AgusTreeColumn> _desktopLayerColumns = const [
+    AgusTreeColumn(id: 'kind', label: 'Kind', width: 82),
+    AgusTreeColumn(id: 'features', label: 'Features', width: 72),
+    AgusTreeColumn(id: 'z', label: 'Z', width: 52),
+  ];
   String? _selectedFeatureKey;
   String _message = '';
   bool _busy = false;
@@ -633,36 +638,66 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: ListView(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(8),
-              children: [
-                _DesktopDrawSessionCard(
-                  activeTool: widget.activeDrawTool ??
-                      agus_maps_flutter.AgusDrawTool.none,
-                  hasEditableLayer: _layers
-                      .any((layer) => layer.layerId == widget.activeLayerId),
-                  activeLayerName: _activeLayerName(),
-                  onToolChanged: widget.onDrawToolChanged,
-                ),
-                const SizedBox(height: 12),
-                _CompactSectionLabel(
-                  label: 'Project layers',
-                  countLabel: '$projectLayerCount',
-                ),
-                const SizedBox(height: 6),
-                _buildDesktopLayerGrid(context),
-                if (_message.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _message,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+              child: AgusViewContainer(
+                views: [
+                  AgusView(
+                    id: 'layer-manager',
+                    title: 'Layer Manager',
+                    icon: Icons.edit_location_alt_outlined,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _DesktopDrawSessionCard(
+                        activeTool: widget.activeDrawTool ??
+                            agus_maps_flutter.AgusDrawTool.none,
+                        hasEditableLayer: _layers.any(
+                          (layer) => layer.layerId == widget.activeLayerId,
+                        ),
+                        activeLayerName: _activeLayerName(),
+                        onToolChanged: widget.onDrawToolChanged,
+                      ),
                     ),
                   ),
+                  AgusView(
+                    id: _projectLayersNodeId,
+                    title: 'Project Layers',
+                    icon: Icons.layers_outlined,
+                    countLabel: '$projectLayerCount',
+                    actions: [
+                      IconButton(
+                        tooltip: 'Create drawing layer',
+                        onPressed: storeReady ? _createLayer : null,
+                        icon: const Icon(Icons.add, size: 16),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 28,
+                          height: 24,
+                        ),
+                      ),
+                    ],
+                    child: _buildDesktopLayerGrid(context),
+                  ),
+                  if (_message.isNotEmpty)
+                    AgusView(
+                      id: 'layer-status',
+                      title: 'Status',
+                      icon: Icons.info_outline,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Text(
+                          _message,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
-              ],
+              ),
             ),
           ),
         ],
@@ -886,14 +921,13 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
                 ? null
                 : 'layer:${widget.activeLayerId}'),
         expandedIds: _expandedNodes,
-        columns: const [
-          AgusTreeColumn(id: 'kind', label: 'Kind', width: 82),
-          AgusTreeColumn(id: 'features', label: 'Features', width: 72),
-          AgusTreeColumn(id: 'z', label: 'Z', width: 52),
-        ],
+        columns: _desktopLayerColumns,
         nodes: _desktopLayerTreeNodes(),
         onSelected: _selectDesktopLayerTreeNode,
         onToggle: _toggleNode,
+        onColumnReorder: (columns) {
+          setState(() => _desktopLayerColumns = columns);
+        },
         onVisibilityChanged: (id, visibility) {
           unawaited(_setDesktopLayerVisibility(id, visibility));
         },
