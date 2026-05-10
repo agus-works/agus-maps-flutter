@@ -233,3 +233,196 @@ Widget buildAgusEditorHostUseCase(BuildContext context) {
     ),
   );
 }
+
+@widgetbook.UseCase(
+  name: 'Panel tab bar',
+  type: AgusPanelTabBar,
+  path: '[Components]/surfaces',
+)
+Widget buildAgusPanelTabBarUseCase(BuildContext context) {
+  final showIcons = context.knobs.boolean(
+    label: 'Show icons',
+    initialValue: true,
+  );
+  final showClose = context.knobs.boolean(
+    label: 'Show close buttons',
+    initialValue: true,
+  );
+  final selectedId = context.knobs.object.dropdown<String>(
+    label: 'Selected tab',
+    initialOption: 'properties',
+    options: const ['problems', 'properties', 'debug'],
+  );
+
+  return previewFrame(
+    context,
+    width: 520,
+    height: 80,
+    padding: EdgeInsets.zero,
+    child: AgusPanelTabBar(
+      selectedId: selectedId,
+      tabs: [
+        AgusPanelTab(
+          id: 'problems',
+          label: 'Problems',
+          icon: showIcons ? Icons.error_outline : null,
+        ),
+        AgusPanelTab(
+          id: 'properties',
+          label: 'Properties',
+          icon: showIcons ? Icons.list_alt : null,
+          closable: showClose,
+        ),
+        AgusPanelTab(
+          id: 'debug',
+          label: 'Debug Console',
+          icon: showIcons ? Icons.terminal : null,
+          closable: showClose,
+        ),
+      ],
+      trailing: const [
+        Icon(Icons.add, size: 16),
+        SizedBox(width: 8),
+        Icon(Icons.more_horiz, size: 16),
+        SizedBox(width: 8),
+      ],
+    ),
+  );
+}
+
+@widgetbook.UseCase(
+  name: 'Docked pane',
+  type: AgusPane,
+  path: '[Components]/surfaces',
+)
+Widget buildAgusPaneUseCase(BuildContext context) {
+  final title = context.knobs.string(label: 'Title', initialValue: 'Inspector');
+  final subtitle = context.knobs.stringOrNull(
+    label: 'Subtitle',
+    initialValue: 'Selected feature',
+  );
+  final showActions = context.knobs.boolean(
+    label: 'Show actions',
+    initialValue: true,
+  );
+
+  return previewFrame(
+    context,
+    width: 420,
+    height: 320,
+    padding: EdgeInsets.zero,
+    child: AgusPane(
+      title: title,
+      subtitle: subtitle,
+      actions: showActions
+          ? const [
+              Icon(Icons.refresh, size: 16),
+              SizedBox(width: 8),
+              Icon(Icons.more_horiz, size: 16),
+            ]
+          : const <Widget>[],
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: AgusPropertyGrid(
+          rows: const [
+            AgusPropertyRow(
+              name: 'Kind',
+              value: AgusPropertyText('Point of interest'),
+            ),
+            AgusPropertyRow(name: 'Zoom', value: AgusPropertyText('14.0')),
+            AgusPropertyRow(
+              name: 'Coordinates',
+              value: AgusPropertyText('37.7749, -122.4194'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+@widgetbook.UseCase(
+  name: 'Empty state',
+  type: AgusEmptyState,
+  path: '[Components]/surfaces',
+)
+Widget buildAgusEmptyStateUseCase(BuildContext context) {
+  final title = context.knobs.string(
+    label: 'Title',
+    initialValue: 'No layer selected',
+  );
+  final message = context.knobs.stringOrNull(
+    label: 'Message',
+    initialValue: 'Select a project layer to inspect its attributes.',
+  );
+  final showAction = context.knobs.boolean(
+    label: 'Show action',
+    initialValue: true,
+  );
+
+  return previewFrame(
+    context,
+    width: 360,
+    height: 260,
+    padding: EdgeInsets.zero,
+    child: AgusEmptyState(
+      icon: Icons.layers_clear,
+      title: title,
+      message: message,
+      action: showAction
+          ? OutlinedButton(onPressed: () {}, child: const Text('Create layer'))
+          : null,
+    ),
+  );
+}
+
+@widgetbook.UseCase(
+  name: 'Property grid',
+  type: AgusPropertyGrid,
+  path: '[Components]/surfaces',
+)
+Widget buildAgusPropertyGridUseCase(BuildContext context) {
+  final empty = context.knobs.boolean(label: 'Empty', initialValue: false);
+  final nameWidth = context.knobs.double.slider(
+    label: 'Name column width',
+    initialValue: 112,
+    min: 64,
+    max: 180,
+    divisions: 8,
+  );
+  final rowHeight = context.knobs.double.slider(
+    label: 'Row height',
+    initialValue: 22,
+    min: 0,
+    max: 48,
+    divisions: 12,
+  );
+
+  return previewFrame(
+    context,
+    width: 420,
+    height: 220,
+    child: AgusPropertyGrid(
+      nameWidth: nameWidth,
+      rowHeight: rowHeight,
+      emptyLabel: 'No metadata available.',
+      rows: empty
+          ? const <AgusPropertyRow>[]
+          : const [
+              AgusPropertyRow(name: 'Name', value: AgusPropertyText('Market')),
+              AgusPropertyRow(name: 'Visible', value: AgusPropertyText('Yes')),
+              AgusPropertyRow(
+                name: 'Features',
+                value: AgusPropertyText('1,284'),
+              ),
+              AgusPropertyRow(
+                name: 'Bounds',
+                value: AgusPropertyText(
+                  '37.70,-122.52 - 37.83,-122.35',
+                  maxLines: 2,
+                ),
+              ),
+            ],
+    ),
+  );
+}

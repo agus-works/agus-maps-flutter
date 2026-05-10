@@ -1,7 +1,6 @@
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
+import 'package:agus_design/agus_design.dart';
 import 'package:flutter/material.dart';
-
-import '../../shared/widgets/compact_property_grid.dart';
 
 /// Blank placeholder shown in the default non-map editor tab.
 class BlankEditorPlaceholder extends StatelessWidget {
@@ -61,7 +60,7 @@ class PointOfInterestPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final placePage = this.placePage;
     if (placePage == null) {
-      return const _EmptyWorkbenchPanel(
+      return const AgusEmptyState(
         icon: Icons.place_outlined,
         title: 'No point of interest selected',
         message: 'Click a map element to inspect its place-page details here.',
@@ -77,7 +76,7 @@ class PointOfInterestPanel extends StatelessWidget {
           subtitle: placePage.subtitle,
         ),
         const SizedBox(height: 12),
-        CompactPropertyGrid(
+        AgusPropertyGrid(
           rows: _propertyRows([
             ('Title', placePage.title),
             ('Secondary title', placePage.secondaryTitle),
@@ -108,7 +107,7 @@ class DebugConsolePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     if (log.trim().isEmpty) {
-      return const _EmptyWorkbenchPanel(
+      return const AgusEmptyState(
         icon: Icons.terminal,
         title: 'Debug Console',
         message: 'Runtime messages will appear here as the map initializes.',
@@ -146,7 +145,7 @@ class PropertiesSideBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final placePage = this.placePage;
     if (placePage == null) {
-      return const _EmptyWorkbenchPanel(
+      return const AgusEmptyState(
         icon: Icons.view_list_outlined,
         title: 'Properties',
         message: 'Select a map feature to populate this property grid.',
@@ -162,7 +161,7 @@ class PropertiesSideBar extends StatelessWidget {
           subtitle: placePage.title,
         ),
         const SizedBox(height: 12),
-        CompactPropertyGrid(
+        AgusPropertyGrid(
           rows: _propertyRows([
             ('Name', placePage.title),
             ('Category', placePage.subtitle),
@@ -188,7 +187,7 @@ class InspectorSideBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const _EmptyWorkbenchPanel(
+    return const AgusEmptyState(
       icon: Icons.rule_folder_outlined,
       title: 'Inspector',
       message: 'Layer, style, and selection inspector groups will stack here.',
@@ -245,52 +244,13 @@ class _PanelTitle extends StatelessWidget {
   }
 }
 
-class _EmptyWorkbenchPanel extends StatelessWidget {
-  const _EmptyWorkbenchPanel({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 40, color: colorScheme.primary),
-            const SizedBox(height: 12),
-            Text(title, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-List<CompactPropertyRow> _propertyRows(List<(String, String)> rows) {
+List<AgusPropertyRow> _propertyRows(List<(String, String)> rows) {
   return rows
       .where((row) => row.$2.trim().isNotEmpty)
       .map(
-        (row) => CompactPropertyRow(
+        (row) => AgusPropertyRow(
           name: row.$1,
-          value: CompactPropertyText(row.$2),
+          value: AgusPropertyText(row.$2),
         ),
       )
       .toList(growable: false);

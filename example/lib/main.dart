@@ -189,40 +189,6 @@ class _MapEditBanner extends StatelessWidget {
   }
 }
 
-class _DesktopActivityEmptyState extends StatelessWidget {
-  const _DesktopActivityEmptyState({
-    required this.icon,
-    required this.message,
-  });
-
-  final IconData icon;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: colorScheme.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _DesktopSearchResultRow extends StatelessWidget {
   const _DesktopSearchResultRow({
     required this.result,
@@ -2407,7 +2373,59 @@ class _MyAppState extends State<MyApp> {
         editorBuilder: _buildWorkbenchEditor,
         panelBuilder: _buildWorkbenchPanel,
         secondarySideBarBuilder: _buildWorkbenchSecondarySideBar,
+        statusBarBuilder: _buildWorkbenchStatusBar,
       ),
+    );
+  }
+
+  AgusStatusBar _buildWorkbenchStatusBar(
+    BuildContext context,
+    WorkbenchLayoutState state,
+  ) {
+    final layerStoreReady = _duckDBLayerStore != null;
+    final hasError = _status.toLowerCase().startsWith('error');
+
+    return AgusStatusBar(
+      leftItems: [
+        AgusStatusBarItem(
+          id: 'map-status',
+          label: _status,
+          icon: hasError ? Icons.error_outline : Icons.public,
+          progress: !_dataReady && !hasError,
+          severity: hasError
+              ? AgusStatusBarItemSeverity.error
+              : AgusStatusBarItemSeverity.standard,
+        ),
+        AgusStatusBarItem(
+          id: 'activity',
+          label: state.activeActivity.label,
+          icon: state.activeActivity.icon,
+        ),
+        if (_placePage != null)
+          const AgusStatusBarItem(
+            id: 'selection',
+            label: 'Place selected',
+            icon: Icons.place,
+          ),
+      ],
+      rightItems: [
+        AgusStatusBarItem(
+          id: 'layers',
+          label: layerStoreReady ? 'Layers ready' : 'Layers starting',
+          icon: Icons.layers_outlined,
+          progress: !layerStoreReady,
+        ),
+        AgusStatusBarItem(
+          id: 'map-scale',
+          label: '${_mapScale.toStringAsFixed(2)}x',
+          icon: Icons.zoom_in_map,
+        ),
+        AgusStatusBarItem(
+          id: 'editor',
+          label: state.activeEditorTab.label,
+          icon: state.activeEditorTab.icon,
+        ),
+      ],
     );
   }
 
@@ -2961,14 +2979,16 @@ class _MyAppState extends State<MyApp> {
           ),
           Expanded(
             child: !hasQuery
-                ? _DesktopActivityEmptyState(
+                ? const AgusEmptyState(
                     icon: Icons.search,
+                    title: 'Search',
                     message:
                         'Type to search places, coordinates, or favorites.',
                   )
                 : _searchResults.isEmpty
-                    ? _DesktopActivityEmptyState(
+                    ? AgusEmptyState(
                         icon: Icons.manage_search,
+                        title: 'Search results',
                         message: statusText,
                       )
                     : ListView.builder(

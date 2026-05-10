@@ -154,6 +154,50 @@ final directories = <_widgetbook.WidgetbookNode>[
             ],
           ),
           _widgetbook.WidgetbookComponent(
+            name: 'AgusEmptyState',
+            useCases: [
+              _widgetbook.WidgetbookUseCase(
+                name: 'Empty state',
+                builder:
+                    _agus_design_widgetbook_use_cases_components_surfaces_use_cases
+                        .buildAgusEmptyStateUseCase,
+              ),
+            ],
+          ),
+          _widgetbook.WidgetbookComponent(
+            name: 'AgusPane',
+            useCases: [
+              _widgetbook.WidgetbookUseCase(
+                name: 'Docked pane',
+                builder:
+                    _agus_design_widgetbook_use_cases_components_surfaces_use_cases
+                        .buildAgusPaneUseCase,
+              ),
+            ],
+          ),
+          _widgetbook.WidgetbookComponent(
+            name: 'AgusPanelTabBar',
+            useCases: [
+              _widgetbook.WidgetbookUseCase(
+                name: 'Panel tab bar',
+                builder:
+                    _agus_design_widgetbook_use_cases_components_surfaces_use_cases
+                        .buildAgusPanelTabBarUseCase,
+              ),
+            ],
+          ),
+          _widgetbook.WidgetbookComponent(
+            name: 'AgusPropertyGrid',
+            useCases: [
+              _widgetbook.WidgetbookUseCase(
+                name: 'Property grid',
+                builder:
+                    _agus_design_widgetbook_use_cases_components_surfaces_use_cases
+                        .buildAgusPropertyGridUseCase,
+              ),
+            ],
+          ),
+          _widgetbook.WidgetbookComponent(
             name: 'AgusSidebar',
             useCases: [
               _widgetbook.WidgetbookUseCase(

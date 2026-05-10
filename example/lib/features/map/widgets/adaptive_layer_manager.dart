@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:agus_design/agus_design.dart';
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 
 import '../../../shared/adaptive/form_factor.dart';
-import '../../../shared/widgets/compact_property_grid.dart';
 import '../../../shared/widgets/panel_surface.dart';
 
 /// Adaptive layer tree inspired by GIS desktop layer docks.
@@ -133,16 +133,16 @@ class _MapPresentationPropertyGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CompactPropertyGrid(
+    return AgusPropertyGrid(
       rows: [
-        CompactPropertyRow(
+        AgusPropertyRow(
           name: '3D buildings',
           value: _CompactSwitch(
             value: buildings3dEnabled,
             onChanged: onBuildings3dChanged,
           ),
         ),
-        CompactPropertyRow(
+        AgusPropertyRow(
           name: 'Outdoors',
           value: _CompactSwitch(
             value: nativeLayerState.outdoors,
@@ -156,7 +156,7 @@ class _MapPresentationPropertyGrid extends StatelessWidget {
             },
           ),
         ),
-        CompactPropertyRow(
+        AgusPropertyRow(
           name: 'Contour lines',
           value: _CompactSwitch(
             value: nativeLayerState.isolines,
@@ -170,7 +170,7 @@ class _MapPresentationPropertyGrid extends StatelessWidget {
             },
           ),
         ),
-        CompactPropertyRow(
+        AgusPropertyRow(
           name: 'Subway',
           value: _CompactSwitch(
             value: nativeLayerState.subway,
@@ -587,6 +587,9 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
                           },
                           onMoveUp: () => unawaited(_moveLayer(layer, 1)),
                           onMoveDown: () => unawaited(_moveLayer(layer, -1)),
+                          onActivateLayer: () =>
+                              widget.onActiveLayerChanged?.call(layer.layerId),
+                          onDelete: () => unawaited(_deleteLayer(layer)),
                         ),
                     ],
                   ),
@@ -859,65 +862,124 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
   }
 
   Widget _buildDesktopLayerGrid(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     if (_layers.isEmpty) {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(color: colorScheme.outlineVariant),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text(
-            widget.layerStore == null
-                ? widget.layerStoreStatus ??
-                    'Map presentation controls work now. Project data layers appear once the DuckDB store is active.'
-                : 'No project layers yet. Create a Drawing Layer to start editing.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
+      return AgusEmptyState(
+        icon: widget.layerStore == null
+            ? Icons.info_outline
+            : Icons.add_location_alt_outlined,
+        title: widget.layerStore == null ? 'Layer store starting' : 'No layers',
+        message: widget.layerStore == null
+            ? widget.layerStoreStatus ??
+                'Project data layers appear once the DuckDB store is active.'
+            : 'Create a Drawing Layer to start editing.',
       );
     }
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(4),
-        color: colorScheme.surfaceContainerLowest,
-      ),
-      child: Column(
-        children: [
-          _ExplorerHeaderRow(),
-          for (final layer in _layers)
-            _StoredLayerNode(
-              layer: layer,
-              features: _featuresByLayer[layer.layerId] ??
-                  const <agus_maps_flutter.AgusLayerFeature>[],
-              compact: true,
-              active: layer.layerId == widget.activeLayerId,
-              expanded: _expandedNodes.contains('layer:${layer.layerId}'),
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              selectedFeatureKey: _selectedFeatureKey,
-              onToggleExpanded: () => _toggleNode('layer:${layer.layerId}'),
-              onFeatureSelected: _selectFeature,
-              onEditFeature: widget.onEditFeature,
-              onVisibleChanged: (value) {
-                unawaited(_toggleStoredLayer(layer, value));
-              },
-              onMoveUp: () => unawaited(_moveLayer(layer, 1)),
-              onMoveDown: () => unawaited(_moveLayer(layer, -1)),
-              onDelete: () => unawaited(_deleteLayer(layer)),
-              onActivateLayer: () => widget.onActiveLayerChanged?.call(
-                layer.layerId,
-              ),
-            ),
+    return SizedBox(
+      height: 280,
+      child: AgusTreeView(
+        labelColumnTitle: 'Layer',
+        labelColumnWidth: 170,
+        minLabelColumnWidth: 120,
+        selectedId: _selectedFeatureKey ??
+            (widget.activeLayerId == null
+                ? null
+                : 'layer:${widget.activeLayerId}'),
+        expandedIds: _expandedNodes,
+        columns: const [
+          AgusTreeColumn(id: 'kind', label: 'Kind', width: 82),
+          AgusTreeColumn(id: 'features', label: 'Features', width: 72),
+          AgusTreeColumn(id: 'z', label: 'Z', width: 52),
         ],
+        nodes: _desktopLayerTreeNodes(),
+        onSelected: _selectDesktopLayerTreeNode,
+        onToggle: _toggleNode,
+        onVisibilityChanged: (id, visibility) {
+          unawaited(_setDesktopLayerVisibility(id, visibility));
+        },
       ),
     );
+  }
+
+  List<AgusTreeNode> _desktopLayerTreeNodes() {
+    return [
+      for (final layer in _layers)
+        AgusTreeNode(
+          id: 'layer:${layer.layerId}',
+          label: layer.name,
+          icon: Icons.layers_outlined,
+          expanded: _expandedNodes.contains('layer:${layer.layerId}'),
+          visibility: layer.locked
+              ? AgusTreeVisibilityState.locked
+              : layer.visible
+                  ? AgusTreeVisibilityState.visible
+                  : AgusTreeVisibilityState.hidden,
+          badgeLabel: layer.layerId == widget.activeLayerId ? 'ACTIVE' : null,
+          columnValues: {
+            'kind': _layerKindLabel(layer.kind),
+            'features': '${_featuresByLayer[layer.layerId]?.length ?? 0}',
+            'z': '${layer.zIndex}',
+          },
+          children: [
+            for (final feature in _featuresByLayer[layer.layerId] ??
+                const <agus_maps_flutter.AgusLayerFeature>[])
+              AgusTreeNode(
+                id: _featureKey(feature),
+                label: _featureLabel(feature),
+                icon: _featureIcon(feature.geometryKind),
+                columnValues: {
+                  'kind': _geometryKindLabel(feature.geometryKind),
+                  'features': '1',
+                  'z': '${feature.zIndex ?? layer.zIndex}',
+                },
+              ),
+          ],
+        ),
+    ];
+  }
+
+  void _selectDesktopLayerTreeNode(String id) {
+    if (id.startsWith('layer:')) {
+      final layerId = id.substring('layer:'.length);
+      widget.onActiveLayerChanged?.call(layerId);
+      setState(() => _selectedFeatureKey = null);
+      return;
+    }
+
+    for (final features in _featuresByLayer.values) {
+      for (final feature in features) {
+        if (_featureKey(feature) == id) {
+          _selectFeature(feature);
+          return;
+        }
+      }
+    }
+  }
+
+  Future<void> _setDesktopLayerVisibility(
+    String id,
+    AgusTreeVisibilityState visibility,
+  ) async {
+    if (!id.startsWith('layer:')) return;
+    final layerId = id.substring('layer:'.length);
+    agus_maps_flutter.AgusLayer? layer;
+    for (final candidate in _layers) {
+      if (candidate.layerId == layerId) {
+        layer = candidate;
+        break;
+      }
+    }
+    if (layer == null || layer.locked) return;
+    await _toggleStoredLayer(
+        layer, visibility == AgusTreeVisibilityState.visible);
+  }
+
+  String _featureLabel(agus_maps_flutter.AgusLayerFeature feature) {
+    final name = feature.properties['name'];
+    if (name is String && name.trim().isNotEmpty) {
+      return name.trim();
+    }
+    return '${_geometryKindLabel(feature.geometryKind)} ${feature.featureId}';
   }
 
   String _activeLayerName() {
@@ -1983,9 +2045,10 @@ class _CompactSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CompactBooleanToggle(
+    return Switch(
       value: value,
       onChanged: onChanged,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 }
@@ -2155,40 +2218,6 @@ class _TreeToggleRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ExplorerHeaderRow extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final style = theme.textTheme.labelSmall?.copyWith(
-      color: colorScheme.onSurfaceVariant,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.4,
-    );
-
-    return SizedBox(
-      height: 24,
-      child: Padding(
-        padding: const EdgeInsets.only(left: 98, right: 8),
-        child: Row(
-          children: [
-            Expanded(flex: 5, child: Text('Name', style: style)),
-            SizedBox(
-              width: 58,
-              child: Text('Items', textAlign: TextAlign.right, style: style),
-            ),
-            SizedBox(
-              width: 34,
-              child: Text('Z', textAlign: TextAlign.right, style: style),
-            ),
-            const SizedBox(width: 78),
-          ],
-        ),
       ),
     );
   }
@@ -2551,6 +2580,15 @@ String _geometryKindLabel(agus_maps_flutter.AgusGeometryKind kind) {
     agus_maps_flutter.AgusGeometryKind.multiline => 'Multi-line',
     agus_maps_flutter.AgusGeometryKind.multipolygon => 'Multi-polygon',
     agus_maps_flutter.AgusGeometryKind.collection => 'Collection',
+  };
+}
+
+String _layerKindLabel(agus_maps_flutter.AgusLayerKind kind) {
+  return switch (kind) {
+    agus_maps_flutter.AgusLayerKind.nativeMwm => 'Native',
+    agus_maps_flutter.AgusLayerKind.userDraw => 'Drawing',
+    agus_maps_flutter.AgusLayerKind.comapsSupported => 'CoMaps',
+    agus_maps_flutter.AgusLayerKind.duckdbQuery => 'DuckDB',
   };
 }
 

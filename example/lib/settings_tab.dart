@@ -1,27 +1,10 @@
+import 'package:agus_design/agus_design.dart';
+import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
 import 'package:flutter/material.dart';
 
-import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
-
+/// Example settings rendered with the Agus design-system settings editor.
 class SettingsTab extends StatelessWidget {
-  final double mapScale;
-  final ThemeMode interfaceThemeMode;
-  final agus_maps_flutter.MapAppearanceMode mapAppearanceMode;
-  final String mapLanguageCode;
-  final bool buildings3dEnabled;
-  final agus_maps_flutter.MapLayerState layerState;
-  final agus_maps_flutter.NavigationSettings navigationSettings;
-  final ValueChanged<double> onMapScaleChanged;
-  final VoidCallback onResetMapScale;
-  final ValueChanged<ThemeMode> onInterfaceThemeModeChanged;
-  final ValueChanged<agus_maps_flutter.MapAppearanceMode>
-      onMapAppearanceModeChanged;
-  final ValueChanged<String> onMapLanguageChanged;
-  final ValueChanged<bool> onBuildings3dChanged;
-  final ValueChanged<agus_maps_flutter.MapLayerState> onLayerStateChanged;
-  final ValueChanged<agus_maps_flutter.NavigationSettings>
-      onNavigationSettingsChanged;
-  final Future<void> Function() onClearCachedData;
-
+  /// Creates the settings tab.
   const SettingsTab({
     super.key,
     required this.mapScale,
@@ -42,504 +25,425 @@ class SettingsTab extends StatelessWidget {
     required this.onClearCachedData,
   });
 
+  /// Current map UI scale.
+  final double mapScale;
+
+  /// Current app theme mode.
+  final ThemeMode interfaceThemeMode;
+
+  /// Current native map appearance mode.
+  final agus_maps_flutter.MapAppearanceMode mapAppearanceMode;
+
+  /// Current native map language code.
+  final String mapLanguageCode;
+
+  /// Whether 3D buildings are enabled.
+  final bool buildings3dEnabled;
+
+  /// Current native layer visibility state.
+  final agus_maps_flutter.MapLayerState layerState;
+
+  /// Current native navigation settings.
+  final agus_maps_flutter.NavigationSettings navigationSettings;
+
+  /// Called when map scale changes.
+  final ValueChanged<double> onMapScaleChanged;
+
+  /// Called when map scale should reset.
+  final VoidCallback onResetMapScale;
+
+  /// Called when app theme mode changes.
+  final ValueChanged<ThemeMode> onInterfaceThemeModeChanged;
+
+  /// Called when native map appearance changes.
+  final ValueChanged<agus_maps_flutter.MapAppearanceMode>
+      onMapAppearanceModeChanged;
+
+  /// Called when native map language changes.
+  final ValueChanged<String> onMapLanguageChanged;
+
+  /// Called when 3D buildings change.
+  final ValueChanged<bool> onBuildings3dChanged;
+
+  /// Called when native map layer state changes.
+  final ValueChanged<agus_maps_flutter.MapLayerState> onLayerStateChanged;
+
+  /// Called when navigation settings change.
+  final ValueChanged<agus_maps_flutter.NavigationSettings>
+      onNavigationSettingsChanged;
+
+  /// Clears cached example app data.
+  final Future<void> Function() onClearCachedData;
+
   static const double _minScale = 0.25;
   static const double _maxScale = 3.0;
-  static const List<DropdownMenuEntry<String>> _languageEntries = [
-    DropdownMenuEntry(value: '', label: 'Automatic'),
-    DropdownMenuEntry(value: 'default', label: 'Local names'),
-    DropdownMenuEntry(value: 'en', label: 'English'),
-    DropdownMenuEntry(value: 'es', label: 'Spanish'),
-    DropdownMenuEntry(value: 'fr', label: 'French'),
-    DropdownMenuEntry(value: 'de', label: 'German'),
-    DropdownMenuEntry(value: 'it', label: 'Italian'),
-    DropdownMenuEntry(value: 'ja', label: 'Japanese'),
-    DropdownMenuEntry(value: 'zh', label: 'Chinese'),
-  ];
 
   @override
   Widget build(BuildContext context) {
-    final scaleText = mapScale.toStringAsFixed(2);
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            border: Border(
-              bottom: BorderSide(color: theme.dividerColor),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.settings, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                'Settings',
-                style: theme.textTheme.titleMedium,
-              ),
-            ],
-          ),
+    return AgusPane(
+      title: 'Settings',
+      subtitle: 'Interface, map, layer, and navigation configuration',
+      actions: [
+        IconButton(
+          tooltip: 'Reset map scale',
+          onPressed: onResetMapScale,
+          icon: const Icon(Icons.restart_alt),
         ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _SettingsCard(
-                icon: Icons.palette_outlined,
-                title: 'Appearance',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _ThemeSegments(
-                      label: 'Interface',
-                      selected: interfaceThemeMode,
-                      onChanged: onInterfaceThemeModeChanged,
-                    ),
-                    const SizedBox(height: 16),
-                    _MapAppearanceSegments(
-                      selected: mapAppearanceMode,
-                      onChanged: onMapAppearanceModeChanged,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              _SettingsCard(
-                icon: Icons.map_outlined,
-                title: 'Map options',
-                child: Column(
-                  children: [
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('3D buildings'),
-                      secondary: const Icon(Icons.apartment),
-                      value: buildings3dEnabled,
-                      onChanged: onBuildings3dChanged,
-                    ),
-                    const Divider(),
-                    DropdownMenu<String>(
-                      width: double.infinity,
-                      label: const Text('Map language'),
-                      initialSelection: mapLanguageCode,
-                      dropdownMenuEntries: _languageEntries,
-                      onSelected: (value) {
-                        if (value != null) onMapLanguageChanged(value);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              _SettingsCard(
-                icon: Icons.layers_outlined,
-                title: 'Layers',
-                child: Column(
-                  children: [
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Outdoors'),
-                      secondary: const Icon(Icons.terrain),
-                      value: layerState.outdoors,
-                      onChanged: (enabled) => onLayerStateChanged(
-                        layerState.copyWith(
-                          outdoors: enabled,
-                          subway: enabled ? false : layerState.subway,
-                        ),
-                      ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Contour lines'),
-                      secondary: const Icon(Icons.landscape_outlined),
-                      value: layerState.isolines,
-                      onChanged: (enabled) => onLayerStateChanged(
-                        layerState.copyWith(
-                          isolines: enabled,
-                          subway: enabled ? false : layerState.subway,
-                        ),
-                      ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Subway'),
-                      secondary: const Icon(Icons.directions_subway),
-                      value: layerState.subway,
-                      onChanged: (enabled) => onLayerStateChanged(
-                        layerState.copyWith(
-                          outdoors: enabled ? false : layerState.outdoors,
-                          isolines: enabled ? false : layerState.isolines,
-                          subway: enabled,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              _SettingsCard(
-                icon: Icons.navigation_outlined,
-                title: 'Navigation',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _MeasurementSegments(
-                      selected: navigationSettings.measurementUnits,
-                      onChanged: (units) => onNavigationSettingsChanged(
-                        navigationSettings.copyWith(measurementUnits: units),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Voice guidance'),
-                      secondary: const Icon(Icons.record_voice_over_outlined),
-                      value: navigationSettings.turnNotificationsEnabled,
-                      onChanged: (enabled) => onNavigationSettingsChanged(
-                        navigationSettings.copyWith(
-                          turnNotificationsEnabled: enabled,
-                        ),
-                      ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Street names in voice'),
-                      secondary: const Icon(Icons.signpost_outlined),
-                      value: navigationSettings.announceStreetNames,
-                      onChanged: navigationSettings.turnNotificationsEnabled
-                          ? (enabled) => onNavigationSettingsChanged(
-                                navigationSettings.copyWith(
-                                  announceStreetNames: enabled,
-                                ),
-                              )
-                          : null,
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Speed limit'),
-                      secondary: const Icon(Icons.speed_outlined),
-                      value: navigationSettings.showSpeedLimit,
-                      onChanged: (enabled) => onNavigationSettingsChanged(
-                        navigationSettings.copyWith(showSpeedLimit: enabled),
-                      ),
-                    ),
-                    const Divider(),
-                    _SpeedCameraSegments(
-                      selected: navigationSettings.speedCameraMode,
-                      onChanged: (mode) => onNavigationSettingsChanged(
-                        navigationSettings.copyWith(speedCameraMode: mode),
-                      ),
-                    ),
-                    const Divider(),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Avoid tolls'),
-                      secondary: const Icon(Icons.payments_outlined),
-                      value: navigationSettings.routingOptions.avoidTolls,
-                      onChanged: (enabled) => onNavigationSettingsChanged(
-                        navigationSettings.copyWith(
-                          routingOptions:
-                              navigationSettings.routingOptions.copyWith(
-                            avoidTolls: enabled ?? false,
-                          ),
-                        ),
-                      ),
-                    ),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Avoid motorways'),
-                      secondary: const Icon(Icons.alt_route_outlined),
-                      value: navigationSettings.routingOptions.avoidMotorways,
-                      onChanged: (enabled) => onNavigationSettingsChanged(
-                        navigationSettings.copyWith(
-                          routingOptions:
-                              navigationSettings.routingOptions.copyWith(
-                            avoidMotorways: enabled ?? false,
-                          ),
-                        ),
-                      ),
-                    ),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Avoid ferries'),
-                      secondary: const Icon(Icons.directions_boat_outlined),
-                      value: navigationSettings.routingOptions.avoidFerries,
-                      onChanged: (enabled) => onNavigationSettingsChanged(
-                        navigationSettings.copyWith(
-                          routingOptions:
-                              navigationSettings.routingOptions.copyWith(
-                            avoidFerries: enabled ?? false,
-                          ),
-                        ),
-                      ),
-                    ),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Avoid unpaved roads'),
-                      secondary: const Icon(Icons.grass_outlined),
-                      value:
-                          navigationSettings.routingOptions.avoidUnpavedRoads,
-                      onChanged: (enabled) => onNavigationSettingsChanged(
-                        navigationSettings.copyWith(
-                          routingOptions:
-                              navigationSettings.routingOptions.copyWith(
-                            avoidUnpavedRoads: enabled ?? false,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              _SettingsCard(
-                icon: Icons.text_fields,
-                title: 'Map label scale',
-                trailing:
-                    Text('${scaleText}x', style: theme.textTheme.titleSmall),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Adjust label and icon size without changing zoom.',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 12),
-                    Slider(
-                      value: mapScale.clamp(_minScale, _maxScale),
-                      min: _minScale,
-                      max: _maxScale,
-                      divisions: 55,
-                      label: '${scaleText}x',
-                      onChanged: onMapScaleChanged,
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: onResetMapScale,
-                        child: const Text('Reset to 1.00x'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              _SettingsCard(
-                icon: Icons.storage_outlined,
-                title: 'Storage',
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: onClearCachedData,
-                    icon: const Icon(Icons.delete_sweep_outlined),
-                    label: const Text('Clear cached data'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        IconButton(
+          tooltip: 'Clear cached data',
+          onPressed: () => onClearCachedData(),
+          icon: const Icon(Icons.delete_sweep_outlined),
         ),
       ],
+      child: AgusSettingsEditor(
+        schemas: _schemas,
+        values: _values,
+        onChanged: _handleChanged,
+      ),
     );
   }
-}
 
-class _SettingsCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final Widget child;
-  final Widget? trailing;
+  Map<String, Object?> get _values {
+    return {
+      _SettingsId.mapScale: mapScale,
+      _SettingsId.interfaceTheme: interfaceThemeMode.name,
+      _SettingsId.mapAppearance: mapAppearanceMode.name,
+      _SettingsId.mapLanguage: mapLanguageCode,
+      _SettingsId.buildings3d: buildings3dEnabled,
+      _SettingsId.layerOutdoors: layerState.outdoors,
+      _SettingsId.layerIsolines: layerState.isolines,
+      _SettingsId.layerSubway: layerState.subway,
+      _SettingsId.navigationUnits: navigationSettings.measurementUnits.name,
+      _SettingsId.navigationVoice: navigationSettings.turnNotificationsEnabled,
+      _SettingsId.navigationStreetNames: navigationSettings.announceStreetNames,
+      _SettingsId.navigationSpeedLimit: navigationSettings.showSpeedLimit,
+      _SettingsId.navigationSpeedCameras:
+          navigationSettings.speedCameraMode.name,
+      _SettingsId.routeAvoidTolls: navigationSettings.routingOptions.avoidTolls,
+      _SettingsId.routeAvoidMotorways:
+          navigationSettings.routingOptions.avoidMotorways,
+      _SettingsId.routeAvoidFerries:
+          navigationSettings.routingOptions.avoidFerries,
+      _SettingsId.routeAvoidUnpaved:
+          navigationSettings.routingOptions.avoidUnpavedRoads,
+    };
+  }
 
-  const _SettingsCard({
-    required this.icon,
-    required this.title,
-    required this.child,
-    this.trailing,
-  });
+  void _handleChanged(String id, Object? value) {
+    switch (id) {
+      case _SettingsId.mapScale:
+        final next = _number(value, fallback: mapScale)
+            .clamp(_minScale, _maxScale)
+            .toDouble();
+        onMapScaleChanged(next);
+      case _SettingsId.interfaceTheme:
+        onInterfaceThemeModeChanged(_themeMode(value));
+      case _SettingsId.mapAppearance:
+        onMapAppearanceModeChanged(_mapAppearanceMode(value));
+      case _SettingsId.mapLanguage:
+        onMapLanguageChanged(value?.toString() ?? '');
+      case _SettingsId.buildings3d:
+        onBuildings3dChanged(value == true);
+      case _SettingsId.layerOutdoors:
+        final enabled = value == true;
+        onLayerStateChanged(
+          layerState.copyWith(
+            outdoors: enabled,
+            subway: enabled ? false : layerState.subway,
+          ),
+        );
+      case _SettingsId.layerIsolines:
+        final enabled = value == true;
+        onLayerStateChanged(
+          layerState.copyWith(
+            isolines: enabled,
+            subway: enabled ? false : layerState.subway,
+          ),
+        );
+      case _SettingsId.layerSubway:
+        final enabled = value == true;
+        onLayerStateChanged(
+          layerState.copyWith(
+            outdoors: enabled ? false : layerState.outdoors,
+            isolines: enabled ? false : layerState.isolines,
+            subway: enabled,
+          ),
+        );
+      case _SettingsId.navigationUnits:
+        onNavigationSettingsChanged(
+          navigationSettings.copyWith(
+            measurementUnits: _navigationUnits(value),
+          ),
+        );
+      case _SettingsId.navigationVoice:
+        onNavigationSettingsChanged(
+          navigationSettings.copyWith(turnNotificationsEnabled: value == true),
+        );
+      case _SettingsId.navigationStreetNames:
+        onNavigationSettingsChanged(
+          navigationSettings.copyWith(announceStreetNames: value == true),
+        );
+      case _SettingsId.navigationSpeedLimit:
+        onNavigationSettingsChanged(
+          navigationSettings.copyWith(showSpeedLimit: value == true),
+        );
+      case _SettingsId.navigationSpeedCameras:
+        onNavigationSettingsChanged(
+          navigationSettings.copyWith(speedCameraMode: _speedCameraMode(value)),
+        );
+      case _SettingsId.routeAvoidTolls:
+        _updateRouting(avoidTolls: value == true);
+      case _SettingsId.routeAvoidMotorways:
+        _updateRouting(avoidMotorways: value == true);
+      case _SettingsId.routeAvoidFerries:
+        _updateRouting(avoidFerries: value == true);
+      case _SettingsId.routeAvoidUnpaved:
+        _updateRouting(avoidUnpavedRoads: value == true);
+    }
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(title, style: theme.textTheme.titleMedium),
-                const Spacer(),
-                if (trailing != null) trailing!,
-              ],
-            ),
-            const SizedBox(height: 12),
-            child,
-          ],
+  void _updateRouting({
+    bool? avoidTolls,
+    bool? avoidMotorways,
+    bool? avoidFerries,
+    bool? avoidUnpavedRoads,
+  }) {
+    onNavigationSettingsChanged(
+      navigationSettings.copyWith(
+        routingOptions: navigationSettings.routingOptions.copyWith(
+          avoidTolls: avoidTolls,
+          avoidMotorways: avoidMotorways,
+          avoidFerries: avoidFerries,
+          avoidUnpavedRoads: avoidUnpavedRoads,
         ),
       ),
     );
   }
-}
 
-class _MeasurementSegments extends StatelessWidget {
-  final agus_maps_flutter.NavigationMeasurementUnits selected;
-  final ValueChanged<agus_maps_flutter.NavigationMeasurementUnits> onChanged;
+  double _number(Object? value, {required double fallback}) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? fallback;
+    return fallback;
+  }
 
-  const _MeasurementSegments({
-    required this.selected,
-    required this.onChanged,
-  });
+  ThemeMode _themeMode(Object? value) {
+    return ThemeMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => ThemeMode.system,
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Units', style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 8),
-        SegmentedButton<agus_maps_flutter.NavigationMeasurementUnits>(
-          segments: const [
-            ButtonSegment(
-              value: agus_maps_flutter.NavigationMeasurementUnits.metric,
-              label: Text('Metric'),
-              icon: Icon(Icons.straighten),
-            ),
-            ButtonSegment(
-              value: agus_maps_flutter.NavigationMeasurementUnits.imperial,
-              label: Text('Imperial'),
-              icon: Icon(Icons.square_foot),
-            ),
-          ],
-          selected: {selected},
-          showSelectedIcon: false,
-          onSelectionChanged: (selection) => onChanged(selection.first),
-        ),
-      ],
+  agus_maps_flutter.MapAppearanceMode _mapAppearanceMode(Object? value) {
+    return agus_maps_flutter.MapAppearanceMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => agus_maps_flutter.MapAppearanceMode.system,
+    );
+  }
+
+  agus_maps_flutter.NavigationMeasurementUnits _navigationUnits(Object? value) {
+    return agus_maps_flutter.NavigationMeasurementUnits.values.firstWhere(
+      (units) => units.name == value,
+      orElse: () => agus_maps_flutter.NavigationMeasurementUnits.metric,
+    );
+  }
+
+  agus_maps_flutter.NavigationSpeedCameraMode _speedCameraMode(Object? value) {
+    return agus_maps_flutter.NavigationSpeedCameraMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => agus_maps_flutter.NavigationSpeedCameraMode.auto,
     );
   }
 }
 
-class _SpeedCameraSegments extends StatelessWidget {
-  final agus_maps_flutter.NavigationSpeedCameraMode selected;
-  final ValueChanged<agus_maps_flutter.NavigationSpeedCameraMode> onChanged;
-
-  const _SpeedCameraSegments({
-    required this.selected,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Speed cameras', style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 8),
-        SegmentedButton<agus_maps_flutter.NavigationSpeedCameraMode>(
-          segments: const [
-            ButtonSegment(
-              value: agus_maps_flutter.NavigationSpeedCameraMode.auto,
-              label: Text('Auto'),
-              icon: Icon(Icons.speed),
-            ),
-            ButtonSegment(
-              value: agus_maps_flutter.NavigationSpeedCameraMode.always,
-              label: Text('Always'),
-              icon: Icon(Icons.notifications_active_outlined),
-            ),
-            ButtonSegment(
-              value: agus_maps_flutter.NavigationSpeedCameraMode.never,
-              label: Text('Never'),
-              icon: Icon(Icons.notifications_off_outlined),
-            ),
-          ],
-          selected: {selected},
-          showSelectedIcon: false,
-          onSelectionChanged: (selection) => onChanged(selection.first),
-        ),
-      ],
-    );
-  }
+abstract final class _SettingsId {
+  static const mapScale = 'map.scale';
+  static const interfaceTheme = 'interface.theme';
+  static const mapAppearance = 'map.appearance';
+  static const mapLanguage = 'map.language';
+  static const buildings3d = 'map.buildings3d';
+  static const layerOutdoors = 'map.layers.outdoors';
+  static const layerIsolines = 'map.layers.isolines';
+  static const layerSubway = 'map.layers.subway';
+  static const navigationUnits = 'navigation.units';
+  static const navigationVoice = 'navigation.voice';
+  static const navigationStreetNames = 'navigation.streetNames';
+  static const navigationSpeedLimit = 'navigation.speedLimit';
+  static const navigationSpeedCameras = 'navigation.speedCameras';
+  static const routeAvoidTolls = 'navigation.route.avoidTolls';
+  static const routeAvoidMotorways = 'navigation.route.avoidMotorways';
+  static const routeAvoidFerries = 'navigation.route.avoidFerries';
+  static const routeAvoidUnpaved = 'navigation.route.avoidUnpaved';
 }
 
-class _ThemeSegments extends StatelessWidget {
-  final String label;
-  final ThemeMode selected;
-  final ValueChanged<ThemeMode> onChanged;
-
-  const _ThemeSegments({
-    required this.label,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 8),
-        SegmentedButton<ThemeMode>(
-          segments: const [
-            ButtonSegment(
-                value: ThemeMode.system, icon: Icon(Icons.phone_iphone)),
-            ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode)),
-            ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode)),
-          ],
-          selected: {selected},
-          showSelectedIcon: false,
-          onSelectionChanged: (selection) => onChanged(selection.first),
-        ),
-      ],
-    );
-  }
-}
-
-class _MapAppearanceSegments extends StatelessWidget {
-  final agus_maps_flutter.MapAppearanceMode selected;
-  final ValueChanged<agus_maps_flutter.MapAppearanceMode> onChanged;
-
-  const _MapAppearanceSegments({
-    required this.selected,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Map', style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 8),
-        SegmentedButton<agus_maps_flutter.MapAppearanceMode>(
-          segments: const [
-            ButtonSegment(
-              value: agus_maps_flutter.MapAppearanceMode.system,
-              icon: Icon(Icons.phone_iphone),
-            ),
-            ButtonSegment(
-              value: agus_maps_flutter.MapAppearanceMode.light,
-              icon: Icon(Icons.light_mode),
-            ),
-            ButtonSegment(
-              value: agus_maps_flutter.MapAppearanceMode.dark,
-              icon: Icon(Icons.dark_mode),
-            ),
-          ],
-          selected: {selected},
-          showSelectedIcon: false,
-          onSelectionChanged: (selection) => onChanged(selection.first),
-        ),
-      ],
-    );
-  }
-}
+const _schemas = <AgusSettingSchema>[
+  AgusSettingSchema(
+    id: _SettingsId.mapScale,
+    title: 'Map: Scale',
+    description: 'Controls the rendered map user-interface scale multiplier.',
+    category: 'Map',
+    type: AgusSettingType.number,
+    defaultValue: 1.0,
+    minimum: SettingsTab._minScale,
+    maximum: SettingsTab._maxScale,
+    tags: ['zoom', 'display', 'scale'],
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.interfaceTheme,
+    title: 'Interface: Theme',
+    description:
+        'Controls whether the application uses light, dark, or system.',
+    category: 'Appearance',
+    type: AgusSettingType.select,
+    defaultValue: 'system',
+    options: [
+      AgusSettingOption(value: 'system', label: 'System'),
+      AgusSettingOption(value: 'light', label: 'Light'),
+      AgusSettingOption(value: 'dark', label: 'Dark'),
+    ],
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.mapAppearance,
+    title: 'Map: Appearance',
+    description: 'Controls the native map rendering theme.',
+    category: 'Appearance',
+    type: AgusSettingType.select,
+    defaultValue: 'system',
+    options: [
+      AgusSettingOption(value: 'system', label: 'System'),
+      AgusSettingOption(value: 'light', label: 'Light'),
+      AgusSettingOption(value: 'dark', label: 'Dark'),
+    ],
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.mapLanguage,
+    title: 'Map: Language',
+    description: 'Controls the preferred native map label language.',
+    category: 'Map',
+    type: AgusSettingType.select,
+    defaultValue: '',
+    options: [
+      AgusSettingOption(value: '', label: 'Automatic'),
+      AgusSettingOption(value: 'default', label: 'Local names'),
+      AgusSettingOption(value: 'en', label: 'English'),
+      AgusSettingOption(value: 'es', label: 'Spanish'),
+      AgusSettingOption(value: 'fr', label: 'French'),
+      AgusSettingOption(value: 'de', label: 'German'),
+      AgusSettingOption(value: 'it', label: 'Italian'),
+      AgusSettingOption(value: 'ja', label: 'Japanese'),
+      AgusSettingOption(value: 'zh', label: 'Chinese'),
+    ],
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.buildings3d,
+    title: 'Map: 3D Buildings',
+    description: 'Shows 3D building geometry where supported by map data.',
+    category: 'Map Layers',
+    type: AgusSettingType.boolean,
+    defaultValue: false,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.layerOutdoors,
+    title: 'Layers: Outdoors',
+    description: 'Enables terrain-focused outdoor cartography.',
+    category: 'Map Layers',
+    type: AgusSettingType.boolean,
+    defaultValue: false,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.layerIsolines,
+    title: 'Layers: Contour Lines',
+    description: 'Shows elevation isolines. This disables subway styling.',
+    category: 'Map Layers',
+    type: AgusSettingType.boolean,
+    defaultValue: false,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.layerSubway,
+    title: 'Layers: Subway',
+    description: 'Enables subway-emphasis cartography and disables terrain.',
+    category: 'Map Layers',
+    type: AgusSettingType.boolean,
+    defaultValue: false,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.navigationUnits,
+    title: 'Navigation: Measurement Units',
+    description: 'Controls distance and speed units used in route guidance.',
+    category: 'Navigation',
+    type: AgusSettingType.select,
+    defaultValue: 'metric',
+    options: [
+      AgusSettingOption(value: 'metric', label: 'Metric'),
+      AgusSettingOption(value: 'imperial', label: 'Imperial'),
+    ],
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.navigationVoice,
+    title: 'Navigation: Voice Guidance',
+    description: 'Enables spoken turn notifications.',
+    category: 'Navigation',
+    type: AgusSettingType.boolean,
+    defaultValue: true,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.navigationStreetNames,
+    title: 'Navigation: Street Names',
+    description: 'Includes street names in spoken navigation prompts.',
+    category: 'Navigation',
+    type: AgusSettingType.boolean,
+    defaultValue: true,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.navigationSpeedLimit,
+    title: 'Navigation: Speed Limit',
+    description: 'Shows speed-limit guidance while navigating.',
+    category: 'Navigation',
+    type: AgusSettingType.boolean,
+    defaultValue: true,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.navigationSpeedCameras,
+    title: 'Navigation: Speed Cameras',
+    description: 'Controls speed-camera warnings.',
+    category: 'Navigation',
+    type: AgusSettingType.select,
+    defaultValue: 'auto',
+    options: [
+      AgusSettingOption(value: 'auto', label: 'Automatic'),
+      AgusSettingOption(value: 'always', label: 'Always'),
+      AgusSettingOption(value: 'never', label: 'Never'),
+    ],
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.routeAvoidTolls,
+    title: 'Route: Avoid Tolls',
+    description: 'Avoids toll roads during route calculation.',
+    category: 'Routing',
+    type: AgusSettingType.boolean,
+    defaultValue: false,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.routeAvoidMotorways,
+    title: 'Route: Avoid Motorways',
+    description: 'Avoids motorways during route calculation.',
+    category: 'Routing',
+    type: AgusSettingType.boolean,
+    defaultValue: false,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.routeAvoidFerries,
+    title: 'Route: Avoid Ferries',
+    description: 'Avoids ferry segments during route calculation.',
+    category: 'Routing',
+    type: AgusSettingType.boolean,
+    defaultValue: false,
+  ),
+  AgusSettingSchema(
+    id: _SettingsId.routeAvoidUnpaved,
+    title: 'Route: Avoid Unpaved Roads',
+    description: 'Avoids unpaved roads during route calculation.',
+    category: 'Routing',
+    type: AgusSettingType.boolean,
+    defaultValue: false,
+  ),
+];

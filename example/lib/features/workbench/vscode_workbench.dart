@@ -1,3 +1,4 @@
+import 'package:agus_design/agus_design.dart';
 import 'package:flutter/material.dart';
 
 import 'workbench_controller.dart';
@@ -26,7 +27,13 @@ typedef WorkbenchSecondarySideBarBuilder = Widget Function(
   WorkbenchSecondarySideBarTab tab,
 );
 
-/// VS Code-style desktop workbench with resizable panes and viewport tabs.
+/// Builds workbench status bar items.
+typedef WorkbenchStatusBarBuilder = AgusStatusBar Function(
+  BuildContext context,
+  WorkbenchLayoutState state,
+);
+
+/// VS Code-style desktop workbench backed by the Agus design system.
 class VSCodeWorkbench extends StatelessWidget {
   /// Creates a desktop workbench.
   const VSCodeWorkbench({
@@ -36,6 +43,7 @@ class VSCodeWorkbench extends StatelessWidget {
     required this.editorBuilder,
     required this.panelBuilder,
     required this.secondarySideBarBuilder,
+    this.statusBarBuilder,
   });
 
   /// Global workbench state.
@@ -53,588 +61,374 @@ class VSCodeWorkbench extends StatelessWidget {
   /// Builder for Secondary Side Bar tab viewports.
   final WorkbenchSecondarySideBarBuilder secondarySideBarBuilder;
 
+  /// Optional status-bar builder.
+  final WorkbenchStatusBarBuilder? statusBarBuilder;
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, child) {
         final state = controller.state;
-        return ColoredBox(
-          color: Theme.of(context).colorScheme.surface,
-          child: SafeArea(
-            child: Row(
-              children: [
-                _ActivityBar(controller: controller, state: state),
-                const _ThinSeparator(axis: Axis.horizontal),
-                if (state.primarySideBarVisible) ...[
-                  SizedBox(
-                    width: state.primarySideBarWidth,
-                    child: _PrimarySideBar(
-                      state: state,
-                      child: activityBuilder(context, state.activeActivity),
-                    ),
-                  ),
-                  _ResizeHandle(
-                    axis: Axis.horizontal,
-                    onDrag: controller.resizePrimarySideBar,
-                  ),
-                ],
-                Expanded(
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _EditorArea(
-                                controller: controller,
-                                state: state,
-                                builder: editorBuilder,
-                              ),
-                            ),
-                            if (state.secondarySideBarVisible) ...[
-                              _ResizeHandle(
-                                axis: Axis.horizontal,
-                                onDrag: (delta) {
-                                  controller.resizeSecondarySideBar(-delta);
-                                },
-                              ),
-                              SizedBox(
-                                width: state.secondarySideBarWidth,
-                                child: _SecondarySideBar(
-                                  controller: controller,
-                                  state: state,
-                                  builder: secondarySideBarBuilder,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      if (state.panelVisible) ...[
-                        _ResizeHandle(
-                          axis: Axis.vertical,
-                          onDrag: (delta) {
-                            controller.resizePanel(-delta);
-                          },
-                        ),
-                        SizedBox(
-                          height: state.panelHeight,
-                          child: _Panel(
-                            controller: controller,
-                            state: state,
-                            builder: panelBuilder,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
+        return AgusWorkbench(
+          title: 'Agus Maps',
+          activityBar: _buildActivityBar(state),
+          primarySidebar: _buildPrimarySidebar(context, state),
+          secondarySidebar: _buildSecondarySidebar(context, state),
+          editor: _buildEditor(context, state),
+          bottomPanel: _buildBottomPanel(context, state),
+          statusBar: statusBarBuilder?.call(context, state) ??
+              _buildDefaultStatusBar(state),
+          commandCenter: const AgusCommandCenter(
+            prompt: 'Search maps, commands, and layers',
           ),
+          showPrimarySidebar: state.primarySideBarVisible,
+          showSecondarySidebar: state.secondarySideBarVisible,
+          showPanel: state.panelVisible,
+          onToggleArea: _toggleArea,
         );
       },
     );
   }
-}
 
-class _ActivityBar extends StatelessWidget {
-  const _ActivityBar({required this.controller, required this.state});
-
-  final WorkbenchController controller;
-  final WorkbenchLayoutState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surfaceContainerHighest,
-      child: SizedBox(
-        width: 52,
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            for (final activity in WorkbenchActivity.values)
-              _ActivityBarButton(
-                activity: activity,
-                selected: state.activeActivity == activity &&
-                    state.primarySideBarVisible,
-                onPressed: () => controller.selectActivity(activity),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ActivityBarButton extends StatelessWidget {
-  const _ActivityBarButton({
-    required this.activity,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final WorkbenchActivity activity;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: _activityLabel(activity),
-      waitDuration: const Duration(milliseconds: 500),
-      child: SizedBox(
-        width: 52,
-        height: 48,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (selected)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  width: 3,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary,
-                    borderRadius: const BorderRadius.horizontal(
-                      right: Radius.circular(2),
-                    ),
-                  ),
-                ),
-              ),
-            IconButton(
-              onPressed: onPressed,
-              icon: Icon(_activityIcon(activity)),
-              color:
-                  selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+  AgusActivityBar _buildActivityBar(WorkbenchLayoutState state) {
+    return AgusActivityBar(
+      selectedId: state.activeActivity.id,
+      onSelected: (id) => controller.selectActivity(_workbenchActivityById(id)),
+      items: [
+        for (final activity in WorkbenchActivity.values)
+          if (!activity.isBottomItem)
+            AgusActivityBarItem(
+              id: activity.id,
+              icon: activity.icon,
+              tooltip: activity.label,
             ),
-          ],
-        ),
+      ],
+      bottomItems: [
+        for (final activity in WorkbenchActivity.values)
+          if (activity.isBottomItem)
+            AgusActivityBarItem(
+              id: activity.id,
+              icon: activity.icon,
+              tooltip: activity.label,
+            ),
+      ],
+    );
+  }
+
+  Widget _buildPrimarySidebar(
+    BuildContext context,
+    WorkbenchLayoutState state,
+  ) {
+    return AgusSidebar(
+      title: state.activeActivity.label,
+      child: KeyedSubtree(
+        key: ValueKey(state.activeActivity),
+        child: activityBuilder(context, state.activeActivity),
       ),
     );
   }
-}
 
-class _PrimarySideBar extends StatelessWidget {
-  const _PrimarySideBar({required this.state, required this.child});
+  Widget _buildEditor(BuildContext context, WorkbenchLayoutState state) {
+    final tabs = [
+      for (final tab in WorkbenchEditorTab.values)
+        AgusEditorTab(id: tab.id, label: tab.label, icon: tab.icon),
+    ];
 
-  final WorkbenchLayoutState state;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return _WorkbenchPane(
-      header: _PaneHeader(
-        title: _activityTitle(state.activeActivity),
-        subtitle: 'Primary Side Bar',
-      ),
-      child: child,
-    );
-  }
-}
-
-class _EditorArea extends StatelessWidget {
-  const _EditorArea({
-    required this.controller,
-    required this.state,
-    required this.builder,
-  });
-
-  final WorkbenchController controller;
-  final WorkbenchLayoutState state;
-  final WorkbenchEditorBuilder builder;
-
-  @override
-  Widget build(BuildContext context) {
-    final tabs = WorkbenchEditorTab.values;
-    return _WorkbenchPane(
-      header: Row(
+    return AgusEditorHost(
+      label: '${state.activeEditorTab.label} editor',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final tab in tabs)
-            _WorkbenchTabButton(
-              label: _editorTabLabel(tab),
-              selected: state.activeEditorTab == tab,
-              onPressed: () => controller.selectEditorTab(tab),
+          AgusEditorTabBar(
+            tabs: tabs,
+            selectedId: state.activeEditorTab.id,
+            onSelected: (id) {
+              controller.selectEditorTab(_workbenchEditorTabById(id));
+            },
+          ),
+          Expanded(
+            child: KeyedSubtree(
+              key: ValueKey(state.activeEditorTab),
+              child: editorBuilder(context, state.activeEditorTab),
             ),
-          const Spacer(),
-          _LayoutControls(controller: controller, state: state),
+          ),
         ],
       ),
-      child: KeyedSubtree(
-        key: ValueKey(state.activeEditorTab),
-        child: builder(context, state.activeEditorTab),
-      ),
     );
   }
-}
 
-class _Panel extends StatelessWidget {
-  const _Panel({
-    required this.controller,
-    required this.state,
-    required this.builder,
-  });
-
-  final WorkbenchController controller;
-  final WorkbenchLayoutState state;
-  final WorkbenchPanelBuilder builder;
-
-  @override
-  Widget build(BuildContext context) {
-    final tabs = WorkbenchPanelTab.values;
-    return _WorkbenchPane(
-      header: Row(
-        children: [
-          for (final tab in tabs)
-            _WorkbenchTabButton(
-              label: _panelTabLabel(tab),
-              selected: state.activePanelTab == tab,
-              onPressed: () => controller.selectPanelTab(tab),
-            ),
-          const Spacer(),
-          IconButton(
+  Widget _buildBottomPanel(BuildContext context, WorkbenchLayoutState state) {
+    return AgusPane(
+      header: AgusPanelTabBar(
+        tabs: [
+          for (final tab in WorkbenchPanelTab.values)
+            AgusPanelTab(id: tab.id, label: tab.label, icon: tab.icon),
+        ],
+        selectedId: state.activePanelTab.id,
+        onSelected: (id) {
+          controller.selectPanelTab(_workbenchPanelTabById(id));
+        },
+        trailing: [
+          _PaneActionButton(
             tooltip: 'Hide Panel',
-            visualDensity: VisualDensity.compact,
+            icon: Icons.close,
             onPressed: controller.togglePanel,
-            icon: const Icon(Icons.close),
           ),
         ],
       ),
       child: KeyedSubtree(
         key: ValueKey(state.activePanelTab),
-        child: builder(context, state.activePanelTab),
+        child: panelBuilder(context, state.activePanelTab),
       ),
     );
   }
-}
 
-class _SecondarySideBar extends StatelessWidget {
-  const _SecondarySideBar({
-    required this.controller,
-    required this.state,
-    required this.builder,
-  });
-
-  final WorkbenchController controller;
-  final WorkbenchLayoutState state;
-  final WorkbenchSecondarySideBarBuilder builder;
-
-  @override
-  Widget build(BuildContext context) {
-    final tabs = WorkbenchSecondarySideBarTab.values;
-    return _WorkbenchPane(
-      header: Row(
-        children: [
-          for (final tab in tabs)
-            _WorkbenchTabButton(
-              label: _secondarySideBarTabLabel(tab),
-              selected: state.activeSecondarySideBarTab == tab,
-              onPressed: () => controller.selectSecondarySideBarTab(tab),
-            ),
-          const Spacer(),
-          IconButton(
+  Widget _buildSecondarySidebar(
+    BuildContext context,
+    WorkbenchLayoutState state,
+  ) {
+    return AgusPane(
+      header: AgusPanelTabBar(
+        tabs: [
+          for (final tab in WorkbenchSecondarySideBarTab.values)
+            AgusPanelTab(id: tab.id, label: tab.label, icon: tab.icon),
+        ],
+        selectedId: state.activeSecondarySideBarTab.id,
+        onSelected: (id) {
+          controller.selectSecondarySideBarTab(
+            _workbenchSecondarySideBarTabById(id),
+          );
+        },
+        trailing: [
+          _PaneActionButton(
             tooltip: 'Hide Secondary Side Bar',
-            visualDensity: VisualDensity.compact,
+            icon: Icons.close,
             onPressed: controller.toggleSecondarySideBar,
-            icon: const Icon(Icons.close),
           ),
         ],
       ),
       child: KeyedSubtree(
         key: ValueKey(state.activeSecondarySideBarTab),
-        child: builder(context, state.activeSecondarySideBarTab),
-      ),
-    );
-  }
-}
-
-class _WorkbenchPane extends StatelessWidget {
-  const _WorkbenchPane({required this.header, required this.child});
-
-  final Widget header;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return ColoredBox(
-      color: colorScheme.surface,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(height: 36, child: header),
-          const _ThinSeparator(axis: Axis.vertical),
-          Expanded(child: child),
-        ],
-      ),
-    );
-  }
-}
-
-class _PaneHeader extends StatelessWidget {
-  const _PaneHeader({required this.title, required this.subtitle});
-
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WorkbenchTabButton extends StatelessWidget {
-  const _WorkbenchTabButton({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return InkWell(
-      onTap: onPressed,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: selected ? colorScheme.surfaceContainerHigh : null,
-          border: Border(
-            right: BorderSide(color: colorScheme.outlineVariant),
-            bottom: BorderSide(
-              color: selected ? colorScheme.primary : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Center(
-            child: Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: selected
-                    ? colorScheme.onSurface
-                    : colorScheme.onSurfaceVariant,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ),
+        child: secondarySideBarBuilder(
+          context,
+          state.activeSecondarySideBarTab,
         ),
       ),
     );
   }
-}
 
-class _LayoutControls extends StatelessWidget {
-  const _LayoutControls({required this.controller, required this.state});
-
-  final WorkbenchController controller;
-  final WorkbenchLayoutState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colorScheme.outlineVariant),
+  AgusStatusBar _buildDefaultStatusBar(WorkbenchLayoutState state) {
+    return AgusStatusBar(
+      leftItems: [
+        AgusStatusBarItem(
+          id: 'activity',
+          label: state.activeActivity.label,
+          icon: state.activeActivity.icon,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _LayoutControlButton(
-              tooltip: 'Toggle Primary Side Bar',
-              selected: state.primarySideBarVisible,
-              icon: Icons.view_sidebar,
-              onPressed: controller.togglePrimarySideBar,
-            ),
-            _LayoutControlButton(
-              tooltip: 'Toggle Panel',
-              selected: state.panelVisible,
-              icon: Icons.horizontal_split,
-              onPressed: controller.togglePanel,
-            ),
-            _LayoutControlButton(
-              tooltip: 'Toggle Secondary Side Bar',
-              selected: state.secondarySideBarVisible,
-              icon: Icons.vertical_split,
-              onPressed: controller.toggleSecondarySideBar,
-            ),
-          ],
+      ],
+      rightItems: [
+        AgusStatusBarItem(
+          id: 'editor',
+          label: state.activeEditorTab.label,
+          icon: state.activeEditorTab.icon,
         ),
-      ),
+      ],
     );
+  }
+
+  void _toggleArea(AgusWorkbenchArea area) {
+    switch (area) {
+      case AgusWorkbenchArea.primarySidebar:
+        controller.togglePrimarySideBar();
+      case AgusWorkbenchArea.secondarySidebar:
+        controller.toggleSecondarySideBar();
+      case AgusWorkbenchArea.panel:
+        controller.togglePanel();
+    }
   }
 }
 
-class _LayoutControlButton extends StatelessWidget {
-  const _LayoutControlButton({
+class _PaneActionButton extends StatelessWidget {
+  const _PaneActionButton({
     required this.tooltip,
-    required this.selected,
     required this.icon,
     required this.onPressed,
   });
 
   final String tooltip;
-  final bool selected;
   final IconData icon;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final colors = AgusThemeData.colorsOf(context);
+    final dimensions = AgusThemeData.dimensionsOf(context);
     return IconButton(
       tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
+      icon: Icon(icon, color: colors.panelTabInactiveForeground),
+      iconSize: dimensions.iconSize,
+      constraints: BoxConstraints.tightFor(
+        width: dimensions.toolbarButtonSize,
+        height: dimensions.toolbarButtonSize,
+      ),
+      padding: EdgeInsets.zero,
       onPressed: onPressed,
-      icon: Icon(icon),
-      color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
     );
   }
 }
 
-class _ResizeHandle extends StatelessWidget {
-  const _ResizeHandle({required this.axis, required this.onDrag});
+extension WorkbenchActivityView on WorkbenchActivity {
+  /// Stable string id used by design-system widgets.
+  String get id {
+    return switch (this) {
+      WorkbenchActivity.explorer => 'explorer',
+      WorkbenchActivity.mapPresentation => 'map-presentation',
+      WorkbenchActivity.search => 'search',
+      WorkbenchActivity.favorites => 'favorites',
+      WorkbenchActivity.downloads => 'downloads',
+      WorkbenchActivity.settings => 'settings',
+      WorkbenchActivity.about => 'about',
+    };
+  }
 
-  final Axis axis;
-  final ValueChanged<double> onDrag;
+  /// User-visible label.
+  String get label {
+    return switch (this) {
+      WorkbenchActivity.explorer => 'Explorer',
+      WorkbenchActivity.mapPresentation => 'Map Presentation',
+      WorkbenchActivity.search => 'Search',
+      WorkbenchActivity.favorites => 'Favorites',
+      WorkbenchActivity.downloads => 'Downloads',
+      WorkbenchActivity.settings => 'Settings',
+      WorkbenchActivity.about => 'About',
+    };
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.outlineVariant;
-    final cursor = axis == Axis.horizontal
-        ? SystemMouseCursors.resizeLeftRight
-        : SystemMouseCursors.resizeUpDown;
-    return MouseRegion(
-      cursor: cursor,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: axis == Axis.horizontal
-            ? (details) => onDrag(details.delta.dx)
-            : null,
-        onVerticalDragUpdate: axis == Axis.vertical
-            ? (details) => onDrag(details.delta.dy)
-            : null,
-        child: SizedBox(
-          width: axis == Axis.horizontal ? 1 : double.infinity,
-          height: axis == Axis.vertical ? 1 : double.infinity,
-          child: _ThinSeparator(axis: axis, color: color),
-        ),
-      ),
-    );
+  /// Activity icon.
+  IconData get icon {
+    return switch (this) {
+      WorkbenchActivity.explorer => Icons.account_tree_outlined,
+      WorkbenchActivity.mapPresentation => Icons.public_outlined,
+      WorkbenchActivity.search => Icons.search,
+      WorkbenchActivity.favorites => Icons.favorite_border,
+      WorkbenchActivity.downloads => Icons.download_outlined,
+      WorkbenchActivity.settings => Icons.settings_outlined,
+      WorkbenchActivity.about => Icons.info_outline,
+    };
+  }
+
+  /// Whether the activity belongs at the bottom of the Activity Bar.
+  bool get isBottomItem {
+    return switch (this) {
+      WorkbenchActivity.settings || WorkbenchActivity.about => true,
+      _ => false,
+    };
   }
 }
 
-class _ThinSeparator extends StatelessWidget {
-  const _ThinSeparator({required this.axis, this.color});
+extension WorkbenchEditorTabView on WorkbenchEditorTab {
+  /// Stable string id used by design-system widgets.
+  String get id {
+    return switch (this) {
+      WorkbenchEditorTab.blank => 'blank',
+      WorkbenchEditorTab.map => 'map',
+    };
+  }
 
-  final Axis axis;
-  final Color? color;
+  /// User-visible label.
+  String get label {
+    return switch (this) {
+      WorkbenchEditorTab.blank => 'Blank',
+      WorkbenchEditorTab.map => 'Map',
+    };
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final resolvedColor = color ?? Theme.of(context).colorScheme.outlineVariant;
-    return ColoredBox(
-      color: resolvedColor,
-      child: SizedBox(
-        width: axis == Axis.horizontal ? 1 : double.infinity,
-        height: axis == Axis.vertical ? 1 : double.infinity,
-      ),
-    );
+  /// Editor tab icon.
+  IconData get icon {
+    return switch (this) {
+      WorkbenchEditorTab.blank => Icons.tab_unselected,
+      WorkbenchEditorTab.map => Icons.map_outlined,
+    };
   }
 }
 
-String _activityLabel(WorkbenchActivity activity) {
-  return switch (activity) {
-    WorkbenchActivity.explorer => 'Explorer',
-    WorkbenchActivity.mapPresentation => 'Map Presentation',
-    WorkbenchActivity.search => 'Search',
-    WorkbenchActivity.favorites => 'Favorites',
-    WorkbenchActivity.downloads => 'Downloads',
-    WorkbenchActivity.settings => 'Settings',
-    WorkbenchActivity.about => 'About',
-  };
+extension WorkbenchPanelTabView on WorkbenchPanelTab {
+  /// Stable string id used by design-system widgets.
+  String get id {
+    return switch (this) {
+      WorkbenchPanelTab.pointOfInterest => 'point-of-interest',
+      WorkbenchPanelTab.debugConsole => 'debug-console',
+    };
+  }
+
+  /// User-visible label.
+  String get label {
+    return switch (this) {
+      WorkbenchPanelTab.pointOfInterest => 'Point of Interest',
+      WorkbenchPanelTab.debugConsole => 'Debug Console',
+    };
+  }
+
+  /// Panel tab icon.
+  IconData get icon {
+    return switch (this) {
+      WorkbenchPanelTab.pointOfInterest => Icons.place_outlined,
+      WorkbenchPanelTab.debugConsole => Icons.terminal,
+    };
+  }
 }
 
-String _activityTitle(WorkbenchActivity activity) {
-  return _activityLabel(activity).toUpperCase();
+extension WorkbenchSecondarySideBarTabView on WorkbenchSecondarySideBarTab {
+  /// Stable string id used by design-system widgets.
+  String get id {
+    return switch (this) {
+      WorkbenchSecondarySideBarTab.properties => 'properties',
+      WorkbenchSecondarySideBarTab.inspector => 'inspector',
+    };
+  }
+
+  /// User-visible label.
+  String get label {
+    return switch (this) {
+      WorkbenchSecondarySideBarTab.properties => 'Properties',
+      WorkbenchSecondarySideBarTab.inspector => 'Inspector',
+    };
+  }
+
+  /// Sidebar tab icon.
+  IconData get icon {
+    return switch (this) {
+      WorkbenchSecondarySideBarTab.properties => Icons.dataset_outlined,
+      WorkbenchSecondarySideBarTab.inspector => Icons.rule_folder_outlined,
+    };
+  }
 }
 
-IconData _activityIcon(WorkbenchActivity activity) {
-  return switch (activity) {
-    WorkbenchActivity.explorer => Icons.account_tree_outlined,
-    WorkbenchActivity.mapPresentation => Icons.public_outlined,
-    WorkbenchActivity.search => Icons.search,
-    WorkbenchActivity.favorites => Icons.favorite_border,
-    WorkbenchActivity.downloads => Icons.download_outlined,
-    WorkbenchActivity.settings => Icons.settings_outlined,
-    WorkbenchActivity.about => Icons.info_outline,
-  };
+WorkbenchActivity _workbenchActivityById(String id) {
+  return WorkbenchActivity.values.firstWhere(
+    (activity) => activity.id == id,
+    orElse: () => WorkbenchActivity.explorer,
+  );
 }
 
-String _editorTabLabel(WorkbenchEditorTab tab) {
-  return switch (tab) {
-    WorkbenchEditorTab.blank => 'Blank',
-    WorkbenchEditorTab.map => 'Map',
-  };
+WorkbenchEditorTab _workbenchEditorTabById(String id) {
+  return WorkbenchEditorTab.values.firstWhere(
+    (tab) => tab.id == id,
+    orElse: () => WorkbenchEditorTab.map,
+  );
 }
 
-String _panelTabLabel(WorkbenchPanelTab tab) {
-  return switch (tab) {
-    WorkbenchPanelTab.pointOfInterest => 'POINT OF INTEREST',
-    WorkbenchPanelTab.debugConsole => 'DEBUG CONSOLE',
-  };
+WorkbenchPanelTab _workbenchPanelTabById(String id) {
+  return WorkbenchPanelTab.values.firstWhere(
+    (tab) => tab.id == id,
+    orElse: () => WorkbenchPanelTab.pointOfInterest,
+  );
 }
 
-String _secondarySideBarTabLabel(WorkbenchSecondarySideBarTab tab) {
-  return switch (tab) {
-    WorkbenchSecondarySideBarTab.properties => 'PROPERTIES',
-    WorkbenchSecondarySideBarTab.inspector => 'INSPECTOR',
-  };
+WorkbenchSecondarySideBarTab _workbenchSecondarySideBarTabById(String id) {
+  return WorkbenchSecondarySideBarTab.values.firstWhere(
+    (tab) => tab.id == id,
+    orElse: () => WorkbenchSecondarySideBarTab.properties,
+  );
 }
