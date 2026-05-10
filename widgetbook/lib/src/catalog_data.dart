@@ -282,6 +282,7 @@ class _EditorTabBarPreviewState extends State<EditorTabBarPreview> {
       tabs: tabs,
       selectedId: selectedId,
       onSelected: (id) => setState(() => selectedId = id),
+      onReorder: (reorderedTabs) => setState(() => tabs = reorderedTabs),
       onClose: (id) {
         setState(() {
           tabs = tabs.where((tab) => tab.id != id).toList();
@@ -327,12 +328,13 @@ class _TreeViewPreviewState extends State<TreeViewPreview> {
   late String? selectedId = widget.initialSelectedId;
   late Set<String> selectedIds = Set<String>.from(widget.initialSelectedIds);
   late Set<String> expandedIds = Set<String>.from(widget.initialExpandedIds);
+  late List<AgusTreeColumn> columns = List<AgusTreeColumn>.from(widget.columns);
 
   @override
   Widget build(BuildContext context) {
     return AgusTreeView(
       labelColumnTitle: widget.labelColumnTitle,
-      columns: widget.columns,
+      columns: columns,
       nodes: nodes,
       selectedId: selectedId,
       selectedIds: selectedIds,
@@ -375,6 +377,9 @@ class _TreeViewPreviewState extends State<TreeViewPreview> {
               );
             })
           : null,
+      onColumnReorder: columns.isEmpty
+          ? null
+          : (reorderedColumns) => setState(() => columns = reorderedColumns),
     );
   }
 }
@@ -578,6 +583,10 @@ class _WorkbenchPreviewState extends State<WorkbenchPreview> {
   late List<AgusTreeNode> sceneNodes = demo.nodes;
   late Set<String> expandedTreeIds = Set<String>.from(demo.expandedIds);
   late Set<String> selectedTreeIds = Set<String>.from(demo.multiSelectedIds);
+  late List<AgusEditorTab> editorTabs = buildEditorTabs();
+  late List<AgusTreeColumn> treeColumns = List<AgusTreeColumn>.from(
+    agusMetricTreeColumns,
+  );
   String? selectedTreeId;
   late final Map<String, Object?> settingsValues = buildSampleSettingValues();
 
@@ -704,11 +713,12 @@ class _WorkbenchPreviewState extends State<WorkbenchPreview> {
           title: 'Workspace Directory',
           child: AgusTreeView(
             labelColumnTitle: 'Layer',
-            columns: agusMetricTreeColumns,
+            columns: treeColumns,
             selectionMode: AgusTreeSelectionMode.multiple,
             selectedId: selectedTreeId,
             selectedIds: selectedTreeIds,
             expandedIds: expandedTreeIds,
+            onColumnReorder: (columns) => setState(() => treeColumns = columns),
             onSelected: (id) => setState(() => selectedTreeId = id),
             onSelectionChanged: (ids) => setState(() => selectedTreeIds = ids),
             onToggle: (id) => setState(() {
@@ -784,7 +794,8 @@ class _WorkbenchPreviewState extends State<WorkbenchPreview> {
           selectedId: selectedTab,
           onSelected: (id) => setState(() => selectedTab = id),
           onClose: (id) => setState(() => selectedTab = 'plan'),
-          tabs: buildEditorTabs(),
+          onReorder: (tabs) => setState(() => editorTabs = tabs),
+          tabs: editorTabs,
         ),
         Expanded(
           child: AgusEditorHost(
