@@ -1,6 +1,9 @@
 export 'src/components/agus_activity_bar.dart';
 export 'src/components/agus_command.dart';
 export 'src/components/agus_editor_tabs.dart';
+export 'src/components/agus_panel_tabs.dart';
+export 'src/components/agus_pane.dart';
+export 'src/components/agus_property_grid.dart';
 export 'src/components/agus_sidebar.dart';
 export 'src/components/agus_status_bar.dart';
 export 'src/components/agus_tree_view.dart';

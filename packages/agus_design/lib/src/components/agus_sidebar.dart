@@ -5,13 +5,15 @@ import '../theme/agus_theme_data.dart';
 class AgusSidebar extends StatelessWidget {
   const AgusSidebar({
     required this.title,
-    required this.sections,
+    this.sections = const <Widget>[],
+    this.child,
     this.actions = const <Widget>[],
     super.key,
-  });
+  }) : assert(child == null || sections.length == 0);
 
   final String title;
   final List<Widget> sections;
+  final Widget? child;
   final List<Widget> actions;
 
   @override
@@ -45,7 +47,8 @@ class AgusSidebar extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: ListView(padding: EdgeInsets.zero, children: sections),
+            child:
+                child ?? ListView(padding: EdgeInsets.zero, children: sections),
           ),
         ],
       ),
