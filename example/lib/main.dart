@@ -19,6 +19,7 @@ import 'about_tab.dart';
 import 'downloads_cache.dart';
 import 'downloads_tab.dart';
 import 'features/map/widgets/adaptive_layer_manager.dart';
+import 'features/workbench/interaction_state_controller.dart';
 import 'features/workbench/vscode_workbench.dart';
 import 'features/workbench/workbench_controller.dart';
 import 'features/workbench/workbench_panels.dart';
@@ -124,6 +125,35 @@ class MapSearchResult {
       }
     }
     return score;
+  }
+  
+  Map<String, Object?> toJson() => {
+    'title': title,
+    'subtitle': subtitle,
+    'lat': lat,
+    'lon': lon,
+    'zoom': zoom,
+    'source': source.name,
+    'nativeIndex': nativeIndex,
+    'isSuggestion': isSuggestion,
+    'suggestion': suggestion,
+  };
+  
+  static MapSearchResult fromJson(Map<String, Object?> json) {
+    return MapSearchResult(
+      title: json['title'] as String? ?? '',
+      subtitle: json['subtitle'] as String? ?? '',
+      lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
+      lon: (json['lon'] as num?)?.toDouble() ?? 0.0,
+      zoom: (json['zoom'] as num?)?.toInt() ?? 15,
+      source: MapSearchResultSource.values.firstWhere(
+        (s) => s.name == json['source'],
+        orElse: () => MapSearchResultSource.favorite,
+      ),
+      nativeIndex: json['nativeIndex'] as int?,
+      isSuggestion: json['isSuggestion'] as bool? ?? false,
+      suggestion: json['suggestion'] as String? ?? '',
+    );
   }
 }
 
@@ -464,6 +494,8 @@ class _MyAppState extends State<MyApp> {
   String _duckDBLayerStoreStatus = 'DuckDB layer store is starting';
   int _duckDBLayerRevision = 0;
   final WorkbenchController _workbenchController = WorkbenchController();
+  final AppInteractionStateController _interactionStateController =
+      AppInteractionStateController();
   final GlobalKey _mapViewportKey = GlobalKey();
   final GlobalKey _downloadsTabKey = GlobalKey(debugLabel: 'downloads-tab');
   bool _duckDBLayerPanelVisible = true;
@@ -483,6 +515,7 @@ class _MyAppState extends State<MyApp> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   List<MapSearchResult> _searchResults = const [];
+  String? _lastCachedQuery;
   _NavigationPlan? _navigationPlan;
   agus_maps_flutter.NavigationStatus? _navigationStatus;
 
@@ -522,6 +555,7 @@ class _MyAppState extends State<MyApp> {
     _currentBearing.dispose();
     _duckDBDrawController?.dispose();
     _workbenchController.dispose();
+    _interactionStateController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -772,6 +806,7 @@ class _MyAppState extends State<MyApp> {
         _clearSearchState();
         _currentTabIndex = 0;
       });
+      _interactionStateController.enterRouting();
       _startNavigationStatusPolling();
       _showMapMessage('Building route from $startLabel.');
     } finally {
@@ -915,6 +950,7 @@ class _MyAppState extends State<MyApp> {
       _navigationStatus = null;
       _navigationActionInProgress = false;
     });
+    _interactionStateController.enterIdle();
     _showMapMessage('Route cleared.');
   }
 
@@ -1425,7 +1461,21 @@ class _MyAppState extends State<MyApp> {
   void _setDuckDBDrawTool(agus_maps_flutter.AgusDrawTool tool) {
     final controller = _duckDBDrawController;
     if (controller == null) return;
-    controller.setTool(tool);
+
+    // Handle state transitions based on the tool
+    if (tool == agus_maps_flutter.AgusDrawTool.none) {
+      // Exiting drawing mode
+      controller.setTool(tool);
+      _interactionStateController.enterIdle();
+    } else if (!controller.isEditing) {
+      // Starting a new drawing - safe to proceed
+      _interactionStateController.enterDrawing(tool: tool.name);
+      controller.setTool(tool);
+    } else {
+      // Drawing or editing is in progress - do nothing, rely on command enablement
+      return;
+    }
+
     _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
     setState(() {
       if (tool != agus_maps_flutter.AgusDrawTool.none) {
@@ -1450,6 +1500,7 @@ class _MyAppState extends State<MyApp> {
 
     try {
       controller.beginEditFeature(feature);
+      _interactionStateController.enterEditingFeature(featureId: feature.featureId);
       _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
       setState(() {
         _activeDuckDBFeature = feature;
@@ -1591,8 +1642,10 @@ class _MyAppState extends State<MyApp> {
       _searchOpen = !_searchOpen;
       if (!_searchOpen) {
         _clearSearchState();
+        _interactionStateController.enterIdle();
       } else {
         _mobileLayerManagerVisible = false;
+        _interactionStateController.enterSearch();
       }
     });
     if (_searchOpen) {
@@ -1615,6 +1668,7 @@ class _MyAppState extends State<MyApp> {
         _searchOpen = true;
         _mobileLayerManagerVisible = false;
       });
+      _interactionStateController.enterSearch(query: query);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_searchFocusNode.hasFocus) {
@@ -1650,6 +1704,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _clearSearchState() {
+    _lastCachedQuery = null;
     _searchDebounceTimer?.cancel();
     _searchPollTimer?.cancel();
     agus_maps_flutter.cancelNativeSearch();
@@ -1661,14 +1716,115 @@ class _MyAppState extends State<MyApp> {
     _activeSearchStartedAt = null;
   }
 
+  /// Computes a stable map data revision fingerprint based on MWM metadata.
+  String _computeMapDataRevision() {
+    final storage = _mwmStorage;
+    if (storage == null) return 'no-mwm';
+    
+    final allMaps = storage.getAll();
+    if (allMaps.isEmpty) return 'empty-mwm';
+    
+    // Sort by region name for stable fingerprint
+    final sorted = allMaps.toList()
+      ..sort((a, b) => a.regionName.compareTo(b.regionName));
+    
+    // Compute fingerprint from visible map names and versions
+    final visibleMaps = sorted
+        .where((m) => !_hiddenMwmLayerRegions.contains(m.regionName))
+        .map((m) => '${m.regionName}:${m.snapshotVersion}')
+        .join(',');
+    
+    return visibleMaps.isEmpty ? 'all-hidden' : visibleMaps;
+  }
+  
+  /// Attempts to retrieve cached search results.
+  List<MapSearchResult>? _getCachedSearchResults(
+    String query,
+    String locale,
+  ) {
+    final store = _duckDBLayerStore;
+    if (store == null) return null;
+    
+    final normalizedQuery = query.trim().toLowerCase();
+    final mapRevision = _computeMapDataRevision();
+    
+    try {
+      final cached = store.searchCache(
+        normalizedQuery: normalizedQuery,
+        locale: locale,
+        includeStale: false,
+      );
+      
+      if (cached.isEmpty) return null;
+      
+      final entry = cached.first;
+      if (entry.mapDataRevision != mapRevision) return null;
+      
+      final payload = entry.resultPayload['results'] as List<Object?>?;
+      if (payload == null) return null;
+      
+      return payload
+          .cast<Map<String, Object?>>()
+          .map(MapSearchResult.fromJson)
+          .toList(growable: false);
+    } catch (e) {
+      _log('Failed to retrieve cached search results: $e');
+      return null;
+    }
+  }
+  
+  /// Caches search results for the given query.
+  void _cacheSearchResults(
+    String query,
+    String locale,
+    List<MapSearchResult> results,
+  ) {
+    final store = _duckDBLayerStore;
+    if (store == null) return;
+    
+    final normalizedQuery = query.trim().toLowerCase();
+    final mapRevision = _computeMapDataRevision();
+    
+    try {
+      store.upsertSearchCache(
+        agus_maps_flutter.AgusSearchCacheDraft(
+          cacheId: '$normalizedQuery:$locale',
+          normalizedQuery: normalizedQuery,
+          locale: locale,
+          mapDataRevision: mapRevision,
+          mapDataFingerprint: mapRevision,
+          resultPayload: {
+            'results': results.map((r) => r.toJson()).toList(),
+          },
+          resultCount: results.length,
+        ),
+      );
+      _lastCachedQuery = query;
+    } catch (e) {
+      _log('Failed to cache search results: $e');
+    }
+  }
+
   void _startNativeSearch(String query) {
     final trimmedQuery = query.trim();
     if (!mounted || trimmedQuery.isEmpty) return;
     if (_searchController.text.trim() != trimmedQuery) return;
 
+    // Check cache first
+    final locale = ui.PlatformDispatcher.instance.locale.toLanguageTag();
+    final cachedResults = _getCachedSearchResults(trimmedQuery, locale);
+    if (cachedResults != null && cachedResults.isNotEmpty) {
+      setState(() {
+        _searchResults = cachedResults;
+        _nativeSearchRunning = false;
+      });
+      _log('Using cached search results for "$trimmedQuery" (${cachedResults.length} results)');
+      // Still start native search in background to refresh cache
+    }
+
     final generation = agus_maps_flutter.startNativeSearch(
       trimmedQuery,
-      locale: ui.PlatformDispatcher.instance.locale.toLanguageTag(),
+      locale: locale,
       interactive: true,
     );
 
@@ -1727,6 +1883,13 @@ class _MyAppState extends State<MyApp> {
       _searchResults = mergedResults;
       _nativeSearchRunning = snapshot.isRunning && !timedOut;
     });
+
+    // Cache results when search completes successfully
+    if (!snapshot.isRunning && !timedOut && mergedResults.isNotEmpty) {
+      if (_lastCachedQuery != query) {
+        _cacheSearchResults(query, ui.PlatformDispatcher.instance.locale.toLanguageTag(), mergedResults);
+      }
+    }
 
     if (!snapshot.isRunning || timedOut) {
       if (timedOut) {
@@ -1865,12 +2028,8 @@ class _MyAppState extends State<MyApp> {
     if (!selectedNativeResult) {
       _mapController.moveToLocation(result.lat, result.lon, result.zoom);
     }
-
-    setState(() {
-      _searchOpen = false;
-      _currentTabIndex = 0;
-      _clearSearchState();
-    });
+    
+    // Keep search results visible after selection
   }
 
   void _zoomIn() {
@@ -2543,13 +2702,23 @@ class _MyAppState extends State<MyApp> {
       required IconData icon,
       List<String> keywords = const <String>[],
     }) {
+      final enabled = _duckDBLayerStore != null &&
+          _interactionStateController.isOperationAllowed('draw');
+
       return AgusCommandItem(
         id: 'draw-${tool.name}',
         label: label,
         icon: icon,
         keywords: keywords,
-        enabled: _duckDBLayerStore != null,
+        enabled: enabled,
         onSelected: () {
+          if (!enabled) {
+            final reason = _interactionStateController.disabledReason('draw');
+            if (reason != null) {
+              _showSnackBar(reason);
+            }
+            return;
+          }
           _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
           _workbenchController.selectActivity(WorkbenchActivity.explorer);
           _setDuckDBDrawTool(tool);
@@ -2789,6 +2958,11 @@ class _MyAppState extends State<MyApp> {
     final activeLayerName = _activeDuckDBLayerName();
     final activeFeatureName = _activeDuckDBFeatureName();
 
+    // Build map telemetry items when Explorer is active and map editor is visible
+    final showMapTelemetry = state.activeActivity == WorkbenchActivity.explorer &&
+        state.activeEditorTab == WorkbenchEditorTab.map;
+    final mapTelemetryItems = showMapTelemetry ? _buildMapTelemetryItems(context) : <AgusStatusBarItem>[];
+
     return AgusStatusBar(
       leftItems: [
         AgusStatusBarItem(
@@ -2811,6 +2985,8 @@ class _MyAppState extends State<MyApp> {
             label: 'Place selected',
             icon: Icons.place,
           ),
+        // Add map telemetry items (zoom, bearing, center, selected point)
+        ...mapTelemetryItems,
       ],
       rightItems: [
         AgusStatusBarItem(
@@ -2843,6 +3019,42 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
+  List<AgusStatusBarItem> _buildMapTelemetryItems(BuildContext context) {
+    // Get current map state from native APIs
+    final center = agus_maps_flutter.getViewportCenter();
+    final zoom = agus_maps_flutter.getCurrentZoom();
+    final bearing = agus_maps_flutter.getCurrentBearing();
+
+    // Return empty list if map state is not available
+    if (center == null || zoom == null) {
+      return <AgusStatusBarItem>[];
+    }
+
+    // Get selected point from place page if available
+    double? selectedLat;
+    double? selectedLon;
+    if (_placePage != null) {
+      selectedLat = _placePage!.lat;
+      selectedLon = _placePage!.lon;
+    }
+
+    // Build telemetry model
+    final telemetry = MapTelemetry(
+      zoom: zoom,
+      centerLat: center.lat,
+      centerLon: center.lon,
+      bearing: bearing,
+      selectedPointLat: selectedLat,
+      selectedPointLon: selectedLon,
+    );
+
+    // Build status bar items with copy-to-clipboard support
+    return MapTelemetryStatusBarBuilder.buildItems(
+      context: context,
+      telemetry: telemetry,
+    );
+  }
+
   String _activeDuckDBLayerName() {
     final store = _duckDBLayerStore;
     if (store == null) return _activeDuckDBLayerId;
@@ -2863,21 +3075,8 @@ class _MyAppState extends State<MyApp> {
   List<MwmLayerInfo> _mwmLayerInfos() {
     final storage = _mwmStorage;
     if (storage == null) return const <MwmLayerInfo>[];
-    final maps = List<MwmMetadata>.from(storage.getAll())
-      ..sort((a, b) {
-        return switch (_mwmLayerOrderMode) {
-          MwmLayerOrderMode.byMap => () {
-              final byRegion = a.regionName.compareTo(b.regionName);
-              if (byRegion != 0) return byRegion;
-              return b.snapshotVersion.compareTo(a.snapshotVersion);
-            }(),
-          MwmLayerOrderMode.byDate => () {
-              final byVersion = b.snapshotVersion.compareTo(a.snapshotVersion);
-              if (byVersion != 0) return byVersion;
-              return a.regionName.compareTo(b.regionName);
-            }(),
-        };
-      });
+    // Use the new getAllOrdered method which returns all versions sorted
+    final maps = storage.getAllOrdered(_mwmLayerOrderMode);
     return [
       for (final metadata in maps)
         MwmLayerInfo(
@@ -2888,6 +3087,7 @@ class _MyAppState extends State<MyApp> {
           isBundled: metadata.isBundled,
           visible: metadata.isBundled ||
               !_hiddenMwmLayerRegions.contains(metadata.regionName),
+          isActive: metadata.isActive,
         ),
     ];
   }
@@ -2911,6 +3111,13 @@ class _MyAppState extends State<MyApp> {
     } else {
       _hiddenMwmLayerRegions.add(regionName);
     }
+    
+    // Invalidate search cache when map visibility changes
+    final store = _duckDBLayerStore;
+    if (store != null) {
+      store.invalidateAllSearchCache(reason: 'mwm_visibility:$regionName:$visible');
+    }
+    
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
       _prefsKeyHiddenMwmLayers,
@@ -2954,12 +3161,57 @@ class _MyAppState extends State<MyApp> {
     _showSnackBar('Searching for ${layer.regionName}');
   }
 
+  void _focusProjectLayer(String layerId) {
+    final store = _duckDBLayerStore;
+    if (store == null) return;
+
+    final focusCenter = store.getLayerFocusCenter(layerId);
+    if (focusCenter == null) {
+      _showSnackBar('Cannot focus: layer center not calculated');
+      return;
+    }
+
+    _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
+    _mapController.moveToLocation(
+      focusCenter.latitude,
+      focusCenter.longitude,
+      14, // Default zoom level
+    );
+    _showSnackBar('Focused on layer');
+  }
+
+  void _focusProjectFeature(agus_maps_flutter.AgusLayerFeature feature) {
+    final store = _duckDBLayerStore;
+    if (store == null) return;
+
+    final focusCenter = store.getFeatureFocusCenter(feature.layerId, feature.featureId);
+    if (focusCenter == null) {
+      _showSnackBar('Cannot focus: feature center not calculated');
+      return;
+    }
+
+    _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
+    _mapController.moveToLocation(
+      focusCenter.latitude,
+      focusCenter.longitude,
+      16, // Higher zoom for features
+    );
+    _showSnackBar('Focused on feature');
+  }
+
   Future<void> _deleteMwmLayer(MwmLayerInfo layer) async {
     final storage = _mwmStorage;
     if (storage == null) return;
     final result = await storage.deleteMap(layer.regionName);
     if (!mounted) return;
     setState(() {});
+    
+    // Invalidate search cache when map is deleted
+    final store = _duckDBLayerStore;
+    if (store != null) {
+      store.invalidateAllSearchCache(reason: 'mwm_deleted:${layer.regionName}');
+    }
+    
     _showSnackBar(
       result.success
           ? 'Deleted ${layer.regionName}'
@@ -3025,6 +3277,12 @@ class _MyAppState extends State<MyApp> {
   }
 
   int _registerMwmMetadata(MwmMetadata metadata) {
+    // Invalidate search cache when map is registered
+    final store = _duckDBLayerStore;
+    if (store != null) {
+      store.invalidateAllSearchCache(reason: 'mwm_registered:${metadata.regionName}');
+    }
+    
     final parsed = int.tryParse(metadata.snapshotVersion);
     return parsed != null
         ? agus_maps_flutter.registerSingleMapWithVersion(
@@ -3227,6 +3485,8 @@ class _MyAppState extends State<MyApp> {
           },
           onMwmLayerUpdated: _updateMwmLayer,
           onMwmLayerFocused: _focusMwmLayer,
+          onProjectLayerFocused: _focusProjectLayer,
+          onFeatureFocused: _focusProjectFeature,
           onMwmLayerOrderChanged: (mode) {
             unawaited(_setMwmLayerOrderMode(mode));
           },
@@ -3488,6 +3748,8 @@ class _MyAppState extends State<MyApp> {
                         },
                         onMwmLayerUpdated: _updateMwmLayer,
                         onMwmLayerFocused: _focusMwmLayer,
+                        onProjectLayerFocused: _focusProjectLayer,
+                        onFeatureFocused: _focusProjectFeature,
                         onMwmLayerOrderChanged: (mode) {
                           unawaited(_setMwmLayerOrderMode(mode));
                         },
@@ -3534,6 +3796,7 @@ class _MyAppState extends State<MyApp> {
                   axis: uiSpec.mapToolbarAxis,
                   onCommitted: (featureId) {
                     _log('DuckDB feature committed: $featureId');
+                    _interactionStateController.enterIdle();
                   },
                 );
               },
@@ -3851,6 +4114,8 @@ class _MyAppState extends State<MyApp> {
           },
           onMwmLayerUpdated: _updateMwmLayer,
           onMwmLayerFocused: _focusMwmLayer,
+          onProjectLayerFocused: _focusProjectLayer,
+          onFeatureFocused: _focusProjectFeature,
           onMwmLayerOrderChanged: (mode) {
             unawaited(_setMwmLayerOrderMode(mode));
           },
@@ -3892,6 +4157,8 @@ class _MyAppState extends State<MyApp> {
         },
         onMwmLayerUpdated: _updateMwmLayer,
         onMwmLayerFocused: _focusMwmLayer,
+        onProjectLayerFocused: _focusProjectLayer,
+        onFeatureFocused: _focusProjectFeature,
         onMwmLayerOrderChanged: (mode) {
           unawaited(_setMwmLayerOrderMode(mode));
         },
@@ -4012,7 +4279,10 @@ class _MyAppState extends State<MyApp> {
             icon: Icons.close,
             active: true,
             enabled: !controller.isCommitting,
-            onPressed: controller.cancel,
+            onPressed: () {
+              controller.cancel();
+              _interactionStateController.enterIdle();
+            },
           ),
         ];
 
@@ -4036,6 +4306,7 @@ class _MyAppState extends State<MyApp> {
       final featureId = await controller.commit();
       if (featureId != null) {
         _log('DuckDB feature committed: $featureId');
+        _interactionStateController.enterIdle();
       }
     } catch (error) {
       if (!mounted) return;

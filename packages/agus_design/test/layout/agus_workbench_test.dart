@@ -100,4 +100,66 @@ void main() {
       AgusWorkbenchArea.secondarySidebar,
     ]);
   });
+
+  testWidgets('workbench pane controls show divider with trailing actions', (
+    tester,
+  ) async {
+    await pumpAgusWidget(
+      tester,
+      AgusWorkbench(
+        title: 'Agus Design',
+        activityBar: buildActivityBar(),
+        primarySidebar: const Text('Primary'),
+        editor: const Text('Editor'),
+        bottomPanel: const Text('Panel'),
+        statusBar: buildStatusBar(),
+        titleBarTrailingActions: const [Icon(Icons.settings)],
+      ),
+      size: const Size(1200, 800),
+    );
+
+    expect(find.byType(VerticalDivider), findsOneWidget);
+    expect(find.byTooltip('Toggle primary sidebar'), findsOneWidget);
+    expect(find.byTooltip('Toggle panel'), findsOneWidget);
+    expect(find.byIcon(Icons.settings), findsOneWidget);
+  });
+
+  testWidgets('workbench pane controls hide divider without trailing actions', (
+    tester,
+  ) async {
+    await pumpAgusWidget(
+      tester,
+      AgusWorkbench(
+        title: 'Agus Design',
+        activityBar: buildActivityBar(),
+        primarySidebar: const Text('Primary'),
+        editor: const Text('Editor'),
+        bottomPanel: const Text('Panel'),
+        statusBar: buildStatusBar(),
+      ),
+      size: const Size(1200, 800),
+    );
+
+    expect(find.byType(VerticalDivider), findsNothing);
+    expect(find.byTooltip('Toggle primary sidebar'), findsOneWidget);
+  });
+
+  testWidgets('workbench respects showPaneControls flag', (tester) async {
+    await pumpAgusWidget(
+      tester,
+      AgusWorkbench(
+        title: 'Agus Design',
+        activityBar: buildActivityBar(),
+        primarySidebar: const Text('Primary'),
+        editor: const Text('Editor'),
+        bottomPanel: const Text('Panel'),
+        statusBar: buildStatusBar(),
+        showPaneControls: false,
+      ),
+      size: const Size(1200, 800),
+    );
+
+    expect(find.byTooltip('Toggle primary sidebar'), findsNothing);
+    expect(find.byTooltip('Toggle panel'), findsNothing);
+  });
 }

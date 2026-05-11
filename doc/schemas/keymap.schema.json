@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agus.app/schemas/keymap.schema.json",
+  "title": "Agus Maps Keymap",
+  "description": "Schema for Agus Maps keyboard shortcut definitions",
+  "type": "object",
+  "required": ["version", "platform", "keybindings"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "description": "Schema version number",
+      "const": 1
+    },
+    "platform": {
+      "type": "string",
+      "description": "Target platform for these keybindings",
+      "enum": ["macos", "windows", "linux", "android", "ios"]
+    },
+    "keybindings": {
+      "type": "array",
+      "description": "Array of keybinding entries",
+      "items": {
+        "$ref": "#/definitions/keybindingEntry"
+      }
+    }
+  },
+  "definitions": {
+    "keybindingEntry": {
+      "type": "object",
+      "required": ["command", "keybinding"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Command identifier in dot notation (e.g., 'map.zoom.in')",
+          "pattern": "^[a-z]+\\.[a-z]+\\.[a-z]+$"
+        },
+        "keybinding": {
+          "$ref": "#/definitions/keybinding"
+        },
+        "when": {
+          "type": "string",
+          "description": "Optional context expression (e.g., 'editorFocus', 'mapFocus')"
+        }
+      }
+    },
+    "keybinding": {
+      "type": "object",
+      "required": ["key"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Primary key identifier (lowercase letter, digit, or special key name)",
+          "examples": ["a", "k", "1", "arrowUp", "escape", "f1"]
+        },
+        "control": {
+          "type": "boolean",
+          "description": "Whether Control (Ctrl) modifier is required",
+          "default": false
+        },
+        "shift": {
+          "type": "boolean",
+          "description": "Whether Shift modifier is required",
+          "default": false
+        },
+        "alt": {
+          "type": "boolean",
+          "description": "Whether Alt (Option on macOS) modifier is required",
+          "default": false
+        },
+        "meta": {
+          "type": "boolean",
+          "description": "Whether Meta (Cmd on macOS, Win on Windows) modifier is required",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "version": 1,
+      "platform": "macos",
+      "keybindings": [
+        {
+          "command": "commandbar.open",
+          "keybinding": {
+            "key": "k",
+            "meta": true
+          }
+        },
+        {
+          "command": "map.zoom.in",
+          "keybinding": {
+            "key": "=",
+            "meta": true
+          }
+        },
+        {
+          "command": "edit.undo",
+          "keybinding": {
+            "key": "z",
+            "meta": true
+          }
+        }
+      ]
+    }
+  ]
+}

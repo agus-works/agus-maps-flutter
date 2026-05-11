@@ -199,6 +199,17 @@ The example search box should behave like CoMaps:
     field, results dropdown, place page, and keyboard are overlays above a
     stable map viewport. If the keyboard would cover search results, constrain
     or reposition only the dropdown, not the map renderer.
+13. **Search results and the search sidebar remain visible after selecting a
+    result.** Clicking a result focuses/zooms to it but does not close the
+    search panel or clear the result list, allowing users to explore multiple
+    results without re-searching.
+14. **Search results are cached in DuckDB.** When a user re-enters an exact
+    query, cached results load instantly if the map data revision has not
+    changed. Native search still runs in the background to refresh the cache.
+15. **The search cache is invalidated when MWM maps are added, deleted, hidden,
+    shown, or upgraded.** A stable map data revision fingerprint is computed
+    from visible MWM metadata (region name + snapshot version) and stored with
+    each cache entry. If the fingerprint changes, cached results are ignored.
 
 ### Platform Coverage
 

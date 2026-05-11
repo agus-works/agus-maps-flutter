@@ -392,6 +392,209 @@ class AgusLayerMetadataEntry {
   final DateTime? updatedAt;
 }
 
+/// Search result cache entry stored in `agus.search_result_cache`.
+class AgusSearchCacheEntry {
+  /// Creates a search cache entry snapshot.
+  const AgusSearchCacheEntry({
+    required this.cacheId,
+    required this.normalizedQuery,
+    required this.locale,
+    required this.mapDataRevision,
+    required this.mapDataFingerprint,
+    required this.resultPayload,
+    required this.resultCount,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.accessedAt,
+    required this.isStale,
+    required this.invalidationReason,
+  });
+
+  /// Cache entry identifier.
+  final String cacheId;
+
+  /// Normalized search query.
+  final String normalizedQuery;
+
+  /// Query locale.
+  final String locale;
+
+  /// Map data revision or version identifier.
+  final String? mapDataRevision;
+
+  /// Map data fingerprint or checksum.
+  final String? mapDataFingerprint;
+
+  /// Search result payload as JSON.
+  final Map<String, Object?> resultPayload;
+
+  /// Number of results in the payload.
+  final int resultCount;
+
+  /// Creation timestamp.
+  final DateTime? createdAt;
+
+  /// Last update timestamp.
+  final DateTime? updatedAt;
+
+  /// Last access timestamp.
+  final DateTime? accessedAt;
+
+  /// Whether the cache entry is stale/invalidated.
+  final bool isStale;
+
+  /// Reason for invalidation when stale.
+  final String? invalidationReason;
+}
+
+/// Mutable inputs for creating or updating a search cache entry.
+class AgusSearchCacheDraft {
+  /// Creates search cache upsert input.
+  const AgusSearchCacheDraft({
+    required this.cacheId,
+    required this.normalizedQuery,
+    required this.locale,
+    this.mapDataRevision,
+    this.mapDataFingerprint,
+    required this.resultPayload,
+    required this.resultCount,
+    this.isStale = false,
+    this.invalidationReason,
+  });
+
+  /// Cache entry identifier.
+  final String cacheId;
+
+  /// Normalized search query.
+  final String normalizedQuery;
+
+  /// Query locale.
+  final String locale;
+
+  /// Map data revision or version identifier.
+  final String? mapDataRevision;
+
+  /// Map data fingerprint or checksum.
+  final String? mapDataFingerprint;
+
+  /// Search result payload as JSON.
+  final Map<String, Object?> resultPayload;
+
+  /// Number of results in the payload.
+  final int resultCount;
+
+  /// Whether the cache entry is stale/invalidated.
+  final bool isStale;
+
+  /// Reason for invalidation when stale.
+  final String? invalidationReason;
+}
+
+/// Focus center for a layer or feature.
+class AgusFocusCenter {
+  /// Creates a focus center.
+  const AgusFocusCenter({
+    required this.longitude,
+    required this.latitude,
+    required this.calculatedAt,
+  });
+
+  /// Center longitude in WGS84.
+  final double longitude;
+
+  /// Center latitude in WGS84.
+  final double latitude;
+
+  /// Timestamp when the center was calculated.
+  final DateTime? calculatedAt;
+}
+
+/// Keymap setting stored in `agus.keymap_settings`.
+class AgusKeymapSetting {
+  /// Creates a keymap setting snapshot.
+  const AgusKeymapSetting({
+    required this.settingId,
+    required this.platform,
+    required this.command,
+    required this.keybindingPayload,
+    required this.isOverride,
+    required this.displayName,
+    required this.description,
+    required this.validationSchemaVersion,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  /// Setting identifier.
+  final String settingId;
+
+  /// Platform (e.g., 'macos', 'windows', 'linux', 'android', 'ios').
+  final String platform;
+
+  /// Command identifier.
+  final String command;
+
+  /// Keybinding payload as JSON.
+  final Map<String, Object?> keybindingPayload;
+
+  /// Whether this is a user override.
+  final bool isOverride;
+
+  /// Human-readable display name.
+  final String? displayName;
+
+  /// Setting description.
+  final String? description;
+
+  /// Validation schema version.
+  final int validationSchemaVersion;
+
+  /// Creation timestamp.
+  final DateTime? createdAt;
+
+  /// Last update timestamp.
+  final DateTime? updatedAt;
+}
+
+/// Mutable inputs for creating or updating a keymap setting.
+class AgusKeymapSettingDraft {
+  /// Creates keymap setting upsert input.
+  const AgusKeymapSettingDraft({
+    required this.settingId,
+    required this.platform,
+    required this.command,
+    required this.keybindingPayload,
+    this.isOverride = false,
+    this.displayName,
+    this.description,
+    this.validationSchemaVersion = 1,
+  });
+
+  /// Setting identifier.
+  final String settingId;
+
+  /// Platform (e.g., 'macos', 'windows', 'linux', 'android', 'ios').
+  final String platform;
+
+  /// Command identifier.
+  final String command;
+
+  /// Keybinding payload as JSON.
+  final Map<String, Object?> keybindingPayload;
+
+  /// Whether this is a user override.
+  final bool isOverride;
+
+  /// Human-readable display name.
+  final String? displayName;
+
+  /// Setting description.
+  final String? description;
+
+  /// Validation schema version.
+  final int validationSchemaVersion;
+}
+
 /// High-level DuckDB-backed layer persistence API.
 class DuckDBLayerStore {
   /// Creates a store rooted at the app writable/support directory.
@@ -636,6 +839,342 @@ ORDER BY key ASC;
     _executeChecked('''
 DELETE FROM agus.layer_metadata
 WHERE layer_id = ${_sqlString(layerId)} AND key = ${_sqlString(key)};
+''');
+  }
+
+  /// Inserts or updates a search cache entry.
+  void upsertSearchCache(AgusSearchCacheDraft entry) {
+    _executeChecked('''
+INSERT INTO agus.search_result_cache(
+  cache_id,
+  normalized_query,
+  locale,
+  map_data_revision,
+  map_data_fingerprint,
+  result_payload,
+  result_count,
+  is_stale,
+  invalidation_reason
+) VALUES (
+  ${_sqlString(entry.cacheId)},
+  ${_sqlString(entry.normalizedQuery)},
+  ${_sqlString(entry.locale)},
+  ${_sqlNullableString(entry.mapDataRevision)},
+  ${_sqlNullableString(entry.mapDataFingerprint)},
+  ${_sqlJson(entry.resultPayload)},
+  ${entry.resultCount},
+  ${_sqlBool(entry.isStale)},
+  ${_sqlNullableString(entry.invalidationReason)}
+)
+ON CONFLICT(cache_id) DO UPDATE SET
+  normalized_query = excluded.normalized_query,
+  locale = excluded.locale,
+  map_data_revision = excluded.map_data_revision,
+  map_data_fingerprint = excluded.map_data_fingerprint,
+  result_payload = excluded.result_payload,
+  result_count = excluded.result_count,
+  updated_at = current_localtimestamp(),
+  accessed_at = current_localtimestamp(),
+  is_stale = excluded.is_stale,
+  invalidation_reason = excluded.invalidation_reason;
+''');
+  }
+
+  /// Returns a search cache entry by [cacheId], or `null` when absent.
+  AgusSearchCacheEntry? getSearchCache(String cacheId) {
+    final result = queryDuckDB('''
+SELECT
+  cache_id,
+  normalized_query,
+  locale,
+  map_data_revision,
+  map_data_fingerprint,
+  result_payload,
+  result_count,
+  created_at,
+  updated_at,
+  accessed_at,
+  is_stale,
+  invalidation_reason
+FROM agus.search_result_cache
+WHERE cache_id = ${_sqlString(cacheId)};
+''');
+    final rows = _rowsByName(result);
+    if (rows.isEmpty) return null;
+
+    _executeChecked('''
+UPDATE agus.search_result_cache
+SET accessed_at = current_localtimestamp()
+WHERE cache_id = ${_sqlString(cacheId)};
+''');
+
+    return _searchCacheFromRow(rows.first);
+  }
+
+  /// Searches for cached entries by normalized query and locale.
+  List<AgusSearchCacheEntry> searchCache({
+    required String normalizedQuery,
+    required String locale,
+    bool includeStale = false,
+  }) {
+    final result = queryDuckDB('''
+SELECT
+  cache_id,
+  normalized_query,
+  locale,
+  map_data_revision,
+  map_data_fingerprint,
+  result_payload,
+  result_count,
+  created_at,
+  updated_at,
+  accessed_at,
+  is_stale,
+  invalidation_reason
+FROM agus.search_result_cache
+WHERE normalized_query = ${_sqlString(normalizedQuery)}
+  AND locale = ${_sqlString(locale)}
+  ${includeStale ? '' : 'AND is_stale = false'}
+ORDER BY accessed_at DESC;
+''');
+    return _rowsByName(result).map(_searchCacheFromRow).toList(growable: false);
+  }
+
+  /// Invalidates search cache entries by map data revision.
+  void invalidateSearchCacheByRevision(String mapDataRevision) {
+    _executeChecked('''
+UPDATE agus.search_result_cache
+SET
+  is_stale = true,
+  invalidation_reason = 'map_data_revision_changed',
+  updated_at = current_localtimestamp()
+WHERE map_data_revision = ${_sqlString(mapDataRevision)}
+  AND is_stale = false;
+''');
+  }
+
+  /// Invalidates all search cache entries.
+  void invalidateAllSearchCache({String? reason}) {
+    _executeChecked('''
+UPDATE agus.search_result_cache
+SET
+  is_stale = true,
+  invalidation_reason = ${_sqlNullableString(reason ?? 'global_invalidation')},
+  updated_at = current_localtimestamp()
+WHERE is_stale = false;
+''');
+  }
+
+  /// Deletes a search cache entry.
+  void deleteSearchCache(String cacheId) {
+    _executeChecked('''
+DELETE FROM agus.search_result_cache
+WHERE cache_id = ${_sqlString(cacheId)};
+''');
+  }
+
+  /// Returns the focus center for a layer, or `null` when absent or not calculated.
+  AgusFocusCenter? getLayerFocusCenter(String layerId) {
+    final result = queryDuckDB('''
+SELECT
+  focus_center_lon,
+  focus_center_lat,
+  focus_center_calculated_at
+FROM agus.layers
+WHERE layer_id = ${_sqlString(layerId)};
+''');
+    final rows = _rowsByName(result);
+    if (rows.isEmpty) return null;
+
+    final row = rows.first;
+    final lon = _asDouble(row['focus_center_lon']);
+    final lat = _asDouble(row['focus_center_lat']);
+    final calculatedAt = _asDateTime(row['focus_center_calculated_at']);
+
+    if (lon == null || lat == null) return null;
+
+    return AgusFocusCenter(
+      longitude: lon,
+      latitude: lat,
+      calculatedAt: calculatedAt,
+    );
+  }
+
+  /// Sets the focus center for a layer.
+  void setLayerFocusCenter(String layerId, double longitude, double latitude) {
+    _executeChecked('''
+UPDATE agus.layers
+SET
+  focus_center_lon = ${_sqlNullableDouble(longitude)},
+  focus_center_lat = ${_sqlNullableDouble(latitude)},
+  focus_center_calculated_at = current_localtimestamp(),
+  updated_at = current_localtimestamp()
+WHERE layer_id = ${_sqlString(layerId)};
+''');
+  }
+
+  /// Clears the focus center for a layer.
+  void clearLayerFocusCenter(String layerId) {
+    _executeChecked('''
+UPDATE agus.layers
+SET
+  focus_center_lon = NULL,
+  focus_center_lat = NULL,
+  focus_center_calculated_at = NULL,
+  updated_at = current_localtimestamp()
+WHERE layer_id = ${_sqlString(layerId)};
+''');
+  }
+
+  /// Returns the focus center for a feature, or `null` when absent or not calculated.
+  AgusFocusCenter? getFeatureFocusCenter(String layerId, String featureId) {
+    final result = queryDuckDB('''
+SELECT
+  focus_center_lon,
+  focus_center_lat,
+  focus_center_calculated_at
+FROM agus.layer_features
+WHERE layer_id = ${_sqlString(layerId)}
+  AND feature_id = ${_sqlString(featureId)};
+''');
+    final rows = _rowsByName(result);
+    if (rows.isEmpty) return null;
+
+    final row = rows.first;
+    final lon = _asDouble(row['focus_center_lon']);
+    final lat = _asDouble(row['focus_center_lat']);
+    final calculatedAt = _asDateTime(row['focus_center_calculated_at']);
+
+    if (lon == null || lat == null) return null;
+
+    return AgusFocusCenter(
+      longitude: lon,
+      latitude: lat,
+      calculatedAt: calculatedAt,
+    );
+  }
+
+  /// Sets the focus center for a feature.
+  void setFeatureFocusCenter(
+    String layerId,
+    String featureId,
+    double longitude,
+    double latitude,
+  ) {
+    _executeChecked('''
+UPDATE agus.layer_features
+SET
+  focus_center_lon = ${_sqlNullableDouble(longitude)},
+  focus_center_lat = ${_sqlNullableDouble(latitude)},
+  focus_center_calculated_at = current_localtimestamp(),
+  updated_at = current_localtimestamp()
+WHERE layer_id = ${_sqlString(layerId)}
+  AND feature_id = ${_sqlString(featureId)};
+''');
+  }
+
+  /// Clears the focus center for a feature.
+  void clearFeatureFocusCenter(String layerId, String featureId) {
+    _executeChecked('''
+UPDATE agus.layer_features
+SET
+  focus_center_lon = NULL,
+  focus_center_lat = NULL,
+  focus_center_calculated_at = NULL,
+  updated_at = current_localtimestamp()
+WHERE layer_id = ${_sqlString(layerId)}
+  AND feature_id = ${_sqlString(featureId)};
+''');
+  }
+
+  /// Inserts or updates a keymap setting.
+  void upsertKeymapSetting(AgusKeymapSettingDraft setting) {
+    _executeChecked('''
+INSERT INTO agus.keymap_settings(
+  setting_id,
+  platform,
+  command,
+  keybinding_payload,
+  is_override,
+  display_name,
+  description,
+  validation_schema_version
+) VALUES (
+  ${_sqlString(setting.settingId)},
+  ${_sqlString(setting.platform)},
+  ${_sqlString(setting.command)},
+  ${_sqlJson(setting.keybindingPayload)},
+  ${_sqlBool(setting.isOverride)},
+  ${_sqlNullableString(setting.displayName)},
+  ${_sqlNullableString(setting.description)},
+  ${setting.validationSchemaVersion}
+)
+ON CONFLICT(setting_id) DO UPDATE SET
+  platform = excluded.platform,
+  command = excluded.command,
+  keybinding_payload = excluded.keybinding_payload,
+  is_override = excluded.is_override,
+  display_name = excluded.display_name,
+  description = excluded.description,
+  validation_schema_version = excluded.validation_schema_version,
+  updated_at = current_localtimestamp();
+''');
+  }
+
+  /// Returns a keymap setting by [settingId], or `null` when absent.
+  AgusKeymapSetting? getKeymapSetting(String settingId) {
+    final result = queryDuckDB('''
+SELECT
+  setting_id,
+  platform,
+  command,
+  keybinding_payload,
+  is_override,
+  display_name,
+  description,
+  validation_schema_version,
+  created_at,
+  updated_at
+FROM agus.keymap_settings
+WHERE setting_id = ${_sqlString(settingId)};
+''');
+    final rows = _rowsByName(result);
+    if (rows.isEmpty) return null;
+    return _keymapSettingFromRow(rows.first);
+  }
+
+  /// Returns all keymap settings for a platform and optional command.
+  List<AgusKeymapSetting> listKeymapSettings({
+    required String platform,
+    String? command,
+  }) {
+    final result = queryDuckDB('''
+SELECT
+  setting_id,
+  platform,
+  command,
+  keybinding_payload,
+  is_override,
+  display_name,
+  description,
+  validation_schema_version,
+  created_at,
+  updated_at
+FROM agus.keymap_settings
+WHERE platform = ${_sqlString(platform)}
+${command != null ? 'AND command = ${_sqlString(command)}' : ''}
+ORDER BY command ASC, is_override DESC;
+''');
+    return _rowsByName(result)
+        .map(_keymapSettingFromRow)
+        .toList(growable: false);
+  }
+
+  /// Deletes a keymap setting.
+  void deleteKeymapSetting(String settingId) {
+    _executeChecked('''
+DELETE FROM agus.keymap_settings
+WHERE setting_id = ${_sqlString(settingId)};
 ''');
   }
 
@@ -1008,6 +1547,40 @@ AgusLayerMetadataEntry _metadataFromRow(Map<String, Object?> row) {
     key: row['key'] as String,
     value: row['value'] as String,
     valueType: row['value_type'] as String,
+    updatedAt: _asDateTime(row['updated_at']),
+  );
+}
+
+AgusSearchCacheEntry _searchCacheFromRow(Map<String, Object?> row) {
+  return AgusSearchCacheEntry(
+    cacheId: row['cache_id'] as String,
+    normalizedQuery: row['normalized_query'] as String,
+    locale: row['locale'] as String,
+    mapDataRevision: row['map_data_revision'] as String?,
+    mapDataFingerprint: row['map_data_fingerprint'] as String?,
+    resultPayload:
+        _asStringMap(row['result_payload']) ?? const <String, Object?>{},
+    resultCount: _asInt(row['result_count']) ?? 0,
+    createdAt: _asDateTime(row['created_at']),
+    updatedAt: _asDateTime(row['updated_at']),
+    accessedAt: _asDateTime(row['accessed_at']),
+    isStale: row['is_stale'] as bool? ?? false,
+    invalidationReason: row['invalidation_reason'] as String?,
+  );
+}
+
+AgusKeymapSetting _keymapSettingFromRow(Map<String, Object?> row) {
+  return AgusKeymapSetting(
+    settingId: row['setting_id'] as String,
+    platform: row['platform'] as String,
+    command: row['command'] as String,
+    keybindingPayload:
+        _asStringMap(row['keybinding_payload']) ?? const <String, Object?>{},
+    isOverride: row['is_override'] as bool? ?? false,
+    displayName: row['display_name'] as String?,
+    description: row['description'] as String?,
+    validationSchemaVersion: _asInt(row['validation_schema_version']) ?? 1,
+    createdAt: _asDateTime(row['created_at']),
     updatedAt: _asDateTime(row['updated_at']),
   );
 }

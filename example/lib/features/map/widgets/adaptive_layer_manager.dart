@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
@@ -17,6 +18,7 @@ class MwmLayerInfo {
     required this.filePath,
     required this.isBundled,
     this.visible = true,
+    this.isActive = true,
   });
 
   final String regionName;
@@ -25,6 +27,7 @@ class MwmLayerInfo {
   final String filePath;
   final bool isBundled;
   final bool visible;
+  final bool isActive;
 }
 
 enum MwmLayerOrderMode { byMap, byDate }
@@ -236,6 +239,8 @@ class AdaptiveLayerManager extends StatefulWidget {
     this.onMwmLayerUpdated,
     this.onMwmLayerFocused,
     this.onMwmLayerOrderChanged,
+    this.onProjectLayerFocused,
+    this.onFeatureFocused,
     this.onClose,
   });
 
@@ -263,6 +268,8 @@ class AdaptiveLayerManager extends StatefulWidget {
   final ValueChanged<MwmLayerInfo>? onMwmLayerUpdated;
   final ValueChanged<MwmLayerInfo>? onMwmLayerFocused;
   final ValueChanged<MwmLayerOrderMode>? onMwmLayerOrderChanged;
+  final ValueChanged<String>? onProjectLayerFocused;
+  final ValueChanged<agus_maps_flutter.AgusLayerFeature>? onFeatureFocused;
   final VoidCallback? onClose;
 
   @override
@@ -419,6 +426,9 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
     );
     if (confirmed != true) return;
 
+    // Clear focus center cache before deleting
+    store.clearLayerFocusCenter(layer.layerId);
+
     store.deleteLayer(layer.layerId);
     if (widget.activeLayerId == layer.layerId) {
       final remainingLayers = store.listLayers();
@@ -430,6 +440,109 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
     }
     await widget.onRenderingRefresh?.call();
     await _reload();
+  }
+
+  Future<void> _focusOnLayer(String layerId) async {
+    final store = widget.layerStore;
+    if (store == null) return;
+
+    try {
+      // Try to get cached focus center from DuckDB
+      final cached = store.getLayerFocusCenter(layerId);
+      if (cached != null) {
+        widget.onProjectLayerFocused?.call(layerId);
+        setState(() {
+          _message = 'Focused on layer (cached center)';
+        });
+        return;
+      }
+
+      // Fallback: calculate from layer features' bounding boxes
+      final features = store.listFeatures(layerId);
+      if (features.isEmpty) {
+        setState(() {
+          _message = 'Cannot focus: layer has no features';
+        });
+        return;
+      }
+
+      // Calculate center from all feature bounding boxes
+      double? minLon, minLat, maxLon, maxLat;
+      for (final feature in features) {
+        final bbox = feature.boundingBox;
+        if (bbox == null) continue;
+        minLon = minLon == null ? bbox.minLon : min(minLon, bbox.minLon);
+        minLat = minLat == null ? bbox.minLat : min(minLat, bbox.minLat);
+        maxLon = maxLon == null ? bbox.maxLon : max(maxLon, bbox.maxLon);
+        maxLat = maxLat == null ? bbox.maxLat : max(maxLat, bbox.maxLat);
+      }
+
+      if (minLon == null || minLat == null || maxLon == null || maxLat == null) {
+        setState(() {
+          _message = 'Cannot focus: no valid bounding boxes';
+        });
+        return;
+      }
+
+      final centerLon = (minLon + maxLon) / 2;
+      final centerLat = (minLat + maxLat) / 2;
+
+      // Cache the calculated center
+      store.setLayerFocusCenter(layerId, centerLon, centerLat);
+
+      widget.onProjectLayerFocused?.call(layerId);
+      setState(() {
+        _message = 'Focused on layer (calculated center)';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = 'Focus failed: $error';
+      });
+    }
+  }
+
+  Future<void> _focusOnFeature(
+      agus_maps_flutter.AgusLayerFeature feature) async {
+    final store = widget.layerStore;
+    if (store == null) return;
+
+    try {
+      // Try to get cached focus center from DuckDB
+      final cached = store.getFeatureFocusCenter(feature.layerId, feature.featureId);
+      if (cached != null) {
+        widget.onFeatureFocused?.call(feature);
+        setState(() {
+          _message = 'Focused on feature (cached center)';
+        });
+        return;
+      }
+
+      // Fallback: calculate from feature bounding box
+      final bbox = feature.boundingBox;
+      if (bbox == null) {
+        setState(() {
+          _message = 'Cannot focus: feature has no bounding box';
+        });
+        return;
+      }
+
+      final centerLon = (bbox.minLon + bbox.maxLon) / 2;
+      final centerLat = (bbox.minLat + bbox.maxLat) / 2;
+
+      // Cache the calculated center
+      store.setFeatureFocusCenter(feature.layerId, feature.featureId, centerLon, centerLat);
+
+      widget.onFeatureFocused?.call(feature);
+      setState(() {
+        _message = 'Focused on feature (calculated center)';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = 'Focus failed: $error';
+      });
+    }
   }
 
   Future<void> _createLayer() async {
@@ -689,22 +802,6 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
               child: AgusViewContainer(
                 views: [
                   AgusView(
-                    id: 'layer-manager',
-                    title: 'Layer Manager',
-                    icon: Icons.edit_location_alt_outlined,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _DesktopDrawSessionCard(
-                        activeTool: widget.activeDrawTool ??
-                            agus_maps_flutter.AgusDrawTool.none,
-                        hasEditableLayer: _layers.any(
-                          (layer) => layer.layerId == widget.activeLayerId,
-                        ),
-                        activeLayerName: _activeLayerName(),
-                      ),
-                    ),
-                  ),
-                  AgusView(
                     id: _projectLayersNodeId,
                     title: 'Project Layers',
                     icon: Icons.layers_outlined,
@@ -722,7 +819,23 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
                         ),
                       ),
                     ],
-                    child: _buildDesktopLayerGrid(context),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _DesktopDrawSessionCard(
+                            activeTool: widget.activeDrawTool ??
+                                agus_maps_flutter.AgusDrawTool.none,
+                            hasEditableLayer: _layers.any(
+                              (layer) => layer.layerId == widget.activeLayerId,
+                            ),
+                            activeLayerName: _activeLayerName(),
+                          ),
+                        ),
+                        _buildDesktopLayerGrid(context),
+                      ],
+                    ),
                   ),
                   AgusView(
                     id: 'mwm-maps',
@@ -1020,6 +1133,28 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       );
     }
 
+    // Group layers by region
+    final Map<String, List<MwmLayerInfo>> layersByRegion = {};
+    for (final layer in widget.mwmLayers) {
+      layersByRegion.putIfAbsent(layer.regionName, () => []).add(layer);
+    }
+
+    // Sort versions within each region (newest first)
+    for (final versions in layersByRegion.values) {
+      versions.sort(
+        (a, b) => b.snapshotVersion.compareTo(a.snapshotVersion),
+      );
+    }
+
+    // Get ordered region names
+    final orderedRegions = layersByRegion.keys.toList();
+    // Keep them in the order they appear in mwmLayers (already sorted by mode)
+    orderedRegions.sort((a, b) {
+      final aFirst = widget.mwmLayers.indexWhere((l) => l.regionName == a);
+      final bFirst = widget.mwmLayers.indexWhere((l) => l.regionName == b);
+      return aFirst.compareTo(bFirst);
+    });
+
     return SizedBox(
       height: 220,
       child: AgusTreeView(
@@ -1032,44 +1167,51 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
           AgusTreeColumn(id: 'version', label: 'Version', width: 86),
         ],
         expandedIds: {
-          for (final layer in widget.mwmLayers) 'mwm:${layer.regionName}',
+          for (final regionName in orderedRegions) 'mwm:$regionName',
         },
         nodes: [
-          for (final layer in widget.mwmLayers)
-            AgusTreeNode(
-              id: 'mwm:${layer.regionName}',
-              label: layer.regionName,
-              icon: Icons.map_outlined,
-              expanded: true,
-              visibility: layer.isBundled
-                  ? AgusTreeVisibilityState.locked
-                  : layer.visible
-                      ? AgusTreeVisibilityState.visible
-                      : AgusTreeVisibilityState.hidden,
-              badgeLabel: layer.isBundled ? 'BUNDLED' : 'DOWNLOADED',
-              columnValues: {
-                'source': layer.isBundled ? 'Bundled' : 'Local',
-                'size': _formatBytes(layer.fileSize),
-                'version': layer.snapshotVersion,
-              },
-              children: [
-                AgusTreeNode(
-                  id: 'mwm:${layer.regionName}:${layer.snapshotVersion}',
-                  label: layer.snapshotVersion,
-                  icon: Icons.calendar_month_outlined,
-                  visibility: layer.isBundled
-                      ? AgusTreeVisibilityState.locked
-                      : layer.visible
-                          ? AgusTreeVisibilityState.visible
-                          : AgusTreeVisibilityState.hidden,
-                  columnValues: {
-                    'source': layer.isBundled ? 'Bundled' : 'Downloaded',
-                    'size': _formatBytes(layer.fileSize),
-                    'version': layer.snapshotVersion,
-                  },
-                ),
-              ],
-            ),
+          for (final regionName in orderedRegions)
+            () {
+              final versions = layersByRegion[regionName]!;
+              final activeVersion =
+                  versions.firstWhere((l) => l.isActive, orElse: () => versions.first);
+              return AgusTreeNode(
+                id: 'mwm:$regionName',
+                label: regionName,
+                icon: Icons.map_outlined,
+                expanded: true,
+                visibility: activeVersion.isBundled
+                    ? AgusTreeVisibilityState.locked
+                    : activeVersion.visible
+                        ? AgusTreeVisibilityState.visible
+                        : AgusTreeVisibilityState.hidden,
+                badgeLabel: activeVersion.isBundled ? 'BUNDLED' : 'DOWNLOADED',
+                columnValues: {
+                  'source': activeVersion.isBundled ? 'Bundled' : 'Local',
+                  'size': _formatBytes(activeVersion.fileSize),
+                  'version': activeVersion.snapshotVersion,
+                },
+                children: [
+                  for (final version in versions)
+                    AgusTreeNode(
+                      id: 'mwm:${version.regionName}:${version.snapshotVersion}',
+                      label: version.snapshotVersion,
+                      icon: Icons.calendar_month_outlined,
+                      visibility: version.isBundled
+                          ? AgusTreeVisibilityState.locked
+                          : version.visible
+                              ? AgusTreeVisibilityState.visible
+                              : AgusTreeVisibilityState.hidden,
+                      badgeLabel: version.isActive ? 'ACTIVE' : null,
+                      columnValues: {
+                        'source': version.isBundled ? 'Bundled' : 'Downloaded',
+                        'size': _formatBytes(version.fileSize),
+                        'version': version.snapshotVersion,
+                      },
+                    ),
+                ],
+              );
+            }(),
         ],
         onContextMenuRequested: _showDesktopMwmLayerContextMenu,
         onVisibilityChanged: (id, visibility) {
@@ -1277,6 +1419,11 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
               : Icons.visibility_outlined,
           label: layer.visible ? 'Hide Layer' : 'Show Layer',
         ),
+        const AgusContextMenuAction(
+          value: _DesktopLayerTreeAction.focusLayer,
+          icon: Icons.my_location,
+          label: 'Focus Layer',
+        ),
         const AgusContextMenuSeparator(),
         const AgusContextMenuAction(
           value: _DesktopLayerTreeAction.raise,
@@ -1310,6 +1457,11 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
           icon: Icons.edit_location_alt_outlined,
           label: 'Edit Feature Vertices',
         ),
+        AgusContextMenuAction(
+          value: _DesktopLayerTreeAction.focusFeature,
+          icon: Icons.my_location,
+          label: 'Focus Feature',
+        ),
       ];
     }
 
@@ -1326,6 +1478,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       switch (action) {
         case _DesktopLayerTreeAction.addFeature:
           await _startFeatureForLayer(layer.layerId);
+        case _DesktopLayerTreeAction.focusLayer:
+          await _focusOnLayer(layer.layerId);
         case _DesktopLayerTreeAction.toggleVisibility:
           await _toggleStoredLayer(layer, !layer.visible);
         case _DesktopLayerTreeAction.raise:
@@ -1334,7 +1488,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
           await _moveLayer(layer, -1);
         case _DesktopLayerTreeAction.delete:
           await _deleteLayer(layer);
-        case _DesktopLayerTreeAction.editFeature:
+        case _DesktopLayerTreeAction.editFeature ||
+              _DesktopLayerTreeAction.focusFeature:
           return;
       }
       return;
@@ -1345,10 +1500,13 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
     switch (action) {
       case _DesktopLayerTreeAction.addFeature:
         await _startFeatureForLayer(feature.layerId);
+      case _DesktopLayerTreeAction.focusFeature:
+        await _focusOnFeature(feature);
       case _DesktopLayerTreeAction.editFeature:
         _selectFeature(feature);
         widget.onEditFeature?.call(feature);
       case _DesktopLayerTreeAction.toggleVisibility ||
+            _DesktopLayerTreeAction.focusLayer ||
             _DesktopLayerTreeAction.raise ||
             _DesktopLayerTreeAction.lower ||
             _DesktopLayerTreeAction.delete:
@@ -1393,6 +1551,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
 enum _DesktopLayerTreeAction {
   addFeature,
   editFeature,
+  focusLayer,
+  focusFeature,
   toggleVisibility,
   raise,
   lower,

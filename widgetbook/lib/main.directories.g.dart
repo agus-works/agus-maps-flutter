@@ -234,6 +234,12 @@ final directories = <_widgetbook.WidgetbookNode>[
             name: 'AgusTitleBar',
             useCases: [
               _widgetbook.WidgetbookUseCase(
+                name: 'Title bar responsive layout',
+                builder:
+                    _agus_design_widgetbook_use_cases_components_surfaces_use_cases
+                        .buildAgusTitleBarResponsiveUseCase,
+              ),
+              _widgetbook.WidgetbookUseCase(
                 name: 'Window title bar',
                 builder:
                     _agus_design_widgetbook_use_cases_components_surfaces_use_cases

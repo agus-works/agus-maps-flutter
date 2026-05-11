@@ -28,31 +28,51 @@ class AgusTitleBar extends StatelessWidget {
         height: dimensions.titleBarHeight,
         child: Row(
           children: [
-            const SizedBox(width: 8),
+            const SizedBox(width: 12),
             ...leadingActions,
-            SizedBox(
-              width: 180,
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colors.titleBarForeground,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
-                  child: SizedBox(
-                    height: dimensions.commandCenterHeight,
-                    child: commandCenter ?? const AgusCommandCenter(),
+            if (leadingActions.isNotEmpty) const SizedBox(width: 8),
+            Flexible(
+              flex: 1,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.titleBarForeground,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
             ),
-            ...trailingActions,
+            Flexible(
+              flex: 3,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 600,
+                      minWidth: 300,
+                    ),
+                    child: SizedBox(
+                      height: dimensions.commandCenterHeight,
+                      child: commandCenter ?? const AgusCommandCenter(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (trailingActions.isNotEmpty)
+              Flexible(
+                flex: 1,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: trailingActions,
+                ),
+              ),
             const SizedBox(width: 8),
           ],
         ),

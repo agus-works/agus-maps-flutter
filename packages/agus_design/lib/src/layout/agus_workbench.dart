@@ -92,10 +92,7 @@ class AgusWorkbench extends StatelessWidget {
             title: title,
             commandCenter: commandCenter,
             leadingActions: titleBarLeadingActions,
-            trailingActions: [
-              ..._paneControlButtons(context),
-              ...titleBarTrailingActions,
-            ],
+            trailingActions: _buildTrailingActions(context),
           ),
           Expanded(
             child: Row(
@@ -111,11 +108,40 @@ class AgusWorkbench extends StatelessWidget {
     );
   }
 
-  List<Widget> _paneControlButtons(BuildContext context) {
-    if (!showPaneControls) {
-      return const <Widget>[];
+  List<Widget> _buildTrailingActions(BuildContext context) {
+    final actions = <Widget>[];
+    
+    if (showPaneControls) {
+      final paneButtons = _paneControlButtons(context);
+      if (paneButtons.isNotEmpty) {
+        actions.addAll(paneButtons);
+        if (titleBarTrailingActions.isNotEmpty) {
+          actions.add(const SizedBox(width: 8));
+          actions.add(_buildDivider(context));
+          actions.add(const SizedBox(width: 8));
+        }
+      }
     }
+    
+    actions.addAll(titleBarTrailingActions);
+    return actions;
+  }
 
+  Widget _buildDivider(BuildContext context) {
+    final colors = AgusThemeData.colorsOf(context);
+    final dimensions = AgusThemeData.dimensionsOf(context);
+    
+    return SizedBox(
+      height: dimensions.titleBarHeight * 0.5,
+      child: VerticalDivider(
+        width: 1,
+        thickness: 1,
+        color: colors.titleBarForeground.withValues(alpha: 0.15),
+      ),
+    );
+  }
+
+  List<Widget> _paneControlButtons(BuildContext context) {
     final buttons = <Widget>[];
     if (primarySidebar != null) {
       buttons.add(
@@ -177,18 +203,29 @@ class _AgusWorkbenchPaneToggleButton extends StatelessWidget {
     final dimensions = AgusThemeData.dimensionsOf(context);
     final foreground = selected
         ? colors.titleBarForeground
-        : colors.titleBarForeground.withValues(alpha: 0.55);
+        : colors.titleBarForeground.withValues(alpha: 0.6);
 
-    return IconButton(
-      tooltip: tooltip,
-      icon: Icon(icon, size: dimensions.iconSize, color: foreground),
-      constraints: BoxConstraints.tightFor(
-        width: dimensions.toolbarButtonSize,
-        height: dimensions.toolbarButtonSize,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        customBorder: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(dimensions.borderRadius),
+        ),
+        child: Tooltip(
+          message: tooltip,
+          child: Container(
+            width: dimensions.toolbarButtonSize,
+            height: dimensions.toolbarButtonSize,
+            alignment: Alignment.center,
+            child: Icon(
+              icon,
+              size: dimensions.iconSize,
+              color: foreground,
+            ),
+          ),
+        ),
       ),
-      padding: EdgeInsets.zero,
-      splashRadius: dimensions.toolbarButtonSize / 2,
-      onPressed: onPressed,
     );
   }
 }

@@ -40,7 +40,19 @@ class AgusColors extends ThemeExtension<AgusColors> {
     required this.treeIndentGuide,
     required this.scrollbarThumb,
     required this.warningBackground,
+    required this.warningForeground,
     required this.errorBackground,
+    required this.errorForeground,
+    required this.infoBackground,
+    required this.infoForeground,
+    required this.foreground,
+    required this.descriptionForeground,
+    required this.disabledForeground,
+    required this.contrastBorder,
+    required this.listActiveSelectionBackground,
+    required this.listActiveSelectionForeground,
+    required this.listHoverBackground,
+    required this.listItemHeight,
   });
 
   static const dark = AgusColors(
@@ -81,7 +93,19 @@ class AgusColors extends ThemeExtension<AgusColors> {
     treeIndentGuide: Color(0xFF585858),
     scrollbarThumb: Color(0x66797979),
     warningBackground: Color(0xFFCCA700),
+    warningForeground: Color(0xFFFFFFFF),
     errorBackground: Color(0xFFF14C4C),
+    errorForeground: Color(0xFFFFFFFF),
+    infoBackground: Color(0xFF007ACC),
+    infoForeground: Color(0xFFFFFFFF),
+    foreground: Color(0xFFD4D4D4),
+    descriptionForeground: Color(0xFF969696),
+    disabledForeground: Color(0xFF656565),
+    contrastBorder: Color(0xFF404040),
+    listActiveSelectionBackground: Color(0xFF094771),
+    listActiveSelectionForeground: Color(0xFFFFFFFF),
+    listHoverBackground: Color(0xFF2A2D2E),
+    listItemHeight: 28.0,
   );
 
   static const light = AgusColors(
@@ -122,7 +146,19 @@ class AgusColors extends ThemeExtension<AgusColors> {
     treeIndentGuide: Color(0xFFC4C4C4),
     scrollbarThumb: Color(0x668C8C8C),
     warningBackground: Color(0xFFB58105),
+    warningForeground: Color(0xFFFFFFFF),
     errorBackground: Color(0xFFC72E0F),
+    errorForeground: Color(0xFFFFFFFF),
+    infoBackground: Color(0xFF005FB8),
+    infoForeground: Color(0xFFFFFFFF),
+    foreground: Color(0xFF333333),
+    descriptionForeground: Color(0xFF717171),
+    disabledForeground: Color(0xFF9E9E9E),
+    contrastBorder: Color(0xFFE5E5E5),
+    listActiveSelectionBackground: Color(0xFF0066BF),
+    listActiveSelectionForeground: Color(0xFFFFFFFF),
+    listHoverBackground: Color(0xFFE8E8E8),
+    listItemHeight: 28.0,
   );
 
   final Color workbenchBackground;
@@ -162,7 +198,19 @@ class AgusColors extends ThemeExtension<AgusColors> {
   final Color treeIndentGuide;
   final Color scrollbarThumb;
   final Color warningBackground;
+  final Color warningForeground;
   final Color errorBackground;
+  final Color errorForeground;
+  final Color infoBackground;
+  final Color infoForeground;
+  final Color foreground;
+  final Color descriptionForeground;
+  final Color disabledForeground;
+  final Color contrastBorder;
+  final Color listActiveSelectionBackground;
+  final Color listActiveSelectionForeground;
+  final Color listHoverBackground;
+  final double listItemHeight;
 
   @override
   AgusColors copyWith({
@@ -203,7 +251,19 @@ class AgusColors extends ThemeExtension<AgusColors> {
     Color? treeIndentGuide,
     Color? scrollbarThumb,
     Color? warningBackground,
+    Color? warningForeground,
     Color? errorBackground,
+    Color? errorForeground,
+    Color? infoBackground,
+    Color? infoForeground,
+    Color? foreground,
+    Color? descriptionForeground,
+    Color? disabledForeground,
+    Color? contrastBorder,
+    Color? listActiveSelectionBackground,
+    Color? listActiveSelectionForeground,
+    Color? listHoverBackground,
+    double? listItemHeight,
   }) {
     return AgusColors(
       workbenchBackground: workbenchBackground ?? this.workbenchBackground,
@@ -254,7 +314,22 @@ class AgusColors extends ThemeExtension<AgusColors> {
       treeIndentGuide: treeIndentGuide ?? this.treeIndentGuide,
       scrollbarThumb: scrollbarThumb ?? this.scrollbarThumb,
       warningBackground: warningBackground ?? this.warningBackground,
+      warningForeground: warningForeground ?? this.warningForeground,
       errorBackground: errorBackground ?? this.errorBackground,
+      errorForeground: errorForeground ?? this.errorForeground,
+      infoBackground: infoBackground ?? this.infoBackground,
+      infoForeground: infoForeground ?? this.infoForeground,
+      foreground: foreground ?? this.foreground,
+      descriptionForeground:
+          descriptionForeground ?? this.descriptionForeground,
+      disabledForeground: disabledForeground ?? this.disabledForeground,
+      contrastBorder: contrastBorder ?? this.contrastBorder,
+      listActiveSelectionBackground:
+          listActiveSelectionBackground ?? this.listActiveSelectionBackground,
+      listActiveSelectionForeground:
+          listActiveSelectionForeground ?? this.listActiveSelectionForeground,
+      listHoverBackground: listHoverBackground ?? this.listHoverBackground,
+      listItemHeight: listItemHeight ?? this.listItemHeight,
     );
   }
 
@@ -406,7 +481,43 @@ class AgusColors extends ThemeExtension<AgusColors> {
         other.warningBackground,
         t,
       )!,
+      warningForeground: Color.lerp(
+        warningForeground,
+        other.warningForeground,
+        t,
+      )!,
       errorBackground: Color.lerp(errorBackground, other.errorBackground, t)!,
+      errorForeground: Color.lerp(errorForeground, other.errorForeground, t)!,
+      infoBackground: Color.lerp(infoBackground, other.infoBackground, t)!,
+      infoForeground: Color.lerp(infoForeground, other.infoForeground, t)!,
+      foreground: Color.lerp(foreground, other.foreground, t)!,
+      descriptionForeground: Color.lerp(
+        descriptionForeground,
+        other.descriptionForeground,
+        t,
+      )!,
+      disabledForeground: Color.lerp(
+        disabledForeground,
+        other.disabledForeground,
+        t,
+      )!,
+      contrastBorder: Color.lerp(contrastBorder, other.contrastBorder, t)!,
+      listActiveSelectionBackground: Color.lerp(
+        listActiveSelectionBackground,
+        other.listActiveSelectionBackground,
+        t,
+      )!,
+      listActiveSelectionForeground: Color.lerp(
+        listActiveSelectionForeground,
+        other.listActiveSelectionForeground,
+        t,
+      )!,
+      listHoverBackground: Color.lerp(
+        listHoverBackground,
+        other.listHoverBackground,
+        t,
+      )!,
+      listItemHeight: t < 0.5 ? listItemHeight : other.listItemHeight,
     );
   }
 }
