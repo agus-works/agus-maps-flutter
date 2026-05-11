@@ -80,6 +80,73 @@ The public Dart API includes `DuckDBLayerStore`, which uses the native DuckDB br
 - Query-layer upsert/read through `AgusQueryLayerDraft` and `AgusQueryLayer`, with optional render-contract validation before saving.
 - Layer key/value metadata through `AgusLayerMetadataEntry`.
 - Local database backups through `CHECKPOINT` plus file copy to `duckdb_backups/` or a caller-provided directory.
+- **Search result caching** through `AgusSearchCacheDraft` and `AgusSearchCacheEntry`, with query/locale-based lookups, map data revision tracking, and invalidation support.
+- **Focus center persistence** for layers and features through nullable columns, supporting async on-demand calculation and invalidation. Access via `getLayerFocusCenter`, `setLayerFocusCenter`, `getFeatureFocusCenter`, and `setFeatureFocusCenter`.
+- **Keymap settings** through `AgusKeymapSettingDraft` and `AgusKeymapSetting`, storing platform/command/keybinding payloads with validation schema versioning.
+
+### Search Result Cache
+
+The `agus.search_result_cache` table stores normalized search queries with map data revision tracking. Each entry includes:
+
+- **cache_id**: Unique identifier for the cache entry
+- **normalized_query**: Normalized search query string
+- **locale**: Query locale for localized results
+- **map_data_revision** and **map_data_fingerprint**: Optional tracking of map data versions
+- **result_payload**: JSON payload containing search results
+- **result_count**: Number of results in the payload
+- **is_stale**: Boolean flag for invalidation
+- **invalidation_reason**: Optional explanation when stale
+
+Cache entries track creation, update, and access timestamps. The API supports:
+- `upsertSearchCache`: Insert or update a cache entry
+- `getSearchCache`: Retrieve by cache ID (updates accessed_at)
+- `searchCache`: Find entries by normalized query and locale
+- `invalidateSearchCacheByRevision`: Mark entries stale by map data revision
+- `invalidateAllSearchCache`: Global invalidation
+- `deleteSearchCache`: Remove an entry
+
+### Focus Center Persistence
+
+Layers and features can store calculated focus centers in nullable columns:
+
+- **focus_center_lon** and **focus_center_lat**: WGS84 coordinates
+- **focus_center_calculated_at**: Timestamp of last calculation
+
+Null values indicate "not yet calculated," supporting async computation. The API supports:
+- `getLayerFocusCenter` / `getFeatureFocusCenter`: Retrieve center or null
+- `setLayerFocusCenter` / `setFeatureFocusCenter`: Store calculated center
+- `clearLayerFocusCenter` / `clearFeatureFocusCenter`: Invalidate stored center
+
+Focus centers should be invalidated when layer/feature geometry changes.
+
+### Keymap Settings
+
+The `agus.keymap_settings` table stores platform-specific keybinding configurations:
+
+- **setting_id**: Unique identifier
+- **platform**: Platform name (e.g., 'macos', 'windows', 'linux')
+- **command**: Command identifier
+- **keybinding_payload**: JSON payload with keybinding details
+- **is_override**: Whether this is a user override (vs. default)
+- **display_name** and **description**: Optional human-readable metadata
+- **validation_schema_version**: Schema version for payload validation
+
+The API supports:
+- `upsertKeymapSetting`: Insert or update a setting
+- `getKeymapSetting`: Retrieve by setting ID
+- `listKeymapSettings`: Query by platform and optional command
+- `deleteKeymapSetting`: Remove a setting
+
+The `keybinding_payload` JSON follows the schema in `keymap.schema.json` and includes:
+- **key**: Primary key (e.g., 'k', 'arrowUp', 'escape')
+- **control**: Boolean for Ctrl modifier
+- **shift**: Boolean for Shift modifier
+- **alt**: Boolean for Alt/Option modifier
+- **meta**: Boolean for Cmd/Win modifier
+
+See `doc/KEYMAP-ARCHITECTURE.md` for complete documentation of the keymap system, including default bindings, conflict detection, and platform conventions.
+
+Alternatively, keymap settings can be stored as typed `agus.app_metadata` entries using the key format `keymap:{platform}:{command}`.
 
 ## Native Drape Rendering
 
@@ -100,14 +167,27 @@ create layers and capture features before the native map surface is ready. See
 
 The first reusable DuckDB layer UI is exported from the main plugin library:
 
-- `DuckDBLayerDrawController`: captures pins, two-point segments, multi-vertex lines, and polygons; supports vertex editing; stores user metadata; writes WKT features with bounding boxes to `DuckDBLayerStore`.
-- `DuckDBLayerDrawOverlay`: a full-map overlay that captures pointer events while a draw tool is active so map pan/zoom is not forwarded during drawing.
+- `DuckDBLayerDrawController`: captures pins, two-point segments, multi-vertex lines, and polygons; supports vertex editing; stores user metadata; writes WKT features with bounding boxes to `DuckDBLayerStore`. Rendering is handled natively via the `nativeEditGeometryRenderer` callback which submits sketch/edit geometry to Drape.
+- `DuckDBLayerDrawOverlay`: a compatibility widget that exists for layout/API stability but does not render any Flutter-layer overlays. All drawing/editing visuals (sketch edges, vertex markers, edit handles) are rendered natively by Drape.
 - `DuckDBLayerDrawToolbar`: icon controls for draw tools, undo, commit, and cancel.
 - `DuckDBLayerMetadataForm`: title/note capture for the next committed feature.
 - `DuckDBLayerPanel`: visibility and z-order controls for DuckDB layers, plus a database backup action.
 
-Android draw overlays can call `screenPointToLatLon()` to convert Flutter overlay positions, after multiplying by the device pixel ratio, into WGS84 coordinates for WKT persistence.
+Drawing and editing geometry is submitted to the native side through `setDuckDBInteractionGeometryFromWkt()` which renders sketch/edit edges and vertex handles directly in the Drape scene. The controller ensures native geometry is updated on vertex add/move/undo and cleared on commit/cancel/dispose.
 
 ## Manual Testing
 
 Use [doc/schemas/MANUAL-TESTING.md](MANUAL-TESTING.md) for the current step-by-step runtime checklist covering DuckDB startup, Android native rendering, drawing tools, layer controls, backups, and release artifact checks.
+
+## User Stories
+
+See [../user-stories/](../user-stories/) for high-level feature documentation covering:
+- Search persistence and result preservation
+- Command-driven drawing and interaction state safety
+- Layer/feature focus centers and active selection
+- Status telemetry copy with notifications
+- Editable/platform keymaps
+- MWM ordering/upgrades/active map management
+- Reusable Agus design components and Widgetbook coverage
+
+Each user story documents implemented behavior from the user's perspective, with acceptance criteria, implementation references, and testing approaches.

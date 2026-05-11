@@ -627,3 +627,65 @@ Widget buildAgusPropertyGridUseCase(BuildContext context) {
     ),
   );
 }
+
+@widgetbook.UseCase(
+  name: 'Title bar responsive layout',
+  type: AgusTitleBar,
+  path: '[Components]/surfaces',
+)
+Widget buildAgusTitleBarResponsiveUseCase(BuildContext context) {
+  final width = context.knobs.int.slider(
+    label: 'Width',
+    initialValue: 960,
+    min: 600,
+    max: 1400,
+    divisions: 16,
+  );
+  final title = context.knobs.string(
+    label: 'Title',
+    initialValue: 'Agus Maps Development Workspace',
+  );
+  final showPaneControls = context.knobs.boolean(
+    label: 'Show pane controls',
+    initialValue: true,
+  );
+  final showCustomAction = context.knobs.boolean(
+    label: 'Show custom action',
+    initialValue: true,
+  );
+
+  return previewFrame(
+    context,
+    width: width.toDouble(),
+    height: 35,
+    padding: EdgeInsets.zero,
+    child: AgusTitleBar(
+      title: title,
+      commandCenter: const AgusCommandCenter(
+        prompt: 'Search maps, commands, and layers',
+      ),
+      leadingActions: const [Icon(Icons.menu, size: 18)],
+      trailingActions: [
+        if (showPaneControls) ...[
+          IconButton(
+            tooltip: 'Toggle sidebar',
+            icon: const Icon(Icons.view_sidebar, size: 16),
+            onPressed: () {},
+          ),
+          IconButton(
+            tooltip: 'Toggle panel',
+            icon: const Icon(Icons.space_dashboard, size: 16),
+            onPressed: () {},
+          ),
+        ],
+        if (showCustomAction) ...[
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings, size: 16),
+            onPressed: () {},
+          ),
+        ],
+      ],
+    ),
+  );
+}

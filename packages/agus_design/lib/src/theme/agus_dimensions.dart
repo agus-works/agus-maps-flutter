@@ -22,6 +22,7 @@ class AgusDimensions extends ThemeExtension<AgusDimensions> {
     required this.toolbarButtonSize,
     required this.resizeHandleThickness,
     required this.borderRadius,
+    required this.listItemHeight,
   });
 
   static const standard = AgusDimensions(
@@ -42,6 +43,7 @@ class AgusDimensions extends ThemeExtension<AgusDimensions> {
     toolbarButtonSize: 28,
     resizeHandleThickness: 8,
     borderRadius: 2,
+    listItemHeight: 28,
   );
 
   final double titleBarHeight;
@@ -61,6 +63,7 @@ class AgusDimensions extends ThemeExtension<AgusDimensions> {
   final double toolbarButtonSize;
   final double resizeHandleThickness;
   final double borderRadius;
+  final double listItemHeight;
 
   @override
   AgusDimensions copyWith({
@@ -81,6 +84,7 @@ class AgusDimensions extends ThemeExtension<AgusDimensions> {
     double? toolbarButtonSize,
     double? resizeHandleThickness,
     double? borderRadius,
+    double? listItemHeight,
   }) {
     return AgusDimensions(
       titleBarHeight: titleBarHeight ?? this.titleBarHeight,
@@ -102,6 +106,7 @@ class AgusDimensions extends ThemeExtension<AgusDimensions> {
       resizeHandleThickness:
           resizeHandleThickness ?? this.resizeHandleThickness,
       borderRadius: borderRadius ?? this.borderRadius,
+      listItemHeight: listItemHeight ?? this.listItemHeight,
     );
   }
 
@@ -157,6 +162,7 @@ class AgusDimensions extends ThemeExtension<AgusDimensions> {
         t,
       )!,
       borderRadius: lerpDouble(borderRadius, other.borderRadius, t)!,
+      listItemHeight: lerpDouble(listItemHeight, other.listItemHeight, t)!,
     );
   }
 }

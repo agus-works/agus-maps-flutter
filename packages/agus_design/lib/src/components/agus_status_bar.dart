@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/agus_theme_data.dart';
 
@@ -11,6 +12,10 @@ class AgusStatusBarItem {
     required this.label,
     this.icon,
     this.onPressed,
+    this.onDoubleTap,
+    this.onLongPress,
+    this.copyValue,
+    this.tooltip,
     this.severity = AgusStatusBarItemSeverity.standard,
     this.progress = false,
   });
@@ -19,6 +24,10 @@ class AgusStatusBarItem {
   final String label;
   final IconData? icon;
   final VoidCallback? onPressed;
+  final VoidCallback? onDoubleTap;
+  final VoidCallback? onLongPress;
+  final String? copyValue;
+  final String? tooltip;
   final AgusStatusBarItemSeverity severity;
   final bool progress;
 }
@@ -68,11 +77,13 @@ class AgusStatusBarItemView extends StatelessWidget {
       AgusStatusBarItemSeverity.standard => Colors.transparent,
     };
 
-    return Material(
+    final content = Material(
       color: background,
       child: InkWell(
         hoverColor: colors.statusBarItemHoverBackground,
-        onTap: item.onPressed,
+        onTap: item.onPressed ?? (item.copyValue != null ? _copyToClipboard : null),
+        onDoubleTap: item.onDoubleTap,
+        onLongPress: item.onLongPress ?? (item.copyValue != null ? _copyToClipboard : null),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(
@@ -106,5 +117,21 @@ class AgusStatusBarItemView extends StatelessWidget {
         ),
       ),
     );
+
+    if (item.tooltip != null) {
+      return Tooltip(
+        message: item.tooltip!,
+        waitDuration: const Duration(milliseconds: 500),
+        child: content,
+      );
+    }
+
+    return content;
+  }
+
+  void _copyToClipboard() {
+    if (item.copyValue != null) {
+      Clipboard.setData(ClipboardData(text: item.copyValue!));
+    }
   }
 }

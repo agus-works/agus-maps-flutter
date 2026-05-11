@@ -234,7 +234,10 @@ class DuckDBLayerDrawController extends ChangeNotifier {
       changed = true;
     }
 
-    if (changed) notifyListeners();
+    if (changed) {
+      _renderNativeInteractionGeometry();
+      notifyListeners();
+    }
   }
 
   /// Updates the user-facing metadata captured for the next commit.
@@ -302,6 +305,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
     if (_vertices.isEmpty || _isCommitting) return;
     _vertices.removeLast();
     _selectedVertexIndex = null;
+    _renderNativeInteractionGeometry();
     notifyListeners();
   }
 

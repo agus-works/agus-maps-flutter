@@ -64,11 +64,21 @@ The Project Layers activity shows bundled and downloaded MWM files in an
 | --- | --- |
 | Show/Hide | Persists the visibility preference for downloaded maps. Downloaded maps that are shown are registered immediately; hidden downloaded maps are skipped on the next map startup. Bundled maps stay visible because they are loaded before the native surface is created. |
 | Focus Map | Moves to known locations such as Gibraltar or starts a map search for the region. |
-| Update from Mirror | Runs the command-bar download/update path for the matching cached region. |
-| Delete Download | Deletes non-bundled MWM files via `MwmStorage.deleteMap`. Bundled maps are protected. |
-| Order by Map/Date | Persists the MWM layer ordering preference for the tree. |
+| Update from Mirror | Runs the command-bar download/update path for the matching cached region. When upgrading, the old version is preserved but marked inactive, and the new version becomes the active map. |
+| Delete Download | Deletes non-bundled MWM files via `MwmStorage.deleteMap`. Bundled maps are protected. Can delete specific versions or all versions of a region. |
+| Order by Map/Date | Persists the MWM layer ordering preference for the tree. Ordering applies to all versions across all regions consistently. |
+| Active Version | Each region can have multiple versions, but only one is active and registered with the native renderer. The active version is marked with an 'ACTIVE' badge in the tree. |
 
 The native CoMaps binding currently exposes map registration but no per-MWM
 unregister call, so hiding an already registered downloaded MWM takes full
 effect on the next map startup. This limitation is surfaced by the UI message
 instead of silently pretending the live native renderer changed.
+
+### Version management
+
+When a map is upgraded:
+- The old version metadata is preserved in storage but marked inactive
+- The new version becomes the active version
+- Only the active version is registered with the native renderer
+- All versions appear in the tree, ordered according to the current sort mode
+- Users can switch which version is active (future enhancement)

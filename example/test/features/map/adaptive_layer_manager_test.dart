@@ -32,6 +32,7 @@ void main() {
             fileSize: 2048,
             filePath: '/maps/Gibraltar.mwm',
             isBundled: false,
+            isActive: true,
           ),
         ],
       ),
@@ -39,9 +40,9 @@ void main() {
     );
 
     expect(find.byType(AgusViewContainer), findsOneWidget);
-    expect(find.text('LAYER MANAGER'), findsOneWidget);
-    expect(find.text('PROJECT LAYERS'), findsOneWidget);
-    expect(find.text('MWM MAPS'), findsOneWidget);
+    expect(find.text('Layer Manager'), findsOneWidget);  // Toolbar title (not uppercased)
+    expect(find.text('PROJECT LAYERS'), findsOneWidget);  // View title (uppercased)
+    expect(find.text('MWM MAPS'), findsOneWidget);  // View title (uppercased)
     expect(find.text('Layer store starting'), findsOneWidget);
 
     await tester.tap(find.text('PROJECT LAYERS'));
@@ -82,6 +83,7 @@ void main() {
             filePath: '/maps/Gibraltar.mwm',
             isBundled: false,
             visible: true,
+            isActive: true,
           ),
         ],
         onMwmLayerVisibilityChanged: (regionName, visible) {
@@ -155,6 +157,7 @@ void main() {
             fileSize: 4096,
             filePath: '/maps/World.mwm',
             isBundled: true,
+            isActive: true,
           ),
         ],
         onMwmLayerDeleted: (layer) => deletedLayer = layer,

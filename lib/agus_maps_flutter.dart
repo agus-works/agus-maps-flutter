@@ -29,6 +29,10 @@ export 'src/agus_maps_api.g.dart'
 part 'src/layers/duckdb_layer_store.dart';
 part 'src/layers/duckdb_draw_controller.dart';
 part 'src/layers/duckdb_layer_widgets.dart';
+part 'src/keymap/keymap_commands.dart';
+part 'src/keymap/keymap_models.dart';
+part 'src/keymap/keymap_defaults.dart';
+part 'src/keymap/keymap_resolver.dart';
 
 /// Low-frequency map-ready event emitted by native platforms.
 class MapReadyEvent {
