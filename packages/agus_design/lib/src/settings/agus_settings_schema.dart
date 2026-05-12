@@ -77,10 +77,42 @@ class AgusSettingSchema {
       return true;
     }
 
-    return id.toLowerCase().contains(normalized) ||
-        title.toLowerCase().contains(normalized) ||
-        description.toLowerCase().contains(normalized) ||
-        category.toLowerCase().contains(normalized) ||
-        tags.any((tag) => tag.toLowerCase().contains(normalized));
+    final haystack = [
+      id,
+      title,
+      description,
+      category,
+      ...tags,
+      for (final option in options) option.label,
+      for (final option in options)
+        if (option.description != null) option.description!,
+    ].join(' ').toLowerCase();
+
+    return haystack.contains(normalized) ||
+        _queryTerms(normalized).every(
+          (term) => haystack.contains(term) || _isFuzzyMatch(term, haystack),
+        );
+  }
+
+  static Iterable<String> _queryTerms(String query) {
+    return query.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
+  }
+
+  static bool _isFuzzyMatch(String needle, String haystack) {
+    if (needle.length < 2) {
+      return haystack.contains(needle);
+    }
+
+    var index = 0;
+    for (final codeUnit in haystack.codeUnits) {
+      if (codeUnit == needle.codeUnitAt(index)) {
+        index++;
+        if (index == needle.length) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 }

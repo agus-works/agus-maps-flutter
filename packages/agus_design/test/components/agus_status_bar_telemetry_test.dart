@@ -117,7 +117,9 @@ void main() {
                 );
 
                 // Verify zoom item
-                final zoomItem = items.firstWhere((item) => item.id == 'map-zoom');
+                final zoomItem = items.firstWhere(
+                  (item) => item.id == 'map-zoom',
+                );
                 expect(zoomItem.label, 'z14');
                 expect(zoomItem.icon, Icons.zoom_out_map);
                 expect(zoomItem.copyValue, '14');
@@ -152,7 +154,9 @@ void main() {
                 );
 
                 // Verify bearing item
-                final bearingItem = items.firstWhere((item) => item.id == 'map-bearing');
+                final bearingItem = items.firstWhere(
+                  (item) => item.id == 'map-bearing',
+                );
                 expect(bearingItem.label, '45.5°');
                 expect(bearingItem.icon, Icons.explore);
                 expect(bearingItem.copyValue, '45.5');
@@ -187,11 +191,16 @@ void main() {
                 );
 
                 // Verify center item
-                final centerItem = items.firstWhere((item) => item.id == 'map-center');
+                final centerItem = items.firstWhere(
+                  (item) => item.id == 'map-center',
+                );
                 expect(centerItem.label, '36.140734°, -5.353456°');
                 expect(centerItem.icon, Icons.my_location);
                 expect(centerItem.copyValue, '36.140734, -5.353456');
-                expect(centerItem.tooltip, contains('Center: 36.140734, -5.353456'));
+                expect(
+                  centerItem.tooltip,
+                  contains('Center: 36.140734, -5.353456'),
+                );
                 expect(centerItem.onDoubleTap, isNotNull);
                 expect(centerItem.onLongPress, isNotNull);
 
@@ -230,7 +239,10 @@ void main() {
                 expect(selectedItem.label, '36.500000°, -5.500000°');
                 expect(selectedItem.icon, Icons.place);
                 expect(selectedItem.copyValue, '36.500000, -5.500000');
-                expect(selectedItem.tooltip, contains('Selected: 36.500000, -5.500000'));
+                expect(
+                  selectedItem.tooltip,
+                  contains('Selected: 36.500000, -5.500000'),
+                );
                 expect(selectedItem.onDoubleTap, isNotNull);
                 expect(selectedItem.onLongPress, isNotNull);
 
@@ -242,7 +254,9 @@ void main() {
       );
     });
 
-    testWidgets('does not build selected point item when not available', (tester) async {
+    testWidgets('does not build selected point item when not available', (
+      tester,
+    ) async {
       final telemetry = MapTelemetry(
         zoom: 14,
         centerLat: 36.140734,

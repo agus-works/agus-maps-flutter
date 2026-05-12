@@ -288,7 +288,7 @@ class AgusCommandBar extends StatelessWidget {
             border: Border.all(
               color: active
                   ? colors.focusBorder
-                  : colors.inputBorder.withValues(alpha: 0.95),
+                  : colors.focusBorder.withValues(alpha: 0.42),
             ),
             borderRadius: BorderRadius.circular(4),
           ),

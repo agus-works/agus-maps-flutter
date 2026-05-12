@@ -46,6 +46,9 @@ using GetD3D11DeviceFn = void* (*)();
 using GetD3D11TextureFn = void* (*)();
 using RenderFrameFn = void (*)();
 using SetFrameReadyCallbackFn = void (*)(FrameReadyCallback);
+using UpdateMapPointerFn = int (*)(double, double, int, double*, double*);
+using UpdateDrapeInteractionGeometryFn =
+    void (*)(int32_t, const char*, int32_t, int32_t, int32_t, double, double, int32_t, double, double);
 
 static HMODULE g_ffiModule = nullptr;
 static bool g_ffiLoaded = false;
@@ -59,6 +62,8 @@ static GetD3D11DeviceFn g_fnGetD3D11Device = nullptr;
 static GetD3D11TextureFn g_fnGetD3D11Texture = nullptr;
 static RenderFrameFn g_fnRenderFrame = nullptr;
 static SetFrameReadyCallbackFn g_fnSetFrameReadyCallback = nullptr;
+static UpdateMapPointerFn g_fnUpdateMapPointer = nullptr;
+static UpdateDrapeInteractionGeometryFn g_fnUpdateDrapeInteractionGeometry = nullptr;
 
 static AgusMapsFlutterPlugin* g_pluginInstance = nullptr;
 
@@ -114,6 +119,10 @@ static bool LoadFfiLibrary() {
         GetProcAddress(g_ffiModule, "agus_render_frame"));
     g_fnSetFrameReadyCallback = reinterpret_cast<SetFrameReadyCallbackFn>(
         GetProcAddress(g_ffiModule, "agus_set_frame_ready_callback"));
+    g_fnUpdateMapPointer = reinterpret_cast<UpdateMapPointerFn>(
+        GetProcAddress(g_ffiModule, "comaps_update_map_pointer"));
+    g_fnUpdateDrapeInteractionGeometry = reinterpret_cast<UpdateDrapeInteractionGeometryFn>(
+        GetProcAddress(g_ffiModule, "agus_duckdb_update_interaction_geometry"));
 
     if (!g_fnCreateSurface) {
         AgusWriteLog("[AgusMapsFlutter] WARN: Missing agus_native_create_surface\n");
@@ -123,6 +132,12 @@ static bool LoadFfiLibrary() {
     }
     if (!g_fnGetSharedTextureHandle) {
         AgusWriteLog("[AgusMapsFlutter] WARN: Missing agus_get_shared_texture_handle\n");
+    }
+    if (!g_fnUpdateMapPointer) {
+        AgusWriteLog("[AgusMapsFlutter] WARN: Missing comaps_update_map_pointer\n");
+    }
+    if (!g_fnUpdateDrapeInteractionGeometry) {
+        AgusWriteLog("[AgusMapsFlutter] WARN: Missing agus_duckdb_update_interaction_geometry\n");
     }
 
     return true;
@@ -369,6 +384,12 @@ private:
     void GetCurrentPlacePage(
         std::function<void(ErrorOr<std::optional<PlacePageData>> reply)> result) override;
     void ClearPlacePageSelection(
+        std::function<void(ErrorOr<bool> reply)> result) override;
+    void UpdateMapPointer(
+        const MapPointerUpdateRequest& request,
+        std::function<void(ErrorOr<std::optional<MapPointerCoordinate>> reply)> result) override;
+    void UpdateDrapeInteractionGeometry(
+        const DrapeInteractionGeometryRequest& request,
         std::function<void(ErrorOr<bool> reply)> result) override;
 
     // Helper methods
@@ -900,6 +921,64 @@ void AgusMapsFlutterPlugin::ClearPlacePageSelection(
     }
 
     result(ErrorOr<bool>(false));
+}
+
+void AgusMapsFlutterPlugin::UpdateMapPointer(
+    const MapPointerUpdateRequest& request,
+    std::function<void(ErrorOr<std::optional<MapPointerCoordinate>> reply)> result) {
+    if (!LoadFfiLibrary() || !g_fnUpdateMapPointer) {
+        AGUS_DEBUG_STRING("[AgusMapsFlutter] updateMapPointer unavailable (FFI missing)\n");
+        result(ErrorOr<std::optional<MapPointerCoordinate>>(std::nullopt));
+        return;
+    }
+
+    double lat = 0.0;
+    double lon = 0.0;
+    int const projected = g_fnUpdateMapPointer(
+        request.physical_x(),
+        request.physical_y(),
+        request.inside_map() ? 1 : 0,
+        &lat,
+        &lon);
+
+    if (projected != 1) {
+        result(ErrorOr<std::optional<MapPointerCoordinate>>(std::nullopt));
+        return;
+    }
+
+    MapPointerCoordinate coordinate(
+        request.physical_x(),
+        request.physical_y(),
+        request.inside_map(),
+        lat,
+        lon);
+    result(ErrorOr<std::optional<MapPointerCoordinate>>(
+        std::optional<MapPointerCoordinate>(std::move(coordinate))));
+}
+
+void AgusMapsFlutterPlugin::UpdateDrapeInteractionGeometry(
+    const DrapeInteractionGeometryRequest& request,
+    std::function<void(ErrorOr<bool> reply)> result) {
+    if (!LoadFfiLibrary() || !g_fnUpdateDrapeInteractionGeometry) {
+        AGUS_DEBUG_STRING("[AgusMapsFlutter] updateDrapeInteractionGeometry unavailable (FFI missing)\n");
+        result(ErrorOr<bool>(false));
+        return;
+    }
+
+    const DrapeInteractionLineStyle& style = request.line_style();
+    const std::string* geometry_wkt = request.geometry_wkt();
+    g_fnUpdateDrapeInteractionGeometry(
+        static_cast<int32_t>(request.mode()),
+        geometry_wkt ? geometry_wkt->c_str() : nullptr,
+        static_cast<int32_t>(style.color_red()),
+        static_cast<int32_t>(style.color_green()),
+        static_cast<int32_t>(style.color_blue()),
+        style.opacity(),
+        style.width(),
+        style.dashed() ? 1 : 0,
+        style.dash_length(),
+        style.gap_length());
+    result(ErrorOr<bool>(true));
 }
 
 }  // namespace agus_maps_flutter

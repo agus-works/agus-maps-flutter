@@ -54,22 +54,14 @@ class AdaptiveMapPresentationPanel extends StatelessWidget {
     if (formFactor.isDesktop) {
       return ColoredBox(
         color: Theme.of(context).colorScheme.surface,
-        child: ListView(
+        child: Padding(
           padding: const EdgeInsets.all(8),
-          children: [
-            _CompactSectionLabel(
-              label: 'Map presentation',
-              countLabel:
-                  '${_enabledNativeLayerCount(nativeLayerState, buildings3dEnabled)} / 4',
-            ),
-            const SizedBox(height: 6),
-            _MapPresentationPropertyGrid(
-              nativeLayerState: nativeLayerState,
-              buildings3dEnabled: buildings3dEnabled,
-              onNativeLayerStateChanged: onNativeLayerStateChanged,
-              onBuildings3dChanged: onBuildings3dChanged,
-            ),
-          ],
+          child: _MapPresentationTreeGrid(
+            nativeLayerState: nativeLayerState,
+            buildings3dEnabled: buildings3dEnabled,
+            onNativeLayerStateChanged: onNativeLayerStateChanged,
+            onBuildings3dChanged: onBuildings3dChanged,
+          ),
         ),
       );
     }
@@ -142,8 +134,8 @@ class AdaptiveMapPresentationPanel extends StatelessWidget {
   }
 }
 
-class _MapPresentationPropertyGrid extends StatelessWidget {
-  const _MapPresentationPropertyGrid({
+class _MapPresentationTreeGrid extends StatelessWidget {
+  const _MapPresentationTreeGrid({
     required this.nativeLayerState,
     required this.buildings3dEnabled,
     required this.onNativeLayerStateChanged,
@@ -157,60 +149,116 @@ class _MapPresentationPropertyGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AgusPropertyGrid(
-      rows: [
-        AgusPropertyRow(
-          name: '3D buildings',
-          value: _CompactSwitch(
-            value: buildings3dEnabled,
-            onChanged: onBuildings3dChanged,
+    return SizedBox(
+      height: 166,
+      child: AgusTreeView(
+        labelColumnTitle: 'Presentation',
+        labelColumnWidth: 168,
+        minLabelColumnWidth: 128,
+        resizableColumns: false,
+        columns: const [
+          AgusTreeColumn(
+            id: 'state',
+            label: 'State',
+            width: 74,
+            alignment: AgusTreeColumnAlignment.start,
+            resizable: false,
           ),
-        ),
-        AgusPropertyRow(
-          name: 'Outdoors',
-          value: _CompactSwitch(
-            value: nativeLayerState.outdoors,
-            onChanged: (enabled) {
-              onNativeLayerStateChanged(
-                nativeLayerState.copyWith(
-                  outdoors: enabled,
-                  subway: enabled ? false : nativeLayerState.subway,
-                ),
-              );
+        ],
+        nodes: [
+          AgusTreeNode(
+            id: 'buildings3d',
+            label: '3D Buildings',
+            icon: Icons.apartment_outlined,
+            visibility: _visibility(buildings3dEnabled),
+            columnValues: {
+              'state': buildings3dEnabled ? 'Visible' : 'Hidden',
             },
+            badgeLabel: 'Scene depth',
           ),
-        ),
-        AgusPropertyRow(
-          name: 'Contour lines',
-          value: _CompactSwitch(
-            value: nativeLayerState.isolines,
-            onChanged: (enabled) {
-              onNativeLayerStateChanged(
-                nativeLayerState.copyWith(
-                  isolines: enabled,
-                  subway: enabled ? false : nativeLayerState.subway,
-                ),
-              );
+          AgusTreeNode(
+            id: 'outdoors',
+            label: 'Outdoors',
+            icon: Icons.terrain_outlined,
+            visibility: _visibility(nativeLayerState.outdoors),
+            columnValues: {
+              'state': nativeLayerState.outdoors ? 'Visible' : 'Hidden',
             },
+            badgeLabel: 'Terrain',
           ),
-        ),
-        AgusPropertyRow(
-          name: 'Subway',
-          value: _CompactSwitch(
-            value: nativeLayerState.subway,
-            onChanged: (enabled) {
-              onNativeLayerStateChanged(
-                nativeLayerState.copyWith(
-                  outdoors: enabled ? false : nativeLayerState.outdoors,
-                  isolines: enabled ? false : nativeLayerState.isolines,
-                  subway: enabled,
-                ),
-              );
+          AgusTreeNode(
+            id: 'isolines',
+            label: 'Contour Lines',
+            icon: Icons.landscape_outlined,
+            visibility: _visibility(nativeLayerState.isolines),
+            columnValues: {
+              'state': nativeLayerState.isolines ? 'Visible' : 'Hidden',
             },
+            badgeLabel: 'Elevation',
           ),
-        ),
-      ],
+          AgusTreeNode(
+            id: 'subway',
+            label: 'Subway',
+            icon: Icons.directions_subway_outlined,
+            visibility: _visibility(nativeLayerState.subway),
+            columnValues: {
+              'state': nativeLayerState.subway ? 'Visible' : 'Hidden',
+            },
+            badgeLabel: 'Transit',
+          ),
+        ],
+        onSelected: _toggleById,
+        onVisibilityChanged: (id, visibility) {
+          _setById(id, visibility == AgusTreeVisibilityState.visible);
+        },
+      ),
     );
+  }
+
+  static AgusTreeVisibilityState _visibility(bool visible) {
+    return visible
+        ? AgusTreeVisibilityState.visible
+        : AgusTreeVisibilityState.hidden;
+  }
+
+  void _toggleById(String id) {
+    final current = switch (id) {
+      'buildings3d' => buildings3dEnabled,
+      'outdoors' => nativeLayerState.outdoors,
+      'isolines' => nativeLayerState.isolines,
+      'subway' => nativeLayerState.subway,
+      _ => false,
+    };
+    _setById(id, !current);
+  }
+
+  void _setById(String id, bool enabled) {
+    switch (id) {
+      case 'buildings3d':
+        onBuildings3dChanged(enabled);
+      case 'outdoors':
+        onNativeLayerStateChanged(
+          nativeLayerState.copyWith(
+            outdoors: enabled,
+            subway: enabled ? false : nativeLayerState.subway,
+          ),
+        );
+      case 'isolines':
+        onNativeLayerStateChanged(
+          nativeLayerState.copyWith(
+            isolines: enabled,
+            subway: enabled ? false : nativeLayerState.subway,
+          ),
+        );
+      case 'subway':
+        onNativeLayerStateChanged(
+          nativeLayerState.copyWith(
+            outdoors: enabled ? false : nativeLayerState.outdoors,
+            isolines: enabled ? false : nativeLayerState.isolines,
+            subway: enabled,
+          ),
+        );
+    }
   }
 }
 
@@ -477,7 +525,10 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
         maxLat = maxLat == null ? bbox.maxLat : max(maxLat, bbox.maxLat);
       }
 
-      if (minLon == null || minLat == null || maxLon == null || maxLat == null) {
+      if (minLon == null ||
+          minLat == null ||
+          maxLon == null ||
+          maxLat == null) {
         setState(() {
           _message = 'Cannot focus: no valid bounding boxes';
         });
@@ -509,7 +560,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
 
     try {
       // Try to get cached focus center from DuckDB
-      final cached = store.getFeatureFocusCenter(feature.layerId, feature.featureId);
+      final cached =
+          store.getFeatureFocusCenter(feature.layerId, feature.featureId);
       if (cached != null) {
         widget.onFeatureFocused?.call(feature);
         setState(() {
@@ -531,7 +583,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       final centerLat = (bbox.minLat + bbox.maxLat) / 2;
 
       // Cache the calculated center
-      store.setFeatureFocusCenter(feature.layerId, feature.featureId, centerLon, centerLat);
+      store.setFeatureFocusCenter(
+          feature.layerId, feature.featureId, centerLon, centerLat);
 
       widget.onFeatureFocused?.call(feature);
       setState(() {
@@ -784,21 +837,17 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _CompactLayerToolbar(
-            title: 'Layer Manager',
+          _CompactExplorerHeader(
+            title: 'Explorer',
             subtitle: storeReady
                 ? '$projectLayerCount project layers'
                 : widget.layerStoreStatus ?? 'DuckDB layer store is starting',
-            busy: _busy,
-            onRefresh: _reload,
-            onBackup: storeReady && !_busy ? _backup : null,
-            onCreateLayer: storeReady ? _createLayer : null,
             onClose: widget.onClose,
           ),
           const Divider(height: 1),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.zero,
               child: AgusViewContainer(
                 views: [
                   AgusView(
@@ -818,23 +867,52 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
                           height: 24,
                         ),
                       ),
+                      IconButton(
+                        tooltip: 'Refresh project layers',
+                        onPressed: _reload,
+                        icon: const Icon(Icons.refresh, size: 16),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 28,
+                          height: 24,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Back up project layers',
+                        onPressed: storeReady && !_busy ? _backup : null,
+                        icon: Icon(
+                          _busy ? Icons.hourglass_top : Icons.backup_outlined,
+                          size: 16,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 28,
+                          height: 24,
+                        ),
+                      ),
                     ],
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _DesktopDrawSessionCard(
-                            activeTool: widget.activeDrawTool ??
-                                agus_maps_flutter.AgusDrawTool.none,
-                            hasEditableLayer: _layers.any(
-                              (layer) => layer.layerId == widget.activeLayerId,
-                            ),
-                            activeLayerName: _activeLayerName(),
-                          ),
-                        ),
-                        _buildDesktopLayerGrid(context),
-                      ],
+                      children: [_buildDesktopLayerGrid(context)],
+                    ),
+                  ),
+                  AgusView(
+                    id: 'map-presentation',
+                    title: 'Map Presentation',
+                    icon: Icons.public_outlined,
+                    countLabel:
+                        '${_enabledNativeLayerCount(widget.nativeLayerState, widget.buildings3dEnabled)} / 4',
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: _MapPresentationTreeGrid(
+                        nativeLayerState: widget.nativeLayerState,
+                        buildings3dEnabled: widget.buildings3dEnabled,
+                        onNativeLayerStateChanged:
+                            widget.onNativeLayerStateChanged,
+                        onBuildings3dChanged: widget.onBuildings3dChanged,
+                      ),
                     ),
                   ),
                   AgusView(
@@ -1173,8 +1251,8 @@ class _AdaptiveLayerManagerState extends State<AdaptiveLayerManager> {
           for (final regionName in orderedRegions)
             () {
               final versions = layersByRegion[regionName]!;
-              final activeVersion =
-                  versions.firstWhere((l) => l.isActive, orElse: () => versions.first);
+              final activeVersion = versions.firstWhere((l) => l.isActive,
+                  orElse: () => versions.first);
               return AgusTreeNode(
                 id: 'mwm:$regionName',
                 label: regionName,
@@ -1568,23 +1646,15 @@ enum _MwmLayerTreeAction {
   orderByDate,
 }
 
-class _CompactLayerToolbar extends StatelessWidget {
-  const _CompactLayerToolbar({
+class _CompactExplorerHeader extends StatelessWidget {
+  const _CompactExplorerHeader({
     required this.title,
     required this.subtitle,
-    required this.busy,
-    required this.onRefresh,
-    required this.onBackup,
-    required this.onCreateLayer,
     required this.onClose,
   });
 
   final String title;
   final String subtitle;
-  final bool busy;
-  final VoidCallback onRefresh;
-  final VoidCallback? onBackup;
-  final VoidCallback? onCreateLayer;
   final VoidCallback? onClose;
 
   @override
@@ -1621,28 +1691,9 @@ class _CompactLayerToolbar extends StatelessWidget {
                 ],
               ),
             ),
-            TextButton.icon(
-              onPressed: onCreateLayer,
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('New Layer'),
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-            ),
-            _CompactIconButton(
-              tooltip: 'Refresh layers',
-              icon: Icons.refresh,
-              onPressed: onRefresh,
-            ),
-            _CompactIconButton(
-              tooltip: 'Back up project layers',
-              icon: busy ? Icons.hourglass_top : Icons.backup_outlined,
-              onPressed: onBackup,
-            ),
             if (onClose != null)
               _CompactIconButton(
-                tooltip: 'Close Layer Manager',
+                tooltip: 'Close Explorer',
                 icon: Icons.close,
                 onPressed: onClose,
               ),
@@ -2439,127 +2490,6 @@ class _MobileFeatureTile extends StatelessWidget {
       return note.trim();
     }
     return 'Untitled feature';
-  }
-}
-
-class _CompactSectionLabel extends StatelessWidget {
-  const _CompactSectionLabel({required this.label, required this.countLabel});
-
-  final String label;
-  final String countLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label.toUpperCase(),
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-            ),
-          ),
-        ),
-        Text(
-          countLabel,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DesktopDrawSessionCard extends StatelessWidget {
-  const _DesktopDrawSessionCard({
-    required this.activeTool,
-    required this.hasEditableLayer,
-    required this.activeLayerName,
-  });
-
-  final agus_maps_flutter.AgusDrawTool activeTool;
-  final bool hasEditableLayer;
-  final String activeLayerName;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(4),
-        color: colorScheme.surfaceContainerLowest,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Edit session',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              activeLayerName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            if (activeTool == agus_maps_flutter.AgusDrawTool.none)
-              Text(
-                hasEditableLayer
-                    ? 'Right-click a layer or feature and choose Add Feature... to start drawing.'
-                    : 'Create or select a project layer before drawing.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: hasEditableLayer
-                      ? colorScheme.onSurfaceVariant
-                      : colorScheme.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              )
-            else ...[
-              Text(
-                'Creating ${_drawToolName(activeTool)}. Use the map check/X controls to finish or cancel before choosing another geometry type.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CompactSwitch extends StatelessWidget {
-  const _CompactSwitch({required this.value, required this.onChanged});
-
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Switch(
-      value: value,
-      onChanged: onChanged,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
   }
 }
 

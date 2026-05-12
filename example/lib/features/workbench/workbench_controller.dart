@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 /// Primary Activity Bar destinations in the desktop workbench.
 enum WorkbenchActivity {
   explorer,
-  mapPresentation,
   search,
   favorites,
   downloads,

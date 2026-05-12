@@ -81,9 +81,13 @@ class AgusStatusBarItemView extends StatelessWidget {
       color: background,
       child: InkWell(
         hoverColor: colors.statusBarItemHoverBackground,
-        onTap: item.onPressed ?? (item.copyValue != null ? _copyToClipboard : null),
+        onTap:
+            item.onPressed ??
+            (item.copyValue != null ? _copyToClipboard : null),
         onDoubleTap: item.onDoubleTap,
-        onLongPress: item.onLongPress ?? (item.copyValue != null ? _copyToClipboard : null),
+        onLongPress:
+            item.onLongPress ??
+            (item.copyValue != null ? _copyToClipboard : null),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(

@@ -55,6 +55,31 @@ void main() {
     expect(find.text('Workbench: Side Bar Location'), findsNothing);
   });
 
+  testWidgets('settings search spans categories in wide mode', (tester) async {
+    await pumpAgusWidget(
+      tester,
+      const AgusSettingsEditor(schemas: testSettingSchemas),
+      size: const Size(900, 600),
+    );
+
+    await tester.tap(find.text('Workbench').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Editor: Font Size'), findsNothing);
+
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == 'Search settings',
+      ),
+      'font',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Editor: Font Size'), findsOneWidget);
+    expect(find.text('Workbench: Side Bar Location'), findsNothing);
+  });
+
   testWidgets('settings editor allows selecting categories in wide mode', (
     tester,
   ) async {

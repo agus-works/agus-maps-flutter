@@ -54,10 +54,7 @@ class AgusNotification {
 @immutable
 class AgusNotificationAction {
   /// Creates a notification action.
-  const AgusNotificationAction({
-    required this.label,
-    required this.onPressed,
-  });
+  const AgusNotificationAction({required this.label, required this.onPressed});
 
   /// Action button label.
   final String label;

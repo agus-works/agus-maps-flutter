@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:agus_design/agus_design.dart';
 import 'package:agus_maps_flutter/mirror_service.dart';
 import 'package:agus_maps_flutter/mwm_storage.dart';
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus;
@@ -985,11 +986,40 @@ class _DownloadsTabState extends State<DownloadsTab> {
   }
 
   Widget _buildCompactDesktopContent() {
-    return Column(
-      children: [
-        _buildCompactDesktopHeader(),
-        Expanded(child: _buildRegionList()),
-      ],
+    final downloadedCount = widget.mwmStorage.getAll().length;
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surface,
+      child: Column(
+        children: [
+          _buildCompactDesktopHeader(),
+          Expanded(
+            child: AgusViewContainer(
+              views: [
+                AgusView(
+                  id: 'downloads-regions',
+                  title: 'MWM Maps',
+                  icon: Icons.public_outlined,
+                  countLabel: _searchQuery.isEmpty
+                      ? '$downloadedCount installed'
+                      : '${_filteredRegions.length} results',
+                  actions: [
+                    IconButton(
+                      tooltip: 'Refresh downloads',
+                      onPressed: () => _init(forceRefresh: true),
+                      icon: const Icon(Icons.refresh, size: 16),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints.tightFor(width: 28, height: 24),
+                    ),
+                  ],
+                  child: _buildRegionList(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1011,21 +1041,38 @@ class _DownloadsTabState extends State<DownloadsTab> {
         padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
         child: Column(
           children: [
+            SizedBox(
+              height: 30,
+              child: TextField(
+                controller: _searchController,
+                style: theme.textTheme.bodySmall,
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 16),
+                  prefixIconConstraints: const BoxConstraints.tightFor(
+                    width: 28,
+                  ),
+                  hintText: 'Search map regions',
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                          icon: const Icon(Icons.close, size: 14),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value),
+              ),
+            ),
+            const SizedBox(height: 6),
             Row(
               children: [
-                Icon(Icons.cloud_download_outlined,
-                    size: 16, color: colorScheme.primary),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Downloads',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
                 _CompactDownloadsStatus(
                   label: '$downloadedCount installed',
                   icon: Icons.check_circle_outline,
@@ -1035,61 +1082,17 @@ class _DownloadsTabState extends State<DownloadsTab> {
                   label: '$activeCount active',
                   icon: Icons.downloading,
                 ),
-                IconButton(
-                  tooltip: 'Refresh downloads',
-                  onPressed: () => _init(forceRefresh: true),
-                  icon: const Icon(Icons.refresh, size: 16),
-                  visualDensity: VisualDensity.compact,
-                  constraints:
-                      const BoxConstraints.tightFor(width: 28, height: 28),
-                  padding: EdgeInsets.zero,
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 30,
-                    child: TextField(
-                      controller: _searchController,
-                      style: theme.textTheme.bodySmall,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        prefixIcon: const Icon(Icons.search, size: 16),
-                        prefixIconConstraints:
-                            const BoxConstraints.tightFor(width: 28),
-                        hintText: 'Search map regions',
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 8),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: _searchQuery.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: 'Clear search',
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                                icon: const Icon(Icons.close, size: 14),
-                                visualDensity: VisualDensity.compact,
-                              ),
+                const Spacer(),
+                Flexible(
+                  child: Tooltip(
+                    message: 'Snapshot',
+                    child: Text(
+                      snapshotLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                      onChanged: (value) =>
-                          setState(() => _searchQuery = value),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Tooltip(
-                  message: 'Snapshot',
-                  child: Text(
-                    snapshotLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),

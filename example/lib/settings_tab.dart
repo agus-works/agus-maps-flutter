@@ -296,10 +296,23 @@ const _schemas = <AgusSettingSchema>[
     type: AgusSettingType.select,
     defaultValue: 'system',
     options: [
-      AgusSettingOption(value: 'system', label: 'System'),
-      AgusSettingOption(value: 'light', label: 'Light'),
-      AgusSettingOption(value: 'dark', label: 'Dark'),
+      AgusSettingOption(
+        value: 'system',
+        label: 'System',
+        description: 'Follow the operating system appearance.',
+      ),
+      AgusSettingOption(
+        value: 'light',
+        label: 'Light',
+        description: 'Use a light workbench theme.',
+      ),
+      AgusSettingOption(
+        value: 'dark',
+        label: 'Dark',
+        description: 'Use a dark workbench theme.',
+      ),
     ],
+    tags: ['theme', 'appearance', 'light', 'dark', 'system'],
   ),
   AgusSettingSchema(
     id: _SettingsId.mapAppearance,
@@ -313,6 +326,7 @@ const _schemas = <AgusSettingSchema>[
       AgusSettingOption(value: 'light', label: 'Light'),
       AgusSettingOption(value: 'dark', label: 'Dark'),
     ],
+    tags: ['basemap', 'theme', 'appearance', 'light', 'dark'],
   ),
   AgusSettingSchema(
     id: _SettingsId.mapLanguage,
@@ -332,6 +346,7 @@ const _schemas = <AgusSettingSchema>[
       AgusSettingOption(value: 'ja', label: 'Japanese'),
       AgusSettingOption(value: 'zh', label: 'Chinese'),
     ],
+    tags: ['locale', 'labels', 'language', 'names', 'translation'],
   ),
   AgusSettingSchema(
     id: _SettingsId.buildings3d,
@@ -340,6 +355,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Map Layers',
     type: AgusSettingType.boolean,
     defaultValue: false,
+    tags: ['buildings', '3d', 'extrusion', 'scene', 'layers'],
   ),
   AgusSettingSchema(
     id: _SettingsId.layerOutdoors,
@@ -348,6 +364,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Map Layers',
     type: AgusSettingType.boolean,
     defaultValue: false,
+    tags: ['terrain', 'hiking', 'outdoor', 'style', 'layers'],
   ),
   AgusSettingSchema(
     id: _SettingsId.layerIsolines,
@@ -356,6 +373,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Map Layers',
     type: AgusSettingType.boolean,
     defaultValue: false,
+    tags: ['contours', 'elevation', 'terrain', 'isolines', 'layers'],
   ),
   AgusSettingSchema(
     id: _SettingsId.layerSubway,
@@ -364,6 +382,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Map Layers',
     type: AgusSettingType.boolean,
     defaultValue: false,
+    tags: ['transit', 'metro', 'underground', 'transport', 'layers'],
   ),
   AgusSettingSchema(
     id: _SettingsId.navigationUnits,
@@ -376,6 +395,7 @@ const _schemas = <AgusSettingSchema>[
       AgusSettingOption(value: 'metric', label: 'Metric'),
       AgusSettingOption(value: 'imperial', label: 'Imperial'),
     ],
+    tags: ['distance', 'speed', 'units', 'kilometers', 'miles'],
   ),
   AgusSettingSchema(
     id: _SettingsId.navigationVoice,
@@ -384,6 +404,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Navigation',
     type: AgusSettingType.boolean,
     defaultValue: true,
+    tags: ['voice', 'spoken', 'turns', 'guidance', 'directions'],
   ),
   AgusSettingSchema(
     id: _SettingsId.navigationStreetNames,
@@ -392,6 +413,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Navigation',
     type: AgusSettingType.boolean,
     defaultValue: true,
+    tags: ['voice', 'streets', 'spoken', 'announcements', 'guidance'],
   ),
   AgusSettingSchema(
     id: _SettingsId.navigationSpeedLimit,
@@ -400,6 +422,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Navigation',
     type: AgusSettingType.boolean,
     defaultValue: true,
+    tags: ['speed', 'limit', 'driving', 'guidance', 'road'],
   ),
   AgusSettingSchema(
     id: _SettingsId.navigationSpeedCameras,
@@ -413,6 +436,7 @@ const _schemas = <AgusSettingSchema>[
       AgusSettingOption(value: 'always', label: 'Always'),
       AgusSettingOption(value: 'never', label: 'Never'),
     ],
+    tags: ['camera', 'speed', 'alerts', 'warnings', 'driving'],
   ),
   AgusSettingSchema(
     id: _SettingsId.routeAvoidTolls,
@@ -421,6 +445,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Routing',
     type: AgusSettingType.boolean,
     defaultValue: false,
+    tags: ['route', 'avoid', 'toll', 'paid', 'roads'],
   ),
   AgusSettingSchema(
     id: _SettingsId.routeAvoidMotorways,
@@ -429,6 +454,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Routing',
     type: AgusSettingType.boolean,
     defaultValue: false,
+    tags: ['route', 'avoid', 'highway', 'motorway', 'roads'],
   ),
   AgusSettingSchema(
     id: _SettingsId.routeAvoidFerries,
@@ -437,6 +463,7 @@ const _schemas = <AgusSettingSchema>[
     category: 'Routing',
     type: AgusSettingType.boolean,
     defaultValue: false,
+    tags: ['route', 'avoid', 'ferry', 'boat', 'water'],
   ),
   AgusSettingSchema(
     id: _SettingsId.routeAvoidUnpaved,
@@ -445,5 +472,6 @@ const _schemas = <AgusSettingSchema>[
     category: 'Routing',
     type: AgusSettingType.boolean,
     defaultValue: false,
+    tags: ['route', 'avoid', 'unpaved', 'gravel', 'roads'],
   ),
 ];

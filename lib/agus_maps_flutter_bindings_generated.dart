@@ -1353,11 +1353,10 @@ class AgusMapsFlutterBindings {
     );
   }
 
-  late final _agus_duckdb_set_interaction_geometry_from_wktPtr =
-      _lookup<
-              ffi.NativeFunction<
-                  ffi.Void Function(ffi.Int32, ffi.Pointer<ffi.Char>)>>(
-          'agus_duckdb_set_interaction_geometry_from_wkt');
+  late final _agus_duckdb_set_interaction_geometry_from_wktPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Void Function(ffi.Int32, ffi.Pointer<ffi.Char>)>>(
+      'agus_duckdb_set_interaction_geometry_from_wkt');
   late final _agus_duckdb_set_interaction_geometry_from_wkt =
       _agus_duckdb_set_interaction_geometry_from_wktPtr
           .asFunction<void Function(int, ffi.Pointer<ffi.Char>)>();

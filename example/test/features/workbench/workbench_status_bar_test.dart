@@ -4,15 +4,17 @@ import 'package:agus_maps_flutter_example/features/workbench/workbench_controlle
 
 void main() {
   group('Workbench Status Bar Telemetry', () {
-    test('telemetry visibility - shown when Explorer and Map editor active', () {
+    test('telemetry visibility - shown when Explorer and Map editor active',
+        () {
       final state = WorkbenchLayoutState(
         activeActivity: WorkbenchActivity.explorer,
         activeEditorTab: WorkbenchEditorTab.map,
       );
 
       // Telemetry should be shown
-      final showMapTelemetry = state.activeActivity == WorkbenchActivity.explorer &&
-          state.activeEditorTab == WorkbenchEditorTab.map;
+      final showMapTelemetry =
+          state.activeActivity == WorkbenchActivity.explorer &&
+              state.activeEditorTab == WorkbenchEditorTab.map;
       expect(showMapTelemetry, isTrue);
     });
 
@@ -23,8 +25,9 @@ void main() {
       );
 
       // Telemetry should be hidden
-      final showMapTelemetry = state.activeActivity == WorkbenchActivity.explorer &&
-          state.activeEditorTab == WorkbenchEditorTab.map;
+      final showMapTelemetry =
+          state.activeActivity == WorkbenchActivity.explorer &&
+              state.activeEditorTab == WorkbenchEditorTab.map;
       expect(showMapTelemetry, isFalse);
     });
 
@@ -35,8 +38,9 @@ void main() {
       );
 
       // Telemetry should be hidden
-      final showMapTelemetry = state.activeActivity == WorkbenchActivity.explorer &&
-          state.activeEditorTab == WorkbenchEditorTab.map;
+      final showMapTelemetry =
+          state.activeActivity == WorkbenchActivity.explorer &&
+              state.activeEditorTab == WorkbenchEditorTab.map;
       expect(showMapTelemetry, isFalse);
     });
 
@@ -47,8 +51,9 @@ void main() {
       );
 
       // Telemetry should be hidden
-      final showMapTelemetry = state.activeActivity == WorkbenchActivity.explorer &&
-          state.activeEditorTab == WorkbenchEditorTab.map;
+      final showMapTelemetry =
+          state.activeActivity == WorkbenchActivity.explorer &&
+              state.activeEditorTab == WorkbenchEditorTab.map;
       expect(showMapTelemetry, isFalse);
     });
 
@@ -85,24 +90,24 @@ void main() {
           activeActivity: WorkbenchActivity.explorer,
           activeEditorTab: WorkbenchEditorTab.blank,
         ),
-        WorkbenchLayoutState(
-          activeActivity: WorkbenchActivity.mapPresentation,
-          activeEditorTab: WorkbenchEditorTab.map,
-        ),
       ];
 
       for (final state in validStates) {
-        final showMapTelemetry = state.activeActivity == WorkbenchActivity.explorer &&
-            state.activeEditorTab == WorkbenchEditorTab.map;
+        final showMapTelemetry =
+            state.activeActivity == WorkbenchActivity.explorer &&
+                state.activeEditorTab == WorkbenchEditorTab.map;
         expect(showMapTelemetry, isTrue,
-            reason: 'Should show telemetry for ${state.activeActivity} / ${state.activeEditorTab}');
+            reason:
+                'Should show telemetry for ${state.activeActivity} / ${state.activeEditorTab}');
       }
 
       for (final state in invalidStates) {
-        final showMapTelemetry = state.activeActivity == WorkbenchActivity.explorer &&
-            state.activeEditorTab == WorkbenchEditorTab.map;
+        final showMapTelemetry =
+            state.activeActivity == WorkbenchActivity.explorer &&
+                state.activeEditorTab == WorkbenchEditorTab.map;
         expect(showMapTelemetry, isFalse,
-            reason: 'Should hide telemetry for ${state.activeActivity} / ${state.activeEditorTab}');
+            reason:
+                'Should hide telemetry for ${state.activeActivity} / ${state.activeEditorTab}');
       }
     });
   });

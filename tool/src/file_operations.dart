@@ -6,23 +6,25 @@ import 'package:path/path.dart' as path;
 /// Copy file or directory recursively
 Future<void> copyPath(String source, String dest) async {
   final sourceEntity = FileSystemEntity.typeSync(source);
-  
+
   if (sourceEntity == FileSystemEntityType.directory) {
     final destDir = Directory(dest);
     if (!await destDir.exists()) {
       await destDir.create(recursive: true);
     }
-    
+
     // Normalize paths to handle Windows path issues
     final normalizedSource = path.normalize(path.absolute(source));
     final normalizedDest = path.normalize(path.absolute(dest));
-    
-    await for (final entity in Directory(normalizedSource).list(recursive: true)) {
+
+    await for (final entity
+        in Directory(normalizedSource).list(recursive: true)) {
       // Use absolute path and compute relative path more carefully
       final entityAbsolute = path.normalize(path.absolute(entity.path));
-      final relativePath = path.relative(entityAbsolute, from: normalizedSource);
+      final relativePath =
+          path.relative(entityAbsolute, from: normalizedSource);
       final destPath = path.join(normalizedDest, relativePath);
-      
+
       if (entity is File) {
         final destFile = File(destPath);
         final parentDir = destFile.parent;

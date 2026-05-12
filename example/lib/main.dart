@@ -19,6 +19,7 @@ import 'about_tab.dart';
 import 'downloads_cache.dart';
 import 'downloads_tab.dart';
 import 'features/map/widgets/adaptive_layer_manager.dart';
+import 'features/search/map_search_panel.dart';
 import 'features/workbench/interaction_state_controller.dart';
 import 'features/workbench/vscode_workbench.dart';
 import 'features/workbench/workbench_controller.dart';
@@ -65,6 +66,39 @@ const List<FavoriteLocation> kFavorites = [
     lat: 11.840743046600755,
     lon: 123.11028882297192,
     zoom: 6,
+  ),
+];
+
+class _WorkbenchToolRegistration {
+  const _WorkbenchToolRegistration({
+    required this.id,
+    required this.label,
+    required this.icon,
+    required this.panelTab,
+    this.keywords = const <String>[],
+  });
+
+  final String id;
+  final String label;
+  final IconData icon;
+  final WorkbenchPanelTab panelTab;
+  final List<String> keywords;
+}
+
+const List<_WorkbenchToolRegistration> _workbenchToolRegistry = [
+  _WorkbenchToolRegistration(
+    id: 'tools-point-of-interest',
+    label: 'Point of Interest',
+    icon: Icons.place_outlined,
+    panelTab: WorkbenchPanelTab.pointOfInterest,
+    keywords: ['bottom', 'panel', 'poi', 'place'],
+  ),
+  _WorkbenchToolRegistration(
+    id: 'tools-debug-console',
+    label: 'Debug Console',
+    icon: Icons.terminal,
+    panelTab: WorkbenchPanelTab.debugConsole,
+    keywords: ['bottom', 'panel', 'logs', 'debug'],
   ),
 ];
 
@@ -126,19 +160,19 @@ class MapSearchResult {
     }
     return score;
   }
-  
+
   Map<String, Object?> toJson() => {
-    'title': title,
-    'subtitle': subtitle,
-    'lat': lat,
-    'lon': lon,
-    'zoom': zoom,
-    'source': source.name,
-    'nativeIndex': nativeIndex,
-    'isSuggestion': isSuggestion,
-    'suggestion': suggestion,
-  };
-  
+        'title': title,
+        'subtitle': subtitle,
+        'lat': lat,
+        'lon': lon,
+        'zoom': zoom,
+        'source': source.name,
+        'nativeIndex': nativeIndex,
+        'isSuggestion': isSuggestion,
+        'suggestion': suggestion,
+      };
+
   static MapSearchResult fromJson(Map<String, Object?> json) {
     return MapSearchResult(
       title: json['title'] as String? ?? '',
@@ -220,142 +254,56 @@ class _MapEditBanner extends StatelessWidget {
   }
 }
 
-class _DesktopSearchResultRow extends StatelessWidget {
-  const _DesktopSearchResultRow({
-    required this.result,
-    required this.icon,
-    required this.routeEnabled,
-    required this.onTap,
-    required this.onRoute,
+class _FavoritesTreeGrid extends StatelessWidget {
+  const _FavoritesTreeGrid({
+    required this.favorites,
+    required this.onSelected,
+    this.compact = true,
   });
 
-  final MapSearchResult result;
-  final IconData icon;
-  final bool routeEnabled;
-  final VoidCallback onTap;
-  final VoidCallback? onRoute;
+  final List<FavoriteLocation> favorites;
+  final ValueChanged<FavoriteLocation> onSelected;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return InkWell(
-      onTap: onTap,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: colorScheme.outlineVariant),
-          ),
+    return AgusTreeView(
+      labelColumnTitle: 'Favorite',
+      labelColumnWidth: compact ? 160 : 220,
+      minLabelColumnWidth: 120,
+      columns: const [
+        AgusTreeColumn(
+          id: 'coordinates',
+          label: 'Coordinates',
+          width: 156,
+          minWidth: 120,
+          alignment: AgusTreeColumnAlignment.start,
         ),
-        child: Padding(
-          padding: const EdgeInsets.only(left: 8, right: 2),
-          child: Row(
-            children: [
-              Icon(icon, size: 16, color: colorScheme.onSurfaceVariant),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      result.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(height: 1.05),
-                    ),
-                    Text(
-                      result.subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        height: 1.05,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (onRoute != null)
-                IconButton(
-                  tooltip: 'Route',
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 28,
-                    height: 28,
-                  ),
-                  padding: EdgeInsets.zero,
-                  iconSize: 16,
-                  onPressed: routeEnabled ? onRoute : null,
-                  icon: const Icon(Icons.alt_route),
-                ),
-            ],
+        AgusTreeColumn(id: 'zoom', label: 'Zoom', width: 58),
+      ],
+      resizableColumns: compact,
+      nodes: [
+        for (final favorite in favorites)
+          AgusTreeNode(
+            id: favorite.name,
+            label: favorite.name,
+            icon: Icons.location_on_outlined,
+            badgeLabel: 'Focus map',
+            columnValues: {
+              'coordinates':
+                  '${favorite.lat.toStringAsFixed(4)}, ${favorite.lon.toStringAsFixed(4)}',
+              'zoom': '${favorite.zoom}',
+            },
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DesktopFavoriteRow extends StatelessWidget {
-  const _DesktopFavoriteRow({
-    required this.favorite,
-    required this.onTap,
-  });
-
-  final FavoriteLocation favorite;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return InkWell(
-      onTap: onTap,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: colorScheme.outlineVariant),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            children: [
-              Icon(
-                Icons.location_on_outlined,
-                size: 16,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  favorite.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-              Text(
-                '${favorite.lat.toStringAsFixed(4)}, '
-                '${favorite.lon.toStringAsFixed(4)}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'z${favorite.zoom}',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      ],
+      onSelected: (id) {
+        for (final favorite in favorites) {
+          if (favorite.name == id) {
+            onSelected(favorite);
+            return;
+          }
+        }
+      },
     );
   }
 }
@@ -491,6 +439,7 @@ class _MyAppState extends State<MyApp> {
   agus_maps_flutter.DuckDBLayerDrawController? _duckDBDrawController;
   String _activeDuckDBLayerId = _userDrawLayerId;
   agus_maps_flutter.AgusLayerFeature? _activeDuckDBFeature;
+  ExampleFormFactor? _lastResolvedFormFactor;
   String _duckDBLayerStoreStatus = 'DuckDB layer store is starting';
   int _duckDBLayerRevision = 0;
   final WorkbenchController _workbenchController = WorkbenchController();
@@ -587,6 +536,7 @@ class _MyAppState extends State<MyApp> {
       'navigation_avoid_unpaved';
   static const String _prefsKeyHiddenMwmLayers = 'hidden_mwm_layers';
   static const String _prefsKeyMwmLayerOrder = 'mwm_layer_order_mode';
+  static const int _maxSelectedLayerHighlightFeatures = 400;
 
   Future<void> _loadSettings() async {
     try {
@@ -1349,6 +1299,7 @@ class _MyAppState extends State<MyApp> {
       }
       _log('DuckDB drawing layer store enabled.');
       _enableDuckDBNativeLayerRendering();
+      _refreshDuckDBSelectionHighlight();
     } catch (error, stackTrace) {
       if (mounted) {
         setState(() {
@@ -1371,6 +1322,7 @@ class _MyAppState extends State<MyApp> {
       agus_maps_flutter.setDuckDBMapLayerRenderingEnabled(true);
       final count = agus_maps_flutter.refreshDuckDBMapLayers();
       _log('DuckDB layer rendering enabled: $count visible features.');
+      _refreshDuckDBSelectionHighlight();
     } catch (error, stackTrace) {
       _log(
         'DuckDB native layer rendering unavailable; '
@@ -1400,6 +1352,7 @@ class _MyAppState extends State<MyApp> {
       _activeDuckDBFeature = null;
       _duckDBDrawController = controller;
     });
+    _refreshDuckDBSelectionHighlight();
     _log('Active edit layer changed: $layerId');
   }
 
@@ -1482,6 +1435,9 @@ class _MyAppState extends State<MyApp> {
         _mobileLayerManagerVisible = false;
       }
     });
+    if (tool == agus_maps_flutter.AgusDrawTool.none) {
+      _refreshDuckDBSelectionHighlight();
+    }
   }
 
   Future<void> _editDuckDBFeature(
@@ -1500,7 +1456,8 @@ class _MyAppState extends State<MyApp> {
 
     try {
       controller.beginEditFeature(feature);
-      _interactionStateController.enterEditingFeature(featureId: feature.featureId);
+      _interactionStateController.enterEditingFeature(
+          featureId: feature.featureId);
       _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
       setState(() {
         _activeDuckDBFeature = feature;
@@ -1515,9 +1472,11 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  agus_maps_flutter.AgusLatLon? _projectDrawPoint(Offset localPosition) {
+  Future<agus_maps_flutter.AgusLatLon?> _projectDrawPoint(
+    Offset localPosition,
+  ) {
     final pixelRatio = View.of(context).devicePixelRatio;
-    return agus_maps_flutter.screenPointToLatLon(
+    return agus_maps_flutter.updateNativeMapPointer(
       localPosition.dx * pixelRatio,
       localPosition.dy * pixelRatio,
     );
@@ -1534,22 +1493,62 @@ class _MyAppState extends State<MyApp> {
   }
 
   bool _handleDuckDBMapTap(Offset localPosition) {
-    return _duckDBDrawController?.handleMapTap(localPosition) ?? false;
+    final controller = _duckDBDrawController;
+    if (controller == null) {
+      _logInteraction('DuckDB map tap ignored: draw controller unavailable.');
+      return false;
+    }
+    final handled = controller.handleMapTap(localPosition);
+    _logInteraction(
+      'DuckDB map tap ${handled ? 'handled' : 'ignored'}: '
+      'tool=${controller.tool.name}, editing=${controller.isEditing}, '
+      'vertices=${controller.vertices.length}, '
+      'screen=${_formatDebugOffset(localPosition)}',
+    );
+    return handled;
   }
 
   bool _handleDuckDBMapPointerDown(Offset localPosition) {
-    return _duckDBDrawController?.handlePointerDown(localPosition) ?? false;
+    final controller = _duckDBDrawController;
+    if (controller == null) return false;
+    final handled = controller.handlePointerDown(localPosition);
+    if (handled || controller.isEditing) {
+      _logInteraction(
+        'DuckDB pointer down ${handled ? 'hit' : 'miss'}: '
+        'tool=${controller.tool.name}, editingFeature=${controller.isEditingFeature}, '
+        'selected=${controller.selectedVertexIndex}, '
+        'screen=${_formatDebugOffset(localPosition)}',
+      );
+    }
+    return handled;
   }
 
   void _handleDuckDBMapPointerMove(Offset localPosition) {
     final controller = _duckDBDrawController;
     if (controller == null) return;
+    if (controller.isEditing) {
+      _logInteraction(
+        'DuckDB pointer move: tool=${controller.tool.name}, '
+        'editingFeature=${controller.isEditingFeature}, '
+        'selected=${controller.selectedVertexIndex}, '
+        'vertices=${controller.vertices.length}, '
+        'screen=${_formatDebugOffset(localPosition)}',
+      );
+    }
     unawaited(controller.handlePointerMove(localPosition));
   }
 
   void _handleDuckDBMapPointerUp(Offset localPosition) {
     final controller = _duckDBDrawController;
     if (controller == null) return;
+    if (controller.isEditing) {
+      _logInteraction(
+        'DuckDB pointer up: tool=${controller.tool.name}, '
+        'editingFeature=${controller.isEditingFeature}, '
+        'selected=${controller.selectedVertexIndex}, '
+        'screen=${_formatDebugOffset(localPosition)}',
+      );
+    }
     unawaited(controller.handlePointerUp());
   }
 
@@ -1557,16 +1556,80 @@ class _MyAppState extends State<MyApp> {
     agus_maps_flutter.AgusDrapeInteractionMode mode,
     String? geometryWkt,
   ) {
-    if (!_nativeSurfaceReady ||
-        !(Platform.isMacOS || Platform.isIOS || Platform.isAndroid)) {
+    if (!_nativeSurfaceReady) {
+      _logInteraction(
+        'DuckDB interaction render skipped: surfaceReady=$_nativeSurfaceReady '
+        'platform=${Platform.operatingSystem} mode=${mode.name}',
+      );
       return;
     }
     if (mode == agus_maps_flutter.AgusDrapeInteractionMode.inactive ||
         geometryWkt == null) {
+      _logInteraction('DuckDB interaction render clear: mode=${mode.name}');
       agus_maps_flutter.clearDuckDBEditHandles();
       return;
     }
-    agus_maps_flutter.setDuckDBInteractionGeometryFromWkt(mode, geometryWkt);
+    _logInteraction(
+      'DuckDB interaction render submit: mode=${mode.name}, '
+      'wkt=$geometryWkt',
+    );
+    unawaited(
+      agus_maps_flutter.updateDrapeInteractionGeometry(
+        mode: mode,
+        geometryWkt: geometryWkt,
+        lineStyle: agus_maps_flutter.defaultDuckDBInteractionLineStyle(mode),
+      ),
+    );
+  }
+
+  void _refreshDuckDBSelectionHighlight() {
+    if (!_nativeSurfaceReady) {
+      return;
+    }
+
+    final controller = _duckDBDrawController;
+    if (controller != null && controller.isEditing) {
+      return;
+    }
+
+    final store = _duckDBLayerStore;
+    if (store == null) {
+      _renderDuckDBEditGeometry(
+        agus_maps_flutter.AgusDrapeInteractionMode.inactive,
+        null,
+      );
+      return;
+    }
+
+    try {
+      final selectedFeature = _activeDuckDBFeature;
+      final selectedGeometry = selectedFeature?.layerId == _activeDuckDBLayerId
+          ? selectedFeature!.geometryWkt
+          : null;
+      final geometries = selectedGeometry == null
+          ? store
+              .listFeatures(_activeDuckDBLayerId)
+              .take(_maxSelectedLayerHighlightFeatures)
+              .map((feature) => feature.geometryWkt)
+              .where((geometry) => geometry.trim().isNotEmpty)
+              .toList(growable: false)
+          : <String>[selectedGeometry];
+
+      if (geometries.isEmpty) {
+        _renderDuckDBEditGeometry(
+          agus_maps_flutter.AgusDrapeInteractionMode.inactive,
+          null,
+        );
+        return;
+      }
+
+      _renderDuckDBEditGeometry(
+        agus_maps_flutter.AgusDrapeInteractionMode.editingFeature,
+        geometries.join('\n'),
+      );
+    } catch (error, stackTrace) {
+      _log('DuckDB selection highlight failed: $error\n$stackTrace');
+    }
   }
 
   String _drawToolLabel(agus_maps_flutter.AgusDrawTool tool) {
@@ -1591,6 +1654,7 @@ class _MyAppState extends State<MyApp> {
         setState(() {
           _duckDBLayerRevision++;
         });
+        _refreshDuckDBSelectionHighlight();
       }
     } catch (error, stackTrace) {
       _log(
@@ -1720,23 +1784,23 @@ class _MyAppState extends State<MyApp> {
   String _computeMapDataRevision() {
     final storage = _mwmStorage;
     if (storage == null) return 'no-mwm';
-    
+
     final allMaps = storage.getAll();
     if (allMaps.isEmpty) return 'empty-mwm';
-    
+
     // Sort by region name for stable fingerprint
     final sorted = allMaps.toList()
       ..sort((a, b) => a.regionName.compareTo(b.regionName));
-    
+
     // Compute fingerprint from visible map names and versions
     final visibleMaps = sorted
         .where((m) => !_hiddenMwmLayerRegions.contains(m.regionName))
         .map((m) => '${m.regionName}:${m.snapshotVersion}')
         .join(',');
-    
+
     return visibleMaps.isEmpty ? 'all-hidden' : visibleMaps;
   }
-  
+
   /// Attempts to retrieve cached search results.
   List<MapSearchResult>? _getCachedSearchResults(
     String query,
@@ -1744,25 +1808,25 @@ class _MyAppState extends State<MyApp> {
   ) {
     final store = _duckDBLayerStore;
     if (store == null) return null;
-    
+
     final normalizedQuery = query.trim().toLowerCase();
     final mapRevision = _computeMapDataRevision();
-    
+
     try {
       final cached = store.searchCache(
         normalizedQuery: normalizedQuery,
         locale: locale,
         includeStale: false,
       );
-      
+
       if (cached.isEmpty) return null;
-      
+
       final entry = cached.first;
       if (entry.mapDataRevision != mapRevision) return null;
-      
+
       final payload = entry.resultPayload['results'] as List<Object?>?;
       if (payload == null) return null;
-      
+
       return payload
           .cast<Map<String, Object?>>()
           .map(MapSearchResult.fromJson)
@@ -1772,7 +1836,7 @@ class _MyAppState extends State<MyApp> {
       return null;
     }
   }
-  
+
   /// Caches search results for the given query.
   void _cacheSearchResults(
     String query,
@@ -1781,10 +1845,10 @@ class _MyAppState extends State<MyApp> {
   ) {
     final store = _duckDBLayerStore;
     if (store == null) return;
-    
+
     final normalizedQuery = query.trim().toLowerCase();
     final mapRevision = _computeMapDataRevision();
-    
+
     try {
       store.upsertSearchCache(
         agus_maps_flutter.AgusSearchCacheDraft(
@@ -1818,7 +1882,8 @@ class _MyAppState extends State<MyApp> {
         _searchResults = cachedResults;
         _nativeSearchRunning = false;
       });
-      _log('Using cached search results for "$trimmedQuery" (${cachedResults.length} results)');
+      _log(
+          'Using cached search results for "$trimmedQuery" (${cachedResults.length} results)');
       // Still start native search in background to refresh cache
     }
 
@@ -1887,7 +1952,10 @@ class _MyAppState extends State<MyApp> {
     // Cache results when search completes successfully
     if (!snapshot.isRunning && !timedOut && mergedResults.isNotEmpty) {
       if (_lastCachedQuery != query) {
-        _cacheSearchResults(query, ui.PlatformDispatcher.instance.locale.toLanguageTag(), mergedResults);
+        _cacheSearchResults(
+            query,
+            ui.PlatformDispatcher.instance.locale.toLanguageTag(),
+            mergedResults);
       }
     }
 
@@ -2028,7 +2096,7 @@ class _MyAppState extends State<MyApp> {
     if (!selectedNativeResult) {
       _mapController.moveToLocation(result.lat, result.lon, result.zoom);
     }
-    
+
     // Keep search results visible after selection
   }
 
@@ -2249,6 +2317,16 @@ class _MyAppState extends State<MyApp> {
         _debug += '$msg\n';
       });
     }
+  }
+
+  void _logInteraction(String msg) {
+    if (kDebugMode) {
+      debugPrint('[AgusDemo] $msg');
+    }
+  }
+
+  String _formatDebugOffset(Offset value) {
+    return '(${value.dx.toStringAsFixed(1)}, ${value.dy.toStringAsFixed(1)})';
   }
 
   Future<String> _prepareBundledCountryMap({
@@ -2554,10 +2632,33 @@ class _MyAppState extends State<MyApp> {
 
   Widget _buildShellForFormFactor(BuildContext context) {
     final formFactor = context.exampleFormFactor;
+    _synchronizeMapTabForFormFactor(formFactor);
     if (formFactor.isDesktop) {
       return _buildDesktopWorkbench(context);
     }
     return _buildAdaptiveTabScaffold(context);
+  }
+
+  void _synchronizeMapTabForFormFactor(ExampleFormFactor formFactor) {
+    final previous = _lastResolvedFormFactor;
+    _lastResolvedFormFactor = formFactor;
+    if (previous == null || previous == formFactor) return;
+
+    final shouldShowMap = formFactor.isDesktop
+        ? _currentTabIndex == 0
+        : _workbenchController.state.activeEditorTab == WorkbenchEditorTab.map;
+    if (!shouldShowMap) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (formFactor.isDesktop) {
+        _workbenchController.selectEditorTab(WorkbenchEditorTab.map);
+      } else if (_currentTabIndex != 0) {
+        setState(() {
+          _currentTabIndex = 0;
+        });
+      }
+    });
   }
 
   Widget _buildAdaptiveTabScaffold(BuildContext context) {
@@ -2611,24 +2712,7 @@ class _MyAppState extends State<MyApp> {
           ),
           _buildFavoritesTab(context),
           _buildDownloadsTab(isVisible: _currentTabIndex == 2),
-          SettingsTab(
-            mapScale: _mapScale,
-            interfaceThemeMode: _interfaceThemeMode,
-            mapAppearanceMode: _mapAppearanceMode,
-            mapLanguageCode: _mapLanguageCode,
-            buildings3dEnabled: _buildings3dEnabled,
-            layerState: _mapLayerState,
-            navigationSettings: _navigationSettings,
-            onMapScaleChanged: _updateMapScale,
-            onResetMapScale: _resetMapScale,
-            onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
-            onMapAppearanceModeChanged: _updateMapAppearanceMode,
-            onMapLanguageChanged: _updateMapLanguage,
-            onBuildings3dChanged: _updateBuildings3d,
-            onLayerStateChanged: _updateMapLayerState,
-            onNavigationSettingsChanged: _updateNavigationSettings,
-            onClearCachedData: _clearCachedData,
-          ),
+          _buildSettingsTab(),
           const AboutTab(),
         ],
       ),
@@ -2638,16 +2722,148 @@ class _MyAppState extends State<MyApp> {
   Widget _buildDesktopWorkbench(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: VSCodeWorkbench(
-        controller: _workbenchController,
-        activityBuilder: _buildWorkbenchActivity,
-        editorBuilder: _buildWorkbenchEditor,
-        panelBuilder: _buildWorkbenchPanel,
-        secondarySideBarBuilder: _buildWorkbenchSecondarySideBar,
-        statusBarBuilder: _buildWorkbenchStatusBar,
-        commandGroups: _buildWorkbenchCommandGroups(),
-        commandAsyncProviders: _buildWorkbenchCommandAsyncProviders(),
+      body: PlatformMenuBar(
+        menus: [
+          PlatformMenu(
+            label: 'Tools',
+            menus: [
+              for (final tool in _workbenchToolRegistry)
+                PlatformMenuItem(
+                  label: tool.label,
+                  onSelected: () =>
+                      _workbenchController.selectPanelTab(tool.panelTab),
+                ),
+            ],
+          ),
+        ],
+        child: VSCodeWorkbench(
+          controller: _workbenchController,
+          activityBuilder: _buildWorkbenchActivity,
+          editorBuilder: _buildWorkbenchEditor,
+          panelBuilder: _buildWorkbenchPanel,
+          secondarySideBarBuilder: _buildWorkbenchSecondarySideBar,
+          statusBarBuilder: _buildWorkbenchStatusBar,
+          commandGroups: _buildWorkbenchCommandGroups(),
+          commandAsyncProviders: _buildWorkbenchCommandAsyncProviders(),
+          onModalActivitySelected: _showWorkbenchModalActivity,
+        ),
       ),
+    );
+  }
+
+  void _showWorkbenchModalActivity(WorkbenchActivity activity) {
+    switch (activity) {
+      case WorkbenchActivity.settings:
+        _showSettingsDialog();
+      case WorkbenchActivity.about:
+        _showAboutDialog();
+      case WorkbenchActivity.explorer ||
+            WorkbenchActivity.search ||
+            WorkbenchActivity.favorites ||
+            WorkbenchActivity.downloads:
+        _workbenchController.selectActivity(activity);
+    }
+  }
+
+  Future<void> _showSettingsDialog() {
+    return _showWorkbenchDialog(
+      title: 'Settings',
+      subtitle:
+          'Search and edit application, map, layer, and navigation settings',
+      icon: Icons.settings_outlined,
+      child: _buildSettingsTab(),
+    );
+  }
+
+  Future<void> _showAboutDialog() {
+    return _showWorkbenchDialog(
+      title: 'About Agus Maps',
+      subtitle: 'Version, attribution, licenses, and native component details',
+      icon: Icons.info_outline,
+      child: const AboutTab(),
+    );
+  }
+
+  Future<void> _showWorkbenchDialog({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        final size = MediaQuery.sizeOf(dialogContext);
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 48,
+            vertical: 40,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: min(1040, max(280, size.width - 96)),
+              maxHeight: min(760, max(320, size.height - 80)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Material(
+                  color: colorScheme.surfaceContainerHighest,
+                  child: SizedBox(
+                    height: 46,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 14, right: 6),
+                      child: Row(
+                        children: [
+                          Icon(icon, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(dialogContext)
+                                      .textTheme
+                                      .titleSmall,
+                                ),
+                                Text(
+                                  subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(dialogContext)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Close $title',
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(child: child),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2857,12 +3073,19 @@ class _MyAppState extends State<MyApp> {
             activity: WorkbenchActivity.favorites,
             keywords: const ['locations', 'places'],
           ),
-          activityCommand(
+          AgusCommandItem(
             id: 'open-settings',
             label: 'Open Settings',
             icon: Icons.settings_outlined,
-            activity: WorkbenchActivity.settings,
             keywords: const ['preferences'],
+            onSelected: _showSettingsDialog,
+          ),
+          AgusCommandItem(
+            id: 'open-about',
+            label: 'Open About',
+            icon: Icons.info_outline,
+            keywords: const ['license', 'version', 'attribution'],
+            onSelected: _showAboutDialog,
           ),
         ],
       ),
@@ -2885,6 +3108,15 @@ class _MyAppState extends State<MyApp> {
             keywords: const ['bottom', 'debug', 'poi'],
             onSelected: _workbenchController.togglePanel,
           ),
+          for (final tool in _workbenchToolRegistry)
+            AgusCommandItem(
+              id: tool.id,
+              label: 'Tools: Show ${tool.label}',
+              icon: tool.icon,
+              keywords: tool.keywords,
+              onSelected: () =>
+                  _workbenchController.selectPanelTab(tool.panelTab),
+            ),
           AgusCommandItem(
             id: 'toggle-secondary-sidebar',
             label: 'Toggle Properties Sidebar',
@@ -2959,9 +3191,12 @@ class _MyAppState extends State<MyApp> {
     final activeFeatureName = _activeDuckDBFeatureName();
 
     // Build map telemetry items when Explorer is active and map editor is visible
-    final showMapTelemetry = state.activeActivity == WorkbenchActivity.explorer &&
-        state.activeEditorTab == WorkbenchEditorTab.map;
-    final mapTelemetryItems = showMapTelemetry ? _buildMapTelemetryItems(context) : <AgusStatusBarItem>[];
+    final showMapTelemetry =
+        state.activeActivity == WorkbenchActivity.explorer &&
+            state.activeEditorTab == WorkbenchEditorTab.map;
+    final mapTelemetryItems = showMapTelemetry
+        ? _buildMapTelemetryItems(context)
+        : <AgusStatusBarItem>[];
 
     return AgusStatusBar(
       leftItems: [
@@ -3111,13 +3346,14 @@ class _MyAppState extends State<MyApp> {
     } else {
       _hiddenMwmLayerRegions.add(regionName);
     }
-    
+
     // Invalidate search cache when map visibility changes
     final store = _duckDBLayerStore;
     if (store != null) {
-      store.invalidateAllSearchCache(reason: 'mwm_visibility:$regionName:$visible');
+      store.invalidateAllSearchCache(
+          reason: 'mwm_visibility:$regionName:$visible');
     }
-    
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
       _prefsKeyHiddenMwmLayers,
@@ -3184,7 +3420,8 @@ class _MyAppState extends State<MyApp> {
     final store = _duckDBLayerStore;
     if (store == null) return;
 
-    final focusCenter = store.getFeatureFocusCenter(feature.layerId, feature.featureId);
+    final focusCenter =
+        store.getFeatureFocusCenter(feature.layerId, feature.featureId);
     if (focusCenter == null) {
       _showSnackBar('Cannot focus: feature center not calculated');
       return;
@@ -3205,13 +3442,13 @@ class _MyAppState extends State<MyApp> {
     final result = await storage.deleteMap(layer.regionName);
     if (!mounted) return;
     setState(() {});
-    
+
     // Invalidate search cache when map is deleted
     final store = _duckDBLayerStore;
     if (store != null) {
       store.invalidateAllSearchCache(reason: 'mwm_deleted:${layer.regionName}');
     }
-    
+
     _showSnackBar(
       result.success
           ? 'Deleted ${layer.regionName}'
@@ -3280,9 +3517,10 @@ class _MyAppState extends State<MyApp> {
     // Invalidate search cache when map is registered
     final store = _duckDBLayerStore;
     if (store != null) {
-      store.invalidateAllSearchCache(reason: 'mwm_registered:${metadata.regionName}');
+      store.invalidateAllSearchCache(
+          reason: 'mwm_registered:${metadata.regionName}');
     }
-    
+
     final parsed = int.tryParse(metadata.snapshotVersion);
     return parsed != null
         ? agus_maps_flutter.registerSingleMapWithVersion(
@@ -3498,16 +3736,10 @@ class _MyAppState extends State<MyApp> {
             setState(() {
               _activeDuckDBFeature = feature;
             });
+            _refreshDuckDBSelectionHighlight();
           },
           onDrawToolChanged: _setDuckDBDrawTool,
           onEditFeature: (feature) => unawaited(_editDuckDBFeature(feature)),
-        ),
-      WorkbenchActivity.mapPresentation => AdaptiveMapPresentationPanel(
-          formFactor: ExampleFormFactor.desktop,
-          nativeLayerState: _mapLayerState,
-          buildings3dEnabled: _buildings3dEnabled,
-          onNativeLayerStateChanged: _updateMapLayerState,
-          onBuildings3dChanged: _updateBuildings3d,
         ),
       WorkbenchActivity.search => _buildDesktopSearchActivity(context),
       WorkbenchActivity.favorites => _buildDesktopFavoritesActivity(context),
@@ -3515,26 +3747,30 @@ class _MyAppState extends State<MyApp> {
           isVisible: _workbenchController.state.activeActivity ==
               WorkbenchActivity.downloads,
         ),
-      WorkbenchActivity.settings => SettingsTab(
-          mapScale: _mapScale,
-          interfaceThemeMode: _interfaceThemeMode,
-          mapAppearanceMode: _mapAppearanceMode,
-          mapLanguageCode: _mapLanguageCode,
-          buildings3dEnabled: _buildings3dEnabled,
-          layerState: _mapLayerState,
-          navigationSettings: _navigationSettings,
-          onMapScaleChanged: _updateMapScale,
-          onResetMapScale: _resetMapScale,
-          onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
-          onMapAppearanceModeChanged: _updateMapAppearanceMode,
-          onMapLanguageChanged: _updateMapLanguage,
-          onBuildings3dChanged: _updateBuildings3d,
-          onLayerStateChanged: _updateMapLayerState,
-          onNavigationSettingsChanged: _updateNavigationSettings,
-          onClearCachedData: _clearCachedData,
-        ),
+      WorkbenchActivity.settings => _buildSettingsTab(),
       WorkbenchActivity.about => const AboutTab(),
     };
+  }
+
+  Widget _buildSettingsTab() {
+    return SettingsTab(
+      mapScale: _mapScale,
+      interfaceThemeMode: _interfaceThemeMode,
+      mapAppearanceMode: _mapAppearanceMode,
+      mapLanguageCode: _mapLanguageCode,
+      buildings3dEnabled: _buildings3dEnabled,
+      layerState: _mapLayerState,
+      navigationSettings: _navigationSettings,
+      onMapScaleChanged: _updateMapScale,
+      onResetMapScale: _resetMapScale,
+      onInterfaceThemeModeChanged: _updateInterfaceThemeMode,
+      onMapAppearanceModeChanged: _updateMapAppearanceMode,
+      onMapLanguageChanged: _updateMapLanguage,
+      onBuildings3dChanged: _updateBuildings3d,
+      onLayerStateChanged: _updateMapLayerState,
+      onNavigationSettingsChanged: _updateNavigationSettings,
+      onClearCachedData: _clearCachedData,
+    );
   }
 
   Widget _buildWorkbenchEditor(
@@ -3686,6 +3922,7 @@ class _MyAppState extends State<MyApp> {
           onMapTap: _handleDuckDBMapTap,
           onMapPointerDown: _handleDuckDBMapPointerDown,
           onMapPointerMove: _handleDuckDBMapPointerMove,
+          onMapPointerHover: _handleDuckDBMapPointerMove,
           onMapPointerUp: _handleDuckDBMapPointerUp,
           controller: _mapController,
           isVisible: isVisible,
@@ -3761,6 +3998,7 @@ class _MyAppState extends State<MyApp> {
                           setState(() {
                             _activeDuckDBFeature = feature;
                           });
+                          _refreshDuckDBSelectionHighlight();
                         },
                         onDrawToolChanged: _setDuckDBDrawTool,
                         onEditFeature: (feature) =>
@@ -3775,12 +4013,6 @@ class _MyAppState extends State<MyApp> {
                   ],
                 ],
               ),
-            ),
-          ),
-        if (drawController != null && !formFactor.isMobile)
-          Positioned.fill(
-            child: agus_maps_flutter.DuckDBLayerDrawOverlay(
-              controller: drawController,
             ),
           ),
         if (drawController != null && !formFactor.isMobile)
@@ -3903,171 +4135,79 @@ class _MyAppState extends State<MyApp> {
     BuildContext context, {
     bool expandToFill = false,
   }) {
-    final theme = Theme.of(context);
-    final colors = AgusThemeData.colorsOf(context);
     final viewInsets = MediaQuery.viewInsetsOf(context);
     final screenHeight = MediaQuery.sizeOf(context).height;
     final resultPanelMaxHeight = max(
       120.0,
       min(220.0, screenHeight - viewInsets.bottom - 140.0),
     );
-    final hasSearchResults = _searchOpen && _searchController.text.isNotEmpty;
-    final resultPanel = _searchResults.isEmpty
-        ? Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Text(
-                _nativeSearchRunning ? 'Searching...' : 'No results',
-                style: theme.textTheme.bodyMedium,
-              ),
-            ),
-          )
-        : ListView.separated(
-            shrinkWrap: !expandToFill,
-            padding: EdgeInsets.zero,
-            itemCount: _searchResults.length,
-            separatorBuilder: (_, __) =>
-                Divider(height: 1, color: colors.sideBarBorder),
-            itemBuilder: (context, index) {
-              final result = _searchResults[index];
-              return _DesktopSearchResultRow(
-                result: result,
-                icon: _searchResultIcon(result),
-                routeEnabled:
-                    !_navigationActionInProgress && !result.isSuggestion,
-                onTap: () => _focusSearchResult(result),
-                onRoute: result.isSuggestion
-                    ? null
-                    : () => unawaited(_previewRouteToSearchResult(result)),
-              );
-            },
-          );
 
     return Material(
-      color: colors.sideBarBackground,
       elevation: 3,
       borderRadius: BorderRadius.circular(4),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(color: colors.sideBarBorder),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Column(
-          mainAxisSize: expandToFill ? MainAxisSize.max : MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: AgusSearchBox(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      placeholder: 'Search map',
-                      onTap: _openSearch,
-                      onChanged: _onSearchChanged,
-                      onSubmitted: (_) {
-                        if (_searchResults.isNotEmpty) {
-                          _focusSearchResult(_searchResults.first);
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  AgusButton.icon(
-                    icon: _searchOpen ? Icons.close : Icons.search,
-                    tooltip: _searchOpen ? 'Close search' : 'Open search',
-                    onPressed: _toggleSearch,
-                  ),
-                ],
-              ),
-            ),
-            if (hasSearchResults)
-              if (expandToFill)
-                Expanded(child: resultPanel)
-              else
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: resultPanelMaxHeight),
-                  child: resultPanel,
-                ),
-          ],
+      child: MapSearchPanel<MapSearchResult>(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        placeholder: 'Search map',
+        results: _searchResults,
+        titleFor: (result) => result.title,
+        subtitleFor: (result) => result.subtitle,
+        iconFor: _searchResultIcon,
+        searching: _nativeSearchRunning,
+        expandResults: expandToFill,
+        resultPanelMaxHeight: resultPanelMaxHeight,
+        routeDisabledFor: (result) =>
+            _navigationActionInProgress || result.isSuggestion,
+        onOpen: _openSearch,
+        onChanged: _onSearchChanged,
+        onSubmitted: (_) {
+          if (_searchResults.isNotEmpty) {
+            _focusSearchResult(_searchResults.first);
+          }
+        },
+        onResultSelected: _focusSearchResult,
+        onResultRoute: (result) {
+          if (!result.isSuggestion) {
+            unawaited(_previewRouteToSearchResult(result));
+          }
+        },
+        trailing: AgusButton.icon(
+          icon: _searchOpen ? Icons.close : Icons.search,
+          tooltip: _searchOpen ? 'Close search' : 'Open search',
+          onPressed: _toggleSearch,
         ),
       ),
     );
   }
 
   Widget _buildDesktopSearchActivity(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final hasQuery = _searchController.text.trim().isNotEmpty;
-    final statusText = _nativeSearchRunning ? 'Searching...' : 'No results';
+    final colorScheme = Theme.of(context).colorScheme;
 
     return ColoredBox(
       color: colorScheme.surface,
-      child: Column(
-        children: [
-          SizedBox(
-            height: 42,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: colorScheme.outlineVariant),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(7),
-                child: AgusSearchBox(
-                  controller: _searchController,
-                  focusNode: _searchFocusNode,
-                  placeholder: 'Search',
-                  onTap: _openSearch,
-                  onChanged: _onSearchChanged,
-                  onSubmitted: (_) {
-                    if (_searchResults.isNotEmpty) {
-                      _focusSearchResult(_searchResults.first);
-                    }
-                  },
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: !hasQuery
-                ? const AgusEmptyState(
-                    icon: Icons.search,
-                    title: 'Search',
-                    message:
-                        'Type to search places, coordinates, or favorites.',
-                  )
-                : _searchResults.isEmpty
-                    ? AgusEmptyState(
-                        icon: Icons.manage_search,
-                        title: 'Search results',
-                        message: statusText,
-                      )
-                    : ListView.builder(
-                        padding: EdgeInsets.zero,
-                        itemExtent: 36,
-                        itemCount: _searchResults.length,
-                        itemBuilder: (context, index) {
-                          final result = _searchResults[index];
-                          return _DesktopSearchResultRow(
-                            result: result,
-                            icon: _searchResultIcon(result),
-                            routeEnabled: !_navigationActionInProgress &&
-                                !result.isSuggestion,
-                            onTap: () => _focusSearchResult(result),
-                            onRoute: result.isSuggestion
-                                ? null
-                                : () => unawaited(
-                                      _previewRouteToSearchResult(result),
-                                    ),
-                          );
-                        },
-                      ),
-          ),
-        ],
+      child: MapSearchPanel<MapSearchResult>(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        results: _searchResults,
+        titleFor: (result) => result.title,
+        subtitleFor: (result) => result.subtitle,
+        iconFor: _searchResultIcon,
+        searching: _nativeSearchRunning,
+        routeDisabledFor: (result) =>
+            _navigationActionInProgress || result.isSuggestion,
+        onOpen: _openSearch,
+        onChanged: _onSearchChanged,
+        onSubmitted: (_) {
+          if (_searchResults.isNotEmpty) {
+            _focusSearchResult(_searchResults.first);
+          }
+        },
+        onResultSelected: _focusSearchResult,
+        onResultRoute: (result) {
+          if (!result.isSuggestion) {
+            unawaited(_previewRouteToSearchResult(result));
+          }
+        },
       ),
     );
   }
@@ -4741,17 +4881,9 @@ class _MyAppState extends State<MyApp> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              itemExtent: 30,
-              itemCount: kFavorites.length,
-              itemBuilder: (context, index) {
-                final favorite = kFavorites[index];
-                return _DesktopFavoriteRow(
-                  favorite: favorite,
-                  onTap: () => _onFavoriteSelected(favorite),
-                );
-              },
+            child: _FavoritesTreeGrid(
+              favorites: kFavorites,
+              onSelected: _onFavoriteSelected,
             ),
           ),
         ],
@@ -4787,25 +4919,10 @@ class _MyAppState extends State<MyApp> {
         ),
         // List
         Expanded(
-          child: ListView.builder(
-            itemCount: kFavorites.length,
-            itemBuilder: (context, index) {
-              final favorite = kFavorites[index];
-              return ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(Icons.location_on),
-                ),
-                title: Text(favorite.name),
-                subtitle: Text(
-                  '${favorite.lat.toStringAsFixed(4)}, ${favorite.lon.toStringAsFixed(4)}',
-                ),
-                trailing: Text(
-                  'Zoom ${favorite.zoom}',
-                  style: theme.textTheme.bodySmall,
-                ),
-                onTap: () => _onFavoriteSelected(favorite),
-              );
-            },
+          child: _FavoritesTreeGrid(
+            favorites: kFavorites,
+            onSelected: _onFavoriteSelected,
+            compact: false,
           ),
         ),
       ],

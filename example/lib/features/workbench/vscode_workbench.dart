@@ -46,6 +46,7 @@ class VSCodeWorkbench extends StatelessWidget {
     this.statusBarBuilder,
     this.commandGroups = const <AgusCommandGroup>[],
     this.commandAsyncProviders = const <AgusCommandAsyncProvider>[],
+    this.onModalActivitySelected,
   });
 
   /// Global workbench state.
@@ -71,6 +72,9 @@ class VSCodeWorkbench extends StatelessWidget {
 
   /// Query-driven command providers exposed in the title-bar command center.
   final List<AgusCommandAsyncProvider> commandAsyncProviders;
+
+  /// Called for Activity Bar items that should open as focused modal surfaces.
+  final ValueChanged<WorkbenchActivity>? onModalActivitySelected;
 
   @override
   Widget build(BuildContext context) {
@@ -104,7 +108,14 @@ class VSCodeWorkbench extends StatelessWidget {
   AgusActivityBar _buildActivityBar(WorkbenchLayoutState state) {
     return AgusActivityBar(
       selectedId: state.activeActivity.id,
-      onSelected: (id) => controller.selectActivity(_workbenchActivityById(id)),
+      onSelected: (id) {
+        final activity = _workbenchActivityById(id);
+        if (activity.opensAsModal && onModalActivitySelected != null) {
+          onModalActivitySelected!(activity);
+          return;
+        }
+        controller.selectActivity(activity);
+      },
       items: [
         for (final activity in WorkbenchActivity.values)
           if (!activity.isBottomItem)
@@ -142,7 +153,7 @@ class VSCodeWorkbench extends StatelessWidget {
   Widget _buildEditor(BuildContext context, WorkbenchLayoutState state) {
     final tabs = [
       for (final tab in state.editorTabOrder)
-        AgusEditorTab(
+        AgusTab(
           id: tab.id,
           label: tab.label,
           icon: tab.icon,
@@ -155,9 +166,10 @@ class VSCodeWorkbench extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AgusEditorTabBar(
+          AgusTabBar(
             tabs: tabs,
             selectedId: state.activeEditorTab.id,
+            variant: AgusTabVariant.editor,
             onSelected: (id) {
               controller.selectEditorTab(_workbenchEditorTabById(id));
             },
@@ -183,10 +195,10 @@ class VSCodeWorkbench extends StatelessWidget {
       header: Row(
         children: [
           Expanded(
-            child: AgusEditorTabBar(
+            child: AgusTabBar(
               tabs: [
                 for (final tab in state.panelTabOrder)
-                  AgusEditorTab(
+                  AgusTab(
                     id: tab.id,
                     label: tab.label,
                     icon: tab.icon,
@@ -194,6 +206,7 @@ class VSCodeWorkbench extends StatelessWidget {
                   ),
               ],
               selectedId: state.activePanelTab.id,
+              variant: AgusTabVariant.editor,
               onSelected: (id) {
                 controller.selectPanelTab(_workbenchPanelTabById(id));
               },
@@ -318,7 +331,6 @@ extension WorkbenchActivityView on WorkbenchActivity {
   String get id {
     return switch (this) {
       WorkbenchActivity.explorer => 'explorer',
-      WorkbenchActivity.mapPresentation => 'map-presentation',
       WorkbenchActivity.search => 'search',
       WorkbenchActivity.favorites => 'favorites',
       WorkbenchActivity.downloads => 'downloads',
@@ -331,7 +343,6 @@ extension WorkbenchActivityView on WorkbenchActivity {
   String get label {
     return switch (this) {
       WorkbenchActivity.explorer => 'Explorer',
-      WorkbenchActivity.mapPresentation => 'Map Presentation',
       WorkbenchActivity.search => 'Search',
       WorkbenchActivity.favorites => 'Favorites',
       WorkbenchActivity.downloads => 'Downloads',
@@ -344,7 +355,6 @@ extension WorkbenchActivityView on WorkbenchActivity {
   IconData get icon {
     return switch (this) {
       WorkbenchActivity.explorer => Icons.account_tree_outlined,
-      WorkbenchActivity.mapPresentation => Icons.public_outlined,
       WorkbenchActivity.search => Icons.search,
       WorkbenchActivity.favorites => Icons.favorite_border,
       WorkbenchActivity.downloads => Icons.download_outlined,
@@ -355,6 +365,14 @@ extension WorkbenchActivityView on WorkbenchActivity {
 
   /// Whether the activity belongs at the bottom of the Activity Bar.
   bool get isBottomItem {
+    return switch (this) {
+      WorkbenchActivity.settings || WorkbenchActivity.about => true,
+      _ => false,
+    };
+  }
+
+  /// Whether this activity is not rendered inside the Primary Side Bar.
+  bool get opensAsModal {
     return switch (this) {
       WorkbenchActivity.settings || WorkbenchActivity.about => true,
       _ => false,

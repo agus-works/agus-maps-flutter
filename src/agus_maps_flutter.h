@@ -63,6 +63,15 @@ FFI_PLUGIN_EXPORT int comaps_screen_to_latlon(
 	double* lat,
 	double* lon);
 
+// Updates the native map pointer tracker and converts it to WGS84 coordinates.
+// Returns 1 when values were written.
+FFI_PLUGIN_EXPORT int comaps_update_map_pointer(
+	double physical_x,
+	double physical_y,
+	int inside_map,
+	double* lat,
+	double* lon);
+
 // Converts WGS84 coordinates to physical screen coordinates using the latest
 // native viewport. Returns 1 when values were written.
 FFI_PLUGIN_EXPORT int comaps_latlon_to_screen(
@@ -438,6 +447,18 @@ FFI_PLUGIN_EXPORT void agus_duckdb_set_edit_handles_from_wkt(const char* geometr
 // The WKT is transient interaction geometry; Dart/DuckDB still own persistence.
 FFI_PLUGIN_EXPORT void agus_duckdb_set_interaction_geometry_from_wkt(
     int32_t interactionMode, const char* geometryWkt);
+// Styleable interaction geometry path used by the Pigeon host API.
+FFI_PLUGIN_EXPORT void agus_duckdb_update_interaction_geometry(
+    int32_t interactionMode,
+    const char* geometryWkt,
+    int32_t red,
+    int32_t green,
+    int32_t blue,
+    double opacity,
+    double width,
+    int32_t dashed,
+    double dashLength,
+    double gapLength);
 FFI_PLUGIN_EXPORT void agus_duckdb_clear_edit_handles(void);
 
 // Enables or disables viewport-driven DuckDB render refreshes on platforms that

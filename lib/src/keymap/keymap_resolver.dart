@@ -62,16 +62,21 @@ class AgusKeymapResolver {
     // Build conflict map
     for (final entry in defaults) {
       final key = entry.keybinding.toConflictKey();
-      keybindingToCommands.putIfAbsent(key, () => []).add((entry.command, 'default'));
+      keybindingToCommands
+          .putIfAbsent(key, () => [])
+          .add((entry.command, 'default'));
     }
 
     for (final entry in overrides) {
       final key = entry.keybinding.toConflictKey();
-      keybindingToCommands.putIfAbsent(key, () => []).add((entry.command, 'override'));
+      keybindingToCommands
+          .putIfAbsent(key, () => [])
+          .add((entry.command, 'override'));
     }
 
     // Find conflicts
-    for (final MapEntry(key: conflictKey, value: commands) in keybindingToCommands.entries) {
+    for (final MapEntry(key: conflictKey, value: commands)
+        in keybindingToCommands.entries) {
       if (commands.length > 1) {
         // Multiple commands bound to same key
         for (var i = 0; i < commands.length; i++) {

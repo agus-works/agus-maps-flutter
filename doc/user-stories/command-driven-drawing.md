@@ -38,7 +38,8 @@ Complex map applications support many interaction modes: browsing, searching, dr
 - ✅ Cancel drawing: Discards changes, exits to `idle`
 - ✅ Switch tool during drawing: Prompts to commit or cancel first
 - ✅ Feature edit: Enters `editingFeature` mode, loads geometry
-- ✅ Commit edit: Updates feature, exits to `idle`
+- ✅ Commit edit: Updates the original feature id, avoids duplicates, and exits
+  to `idle`
 
 ### Keyboard Flow Preservation
 - ✅ State machine does not interfere with keyboard shortcuts
@@ -106,6 +107,7 @@ AgusCommandItem(
 - Architecture: `doc/INTERACTION-STATE-MACHINE.md`
 - Command bar: `doc/COMMAND-BAR.md`
 - Drawing controller: `lib/src/layers/duckdb_draw_controller.dart`
+- Shape preview: `doc/user-stories/shape-drawing-preview.md`
 
 ## Related Features
 - Layer/feature focus centers and active selection

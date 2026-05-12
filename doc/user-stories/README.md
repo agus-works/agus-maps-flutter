@@ -29,6 +29,7 @@ Each user story follows this structure:
 ### Core Features
 - **[Search Persistence and Result Preservation](search-persistence.md)**: DuckDB cache, instant results, map data revision tracking, cache invalidation
 - **[Command-Driven Drawing and Interaction State Safety](command-driven-drawing.md)**: State machine, command enablement guards, workflow protection
+- **[Shape Drawing and Editing Edge Preview](shape-drawing-preview.md)**: Visible segment/line/polygon edges while drawing or editing, polygon closure, duplicate-safe edit commits
 - **[Layer/Feature Focus Centers and Active Selection](layer-focus-centers.md)**: Center point persistence, async calculation, focus workflow, Layer Manager integration
 
 ### UI Features
@@ -85,6 +86,7 @@ Stories should **not** include:
 |---------|-------|-------------------|------------|
 | Search cache | [search-persistence.md](search-persistence.md) | `IMPLEMENTATION-SEARCH.md` | `agus.search_result_cache` |
 | Drawing state machine | [command-driven-drawing.md](command-driven-drawing.md) | `INTERACTION-STATE-MACHINE.md` | `AppInteractionStateController` |
+| Shape edge preview | [shape-drawing-preview.md](shape-drawing-preview.md) | `MAP-WIDGET-PARTS.md` | `DuckDBLayerDrawController` |
 | Focus centers | [layer-focus-centers.md](layer-focus-centers.md) | `schemas/LAYERS.md` | `focus_center_lon/lat` columns |
 | Status telemetry | [status-telemetry-copy.md](status-telemetry-copy.md) | `IMPLEMENTATION_STATUS_TELEMETRY.md` | `MapTelemetry` model |
 | Keymaps | [editable-keymaps.md](editable-keymaps.md) | `KEYMAP-ARCHITECTURE.md` | `agus.keymap_settings` |

@@ -15,14 +15,14 @@ Future<ProcessResult> runProcess(
   if (environment != null) {
     env.addAll(environment);
   }
-  
+
   if (verbose) {
     print('Running: $executable ${arguments.join(' ')}');
     if (workingDirectory != null) {
       print('  Working directory: $workingDirectory');
     }
   }
-  
+
   final result = await Process.run(
     executable,
     arguments,
@@ -30,11 +30,11 @@ Future<ProcessResult> runProcess(
     workingDirectory: workingDirectory,
     runInShell: Platform.isWindows,
   );
-  
+
   if (throwOnError && result.exitCode != 0) {
     final stdoutStr = result.stdout?.toString().trim() ?? '';
     final stderrStr = result.stderr?.toString().trim() ?? '';
-    
+
     // Print captured output for debugging
     if (stdoutStr.isNotEmpty) {
       print('stdout: $stdoutStr');
@@ -42,7 +42,7 @@ Future<ProcessResult> runProcess(
     if (stderrStr.isNotEmpty) {
       print('stderr: $stderrStr');
     }
-    
+
     throw ProcessException(
       executable,
       arguments,
@@ -50,7 +50,7 @@ Future<ProcessResult> runProcess(
       result.exitCode,
     );
   }
-  
+
   return result;
 }
 
@@ -67,7 +67,7 @@ Future<int> runProcessStreaming(
   if (environment != null) {
     env.addAll(environment);
   }
-  
+
   final process = await Process.start(
     executable,
     arguments,
@@ -76,17 +76,17 @@ Future<int> runProcessStreaming(
     runInShell: Platform.isWindows,
     mode: ProcessStartMode.normal,
   );
-  
+
   process.stdout.transform(const SystemEncoding().decoder).listen((data) {
     onStdout?.call(data);
     stdout.write(data);
   });
-  
+
   process.stderr.transform(const SystemEncoding().decoder).listen((data) {
     onStderr?.call(data);
     stderr.write(data);
   });
-  
+
   return await process.exitCode;
 }
 

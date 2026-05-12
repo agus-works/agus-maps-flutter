@@ -134,6 +134,28 @@ void agus_render_frame(void);
 /// Scale the map around a focal point (desktop zoom)
 void comaps_scale(double factor, double pixelX, double pixelY, int animated);
 
+/// Updates the native map pointer tracker and projects the point to WGS84.
+/// Returns 1 when latitude/longitude were written.
+int comaps_update_map_pointer(
+    double physical_x,
+    double physical_y,
+    int inside_map,
+    double* lat,
+    double* lon);
+
+/// Updates transient DuckDB draw/edit geometry with native line style controls.
+void agus_duckdb_update_interaction_geometry(
+    int32_t interaction_mode,
+    const char* geometry_wkt,
+    int32_t red,
+    int32_t green,
+    int32_t blue,
+    double opacity,
+    double width,
+    int32_t dashed,
+    double dash_length,
+    double gap_length);
+
 /// Get the current map bearing in degrees, where 0 is north-up.
 double comaps_get_current_bearing(void);
 

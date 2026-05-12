@@ -740,6 +740,68 @@ static void handle_clear_place_page_selection(
       TRUE);
 }
 
+static void handle_update_map_pointer(
+    agus_maps_flutterMapPointerUpdateRequest* request,
+    agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+    gpointer user_data) {
+  (void)user_data;
+
+  double lat = 0.0;
+  double lon = 0.0;
+  int const projected = comaps_update_map_pointer(
+      agus_maps_flutter_map_pointer_update_request_get_physical_x(request),
+      agus_maps_flutter_map_pointer_update_request_get_physical_y(request),
+      agus_maps_flutter_map_pointer_update_request_get_inside_map(request) ? 1 : 0,
+      &lat,
+      &lon);
+
+  if (projected != 1) {
+    agus_maps_flutter_agus_maps_host_api_respond_update_map_pointer(
+        response_handle,
+        nullptr);
+    return;
+  }
+
+  g_autoptr(agus_maps_flutterMapPointerCoordinate) coordinate =
+      agus_maps_flutter_map_pointer_coordinate_new(
+          agus_maps_flutter_map_pointer_update_request_get_physical_x(request),
+          agus_maps_flutter_map_pointer_update_request_get_physical_y(request),
+          agus_maps_flutter_map_pointer_update_request_get_inside_map(request),
+          lat,
+          lon);
+  agus_maps_flutter_agus_maps_host_api_respond_update_map_pointer(
+      response_handle,
+      coordinate);
+}
+
+static void handle_update_drape_interaction_geometry(
+    agus_maps_flutterDrapeInteractionGeometryRequest* request,
+    agus_maps_flutterAgusMapsHostApiResponseHandle* response_handle,
+    gpointer user_data) {
+  (void)user_data;
+
+  agus_maps_flutterDrapeInteractionLineStyle* style =
+      agus_maps_flutter_drape_interaction_geometry_request_get_line_style(request);
+  agus_duckdb_update_interaction_geometry(
+      static_cast<int32_t>(
+          agus_maps_flutter_drape_interaction_geometry_request_get_mode(request)),
+      agus_maps_flutter_drape_interaction_geometry_request_get_geometry_wkt(request),
+      static_cast<int32_t>(
+          agus_maps_flutter_drape_interaction_line_style_get_color_red(style)),
+      static_cast<int32_t>(
+          agus_maps_flutter_drape_interaction_line_style_get_color_green(style)),
+      static_cast<int32_t>(
+          agus_maps_flutter_drape_interaction_line_style_get_color_blue(style)),
+      agus_maps_flutter_drape_interaction_line_style_get_opacity(style),
+      agus_maps_flutter_drape_interaction_line_style_get_width(style),
+      agus_maps_flutter_drape_interaction_line_style_get_dashed(style) ? 1 : 0,
+      agus_maps_flutter_drape_interaction_line_style_get_dash_length(style),
+      agus_maps_flutter_drape_interaction_line_style_get_gap_length(style));
+  agus_maps_flutter_agus_maps_host_api_respond_update_drape_interaction_geometry(
+      response_handle,
+      TRUE);
+}
+
 static void agus_maps_flutter_plugin_dispose(GObject* object) {
   AgusMapsFlutterPlugin* self = AGUS_MAPS_FLUTTER_PLUGIN(object);
   
@@ -814,6 +876,8 @@ void agus_maps_flutter_plugin_register_with_registrar(FlPluginRegistrar* registr
       .create_map_surface = handle_create_map_surface,
       .resize_map_surface = handle_resize_map_surface,
       .destroy_map_surface = handle_destroy_map_surface,
+      .update_map_pointer = handle_update_map_pointer,
+      .update_drape_interaction_geometry = handle_update_drape_interaction_geometry,
       .get_current_place_page = handle_get_current_place_page,
       .clear_place_page_selection = handle_clear_place_page_selection,
     };
