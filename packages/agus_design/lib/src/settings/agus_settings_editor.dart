@@ -36,9 +36,12 @@ class _AgusSettingsEditorState extends State<AgusSettingsEditor> {
           ..sort();
     final activeCategory =
         selectedCategory ?? (categories.isEmpty ? null : categories.first);
+    final hasQuery = query.trim().isNotEmpty;
     final filteredSchemas = widget.schemas.where((schema) {
       final categoryMatches =
-          activeCategory == null || schema.category == activeCategory;
+          hasQuery ||
+          activeCategory == null ||
+          schema.category == activeCategory;
       return categoryMatches && schema.matchesQuery(query);
     }).toList();
 

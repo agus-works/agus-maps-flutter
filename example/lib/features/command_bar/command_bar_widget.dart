@@ -76,7 +76,8 @@ class _CommandBarState extends State<CommandBar> {
     return _availableCommands.where((cmd) {
       final displayName = AgusCommandId.displayName(cmd).toLowerCase();
       final description = AgusCommandId.description(cmd).toLowerCase();
-      return displayName.contains(_searchQuery) || description.contains(_searchQuery);
+      return displayName.contains(_searchQuery) ||
+          description.contains(_searchQuery);
     }).toList();
   }
 
@@ -126,9 +127,8 @@ class _CommandBarState extends State<CommandBar> {
                                   ),
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .outline,
+                                      color:
+                                          Theme.of(context).colorScheme.outline,
                                     ),
                                     borderRadius: BorderRadius.circular(4),
                                   ),

@@ -126,6 +126,28 @@ void agus_set_frame_ready_callback(AgusFrameReadyCallback callback);
 /// Called to render a single frame - this is triggered by Flutter's texture system
 void agus_render_frame(void);
 
+/// Updates the native map pointer tracker and projects the point to WGS84.
+/// Returns 1 when latitude/longitude were written.
+int comaps_update_map_pointer(
+    double physical_x,
+    double physical_y,
+    int inside_map,
+    double* lat,
+    double* lon);
+
+/// Updates transient DuckDB draw/edit geometry with native line style controls.
+void agus_duckdb_update_interaction_geometry(
+    int32_t interaction_mode,
+    const char* geometry_wkt,
+    int32_t red,
+    int32_t green,
+    int32_t blue,
+    double opacity,
+    double width,
+    int32_t dashed,
+    double dash_length,
+    double gap_length);
+
 #ifdef __cplusplus
 }
 #endif

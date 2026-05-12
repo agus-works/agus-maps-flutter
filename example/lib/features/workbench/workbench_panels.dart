@@ -68,6 +68,7 @@ class PointOfInterestPanel extends StatelessWidget {
     }
 
     return ListView(
+      shrinkWrap: true,
       padding: const EdgeInsets.all(12),
       children: [
         _PanelTitle(

@@ -197,7 +197,8 @@ void main() {
       expect(old, isNotNull, reason: 'Old version should be preserved');
 
       final active = storage.getActiveVersion('Gibraltar');
-      expect(active!.snapshotVersion, '250710', reason: 'Latest should be active');
+      expect(active!.snapshotVersion, '250710',
+          reason: 'Latest should be active');
     });
   });
 }

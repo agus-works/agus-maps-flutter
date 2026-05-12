@@ -86,7 +86,8 @@ class MapTelemetryStatusBarBuilder {
         id: 'map-zoom',
         label: telemetry.formattedZoom,
         icon: Icons.zoom_out_map,
-        tooltip: 'Zoom level: ${telemetry.zoom}\nDouble-click or long-press to copy',
+        tooltip:
+            'Zoom level: ${telemetry.zoom}\nDouble-click or long-press to copy',
         copyValue: telemetry.zoom.toString(),
         onDoubleTap: () => _copyToClipboard(
           context,
@@ -105,7 +106,8 @@ class MapTelemetryStatusBarBuilder {
         id: 'map-bearing',
         label: telemetry.formattedBearing,
         icon: Icons.explore,
-        tooltip: 'Bearing: ${telemetry.formattedBearing}\nDouble-click or long-press to copy',
+        tooltip:
+            'Bearing: ${telemetry.formattedBearing}\nDouble-click or long-press to copy',
         copyValue: telemetry.bearing.toStringAsFixed(1),
         onDoubleTap: () => _copyToClipboard(
           context,
@@ -124,7 +126,8 @@ class MapTelemetryStatusBarBuilder {
         id: 'map-center',
         label: '${telemetry.formattedLat}, ${telemetry.formattedLon}',
         icon: Icons.my_location,
-        tooltip: 'Center: ${telemetry.centerForClipboard}\nDouble-click or long-press to copy',
+        tooltip:
+            'Center: ${telemetry.centerForClipboard}\nDouble-click or long-press to copy',
         copyValue: telemetry.centerForClipboard,
         onDoubleTap: () => _copyToClipboard(
           context,
@@ -145,7 +148,8 @@ class MapTelemetryStatusBarBuilder {
           id: 'map-selected-point',
           label: telemetry.formattedSelectedPoint!,
           icon: Icons.place,
-          tooltip: 'Selected: ${telemetry.selectedPointForClipboard}\nDouble-click or long-press to copy',
+          tooltip:
+              'Selected: ${telemetry.selectedPointForClipboard}\nDouble-click or long-press to copy',
           copyValue: telemetry.selectedPointForClipboard,
           onDoubleTap: () => _copyToClipboard(
             context,

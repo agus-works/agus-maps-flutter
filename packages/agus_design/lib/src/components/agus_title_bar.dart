@@ -31,23 +31,25 @@ class AgusTitleBar extends StatelessWidget {
             const SizedBox(width: 12),
             ...leadingActions,
             if (leadingActions.isNotEmpty) const SizedBox(width: 8),
-            Flexible(
-              flex: 1,
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
               child: Padding(
                 padding: const EdgeInsets.only(right: 16),
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colors.titleBarForeground,
-                    fontWeight: FontWeight.w500,
+                child: Tooltip(
+                  message: title,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.titleBarForeground,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
             ),
-            Flexible(
-              flex: 3,
+            Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Center(
@@ -65,13 +67,10 @@ class AgusTitleBar extends StatelessWidget {
               ),
             ),
             if (trailingActions.isNotEmpty)
-              Flexible(
-                flex: 1,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: trailingActions,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: trailingActions,
               ),
             const SizedBox(width: 8),
           ],

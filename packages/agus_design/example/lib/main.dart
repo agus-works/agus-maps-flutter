@@ -453,8 +453,9 @@ class _KitchenSinkWorkbenchState extends State<KitchenSinkWorkbench> {
 
     return Column(
       children: [
-        AgusEditorTabBar(
+        AgusTabBar(
           selectedId: selectedTab,
+          variant: AgusTabVariant.editor,
           onSelected: (id) => setState(() => selectedTab = id),
           onClose: (id) => setState(() => selectedTab = 'plan'),
           onReorder: (tabs) => setState(() => editorTabs = tabs),
@@ -482,17 +483,18 @@ class _KitchenSinkWorkbenchState extends State<KitchenSinkWorkbench> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AgusEditorTabBar(
+          AgusTabBar(
             selectedId: 'output',
+            variant: AgusTabVariant.editor,
             tabs: const [
-              AgusEditorTab(id: 'problems', label: 'Problems', closable: false),
-              AgusEditorTab(id: 'output', label: 'Output', closable: false),
-              AgusEditorTab(
+              AgusTab(id: 'problems', label: 'Problems', closable: false),
+              AgusTab(id: 'output', label: 'Output', closable: false),
+              AgusTab(
                 id: 'debug-console',
                 label: 'Debug Console',
                 closable: false,
               ),
-              AgusEditorTab(id: 'terminal', label: 'Terminal', closable: false),
+              AgusTab(id: 'terminal', label: 'Terminal', closable: false),
             ],
           ),
           Expanded(

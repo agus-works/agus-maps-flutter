@@ -136,8 +136,9 @@ class _AgusTabBarState extends State<AgusTabBar> {
     final backgroundColor = _isEditorVariant
         ? colors.tabInactiveBackground
         : colors.panelBackground;
-    final borderColor =
-        _isEditorVariant ? colors.tabBorder : colors.panelBorder;
+    final borderColor = _isEditorVariant
+        ? colors.tabBorder
+        : colors.panelBorder;
     final height = _isEditorVariant
         ? dimensions.editorTabHeight
         : dimensions.panelTabHeight;
@@ -169,7 +170,9 @@ class _AgusTabBarState extends State<AgusTabBar> {
                           ? const NeverScrollableScrollPhysics()
                           : const ClampingScrollPhysics(),
                       child: Row(
-                        children: [for (final tab in widget.tabs) _buildTab(tab)],
+                        children: [
+                          for (final tab in widget.tabs) _buildTab(tab),
+                        ],
                       ),
                     ),
                   ),
@@ -389,16 +392,10 @@ class _AgusTabBarState extends State<AgusTabBar> {
     }
 
     if (globalPosition.dx < firstTabRect.left) {
-      return _TabDropIntent(
-        targetId: firstTabId,
-        side: _TabDropSide.before,
-      );
+      return _TabDropIntent(targetId: firstTabId, side: _TabDropSide.before);
     }
     if (lastTabId != null && globalPosition.dx > lastTabRect.right) {
-      return _TabDropIntent(
-        targetId: lastTabId,
-        side: _TabDropSide.after,
-      );
+      return _TabDropIntent(targetId: lastTabId, side: _TabDropSide.after);
     }
 
     return null;
@@ -497,7 +494,9 @@ class _TabDropIndicator extends StatelessWidget {
         child,
         if (active)
           Positioned(
-            key: ValueKey<String>('agus-editor-tab-drop-$targetId-${side.name}'),
+            key: ValueKey<String>(
+              'agus-editor-tab-drop-$targetId-${side.name}',
+            ),
             top: 3,
             bottom: 3,
             left: side == _TabDropSide.before ? -1.5 : null,
@@ -615,74 +614,81 @@ class AgusTabButton extends StatelessWidget {
         selected: selected,
         label: tab.label,
         child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 120, maxWidth: 220),
-        child: SizedBox(
-          height: dimensions.editorTabHeight,
-          child: Material(
-            color: selected
-                ? colors.tabActiveBackground
-                : colors.tabInactiveBackground,
-            child: InkWell(
-              hoverColor: colors.hoverBackground,
-              onTap: () => onSelected?.call(tab.id),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: colors.tabBorder),
-                    top: BorderSide(
-                      color: selected ? colors.focusBorder : Colors.transparent,
+          constraints: const BoxConstraints(minWidth: 120, maxWidth: 220),
+          child: SizedBox(
+            height: dimensions.editorTabHeight,
+            child: Material(
+              color: selected
+                  ? colors.tabActiveBackground
+                  : colors.tabInactiveBackground,
+              child: InkWell(
+                hoverColor: colors.hoverBackground,
+                onTap: () => onSelected?.call(tab.id),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: colors.tabBorder),
+                      top: BorderSide(
+                        color: selected
+                            ? colors.focusBorder
+                            : Colors.transparent,
+                      ),
                     ),
                   ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 10, right: 4),
-                  child: Row(
-                    children: [
-                      if (tab.icon != null) ...[
-                        Icon(tab.icon, size: 16, color: foreground),
-                        const SizedBox(width: 6),
-                      ],
-                      if (tab.pinned) ...[
-                        Icon(Icons.push_pin, size: 13, color: foreground),
-                        const SizedBox(width: 4),
-                      ],
-                      Expanded(
-                        child: Text(
-                          tab.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: foreground,
-                                fontStyle: tab.preview
-                                    ? FontStyle.italic
-                                    : FontStyle.normal,
-                              ),
-                        ),
-                      ),
-                      if (tab.dirty)
-                        Container(
-                          width: 8,
-                          height: 8,
-                          margin: const EdgeInsets.only(left: 6, right: 3),
-                          decoration: BoxDecoration(
-                            color: colors.tabDirtyIndicator,
-                            shape: BoxShape.circle,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 10, right: 4),
+                    child: Row(
+                      children: [
+                        if (tab.icon != null) ...[
+                          Icon(tab.icon, size: 16, color: foreground),
+                          const SizedBox(width: 6),
+                        ],
+                        if (tab.pinned) ...[
+                          Icon(Icons.push_pin, size: 13, color: foreground),
+                          const SizedBox(width: 4),
+                        ],
+                        Expanded(
+                          child: Text(
+                            tab.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: foreground,
+                                  fontStyle: tab.preview
+                                      ? FontStyle.italic
+                                      : FontStyle.normal,
+                                ),
                           ),
-                        )
-                      else if (tab.closable)
-                        IconButton(
-                          tooltip: 'Close ${tab.label}',
-                          icon: Icon(Icons.close, color: foreground, size: 14),
-                          constraints: const BoxConstraints.tightFor(
-                            width: 24,
-                            height: 24,
-                          ),
-                          padding: EdgeInsets.zero,
-                          splashRadius: 12,
-                          onPressed: () => onClose?.call(tab.id),
                         ),
-                    ],
+                        if (tab.dirty)
+                          Container(
+                            width: 8,
+                            height: 8,
+                            margin: const EdgeInsets.only(left: 6, right: 3),
+                            decoration: BoxDecoration(
+                              color: colors.tabDirtyIndicator,
+                              shape: BoxShape.circle,
+                            ),
+                          )
+                        else if (tab.closable)
+                          IconButton(
+                            tooltip: 'Close ${tab.label}',
+                            icon: Icon(
+                              Icons.close,
+                              color: foreground,
+                              size: 14,
+                            ),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 24,
+                              height: 24,
+                            ),
+                            padding: EdgeInsets.zero,
+                            splashRadius: 12,
+                            onPressed: () => onClose?.call(tab.id),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -690,7 +696,6 @@ class AgusTabButton extends StatelessWidget {
           ),
         ),
       ),
-    ),
     );
   }
 
@@ -709,70 +714,70 @@ class AgusTabButton extends StatelessWidget {
         child: Material(
           color: selected ? colors.editorBackground : Colors.transparent,
           child: InkWell(
-          hoverColor: colors.hoverBackground,
-          onTap: () => onSelected?.call(tab.id),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                  color: selected ? colors.focusBorder : Colors.transparent,
-                  width: 1,
+            hoverColor: colors.hoverBackground,
+            onTap: () => onSelected?.call(tab.id),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: selected ? colors.focusBorder : Colors.transparent,
+                    width: 1,
+                  ),
+                  right: BorderSide(color: colors.panelBorder),
                 ),
-                right: BorderSide(color: colors.panelBorder),
               ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 10, right: 6),
-              child: SizedBox(
-                height: dimensions.panelTabHeight,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (tab.icon != null) ...[
-                      Icon(
-                        tab.icon,
-                        size: dimensions.iconSize,
-                        color: foreground,
-                      ),
-                      const SizedBox(width: 6),
-                    ],
-                    Text(
-                      tab.label.toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: foreground,
-                        fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    if (tab.closable) ...[
-                      const SizedBox(width: 4),
-                      IconButton(
-                        tooltip: 'Close ${tab.label}',
-                        icon: const Icon(Icons.close),
-                        iconSize: dimensions.iconSize,
-                        color: foreground,
-                        constraints: BoxConstraints.tightFor(
-                          width: dimensions.toolbarButtonSize,
-                          height: dimensions.toolbarButtonSize,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 10, right: 6),
+                child: SizedBox(
+                  height: dimensions.panelTabHeight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (tab.icon != null) ...[
+                        Icon(
+                          tab.icon,
+                          size: dimensions.iconSize,
+                          color: foreground,
                         ),
-                        padding: EdgeInsets.zero,
-                        onPressed: onClose == null
-                            ? null
-                            : () => onClose!(tab.id),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        tab.label.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: foreground,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          letterSpacing: 0.2,
+                        ),
                       ),
+                      if (tab.closable) ...[
+                        const SizedBox(width: 4),
+                        IconButton(
+                          tooltip: 'Close ${tab.label}',
+                          icon: const Icon(Icons.close),
+                          iconSize: dimensions.iconSize,
+                          color: foreground,
+                          constraints: BoxConstraints.tightFor(
+                            width: dimensions.toolbarButtonSize,
+                            height: dimensions.toolbarButtonSize,
+                          ),
+                          padding: EdgeInsets.zero,
+                          onPressed: onClose == null
+                              ? null
+                              : () => onClose!(tab.id),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
 }

@@ -278,9 +278,10 @@ class _EditorTabBarPreviewState extends State<EditorTabBarPreview> {
 
   @override
   Widget build(BuildContext context) {
-    return AgusEditorTabBar(
+    return AgusTabBar(
       tabs: tabs,
       selectedId: selectedId,
+      variant: AgusTabVariant.editor,
       onSelected: (id) => setState(() => selectedId = id),
       onReorder: (reorderedTabs) => setState(() => tabs = reorderedTabs),
       onClose: (id) {
@@ -584,10 +585,16 @@ class _WorkbenchPreviewState extends State<WorkbenchPreview> {
   late Set<String> expandedTreeIds = Set<String>.from(demo.expandedIds);
   late Set<String> selectedTreeIds = Set<String>.from(demo.multiSelectedIds);
   late List<AgusEditorTab> editorTabs = buildEditorTabs();
+  late List<AgusTab> panelTabs = const [
+    AgusTab(id: 'problems', label: 'Problems', closable: false),
+    AgusTab(id: 'output', label: 'Output', closable: false),
+    AgusTab(id: 'terminal', label: 'Terminal', closable: false),
+  ];
   late List<AgusTreeColumn> treeColumns = List<AgusTreeColumn>.from(
     agusMetricTreeColumns,
   );
   String? selectedTreeId;
+  String selectedPanelTab = 'output';
   late final Map<String, Object?> settingsValues = buildSampleSettingValues();
 
   @override
@@ -790,8 +797,9 @@ class _WorkbenchPreviewState extends State<WorkbenchPreview> {
 
     return Column(
       children: [
-        AgusEditorTabBar(
+        AgusTabBar(
           selectedId: selectedTab,
+          variant: AgusTabVariant.editor,
           onSelected: (id) => setState(() => selectedTab = id),
           onClose: (id) => setState(() => selectedTab = 'plan'),
           onReorder: (tabs) => setState(() => editorTabs = tabs),
@@ -822,22 +830,29 @@ class _WorkbenchPreviewState extends State<WorkbenchPreview> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AgusEditorTabBar(
-            selectedId: 'output',
-            tabs: const [
-              AgusEditorTab(id: 'problems', label: 'Problems', closable: false),
-              AgusEditorTab(id: 'output', label: 'Output', closable: false),
-              AgusEditorTab(id: 'terminal', label: 'Terminal', closable: false),
-            ],
+          AgusTabBar(
+            selectedId: selectedPanelTab,
+            tabs: panelTabs,
+            variant: AgusTabVariant.editor,
+            onSelected: (id) => setState(() => selectedPanelTab = id),
+            onReorder: (tabs) => setState(() => panelTabs = tabs),
           ),
-          const Expanded(
+          Expanded(
             child: Padding(
-              padding: EdgeInsets.all(12),
-              child: Text('flutter analyze\nflutter test\nWidgetbook ready'),
+              padding: const EdgeInsets.all(12),
+              child: Text(_panelPreviewText(selectedPanelTab)),
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _panelPreviewText(String tabId) {
+    return switch (tabId) {
+      'problems' => 'No problems have been detected.',
+      'terminal' => 'zsh\nflutter analyze\nflutter test',
+      _ => 'flutter analyze\nflutter test\nWidgetbook ready',
+    };
   }
 }

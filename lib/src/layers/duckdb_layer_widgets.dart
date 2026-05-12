@@ -4,16 +4,16 @@ part of '../../agus_maps_flutter.dart';
 ///
 /// Drawing sketch and edit geometry is rendered natively by Drape via
 /// [DuckDBLayerDrawController.nativeEditGeometryRenderer]. This widget exists
-/// for layout compatibility and does not render any Flutter-layer overlays.
+/// for layout compatibility and does not render Flutter-layer overlays.
 ///
 /// The native renderer displays:
 /// - Sketch edges during new feature drawing (line segments or polygon outlines)
 /// - Edit handles when modifying committed features
 /// - Vertex markers for tap/drag interactions
 ///
-/// All visual rendering is handled by the native map scene. Flutter-side
-/// pointer handling is managed by [AgusMap] so drag gestures pan/zoom while
-/// taps add vertices.
+/// Flutter-side pointer handling is managed by [AgusMap] so drag gestures
+/// pan/zoom while taps and hover positions update the native interaction
+/// geometry.
 class DuckDBLayerDrawOverlay extends StatelessWidget {
   /// Creates a no-op overlay for layout compatibility.
   const DuckDBLayerDrawOverlay({
@@ -22,10 +22,10 @@ class DuckDBLayerDrawOverlay extends StatelessWidget {
     this.accentColor,
   });
 
-  /// Controller (retained for API compatibility but unused for rendering).
+  /// Controller retained for API compatibility; native rendering owns visuals.
   final DuckDBLayerDrawController controller;
 
-  /// Color hint (retained for API compatibility but unused; native uses theme).
+  /// Color hint retained for API compatibility; native rendering owns style.
   final Color? accentColor;
 
   @override

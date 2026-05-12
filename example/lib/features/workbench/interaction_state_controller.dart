@@ -68,7 +68,8 @@ class AppInteractionState {
 
   /// Whether the current mode allows editing features.
   bool get allowsFeatureEdit =>
-      mode == AppInteractionMode.idle || mode == AppInteractionMode.editingFeature;
+      mode == AppInteractionMode.idle ||
+      mode == AppInteractionMode.editingFeature;
 
   /// Whether the current mode allows routing operations.
   bool get allowsRouting =>
@@ -227,7 +228,8 @@ class AppInteractionStateController extends ChangeNotifier {
 
   /// Transitions to MWM download/update mode.
   void enterDownloadingMwm() {
-    _setState(const AppInteractionState(mode: AppInteractionMode.downloadingMwm));
+    _setState(
+        const AppInteractionState(mode: AppInteractionMode.downloadingMwm));
   }
 
   /// Transitions to layer switching mode with optional [layerId].

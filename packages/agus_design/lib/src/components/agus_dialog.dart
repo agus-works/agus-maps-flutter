@@ -205,9 +205,9 @@ class _AgusFormFieldState extends State<AgusFormField> {
             autofocus: widget.autofocus,
             maxLines: widget.multiline ? null : 1,
             minLines: widget.multiline ? 3 : 1,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colors.foreground,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.foreground),
             decoration: InputDecoration(
               hintText: widget.hint,
               hintStyle: TextStyle(color: colors.descriptionForeground),
@@ -252,7 +252,8 @@ class _AgusFormFieldState extends State<AgusFormField> {
     }
 
     if (event.logicalKey == LogicalKeyboardKey.enter) {
-      final isMultilineSubmit = widget.multiline &&
+      final isMultilineSubmit =
+          widget.multiline &&
           (HardwareKeyboard.instance.isMetaPressed ||
               HardwareKeyboard.instance.isControlPressed);
       final isSingleLineSubmit = !widget.multiline;

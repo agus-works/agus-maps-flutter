@@ -11,10 +11,19 @@ void main() {
       type: AgusSettingType.boolean,
       defaultValue: true,
       tags: ['layout'],
+      options: [
+        AgusSettingOption(
+          value: true,
+          label: 'Visible',
+          description: 'Show the side activity strip.',
+        ),
+      ],
     );
 
     expect(schema.matchesQuery('activity'), isTrue);
     expect(schema.matchesQuery('layout'), isTrue);
+    expect(schema.matchesQuery('side strip'), isTrue);
+    expect(schema.matchesQuery('wrkb actv'), isTrue);
     expect(schema.matchesQuery('terminal'), isFalse);
   });
 }

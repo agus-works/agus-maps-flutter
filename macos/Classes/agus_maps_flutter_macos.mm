@@ -22,6 +22,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <iterator>
 #include <sstream>
 #include <iomanip>
 #include <string_view>
@@ -47,6 +48,7 @@
 #include "drape_frontend/user_event_stream.hpp"
 #include "drape_frontend/active_frame_callback.hpp"
 #include "drape_frontend/user_marks_provider.hpp"
+#include "drape_frontend/drape_api.hpp"
 #include "geometry/mercator.hpp"
 #include "geometry/screenbase.hpp"
 #include "agus_navigation_bridge.hpp"
@@ -108,7 +110,28 @@ int32_t constexpr kDuckDBRenderFetchBatchSize = 1000;
 int32_t constexpr kDuckDBRenderFetchMaxFeatures = 10000;
 auto constexpr kDuckDBViewportRefreshInterval = std::chrono::milliseconds(250);
 
+struct DuckDBInteractionLineStyle {
+    dp::Color color = dp::Color(37, 99, 235, 235);
+    float width = 2.0f;
+    bool dashed = false;
+    double dashLength = 10.0;
+    double gapLength = 6.0;
+};
+
 void WakeRenderer();
+std::vector<std::vector<m2::PointD>> BuildInteractionLineGeometries(
+    std::vector<m2::PointD> const & points,
+    DuckDBInteractionLineStyle const & style);
+
+template <typename Set>
+void AssignSetDifference(Set const & left, Set const & right, Set & output) {
+    output.clear();
+    std::set_difference(
+        left.begin(), left.end(),
+        right.begin(), right.end(),
+        std::inserter(output, output.end()),
+        left.key_comp());
+}
 
 struct DuckDBRenderableGeometry {
     bool isPoint = false;
@@ -190,40 +213,67 @@ public:
     DuckDBLineMark(kml::TrackId id, std::vector<m2::PointD> points, int minZoom,
                    int zIndex, kml::MarkGroupId groupId = kDuckDBRenderGroupId,
                    dp::Color color = dp::Color(0, 122, 255, 220),
-                   float width = 4.0f)
-        : df::UserLineMark(id), m_points(std::move(points)),
+                   float width = 4.0f,
+                   df::DepthLayer depthLayer = df::DepthLayer::UserLineLayer)
+        : df::UserLineMark(id), m_geometries({std::move(points)}),
           m_minZoom(std::max(1, minZoom)), m_zIndex(zIndex),
-          m_groupId(groupId), m_color(color) {
-        auto const visualScale = static_cast<float>(df::VisualParams::Instance().GetVisualScale());
-        m_width = width * visualScale;
+          m_groupId(groupId), m_color(color), m_depthLayer(depthLayer) {
+        m_width = width;
+    }
+
+    DuckDBLineMark(kml::TrackId id, std::vector<std::vector<m2::PointD>> geometries,
+                   int minZoom, int zIndex, kml::MarkGroupId groupId,
+                   DuckDBInteractionLineStyle const & style,
+                   df::DepthLayer depthLayer = df::DepthLayer::UserLineLayer)
+        : df::UserLineMark(id), m_geometries(std::move(geometries)),
+          m_minZoom(std::max(1, minZoom)), m_zIndex(zIndex),
+          m_groupId(groupId), m_color(style.color), m_depthLayer(depthLayer) {
+        m_width = style.width;
     }
 
     kml::MarkGroupId GetGroupId() const override { return m_groupId; }
     bool IsDirty() const override { return m_dirty; }
     void ResetChanges() const override { m_dirty = false; }
     int GetMinZoom() const override { return m_minZoom; }
-    df::DepthLayer GetDepthLayer() const override { return df::DepthLayer::UserLineLayer; }
+    df::DepthLayer GetDepthLayer() const override { return m_depthLayer; }
     size_t GetLayerCount() const override { return 1; }
     dp::Color GetColor(size_t /* layerIndex */) const override {
         return m_color;
     }
     float GetWidth(size_t /* layerIndex */) const override { return m_width; }
-    float GetDepth(size_t /* layerIndex */) const override {
-        return static_cast<float>(m_zIndex) * 0.001f;
+    float GetDepth(size_t layerIndex) const override {
+        return static_cast<float>(layerIndex) * 10.0f;
     }
     void ForEachGeometry(GeometryFnT && fn) const override {
-        if (m_points.size() > 1) {
-            fn(std::vector<m2::PointD>(m_points));
+        for (auto const & points : m_geometries) {
+            if (points.size() > 1) {
+                fn(std::vector<m2::PointD>(points));
+            }
         }
     }
 
+    size_t GetGeometryCount() const { return m_geometries.size(); }
+    size_t GetPointCount() const {
+        size_t pointCount = 0;
+        for (auto const & points : m_geometries) {
+            pointCount += points.size();
+        }
+        return pointCount;
+    }
+    float GetBaseWidth() const { return m_width; }
+    float GetBaseDepth() const { return GetDepth(0); }
+    char const * GetDepthLayerName() const {
+        return m_depthLayer == df::DepthLayer::UserLineLayer ? "UserLineLayer" : "Other";
+    }
+
 private:
-    std::vector<m2::PointD> m_points;
+    std::vector<std::vector<m2::PointD>> m_geometries;
     float m_width = 4.0f;
     int m_minZoom;
     int m_zIndex;
     kml::MarkGroupId m_groupId;
     dp::Color m_color;
+    df::DepthLayer m_depthLayer;
     mutable bool m_dirty = true;
 };
 
@@ -235,18 +285,16 @@ public:
     }
 
     void SetFeatures(std::vector<DuckDBRenderableGeometry> const & features) {
+        auto const previousPointIds = m_pointIds;
+        auto const previousLineIds = m_lineIds;
         m_pointMarks.clear();
         m_lineMarks.clear();
         m_pointIds.clear();
         m_lineIds.clear();
         m_createdPointIds.clear();
-        m_createdPointIds.insert(m_editPointIds.begin(), m_editPointIds.end());
         m_createdLineIds.clear();
-        m_createdLineIds.insert(m_editLineIds.begin(), m_editLineIds.end());
         m_updatedPointIds.clear();
-        m_updatedPointIds.insert(m_editPointIds.begin(), m_editPointIds.end());
         m_updatedLineIds.clear();
-        m_updatedLineIds.insert(m_editLineIds.begin(), m_editLineIds.end());
         m_updatedGroups.clear();
         m_updatedGroups.insert(kDuckDBRenderGroupId);
         if (m_editVisible) {
@@ -270,54 +318,121 @@ public:
                     id, feature.points, feature.minZoom, feature.zIndex));
             }
         }
+
+        AssignSetDifference(m_pointIds, previousPointIds, m_createdPointIds);
+        AssignSetDifference(previousPointIds, m_pointIds, m_removedPointIds);
+        AssignSetDifference(m_lineIds, previousLineIds, m_createdLineIds);
+        AssignSetDifference(previousLineIds, m_lineIds, m_removedLineIds);
+
+        m_updatedPointIds = m_pointIds;
+        m_updatedLineIds = m_lineIds;
     }
 
-    void SetEditHandles(std::vector<m2::PointD> const & points, int32_t interactionMode) {
+    void SetEditHandles(
+        std::vector<std::vector<m2::PointD>> const & geometries,
+        int32_t interactionMode,
+        DuckDBInteractionLineStyle const & lineStyle) {
+        auto const previousEditPointIds = m_editCombinedPointIds;
+        auto const previousEditLineIds = m_editLineIds;
+        bool const wasEditVisible = m_editVisible;
         m_editPointMarks.clear();
         m_editLineMarks.clear();
         m_editPointIds.clear();
+        m_editCombinedPointIds.clear();
         m_editLineIds.clear();
         m_createdPointIds.clear();
         m_createdLineIds.clear();
         m_updatedPointIds.clear();
         m_updatedLineIds.clear();
+        m_removedPointIds.clear();
+        m_removedLineIds.clear();
         m_updatedGroups.clear();
+        m_becameVisibleGroups.clear();
+        m_becameInvisibleGroups.clear();
         m_updatedGroups.insert(kDuckDBEditGroupId);
         m_interactionMode = interactionMode;
-        m_editVisible = m_interactionMode != kDuckDBInteractionInactive && !points.empty();
+        m_editVisible = m_interactionMode != kDuckDBInteractionInactive && !geometries.empty();
+        if (!wasEditVisible && m_editVisible) {
+            m_becameVisibleGroups.insert(kDuckDBEditGroupId);
+        } else if (wasEditVisible && !m_editVisible) {
+            m_becameInvisibleGroups.insert(kDuckDBEditGroupId);
+        }
         auto const color = m_interactionMode == kDuckDBInteractionDrawing
             ? dp::Color(0, 200, 120, 255)
             : dp::Color(255, 149, 0, 255);
-        auto const lineColor = m_interactionMode == kDuckDBInteractionDrawing
-            ? dp::Color(0, 200, 120, 220)
-            : dp::Color(255, 149, 0, 220);
 
-        size_t index = 0;
-        for (auto const & point : points) {
-            auto const id = kDuckDBEditPointMarkIdBase + index++;
-            m_editPointIds.insert(id);
-            m_createdPointIds.insert(id);
-            m_updatedPointIds.insert(id);
-            m_editPointMarks.emplace(id, std::make_unique<DuckDBPointMark>(
-                id, point, 1, 65535, kDuckDBEditGroupId,
-                color, 8.0f));
+        size_t pointIndex = 0;
+        size_t lineIndex = 0;
+        for (auto const & points : geometries) {
+            for (auto const & point : points) {
+                auto const id = kDuckDBEditPointMarkIdBase + pointIndex++;
+                m_editPointIds.insert(id);
+                m_editPointMarks.emplace(id, std::make_unique<DuckDBPointMark>(
+                    id, point, 1, 65535, kDuckDBEditGroupId,
+                    color, 8.0f));
+            }
+            if (points.size() > 1) {
+                auto const id = kDuckDBEditLineMarkIdBase + lineIndex++;
+                m_editLineIds.insert(id);
+                m_editLineMarks.emplace(id, std::make_unique<DuckDBLineMark>(
+                    id, BuildInteractionLineGeometries(points, lineStyle),
+                    1, 65535, kDuckDBEditGroupId, lineStyle));
+            }
         }
-        if (points.size() > 1) {
-            auto const id = kDuckDBEditLineMarkIdBase;
-            m_editLineIds.insert(id);
-            m_createdLineIds.insert(id);
-            m_updatedLineIds.insert(id);
-            m_editLineMarks.emplace(id, std::make_unique<DuckDBLineMark>(
-                id, points, 1, 65535, kDuckDBEditGroupId,
-                lineColor, 3.0f));
+
+        m_editCombinedPointIds.insert(m_editPointIds.begin(), m_editPointIds.end());
+
+        AssignSetDifference(m_editCombinedPointIds, previousEditPointIds, m_createdPointIds);
+        AssignSetDifference(previousEditPointIds, m_editCombinedPointIds, m_removedPointIds);
+        AssignSetDifference(m_editLineIds, previousEditLineIds, m_createdLineIds);
+        AssignSetDifference(previousEditLineIds, m_editLineIds, m_removedLineIds);
+
+        m_updatedPointIds = m_editCombinedPointIds;
+        m_updatedLineIds = m_editLineIds;
+    }
+
+    size_t GetCommittedPointMarkCount() const { return m_pointIds.size(); }
+    size_t GetCommittedLineMarkCount() const { return m_lineIds.size(); }
+    size_t GetInteractionPointMarkCount() const { return m_editPointIds.size(); }
+    size_t GetInteractionLineMarkCount() const { return m_editLineIds.size(); }
+    size_t GetInteractionLineGeometryCount() const {
+        size_t geometryCount = 0;
+        for (auto const & entry : m_editLineMarks) {
+            geometryCount += entry.second->GetGeometryCount();
         }
+        return geometryCount;
+    }
+    size_t GetInteractionLinePointCount() const {
+        size_t pointCount = 0;
+        for (auto const & entry : m_editLineMarks) {
+            pointCount += entry.second->GetPointCount();
+        }
+        return pointCount;
+    }
+    float GetInteractionLineBaseWidth() const {
+        if (m_editLineMarks.empty()) {
+            return 0.0f;
+        }
+        return m_editLineMarks.begin()->second->GetBaseWidth();
+    }
+    float GetInteractionLineBaseDepth() const {
+        if (m_editLineMarks.empty()) {
+            return 0.0f;
+        }
+        return m_editLineMarks.begin()->second->GetBaseDepth();
+    }
+    char const * GetInteractionLineDepthLayerName() const {
+        if (m_editLineMarks.empty()) {
+            return "none";
+        }
+        return m_editLineMarks.begin()->second->GetDepthLayerName();
     }
 
     kml::GroupIdSet GetAllGroupIds() const override { return m_allGroups; }
     kml::GroupIdSet const & GetUpdatedGroupIds() const override { return m_updatedGroups; }
     kml::GroupIdSet const & GetRemovedGroupIds() const override { return m_emptyGroups; }
-    kml::GroupIdSet const & GetBecameVisibleGroupIds() const override { return m_emptyGroups; }
-    kml::GroupIdSet const & GetBecameInvisibleGroupIds() const override { return m_emptyGroups; }
+    kml::GroupIdSet const & GetBecameVisibleGroupIds() const override { return m_becameVisibleGroups; }
+    kml::GroupIdSet const & GetBecameInvisibleGroupIds() const override { return m_becameInvisibleGroups; }
     kml::MarkIdSet const & GetCreatedMarkIds() const override { return m_createdPointIds; }
     kml::MarkIdSet const & GetRemovedMarkIds() const override { return m_removedPointIds; }
     kml::MarkIdSet const & GetUpdatedMarkIds() const override { return m_updatedPointIds; }
@@ -326,14 +441,15 @@ public:
     kml::TrackIdSet const & GetUpdatedLineIds() const override { return m_updatedLineIds; }
     kml::MarkIdSet const & GetGroupPointIds(kml::MarkGroupId groupId) const override {
         if (groupId == kDuckDBRenderGroupId) return m_pointIds;
-        if (groupId == kDuckDBEditGroupId) return m_editPointIds;
+        if (groupId == kDuckDBEditGroupId) return m_editCombinedPointIds;
         return m_emptyPointIds;
     }
     df::UserPointMark const * GetUserPointMark(kml::MarkId markId) const override {
         auto const found = m_pointMarks.find(markId);
         if (found != m_pointMarks.end()) return found->second.get();
         auto const editFound = m_editPointMarks.find(markId);
-        return editFound == m_editPointMarks.end() ? nullptr : editFound->second.get();
+        if (editFound != m_editPointMarks.end()) return editFound->second.get();
+        return nullptr;
     }
     kml::TrackIdSet const & GetGroupLineIds(kml::MarkGroupId groupId) const override {
         if (groupId == kDuckDBRenderGroupId) return m_lineIds;
@@ -355,8 +471,11 @@ private:
     kml::GroupIdSet m_allGroups;
     kml::GroupIdSet m_updatedGroups;
     kml::GroupIdSet m_emptyGroups;
+    kml::GroupIdSet m_becameVisibleGroups;
+    kml::GroupIdSet m_becameInvisibleGroups;
     kml::MarkIdSet m_pointIds;
     kml::MarkIdSet m_editPointIds;
+    kml::MarkIdSet m_editCombinedPointIds;
     kml::MarkIdSet m_emptyPointIds;
     kml::TrackIdSet m_lineIds;
     kml::TrackIdSet m_editLineIds;
@@ -379,8 +498,136 @@ std::mutex g_duckDBRenderMutex;
 std::unique_ptr<DuckDBMarksProvider> g_duckDBMarksProvider;
 bool g_duckDBRenderingEnabled = false;
 std::chrono::steady_clock::time_point g_lastDuckDBRenderRefresh;
+std::set<std::string> g_duckDBCommittedDrapeLineIds;
+std::set<std::string> g_duckDBInteractionDrapeLineIds;
 std::mutex g_viewportMutex;
 std::unique_ptr<ScreenBase> g_currentScreen;
+std::mutex g_mapPointerMutex;
+
+struct AgusMapPointerState {
+    double physicalX = 0.0;
+    double physicalY = 0.0;
+    double lat = 0.0;
+    double lon = 0.0;
+    bool insideMap = false;
+    bool hasCoordinate = false;
+};
+
+AgusMapPointerState g_lastMapPointer;
+
+std::vector<std::vector<m2::PointD>> BuildInteractionLineGeometries(
+    std::vector<m2::PointD> const & points,
+    DuckDBInteractionLineStyle const & style) {
+    if (points.size() < 2) {
+        return {};
+    }
+    if (!style.dashed) {
+        return {points};
+    }
+
+    ScreenBase screen;
+    {
+        std::lock_guard<std::mutex> lock(g_viewportMutex);
+        if (!g_currentScreen) {
+            return {points};
+        }
+        screen = *g_currentScreen;
+    }
+
+    double const dashLength = std::max(1.0, style.dashLength);
+    double const gapLength = std::max(1.0, style.gapLength);
+    double const cycleLength = dashLength + gapLength;
+    std::vector<std::vector<m2::PointD>> dashes;
+    for (size_t segmentIndex = 1; segmentIndex < points.size(); ++segmentIndex) {
+        auto const & start = points[segmentIndex - 1];
+        auto const & end = points[segmentIndex];
+        auto const startPx = screen.GtoP(start);
+        auto const endPx = screen.GtoP(end);
+        double const lengthPx = std::hypot(endPx.x - startPx.x, endPx.y - startPx.y);
+        if (lengthPx <= 0.0) {
+            continue;
+        }
+        for (double offsetPx = 0.0; offsetPx < lengthPx; offsetPx += cycleLength) {
+            double const dashEndPx = std::min(lengthPx, offsetPx + dashLength);
+            if (dashEndPx <= offsetPx) {
+                continue;
+            }
+            double const startT = offsetPx / lengthPx;
+            double const endT = dashEndPx / lengthPx;
+            dashes.push_back({
+                m2::PointD(
+                    start.x + ((end.x - start.x) * startT),
+                    start.y + ((end.y - start.y) * startT)),
+                m2::PointD(
+                    start.x + ((end.x - start.x) * endT),
+                    start.y + ((end.y - start.y) * endT)),
+            });
+        }
+    }
+    return dashes.empty() ? std::vector<std::vector<m2::PointD>>{points} : dashes;
+}
+
+void UpdateDuckDBDrapeApiLines(
+    std::set<std::string> & activeIds,
+    std::vector<std::vector<m2::PointD>> const & lineGeometries,
+    std::string const & idPrefix,
+    dp::Color color,
+    float width,
+    bool dashed,
+    double dashLength,
+    double gapLength) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+
+    std::set<std::string> nextIds;
+    size_t lineIndex = 0;
+    for (auto const & points : lineGeometries) {
+        std::vector<std::vector<m2::PointD>> renderGeometries;
+        if (dashed) {
+            DuckDBInteractionLineStyle dashStyle;
+            dashStyle.dashed = true;
+            dashStyle.dashLength = dashLength;
+            dashStyle.gapLength = gapLength;
+            renderGeometries = BuildInteractionLineGeometries(points, dashStyle);
+        } else {
+            renderGeometries = points.size() > 1
+                ? std::vector<std::vector<m2::PointD>>{points}
+                : std::vector<std::vector<m2::PointD>>{};
+        }
+        size_t segmentIndex = 0;
+        for (auto const & renderPoints : renderGeometries) {
+            if (renderPoints.size() < 2) {
+                continue;
+            }
+            auto const id = idPrefix + "-" + std::to_string(lineIndex) +
+                "-" + std::to_string(segmentIndex++);
+            nextIds.insert(id);
+            g_framework->GetDrapeApi().AddLine(
+                id,
+                df::DrapeApiLineData(renderPoints, color).Width(width));
+        }
+        ++lineIndex;
+    }
+
+    for (auto const & oldId : activeIds) {
+        if (nextIds.count(oldId) == 0) {
+            g_framework->GetDrapeApi().RemoveLine(oldId);
+        }
+    }
+    activeIds = std::move(nextIds);
+}
+
+void ClearDuckDBDrapeApiLines(std::set<std::string> & activeIds) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        activeIds.clear();
+        return;
+    }
+    for (auto const & id : activeIds) {
+        g_framework->GetDrapeApi().RemoveLine(id);
+    }
+    activeIds.clear();
+}
 
 std::vector<m2::PointD> ParseWktMercatorPoints(char const * wkt) {
     std::vector<m2::PointD> points;
@@ -406,6 +653,35 @@ std::vector<m2::PointD> ParseWktMercatorPoints(char const * wkt) {
         points.push_back(mercator::FromLatLon(lat, lon));
     }
     return points;
+}
+
+std::vector<std::vector<m2::PointD>> ParseWktMercatorGeometries(char const * wkt) {
+    std::vector<std::vector<m2::PointD>> geometries;
+    if (wkt == nullptr) {
+        return geometries;
+    }
+
+    std::string_view const text(wkt);
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t end = text.find('\n', start);
+        if (end == std::string_view::npos) {
+            end = text.size();
+        }
+
+        auto const chunk = text.substr(start, end - start);
+        if (!chunk.empty()) {
+            std::string geometry(chunk);
+            auto points = ParseWktMercatorPoints(geometry.c_str());
+            if (!points.empty()) {
+                geometries.push_back(std::move(points));
+            }
+        }
+
+        start = end + 1;
+    }
+
+    return geometries;
 }
 
 bool IsPointFeature(char const * geometryKind, char const * wkt) {
@@ -490,6 +766,27 @@ int32_t RefreshDuckDBRenderLayersInternal() {
         g_duckDBMarksProvider = std::make_unique<DuckDBMarksProvider>();
     }
     g_duckDBMarksProvider->SetFeatures(renderableFeatures);
+    std::vector<std::vector<m2::PointD>> committedLineGeometries;
+    for (auto const & feature : renderableFeatures) {
+        if (!feature.isPoint && feature.points.size() > 1) {
+            committedLineGeometries.push_back(feature.points);
+        }
+    }
+    UpdateDuckDBDrapeApiLines(
+        g_duckDBCommittedDrapeLineIds,
+        committedLineGeometries,
+        "duckdb-committed",
+        dp::Color(71, 85, 105, 150),
+        2.0f,
+        false,
+        10.0,
+        6.0);
+    AGUS_DEBUG_LOG(
+        @"[AgusMapsFlutter] DuckDB committed render geometry: features=%zu pointMarks=%zu lineMarks=%zu drapeApiLines=%zu renderer=DrapeApiLineData baseWidth=2.00 depthTest=0 style=existing-visible",
+        renderableFeatures.size(),
+        g_duckDBMarksProvider->GetCommittedPointMarkCount(),
+        g_duckDBMarksProvider->GetCommittedLineMarkCount(),
+        g_duckDBCommittedDrapeLineIds.size());
 
     engine->UpdateUserMarks(g_duckDBMarksProvider.get(), true);
     engine->ChangeVisibilityUserMarksGroup(kDuckDBRenderGroupId, true);
@@ -499,7 +796,10 @@ int32_t RefreshDuckDBRenderLayersInternal() {
     return static_cast<int32_t>(renderableFeatures.size());
 }
 
-void UpdateDuckDBEditHandlesInternal(char const * wkt, int32_t interactionMode) {
+void UpdateDuckDBEditHandlesInternal(
+    char const * wkt,
+    int32_t interactionMode,
+    DuckDBInteractionLineStyle const & lineStyle = DuckDBInteractionLineStyle()) {
     std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
     if (!g_framework || !g_drapeEngineCreated) {
         return;
@@ -512,17 +812,52 @@ void UpdateDuckDBEditHandlesInternal(char const * wkt, int32_t interactionMode) 
     if (!g_duckDBMarksProvider) {
         g_duckDBMarksProvider = std::make_unique<DuckDBMarksProvider>();
     }
-    auto const points = ParseWktMercatorPoints(wkt);
-    g_duckDBMarksProvider->SetEditHandles(points, interactionMode);
+    auto const geometries = ParseWktMercatorGeometries(wkt);
+    size_t pointCount = 0;
+    size_t lineCount = 0;
+    for (auto const & points : geometries) {
+        pointCount += points.size();
+        if (points.size() > 1) {
+            ++lineCount;
+        }
+    }
+    g_duckDBMarksProvider->SetEditHandles(
+        geometries, interactionMode, lineStyle);
+    UpdateDuckDBDrapeApiLines(
+        g_duckDBInteractionDrapeLineIds,
+        geometries,
+        "duckdb-interaction",
+        lineStyle.color,
+        lineStyle.width,
+        lineStyle.dashed,
+        lineStyle.dashLength,
+        lineStyle.gapLength);
+    AGUS_DEBUG_LOG(
+        @"[AgusMapsFlutter] DuckDB interaction geometry: mode=%d geometries=%zu points=%zu lines=%zu lineMarks=%zu drapeApiLines=%zu renderer=DrapeApiLineData depthTest=0 lineGeometries=%zu linePoints=%zu depth=%s baseWidth=%.2f baseDepth=%.2f lineWidth=%.2f opacity=%u dashed=%d",
+        interactionMode,
+        geometries.size(),
+        pointCount,
+        lineCount,
+        g_duckDBMarksProvider->GetInteractionLineMarkCount(),
+        g_duckDBInteractionDrapeLineIds.size(),
+        g_duckDBMarksProvider->GetInteractionLineGeometryCount(),
+        g_duckDBMarksProvider->GetInteractionLinePointCount(),
+        g_duckDBMarksProvider->GetInteractionLineDepthLayerName(),
+        g_duckDBMarksProvider->GetInteractionLineBaseWidth(),
+        g_duckDBMarksProvider->GetInteractionLineBaseDepth(),
+        lineStyle.width,
+        lineStyle.color.GetAlpha(),
+        lineStyle.dashed ? 1 : 0);
     engine->UpdateUserMarks(g_duckDBMarksProvider.get(), true);
     engine->ChangeVisibilityUserMarksGroup(
         kDuckDBEditGroupId,
-        interactionMode != kDuckDBInteractionInactive && !points.empty());
+        interactionMode != kDuckDBInteractionInactive && !geometries.empty());
     engine->InvalidateUserMarks();
     WakeRenderer();
 }
 
 void ClearDuckDBEditHandlesInternal() {
+    ClearDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds);
     UpdateDuckDBEditHandlesInternal(nullptr, kDuckDBInteractionInactive);
 }
 
@@ -1132,6 +1467,49 @@ FFI_PLUGIN_EXPORT int comaps_screen_to_latlon(
     return 1;
 }
 
+FFI_PLUGIN_EXPORT int comaps_update_map_pointer(
+    double physical_x,
+    double physical_y,
+    int inside_map,
+    double* lat,
+    double* lon) {
+    if (!lat || !lon) {
+        return 0;
+    }
+
+    bool hasCoordinate = false;
+    double projectedLat = 0.0;
+    double projectedLon = 0.0;
+    if (inside_map != 0) {
+        std::lock_guard<std::mutex> viewportLock(g_viewportMutex);
+        if (g_currentScreen) {
+            auto const mercatorPoint = g_currentScreen->PtoG(
+                m2::PointD(physical_x, physical_y));
+            auto const coordinate = mercator::ToLatLon(mercatorPoint);
+            projectedLat = coordinate.m_lat;
+            projectedLon = coordinate.m_lon;
+            hasCoordinate = true;
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> pointerLock(g_mapPointerMutex);
+        g_lastMapPointer.physicalX = physical_x;
+        g_lastMapPointer.physicalY = physical_y;
+        g_lastMapPointer.lat = projectedLat;
+        g_lastMapPointer.lon = projectedLon;
+        g_lastMapPointer.insideMap = inside_map != 0;
+        g_lastMapPointer.hasCoordinate = hasCoordinate;
+    }
+
+    if (!hasCoordinate) {
+        return 0;
+    }
+    *lat = projectedLat;
+    *lon = projectedLon;
+    return 1;
+}
+
 FFI_PLUGIN_EXPORT int comaps_latlon_to_screen(
     double lat,
     double lon,
@@ -1539,6 +1917,34 @@ FFI_PLUGIN_EXPORT void agus_duckdb_set_edit_handles_from_wkt(char const * geomet
 FFI_PLUGIN_EXPORT void agus_duckdb_set_interaction_geometry_from_wkt(
     int32_t interactionMode, char const * geometryWkt) {
     UpdateDuckDBEditHandlesInternal(geometryWkt, interactionMode);
+}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_update_interaction_geometry(
+    int32_t interactionMode,
+    char const * geometryWkt,
+    int32_t red,
+    int32_t green,
+    int32_t blue,
+    double opacity,
+    double width,
+    int32_t dashed,
+    double dashLength,
+    double gapLength) {
+    auto const channel = [](int32_t value) -> uint8_t {
+        return static_cast<uint8_t>(std::max(0, std::min(255, value)));
+    };
+    double const clampedOpacity = std::max(0.0, std::min(1.0, opacity));
+    DuckDBInteractionLineStyle style;
+    style.color = dp::Color(
+        channel(red),
+        channel(green),
+        channel(blue),
+        static_cast<uint8_t>(std::round(clampedOpacity * 255.0)));
+    style.width = static_cast<float>(std::max(0.5, std::min(64.0, width)));
+    style.dashed = dashed != 0;
+    style.dashLength = std::max(1.0, dashLength);
+    style.gapLength = std::max(1.0, gapLength);
+    UpdateDuckDBEditHandlesInternal(geometryWkt, interactionMode, style);
 }
 
 FFI_PLUGIN_EXPORT void agus_duckdb_clear_edit_handles(void) {

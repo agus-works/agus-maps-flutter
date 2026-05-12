@@ -1213,14 +1213,18 @@ class _TreeLabelCell extends StatelessWidget {
                               context,
                             ).textTheme.bodySmall?.copyWith(color: foreground),
                           )
-                        : Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              node.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: foreground),
+                        : Tooltip(
+                            message: node.label,
+                            waitDuration: const Duration(milliseconds: 350),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                node.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: foreground),
+                              ),
                             ),
                           ),
                   ),
@@ -1233,12 +1237,16 @@ class _TreeLabelCell extends StatelessWidget {
                   width: badgeWidth,
                   child: Align(
                     alignment: Alignment.centerRight,
-                    child: Text(
-                      node.badgeLabel!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: foreground.withValues(alpha: 0.75),
+                    child: Tooltip(
+                      message: node.badgeLabel!,
+                      waitDuration: const Duration(milliseconds: 350),
+                      child: Text(
+                        node.badgeLabel!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: foreground.withValues(alpha: 0.75),
+                        ),
                       ),
                     ),
                   ),
@@ -1308,13 +1316,17 @@ class _TreeMetricCell extends StatelessWidget {
         padding: const EdgeInsets.only(left: 8),
         child: Align(
           alignment: _alignmentFor(column.alignment),
-          child: Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: foreground.withValues(alpha: 0.76),
-              fontFeatures: const [FontFeature.tabularFigures()],
+          child: Tooltip(
+            message: value,
+            waitDuration: const Duration(milliseconds: 350),
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: foreground.withValues(alpha: 0.76),
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ),
@@ -1412,16 +1424,21 @@ class _TreeHeaderRow extends StatelessWidget {
                     padding: const EdgeInsets.only(left: 42, right: 8),
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colors.sideBarForeground.withValues(
-                            alpha: 0.65,
-                          ),
-                          letterSpacing: 0.4,
-                          fontWeight: FontWeight.w600,
+                      child: Tooltip(
+                        message: label,
+                        waitDuration: const Duration(milliseconds: 350),
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: colors.sideBarForeground.withValues(
+                                  alpha: 0.65,
+                                ),
+                                letterSpacing: 0.4,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                       ),
                     ),

@@ -19,6 +19,10 @@ export 'mwm_storage.dart';
 export 'mirror_service.dart';
 export 'src/agus_maps_api.g.dart'
     show
+        DrapeInteractionGeometryRequest,
+        DrapeInteractionLineStyle,
+        MapPointerCoordinate,
+        MapPointerUpdateRequest,
         PlacePageData,
         PlacePageFeatureId,
         PlacePageCoordinates,
@@ -1097,6 +1101,18 @@ void _ensureNativeDuckDBLayerRenderingSupported() {
   }
 }
 
+void _ensureNativeInteractionGeometrySupported() {
+  if (!(Platform.isMacOS ||
+      Platform.isIOS ||
+      Platform.isAndroid ||
+      Platform.isLinux ||
+      Platform.isWindows)) {
+    throw UnsupportedError(
+      'Native interaction geometry is currently wired on mobile and desktop only',
+    );
+  }
+}
+
 String _nativeDuckDBString(Pointer<Char> value) {
   if (value == nullptr) return '';
   return value.cast<Utf8>().toDartString();
@@ -1242,8 +1258,7 @@ void setDuckDBInteractionGeometryFromWkt(
   AgusDrapeInteractionMode mode,
   String geometryWkt,
 ) {
-  _ensureDuckDBBridgeSupported();
-  _ensureNativeDuckDBLayerRenderingSupported();
+  _ensureNativeInteractionGeometrySupported();
   final geometryWktPtr = geometryWkt.toNativeUtf8().cast<Char>();
   try {
     _bindings.agus_duckdb_set_interaction_geometry_from_wkt(
@@ -1259,10 +1274,68 @@ void setDuckDBInteractionGeometryFromWkt(
   }
 }
 
+/// Default style for transient DuckDB draw/edit edges.
+DrapeInteractionLineStyle defaultDuckDBInteractionLineStyle([
+  AgusDrapeInteractionMode mode = AgusDrapeInteractionMode.drawing,
+]) {
+  return switch (mode) {
+    AgusDrapeInteractionMode.drawing => DrapeInteractionLineStyle(
+        colorRed: 37,
+        colorGreen: 99,
+        colorBlue: 235,
+        opacity: 0.94,
+        width: 2,
+        dashed: true,
+        dashLength: 12,
+        gapLength: 7,
+      ),
+    AgusDrapeInteractionMode.editingFeature => DrapeInteractionLineStyle(
+        colorRed: 245,
+        colorGreen: 158,
+        colorBlue: 11,
+        opacity: 0.95,
+        width: 2,
+        dashed: false,
+        dashLength: 12,
+        gapLength: 7,
+      ),
+    AgusDrapeInteractionMode.inactive => DrapeInteractionLineStyle(
+        colorRed: 71,
+        colorGreen: 85,
+        colorBlue: 105,
+        opacity: 0.70,
+        width: 1.5,
+        dashed: false,
+        dashLength: 12,
+        gapLength: 7,
+      ),
+  };
+}
+
+/// Renders transient drawing/editing geometry in the native Drape scene using
+/// the typed Pigeon API so Flutter can control line styling.
+Future<bool> updateDrapeInteractionGeometry({
+  required AgusDrapeInteractionMode mode,
+  String? geometryWkt,
+  DrapeInteractionLineStyle? lineStyle,
+}) {
+  _ensureNativeInteractionGeometrySupported();
+  return _hostApi.updateDrapeInteractionGeometry(
+    DrapeInteractionGeometryRequest(
+      mode: switch (mode) {
+        AgusDrapeInteractionMode.inactive => 0,
+        AgusDrapeInteractionMode.drawing => 1,
+        AgusDrapeInteractionMode.editingFeature => 2,
+      },
+      geometryWkt: geometryWkt,
+      lineStyle: lineStyle ?? defaultDuckDBInteractionLineStyle(mode),
+    ),
+  );
+}
+
 /// Clears native Drape drawing/edit handles for the selected DuckDB feature.
 void clearDuckDBEditHandles() {
-  _ensureDuckDBBridgeSupported();
-  _ensureNativeDuckDBLayerRenderingSupported();
+  _ensureNativeInteractionGeometrySupported();
   _bindings.agus_duckdb_clear_edit_handles();
 }
 
@@ -1423,7 +1496,7 @@ MapCameraPosition? getMapCameraPosition() => getCameraPosition();
 /// Converts physical screen coordinates to a WGS84 coordinate.
 ///
 /// The coordinates must be in the native map surface's physical pixel space.
-/// Flutter overlays should multiply logical local positions by the device pixel
+/// Flutter callers should multiply logical local positions by the device pixel
 /// ratio before calling this helper.
 AgusLatLon? screenPointToLatLon(double physicalX, double physicalY) {
   if (!(Platform.isMacOS ||
@@ -1453,10 +1526,32 @@ AgusLatLon? screenPointToLatLon(double physicalX, double physicalY) {
   }
 }
 
+/// Updates the native map pointer tracker and returns the projected coordinate.
+///
+/// [physicalX] and [physicalY] are in the native map surface's physical pixel
+/// space. This path goes through the typed host API so the platform side can
+/// keep the latest pointer position in native state before converting it through
+/// the current map viewport.
+Future<AgusLatLon?> updateNativeMapPointer(
+  double physicalX,
+  double physicalY, {
+  bool insideMap = true,
+}) async {
+  final coordinate = await _hostApi.updateMapPointer(
+    MapPointerUpdateRequest(
+      physicalX: physicalX,
+      physicalY: physicalY,
+      insideMap: insideMap,
+    ),
+  );
+  if (coordinate == null || !coordinate.insideMap) return null;
+  return AgusLatLon(lat: coordinate.lat, lon: coordinate.lon);
+}
+
 /// Converts a WGS84 coordinate to physical screen coordinates.
 ///
 /// The returned offset is in the native map surface's physical pixel space.
-/// Flutter overlays should divide it by the device pixel ratio before using it
+/// Flutter callers should divide it by the device pixel ratio before using it
 /// as a logical local position.
 Offset? latLonToScreenPoint(double lat, double lon) {
   if (!(Platform.isMacOS ||
@@ -1819,6 +1914,12 @@ class AgusMap extends StatefulWidget {
   /// Receives moves for pointers captured by [onMapPointerDown].
   final void Function(Offset localPosition)? onMapPointerMove;
 
+  /// Receives desktop hover positions without capturing map gestures.
+  ///
+  /// Drawing tools use this to maintain a live preview edge to the pointer while
+  /// tap and drag gestures remain available to the native map.
+  final void Function(Offset localPosition)? onMapPointerHover;
+
   /// Receives up/cancel for pointers captured by [onMapPointerDown].
   final void Function(Offset localPosition)? onMapPointerUp;
 
@@ -1854,6 +1955,7 @@ class AgusMap extends StatefulWidget {
     this.onMapTap,
     this.onMapPointerDown,
     this.onMapPointerMove,
+    this.onMapPointerHover,
     this.onMapPointerUp,
     this.controller,
     this.isVisible = true,
@@ -2213,6 +2315,12 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
       }
     }
     _sendTouchEvent(TouchType.move, event.pointer, event.localPosition);
+    widget.onMapPointerMove?.call(event.localPosition);
+  }
+
+  void _handlePointerHover(PointerHoverEvent event) {
+    if (_activePointers.isNotEmpty) return;
+    widget.onMapPointerHover?.call(event.localPosition);
   }
 
   void _handlePointerUp(PointerUpEvent event) {
@@ -2404,6 +2512,7 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
           behavior: HitTestBehavior.opaque,
           onPointerDown: _handlePointerDown,
           onPointerMove: _handlePointerMove,
+          onPointerHover: _handlePointerHover,
           onPointerUp: _handlePointerUp,
           onPointerCancel: _handlePointerCancel,
           onPointerSignal: _handlePointerSignal,

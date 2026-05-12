@@ -120,6 +120,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
 
   AgusDrawTool _tool = AgusDrawTool.none;
   AgusLayerFeature? _editingFeature;
+  AgusDrawPoint? _previewVertex;
   int? _selectedVertexIndex;
   bool _isCommitting = false;
   String? _lastError;
@@ -132,6 +133,23 @@ class DuckDBLayerDrawController extends ChangeNotifier {
   /// Captured vertices in draw order.
   List<AgusDrawPoint> get vertices =>
       List<AgusDrawPoint>.unmodifiable(_vertices);
+
+  /// Pointer-preview vertex shown before the next sketch tap, when available.
+  AgusDrawPoint? get previewVertex => _previewVertex;
+
+  /// Vertices that should be displayed for the current edit overlay.
+  ///
+  /// New sketches include the live pointer-preview vertex when the active tool
+  /// can accept another point. Committed-feature edits only expose persisted
+  /// vertices so the overlay matches the geometry being updated.
+  List<AgusDrawPoint> get displayVertices {
+    final display = _vertices.toList();
+    final preview = _previewVertex;
+    if (preview != null && _canPreviewSketchVertex) {
+      display.add(preview);
+    }
+    return List<AgusDrawPoint>.unmodifiable(display);
+  }
 
   /// Index of the vertex currently being edited, if any.
   int? get selectedVertexIndex => _selectedVertexIndex;
@@ -178,9 +196,11 @@ class DuckDBLayerDrawController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _debugDuckDBDrawLog('setTool ${_tool.name} -> ${tool.name}');
     _tool = tool;
     _editingFeature = null;
     _vertices.clear();
+    _previewVertex = null;
     _selectedVertexIndex = null;
     _lastError = null;
     if (tool == AgusDrawTool.none) {
@@ -200,6 +220,10 @@ class DuckDBLayerDrawController extends ChangeNotifier {
   void beginEditFeature(AgusLayerFeature feature) {
     final nextTool = _drawToolForFeature(feature);
     final nextVertices = _drawPointsForFeature(feature);
+    _debugDuckDBDrawLog(
+      'beginEditFeature feature=${feature.featureId} '
+      'kind=${feature.geometryKind.databaseValue} vertices=${nextVertices.length}',
+    );
 
     _tool = nextTool;
     _vertices
@@ -255,19 +279,44 @@ class DuckDBLayerDrawController extends ChangeNotifier {
 
   /// Adds a sketch vertex from a map tap.
   bool handleMapTap(Offset localPosition) {
-    if (!_canAddSketchVertex) return false;
+    if (!_canAddSketchVertex) {
+      _debugDuckDBDrawLog(
+        'tap ignored tool=${_tool.name} vertices=${_vertices.length} '
+        'editingFeature=${_editingFeature?.featureId} committing=$_isCommitting',
+      );
+      return false;
+    }
+    _debugDuckDBDrawLog(
+      'tap accepted tool=${_tool.name} screen=${_formatOffset(localPosition)}',
+    );
     unawaited(_addSketchVertex(localPosition));
     return true;
   }
 
   /// Starts a captured vertex-drag interaction when the pointer hits a handle.
   bool handlePointerDown(Offset localPosition) {
-    if (_isCommitting || _editingFeature == null) return false;
+    if (_isCommitting || _editingFeature == null) {
+      _debugDuckDBDrawLog(
+        'pointerDown ignored screen=${_formatOffset(localPosition)} '
+        'editingFeature=${_editingFeature?.featureId} committing=$_isCommitting',
+      );
+      return false;
+    }
 
     final nearest = _nearestVertex(localPosition);
-    if (nearest == null) return false;
+    if (nearest == null) {
+      _debugDuckDBDrawLog(
+        'pointerDown missed vertex screen=${_formatOffset(localPosition)} '
+        'vertices=${_vertices.length}',
+      );
+      return false;
+    }
 
     _selectedVertexIndex = nearest;
+    _debugDuckDBDrawLog(
+      'pointerDown selected vertex=$nearest '
+      'screen=${_formatOffset(localPosition)}',
+    );
     notifyListeners();
     return true;
   }
@@ -275,14 +324,48 @@ class DuckDBLayerDrawController extends ChangeNotifier {
   /// Handles a drag move for vertex editing.
   Future<void> handlePointerMove(Offset localPosition) async {
     final index = _selectedVertexIndex;
-    if (index == null || index < 0 || index >= _vertices.length) return;
+    if (index == null || index < 0 || index >= _vertices.length) {
+      if (isDrawing) {
+        final coordinate = await projector(localPosition);
+        if (coordinate != null) {
+          _previewVertex = AgusDrawPoint(
+            screenPosition: localPosition,
+            coordinate: coordinate,
+          );
+          _debugDuckDBDrawLog(
+            'previewMove tool=${_tool.name} '
+            'screen=${_formatOffset(localPosition)} '
+            'coordinate=${_formatLatLon(coordinate)} '
+            'placed=${_vertices.length}',
+          );
+          _renderNativeInteractionGeometry();
+          notifyListeners();
+        } else {
+          _debugDuckDBDrawLog(
+            'previewMove projection null '
+            'screen=${_formatOffset(localPosition)}',
+          );
+        }
+      }
+      return;
+    }
 
     final coordinate = await projector(localPosition);
-    if (coordinate == null) return;
+    if (coordinate == null) {
+      _debugDuckDBDrawLog(
+        'editMove projection null screen=${_formatOffset(localPosition)}',
+      );
+      return;
+    }
 
     _vertices[index] = _vertices[index].copyWith(
       screenPosition: localPosition,
       coordinate: coordinate,
+    );
+    _debugDuckDBDrawLog(
+      'editMove feature=${_editingFeature?.featureId} vertex=$index '
+      'screen=${_formatOffset(localPosition)} '
+      'coordinate=${_formatLatLon(coordinate)}',
     );
     _renderNativeInteractionGeometry();
     notifyListeners();
@@ -291,11 +374,16 @@ class DuckDBLayerDrawController extends ChangeNotifier {
   /// Finishes the current pointer edit gesture.
   Future<void> handlePointerUp() async {
     if (_editingFeature != null) {
+      _debugDuckDBDrawLog(
+        'pointerUp auto-commit feature=${_editingFeature?.featureId} '
+        'selected=$_selectedVertexIndex',
+      );
       await _commitEditedFeature();
       return;
     }
 
     if (_selectedVertexIndex == null) return;
+    _debugDuckDBDrawLog('pointerUp clear selected=$_selectedVertexIndex');
     _selectedVertexIndex = null;
     notifyListeners();
   }
@@ -305,15 +393,23 @@ class DuckDBLayerDrawController extends ChangeNotifier {
     if (_vertices.isEmpty || _isCommitting) return;
     _vertices.removeLast();
     _selectedVertexIndex = null;
+    _debugDuckDBDrawLog(
+      'undoLastVertex tool=${_tool.name} vertices=${_vertices.length}',
+    );
     _renderNativeInteractionGeometry();
     notifyListeners();
   }
 
   /// Cancels the current sketch and returns to map interaction mode.
   void cancel() {
+    _debugDuckDBDrawLog(
+      'cancel tool=${_tool.name} editingFeature=${_editingFeature?.featureId} '
+      'vertices=${_vertices.length}',
+    );
     _tool = AgusDrawTool.none;
     _editingFeature = null;
     _vertices.clear();
+    _previewVertex = null;
     _selectedVertexIndex = null;
     _lastError = null;
     _clearNativeInteractionGeometry();
@@ -322,6 +418,10 @@ class DuckDBLayerDrawController extends ChangeNotifier {
 
   /// Persists the current sketch as a DuckDB feature.
   Future<String?> commit() async {
+    if (_editingFeature != null) {
+      return _commitEditedFeature(finishEditing: true);
+    }
+
     final geometryKind = _tool.geometryKind;
     if (!canCommit || geometryKind == null) return null;
 
@@ -331,17 +431,23 @@ class DuckDBLayerDrawController extends ChangeNotifier {
     try {
       final now = DateTime.now().toUtc();
       final featureId = 'feature_${now.microsecondsSinceEpoch}';
+      final geometryWkt = _buildWkt(_tool, _vertices);
+      _debugDuckDBDrawLog(
+        'commit insert feature=$featureId layer=$layerId '
+        'tool=${_tool.name} vertices=${_vertices.length} wkt=$geometryWkt',
+      );
       store.upsertFeature(
         AgusLayerFeatureDraft(
           layerId: layerId,
           featureId: featureId,
-          geometryWkt: _buildWkt(_tool, _vertices),
+          geometryWkt: geometryWkt,
           geometryKind: geometryKind,
           properties: _buildProperties(now),
           boundingBox: _boundingBox(_vertices),
         ),
       );
       _vertices.clear();
+      _previewVertex = null;
       _selectedVertexIndex = null;
       _tool = AgusDrawTool.none;
       _clearNativeInteractionGeometry();
@@ -349,6 +455,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
       if (commitCallback != null) {
         await commitCallback();
       }
+      _debugDuckDBDrawLog('commit insert complete feature=$featureId');
       return featureId;
     } finally {
       _isCommitting = false;
@@ -356,23 +463,34 @@ class DuckDBLayerDrawController extends ChangeNotifier {
     }
   }
 
-  Future<void> _commitEditedFeature() async {
+  Future<String?> _commitEditedFeature({bool finishEditing = false}) async {
     final feature = _editingFeature;
-    if (feature == null || _selectedVertexIndex == null || _isCommitting) {
+    if (feature == null || _isCommitting) {
       _selectedVertexIndex = null;
       notifyListeners();
-      return;
+      return null;
+    }
+    if (!finishEditing && _selectedVertexIndex == null) {
+      _selectedVertexIndex = null;
+      notifyListeners();
+      return null;
     }
 
     _isCommitting = true;
     notifyListeners();
 
+    var committed = false;
     try {
+      final geometryWkt = _buildFeatureWkt(feature.geometryKind, _vertices);
+      _debugDuckDBDrawLog(
+        'commit update feature=${feature.featureId} layer=${feature.layerId} '
+        'finish=$finishEditing vertices=${_vertices.length} wkt=$geometryWkt',
+      );
       store.upsertFeature(
         AgusLayerFeatureDraft(
           layerId: feature.layerId,
           featureId: feature.featureId,
-          geometryWkt: _buildFeatureWkt(feature.geometryKind, _vertices),
+          geometryWkt: geometryWkt,
           geometryKind: feature.geometryKind,
           properties: feature.properties,
           style: feature.style,
@@ -382,17 +500,38 @@ class DuckDBLayerDrawController extends ChangeNotifier {
           maxZoom: feature.maxZoom,
         ),
       );
+      committed = true;
       _lastError = null;
-      _renderNativeInteractionGeometry();
+      if (finishEditing) {
+        _tool = AgusDrawTool.none;
+        _editingFeature = null;
+        _vertices.clear();
+        _previewVertex = null;
+        _selectedVertexIndex = null;
+        _clearNativeInteractionGeometry();
+      } else {
+        _renderNativeInteractionGeometry();
+      }
       final commitCallback = onCommitted;
       if (commitCallback != null) {
         await commitCallback();
       }
+      _debugDuckDBDrawLog(
+        'commit update complete feature=${feature.featureId} finish=$finishEditing',
+      );
+      return feature.featureId;
     } catch (error) {
       _lastError = 'Feature edit failed: $error';
+      _debugDuckDBDrawLog(
+        'commit update failed feature=${feature.featureId}: $error',
+      );
+      return null;
     } finally {
       _selectedVertexIndex = null;
       _isCommitting = false;
+      if (!committed && finishEditing) {
+        _renderNativeInteractionGeometry();
+      }
       notifyListeners();
     }
   }
@@ -414,13 +553,24 @@ class DuckDBLayerDrawController extends ChangeNotifier {
     }
 
     final coordinate = await projector(localPosition);
-    if (coordinate == null) return;
+    if (coordinate == null) {
+      _debugDuckDBDrawLog(
+        'addVertex projection null screen=${_formatOffset(localPosition)}',
+      );
+      return;
+    }
 
     _vertices.add(AgusDrawPoint(
       screenPosition: localPosition,
       coordinate: coordinate,
     ));
-    _selectedVertexIndex = _vertices.length - 1;
+    _previewVertex = null;
+    _selectedVertexIndex = null;
+    _debugDuckDBDrawLog(
+      'addVertex tool=${_tool.name} index=${_vertices.length - 1} '
+      'screen=${_formatOffset(localPosition)} '
+      'coordinate=${_formatLatLon(coordinate)} vertices=${_vertices.length}',
+    );
     _renderNativeInteractionGeometry();
     notifyListeners();
   }
@@ -430,26 +580,58 @@ class DuckDBLayerDrawController extends ChangeNotifier {
     if (render == null) return;
 
     if (_editingFeature != null) {
+      final geometryWkt = _vertices.isEmpty
+          ? null
+          : _buildFeatureWkt(_editingFeature!.geometryKind, _vertices);
+      _debugDuckDBDrawLog(
+        'renderNative mode=editingFeature feature=${_editingFeature!.featureId} '
+        'vertices=${_vertices.length} wkt=$geometryWkt',
+      );
       render(
         AgusDrapeInteractionMode.editingFeature,
-        _vertices.isEmpty ? null : _buildInteractionWkt(_vertices),
+        geometryWkt,
       );
       return;
     }
 
     if (_tool != AgusDrawTool.none) {
+      final drawVertices = _vertices.toList();
+      final preview = _previewVertex;
+      if (preview != null && _canPreviewSketchVertex) {
+        drawVertices.add(preview);
+      }
+      final geometryWkt =
+          drawVertices.isEmpty ? null : _buildWkt(_tool, drawVertices);
+      _debugDuckDBDrawLog(
+        'renderNative mode=drawing tool=${_tool.name} '
+        'placed=${_vertices.length} preview=${preview != null} '
+        'submitted=${drawVertices.length} wkt=$geometryWkt',
+      );
       render(
         AgusDrapeInteractionMode.drawing,
-        _vertices.isEmpty ? null : _buildInteractionWkt(_vertices),
+        geometryWkt,
       );
       return;
     }
 
+    _debugDuckDBDrawLog('renderNative mode=inactive');
     render(AgusDrapeInteractionMode.inactive, null);
   }
 
   void _clearNativeInteractionGeometry() {
+    _debugDuckDBDrawLog('clearNativeInteractionGeometry');
     nativeEditGeometryRenderer?.call(AgusDrapeInteractionMode.inactive, null);
+  }
+
+  bool get _canPreviewSketchVertex {
+    if (_isCommitting ||
+        _editingFeature != null ||
+        _tool == AgusDrawTool.none) {
+      return false;
+    }
+    if (_tool == AgusDrawTool.pin && _vertices.isNotEmpty) return false;
+    if (_tool == AgusDrawTool.segment && _vertices.length >= 2) return false;
+    return true;
   }
 
   @override
@@ -559,14 +741,6 @@ String _buildFeatureWkt(
   };
 }
 
-String _buildInteractionWkt(List<AgusDrawPoint> vertices) {
-  final coordinateText = vertices.map(_wktCoordinate).join(', ');
-  if (vertices.length == 1) {
-    return 'POINT ($coordinateText)';
-  }
-  return 'LINESTRING ($coordinateText)';
-}
-
 List<AgusLatLon> _parseEditableWkt(AgusLayerFeature feature) {
   final coordinates = _parseWktCoordinatePairs(feature.geometryWkt);
   if (feature.geometryKind == AgusGeometryKind.polygon &&
@@ -613,6 +787,20 @@ String _wktCoordinate(AgusDrawPoint vertex) {
 
 String _formatCoordinate(double value) {
   return value.toStringAsFixed(8).replaceFirst(RegExp(r'\.0+$'), '.0');
+}
+
+String _formatOffset(Offset value) {
+  return '(${value.dx.toStringAsFixed(1)}, ${value.dy.toStringAsFixed(1)})';
+}
+
+String _formatLatLon(AgusLatLon value) {
+  return '(${value.lat.toStringAsFixed(8)}, ${value.lon.toStringAsFixed(8)})';
+}
+
+void _debugDuckDBDrawLog(String message) {
+  if (kDebugMode) {
+    debugPrint('[DuckDBDraw] $message');
+  }
 }
 
 AgusBoundingBox? _boundingBox(List<AgusDrawPoint> vertices) {

@@ -42,6 +42,42 @@ void main() {
     expect(find.text('3'), findsOneWidget);
   });
 
+  testWidgets('tree view exposes full label tooltip for clipped text', (
+    tester,
+  ) async {
+    const longLabel = 'Very long project layer name that will be compressed';
+
+    await pumpAgusWidget(
+      tester,
+      const SizedBox(
+        width: 150,
+        height: 80,
+        child: AgusTreeView(
+          nodes: [
+            AgusTreeNode(
+              id: 'long',
+              label: longLabel,
+              icon: Icons.layers_outlined,
+              columnValues: {'features': '1234567890'},
+            ),
+          ],
+          columns: [
+            AgusTreeColumn(id: 'features', label: 'Features', width: 48),
+          ],
+        ),
+      ),
+    );
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer();
+    await gesture.moveTo(tester.getCenter(find.text(longLabel)));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byTooltip(longLabel), findsOneWidget);
+
+    await gesture.removePointer();
+  });
+
   testWidgets('tree view emits selection and toggle callbacks', (tester) async {
     String? selectedId;
     String? toggledId;

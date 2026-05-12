@@ -1,3 +1,4 @@
+import 'package:agus_design/agus_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:agus_maps_flutter/agus_maps_flutter.dart' as agus_maps_flutter;
@@ -9,8 +10,7 @@ import '../../../test_helpers.dart';
 void main() {
   group('AdaptiveLayerManager', () {
     group('Desktop compact view consolidation', () {
-      testWidgets(
-          'shows Project Layers section with draw session card in desktop mode',
+      testWidgets('shows Explorer with Project Layers actions in desktop mode',
           (tester) async {
         await pumpExampleWidget(
           tester,
@@ -32,11 +32,13 @@ void main() {
         // Should show "PROJECT LAYERS" title (uppercased by AgusViewContainer)
         expect(find.text('PROJECT LAYERS'), findsOneWidget);
 
-        // Should show "Edit session" label from draw session card
-        expect(find.text('Edit session'), findsOneWidget);
+        // Project actions live on the Project Layers row.
+        expect(find.byTooltip('Create drawing layer'), findsOneWidget);
+        expect(find.byTooltip('Refresh project layers'), findsOneWidget);
+        expect(find.byTooltip('Back up project layers'), findsOneWidget);
 
-        // Should NOT show separate "Layer Manager" section as a clickable view
-        // Note: "Layer Manager" text still appears in the toolbar title
+        // The extra toolbar row was removed.
+        expect(find.text('Edit session'), findsNothing);
       });
 
       testWidgets('shows active layer name in draw session card',
@@ -59,8 +61,8 @@ void main() {
 
         await tester.pumpAndSettle();
 
-        // Should show "No editable layer selected" when no layer exists
-        expect(find.text('No editable layer selected'), findsOneWidget);
+        // Should not show the removed draw session card when no layer exists.
+        expect(find.text('No editable layer selected'), findsNothing);
       });
 
       testWidgets('shows draw tool status in draw session card',
@@ -83,8 +85,53 @@ void main() {
 
         await tester.pumpAndSettle();
 
-        // Should show creating message for active draw tool
-        expect(find.textContaining('Creating point feature'), findsOneWidget);
+        // The active draw tool is no longer surfaced in an extra Explorer row.
+        expect(find.textContaining('Creating point feature'), findsNothing);
+      });
+    });
+
+    group('Map Presentation tree grid', () {
+      testWidgets('toggles visibility rows and preserves subway boundaries', (
+        tester,
+      ) async {
+        agus_maps_flutter.MapLayerState? submittedLayerState;
+        bool? submittedBuildings;
+
+        await pumpExampleWidget(
+          tester,
+          AdaptiveMapPresentationPanel(
+            formFactor: ExampleFormFactor.desktop,
+            nativeLayerState: const agus_maps_flutter.MapLayerState(
+              outdoors: true,
+              isolines: true,
+              subway: false,
+            ),
+            buildings3dEnabled: false,
+            onNativeLayerStateChanged: (state) {
+              submittedLayerState = state;
+            },
+            onBuildings3dChanged: (enabled) {
+              submittedBuildings = enabled;
+            },
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AgusTreeView), findsOneWidget);
+        expect(find.text('3D Buildings'), findsOneWidget);
+        expect(find.text('Contour Lines'), findsOneWidget);
+
+        await tester.tap(find.text('3D Buildings'));
+        await tester.pump();
+        expect(submittedBuildings, isTrue);
+
+        await tester.tap(find.text('Subway'));
+        await tester.pump();
+        expect(submittedLayerState, isNotNull);
+        expect(submittedLayerState!.subway, isTrue);
+        expect(submittedLayerState!.outdoors, isFalse);
+        expect(submittedLayerState!.isolines, isFalse);
       });
     });
 
@@ -131,8 +178,7 @@ void main() {
     });
 
     group('Layer/feature context menus', () {
-      testWidgets('desktop layer tree supports context menu',
-          (tester) async {
+      testWidgets('desktop layer tree supports context menu', (tester) async {
         await pumpExampleWidget(
           tester,
           AdaptiveLayerManager(

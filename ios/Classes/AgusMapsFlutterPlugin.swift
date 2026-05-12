@@ -496,6 +496,61 @@ public class AgusMapsFlutterPlugin: NSObject, FlutterPlugin, FlutterTexture, Agu
         sendRenderStateChanged(state: .idle, surfaceId: nil)
         completion(.success(true))
     }
+
+    func updateMapPointer(
+        request: MapPointerUpdateRequest,
+        completion: @escaping (Result<MapPointerCoordinate?, Error>) -> Void
+    ) {
+        var lat: Double = 0
+        var lon: Double = 0
+        let result = comaps_update_map_pointer(
+            request.physicalX,
+            request.physicalY,
+            request.insideMap ? 1 : 0,
+            &lat,
+            &lon
+        )
+        guard result == 1 else {
+            completion(.success(nil))
+            return
+        }
+        completion(.success(MapPointerCoordinate(
+            physicalX: request.physicalX,
+            physicalY: request.physicalY,
+            insideMap: request.insideMap,
+            lat: lat,
+            lon: lon
+        )))
+    }
+
+    func updateDrapeInteractionGeometry(
+        request: DrapeInteractionGeometryRequest,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        let style = request.lineStyle
+        let applyGeometry: (UnsafePointer<CChar>?) -> Void = { geometryPointer in
+            agus_duckdb_update_interaction_geometry(
+                Int32(request.mode),
+                geometryPointer,
+                Int32(style.colorRed),
+                Int32(style.colorGreen),
+                Int32(style.colorBlue),
+                style.opacity,
+                style.width,
+                style.dashed ? 1 : 0,
+                style.dashLength,
+                style.gapLength
+            )
+        }
+        if let geometryWkt = request.geometryWkt {
+            geometryWkt.withCString { pointer in
+                applyGeometry(pointer)
+            }
+        } else {
+            applyGeometry(nil)
+        }
+        completion(.success(true))
+    }
     
     // MARK: - CVPixelBuffer Creation (Zero-Copy)
     

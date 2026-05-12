@@ -40,10 +40,14 @@ void main() {
     );
 
     expect(find.byType(AgusViewContainer), findsOneWidget);
-    expect(find.text('Layer Manager'), findsOneWidget);  // Toolbar title (not uppercased)
-    expect(find.text('PROJECT LAYERS'), findsOneWidget);  // View title (uppercased)
-    expect(find.text('MWM MAPS'), findsOneWidget);  // View title (uppercased)
+    expect(find.text('Explorer'), findsOneWidget); // Header title
+    expect(
+        find.text('PROJECT LAYERS'), findsOneWidget); // View title (uppercased)
+    expect(find.text('MWM MAPS'), findsOneWidget); // View title (uppercased)
     expect(find.text('Layer store starting'), findsOneWidget);
+    expect(find.byTooltip('Create drawing layer'), findsOneWidget);
+    expect(find.byTooltip('Refresh project layers'), findsOneWidget);
+    expect(find.byTooltip('Back up project layers'), findsOneWidget);
 
     await tester.tap(find.text('PROJECT LAYERS'));
     await tester.pump();

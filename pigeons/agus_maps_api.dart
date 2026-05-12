@@ -39,6 +39,92 @@ class ResizeMapSurfaceRequest {
   final double? density;
 }
 
+/// Pointer position in the native map surface's physical pixel space.
+class MapPointerUpdateRequest {
+  MapPointerUpdateRequest({
+    required this.physicalX,
+    required this.physicalY,
+    required this.insideMap,
+  });
+
+  final double physicalX;
+  final double physicalY;
+  final bool insideMap;
+}
+
+/// Native map-space pointer projection result.
+class MapPointerCoordinate {
+  MapPointerCoordinate({
+    required this.physicalX,
+    required this.physicalY,
+    required this.insideMap,
+    required this.lat,
+    required this.lon,
+  });
+
+  final double physicalX;
+  final double physicalY;
+  final bool insideMap;
+  final double lat;
+  final double lon;
+}
+
+/// Native interaction line style for transient draw/edit geometry.
+class DrapeInteractionLineStyle {
+  DrapeInteractionLineStyle({
+    required this.colorRed,
+    required this.colorGreen,
+    required this.colorBlue,
+    required this.opacity,
+    required this.width,
+    required this.dashed,
+    required this.dashLength,
+    required this.gapLength,
+  });
+
+  /// Red channel, 0-255.
+  final int colorRed;
+
+  /// Green channel, 0-255.
+  final int colorGreen;
+
+  /// Blue channel, 0-255.
+  final int colorBlue;
+
+  /// Alpha opacity, 0.0-1.0.
+  final double opacity;
+
+  /// Stroke width in physical pixels.
+  final double width;
+
+  /// Whether the native renderer should split the line into dash segments.
+  final bool dashed;
+
+  /// Dash length in physical pixels when [dashed] is true.
+  final double dashLength;
+
+  /// Gap length in physical pixels when [dashed] is true.
+  final double gapLength;
+}
+
+/// Native interaction geometry payload.
+class DrapeInteractionGeometryRequest {
+  DrapeInteractionGeometryRequest({
+    required this.mode,
+    this.geometryWkt,
+    required this.lineStyle,
+  });
+
+  /// 0 inactive, 1 drawing, 2 editing feature.
+  final int mode;
+
+  /// WKT geometry, or null to clear.
+  final String? geometryWkt;
+
+  /// Style for line/edge geometry.
+  final DrapeInteractionLineStyle lineStyle;
+}
+
 /// Stable identifier for a place page feature.
 class PlacePageFeatureId {
   PlacePageFeatureId({
@@ -158,6 +244,15 @@ abstract class AgusMapsHostApi {
 
   @async
   bool destroyMapSurface();
+
+  /// Updates the native global pointer tracker and returns the projected map
+  /// coordinate when the pointer is inside a ready map surface.
+  @async
+  MapPointerCoordinate? updateMapPointer(MapPointerUpdateRequest request);
+
+  /// Updates native draw/edit interaction geometry with caller-provided styling.
+  @async
+  bool updateDrapeInteractionGeometry(DrapeInteractionGeometryRequest request);
 
   /// Returns the current place page payload if available.
   @async

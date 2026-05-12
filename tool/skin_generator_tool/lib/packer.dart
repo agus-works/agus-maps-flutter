@@ -34,7 +34,9 @@ class Packer {
         int shortSideFit = min(leftoverHoriz, leftoverVert);
         int longSideFit = max(leftoverHoriz, leftoverVert);
 
-        if (shortSideFit < bestShortSideFit || (shortSideFit == bestShortSideFit && longSideFit < bestLongSideFit)) {
+        if (shortSideFit < bestShortSideFit ||
+            (shortSideFit == bestShortSideFit &&
+                longSideFit < bestLongSideFit)) {
           bestNode = Rect(freeRect.x, freeRect.y, w, h);
           bestShortSideFit = shortSideFit;
           bestLongSideFit = longSideFit;
@@ -58,26 +60,46 @@ class Packer {
     if (freeNode.width - usedNode.width > freeNode.height - usedNode.height) {
       // Split vertically (Left and Right)
       if (freeNode.width > usedNode.width) {
-        freeRectangles.add(Rect(
-            freeNode.x + usedNode.width, freeNode.y,
-            freeNode.width - usedNode.width, freeNode.height));
+        freeRectangles.add(
+          Rect(
+            freeNode.x + usedNode.width,
+            freeNode.y,
+            freeNode.width - usedNode.width,
+            freeNode.height,
+          ),
+        );
       }
       if (freeNode.height > usedNode.height) {
-        freeRectangles.add(Rect(
-            freeNode.x, freeNode.y + usedNode.height,
-            usedNode.width, freeNode.height - usedNode.height));
+        freeRectangles.add(
+          Rect(
+            freeNode.x,
+            freeNode.y + usedNode.height,
+            usedNode.width,
+            freeNode.height - usedNode.height,
+          ),
+        );
       }
     } else {
       // Split horizontally (Top and Bottom)
       if (freeNode.width > usedNode.width) {
-        freeRectangles.add(Rect(
-            freeNode.x + usedNode.width, freeNode.y,
-            freeNode.width - usedNode.width, usedNode.height));
+        freeRectangles.add(
+          Rect(
+            freeNode.x + usedNode.width,
+            freeNode.y,
+            freeNode.width - usedNode.width,
+            usedNode.height,
+          ),
+        );
       }
       if (freeNode.height > usedNode.height) {
-        freeRectangles.add(Rect(
-            freeNode.x, freeNode.y + usedNode.height,
-            freeNode.width, freeNode.height - usedNode.height));
+        freeRectangles.add(
+          Rect(
+            freeNode.x,
+            freeNode.y + usedNode.height,
+            freeNode.width,
+            freeNode.height - usedNode.height,
+          ),
+        );
       }
     }
   }

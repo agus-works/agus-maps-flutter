@@ -110,7 +110,7 @@ class AgusWorkbench extends StatelessWidget {
 
   List<Widget> _buildTrailingActions(BuildContext context) {
     final actions = <Widget>[];
-    
+
     if (showPaneControls) {
       final paneButtons = _paneControlButtons(context);
       if (paneButtons.isNotEmpty) {
@@ -122,7 +122,7 @@ class AgusWorkbench extends StatelessWidget {
         }
       }
     }
-    
+
     actions.addAll(titleBarTrailingActions);
     return actions;
   }
@@ -130,7 +130,7 @@ class AgusWorkbench extends StatelessWidget {
   Widget _buildDivider(BuildContext context) {
     final colors = AgusThemeData.colorsOf(context);
     final dimensions = AgusThemeData.dimensionsOf(context);
-    
+
     return SizedBox(
       height: dimensions.titleBarHeight * 0.5,
       child: VerticalDivider(
@@ -218,11 +218,7 @@ class _AgusWorkbenchPaneToggleButton extends StatelessWidget {
             width: dimensions.toolbarButtonSize,
             height: dimensions.toolbarButtonSize,
             alignment: Alignment.center,
-            child: Icon(
-              icon,
-              size: dimensions.iconSize,
-              color: foreground,
-            ),
+            child: Icon(icon, size: dimensions.iconSize, color: foreground),
           ),
         ),
       ),

@@ -153,7 +153,8 @@ class MwmStorage {
   }
 
   /// Get metadata for a specific region and version.
-  MwmMetadata? getByRegionAndVersion(String regionName, String snapshotVersion) {
+  MwmMetadata? getByRegionAndVersion(
+      String regionName, String snapshotVersion) {
     for (final m in _cache) {
       if (m.regionName == regionName && m.snapshotVersion == snapshotVersion) {
         return m;
@@ -206,8 +207,7 @@ class MwmStorage {
     } else {
       // New version - mark all other versions of this region as inactive
       for (var i = 0; i < _cache.length; i++) {
-        if (_cache[i].regionName == metadata.regionName &&
-            _cache[i].isActive) {
+        if (_cache[i].regionName == metadata.regionName && _cache[i].isActive) {
           _cache[i] = MwmMetadata(
             regionName: _cache[i].regionName,
             snapshotVersion: _cache[i].snapshotVersion,

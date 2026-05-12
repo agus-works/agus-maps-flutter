@@ -33,27 +33,32 @@ void main() {
       const drawing = AppInteractionState(mode: AppInteractionMode.drawing);
       expect(drawing.allowsDrawing, isFalse);
 
-      const editing = AppInteractionState(mode: AppInteractionMode.editingFeature);
+      const editing =
+          AppInteractionState(mode: AppInteractionMode.editingFeature);
       expect(editing.allowsDrawing, isFalse);
 
       const searching = AppInteractionState(mode: AppInteractionMode.searching);
       expect(searching.allowsDrawing, isFalse);
     });
 
-    test('allowsNavigation is true in idle, searching, and switchingLayer modes', () {
+    test(
+        'allowsNavigation is true in idle, searching, and switchingLayer modes',
+        () {
       const idle = AppInteractionState(mode: AppInteractionMode.idle);
       expect(idle.allowsNavigation, isTrue);
 
       const searching = AppInteractionState(mode: AppInteractionMode.searching);
       expect(searching.allowsNavigation, isTrue);
 
-      const switching = AppInteractionState(mode: AppInteractionMode.switchingLayer);
+      const switching =
+          AppInteractionState(mode: AppInteractionMode.switchingLayer);
       expect(switching.allowsNavigation, isTrue);
 
       const drawing = AppInteractionState(mode: AppInteractionMode.drawing);
       expect(drawing.allowsNavigation, isFalse);
 
-      const editing = AppInteractionState(mode: AppInteractionMode.editingFeature);
+      const editing =
+          AppInteractionState(mode: AppInteractionMode.editingFeature);
       expect(editing.allowsNavigation, isFalse);
     });
 
@@ -61,7 +66,8 @@ void main() {
       const drawing = AppInteractionState(mode: AppInteractionMode.drawing);
       expect(drawing.isEditing, isTrue);
 
-      const editing = AppInteractionState(mode: AppInteractionMode.editingFeature);
+      const editing =
+          AppInteractionState(mode: AppInteractionMode.editingFeature);
       expect(editing.isEditing, isTrue);
 
       const idle = AppInteractionState(mode: AppInteractionMode.idle);
@@ -71,12 +77,15 @@ void main() {
       expect(searching.isEditing, isFalse);
     });
 
-    test('disabledReason returns appropriate message for blocked draw operation', () {
+    test(
+        'disabledReason returns appropriate message for blocked draw operation',
+        () {
       const drawing = AppInteractionState(mode: AppInteractionMode.drawing);
       final reason = drawing.disabledReason('draw');
       expect(reason, contains('drawing or feature edit is in progress'));
 
-      const editing = AppInteractionState(mode: AppInteractionMode.editingFeature);
+      const editing =
+          AppInteractionState(mode: AppInteractionMode.editingFeature);
       final editReason = editing.disabledReason('draw');
       expect(editReason, contains('drawing or feature edit is in progress'));
 
@@ -120,7 +129,7 @@ void main() {
       expect(state1, equals(state2));
       // Note: hashCode implementation uses Object.hashAll on map entries,
       // which may not be stable across identical maps. We verify equality works.
-      
+
       // Non-equal states should generally have different hashCodes (not guaranteed, but likely)
       expect(state1, isNot(equals(state3)));
     });
@@ -260,7 +269,8 @@ void main() {
       expect(controller.isOperationAllowed('route'), isTrue);
     });
 
-    test('disabledReason returns appropriate message for blocked operations', () {
+    test('disabledReason returns appropriate message for blocked operations',
+        () {
       final controller = AppInteractionStateController();
 
       expect(controller.disabledReason('draw'), isNull);
@@ -332,7 +342,8 @@ void main() {
     });
 
     test('editingFeature mode blocks drawing but allows feature edit', () {
-      const state = AppInteractionState(mode: AppInteractionMode.editingFeature);
+      const state =
+          AppInteractionState(mode: AppInteractionMode.editingFeature);
 
       expect(state.allowsDrawing, isFalse);
       expect(state.allowsFeatureEdit, isTrue);
@@ -356,14 +367,16 @@ void main() {
     });
 
     test('downloadingMwm mode allows MWM operations', () {
-      const state = AppInteractionState(mode: AppInteractionMode.downloadingMwm);
+      const state =
+          AppInteractionState(mode: AppInteractionMode.downloadingMwm);
 
       expect(state.allowsMwmDownload, isTrue);
       expect(state.allowsDrawing, isFalse);
     });
 
     test('switchingLayer mode allows navigation and layer operations', () {
-      const state = AppInteractionState(mode: AppInteractionMode.switchingLayer);
+      const state =
+          AppInteractionState(mode: AppInteractionMode.switchingLayer);
 
       expect(state.allowsNavigation, isTrue);
       expect(state.allowsLayerSwitch, isTrue);

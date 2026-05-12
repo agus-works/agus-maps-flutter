@@ -179,7 +179,8 @@ void main() {
 
   group('AgusCommandId', () {
     test('provides display names for commands', () {
-      expect(AgusCommandId.displayName(AgusCommandId.openCommandBar), 'Open Command Bar');
+      expect(AgusCommandId.displayName(AgusCommandId.openCommandBar),
+          'Open Command Bar');
       expect(AgusCommandId.displayName(AgusCommandId.zoomIn), 'Zoom In');
       expect(AgusCommandId.displayName(AgusCommandId.undo), 'Undo');
     });
@@ -223,7 +224,8 @@ void main() {
     });
 
     test('provides Windows defaults', () {
-      final defaults = AgusKeymapDefaults.forPlatform(AgusKeymapPlatform.windows);
+      final defaults =
+          AgusKeymapDefaults.forPlatform(AgusKeymapPlatform.windows);
 
       expect(defaults, isNotEmpty);
 
@@ -249,8 +251,10 @@ void main() {
     });
 
     test('provides mobile defaults', () {
-      final androidDefaults = AgusKeymapDefaults.forPlatform(AgusKeymapPlatform.android);
-      final iosDefaults = AgusKeymapDefaults.forPlatform(AgusKeymapPlatform.ios);
+      final androidDefaults =
+          AgusKeymapDefaults.forPlatform(AgusKeymapPlatform.android);
+      final iosDefaults =
+          AgusKeymapDefaults.forPlatform(AgusKeymapPlatform.ios);
 
       // Mobile has minimal defaults
       expect(androidDefaults, isNotEmpty);
@@ -277,7 +281,8 @@ void main() {
     });
 
     test('Windows defaults avoid common OS shortcuts', () {
-      final defaults = AgusKeymapDefaults.forPlatform(AgusKeymapPlatform.windows);
+      final defaults =
+          AgusKeymapDefaults.forPlatform(AgusKeymapPlatform.windows);
 
       final cmds = defaults.map((e) => e.keybinding).toList();
 

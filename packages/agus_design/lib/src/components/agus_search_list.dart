@@ -193,11 +193,7 @@ class AgusSearchResultRow extends StatelessWidget {
             child: Row(
               children: [
                 if (item.icon != null) ...[
-                  Icon(
-                    item.icon,
-                    size: dimensions.iconSize,
-                    color: foreground,
-                  ),
+                  Icon(item.icon, size: dimensions.iconSize, color: foreground),
                   const SizedBox(width: 8),
                 ],
                 Expanded(
@@ -209,9 +205,9 @@ class AgusSearchResultRow extends StatelessWidget {
                         item.label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: foreground,
-                        ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: foreground),
                       ),
                       if (item.metadata != null) ...[
                         const SizedBox(height: 2),
@@ -219,9 +215,8 @@ class AgusSearchResultRow extends StatelessWidget {
                           item.metadata!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: colors.descriptionForeground,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: colors.descriptionForeground),
                         ),
                       ],
                     ],

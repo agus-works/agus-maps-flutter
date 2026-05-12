@@ -14,8 +14,14 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <cerrno>
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <memory>
 #include <mutex>
+#include <set>
+#include <string>
+#include <utility>
 #include <boost/regex.hpp>
 
 #include "base/file_name_utils.hpp"
@@ -31,10 +37,12 @@
 #include "platform/constants.hpp"
 #include "coding/file_reader.hpp"
 #include "drape/graphics_context_factory.hpp"
+#include "drape/color.hpp"
 #include "drape_frontend/visual_params.hpp"
 #include "drape_frontend/user_event_stream.hpp"
 #include "drape_frontend/drape_engine.hpp"
 #include "drape_frontend/active_frame_callback.hpp"
+#include "drape_frontend/drape_api.hpp"
 #include "geometry/mercator.hpp"
 #include "indexer/feature_meta.hpp"
 #include "geometry/screenbase.hpp"
@@ -76,16 +84,39 @@ static bool g_drapeEngineCreated = false;
 static bool g_loggingInitialized = false;
 static std::mutex g_mutex;
 static std::mutex g_placePageMutex;
+static std::mutex g_mapPointerMutex;
+static std::mutex g_viewportMutex;
 static double g_currentBearingDegrees = 0.0;
+static std::unique_ptr<ScreenBase> g_currentScreen;
 static bool g_3dBuildingsEnabled = false;
 static bool g_outdoorsEnabled = false;
 static bool g_isolinesEnabled = false;
 static bool g_subwayEnabled = false;
 
+struct AgusMapPointerState {
+    double physicalX = 0.0;
+    double physicalY = 0.0;
+    double lat = 0.0;
+    double lon = 0.0;
+    bool insideMap = false;
+    bool hasCoordinate = false;
+};
+
+static AgusMapPointerState g_lastMapPointer;
+
 namespace
 {
 double constexpr kDegreesPerRadian = 180.0 / 3.14159265358979323846;
 double constexpr kRadiansPerDegree = 3.14159265358979323846 / 180.0;
+std::set<std::string> g_duckDBInteractionDrapeLineIds;
+
+struct DuckDBInteractionLineStyle {
+    dp::Color color = dp::Color(37, 99, 235, 235);
+    float width = 2.0f;
+    bool dashed = false;
+    double dashLength = 12.0;
+    double gapLength = 7.0;
+};
 
 double NormalizeBearingDegrees(double degrees) {
     double normalized = std::fmod(degrees, 360.0);
@@ -127,7 +158,160 @@ void SetViewportTracking() {
     g_framework->SetViewportListener([](ScreenBase const & screen) {
         g_currentBearingDegrees = NormalizeBearingDegrees(
             screen.GetAngle() * kDegreesPerRadian);
+        std::lock_guard<std::mutex> lock(g_viewportMutex);
+        g_currentScreen = std::make_unique<ScreenBase>(screen);
     });
+}
+
+std::vector<m2::PointD> ParseWktMercatorPoints(char const * wkt) {
+    std::vector<m2::PointD> points;
+    if (wkt == nullptr) {
+        return points;
+    }
+
+    char const * cursor = wkt;
+    while (*cursor != '\0') {
+        char * numberEnd = nullptr;
+        double const lon = std::strtod(cursor, &numberEnd);
+        if (numberEnd == cursor) {
+            ++cursor;
+            continue;
+        }
+        cursor = numberEnd;
+
+        double const lat = std::strtod(cursor, &numberEnd);
+        if (numberEnd == cursor) {
+            break;
+        }
+        cursor = numberEnd;
+        points.push_back(mercator::FromLatLon(lat, lon));
+    }
+    return points;
+}
+
+std::vector<std::vector<m2::PointD>> ParseWktMercatorGeometries(char const * wkt) {
+    std::vector<std::vector<m2::PointD>> geometries;
+    if (wkt == nullptr) {
+        return geometries;
+    }
+
+    std::string_view const text(wkt);
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t end = text.find('\n', start);
+        if (end == std::string_view::npos) {
+            end = text.size();
+        }
+        auto const chunk = text.substr(start, end - start);
+        if (!chunk.empty()) {
+            std::string geometry(chunk);
+            auto points = ParseWktMercatorPoints(geometry.c_str());
+            if (!points.empty()) {
+                geometries.push_back(std::move(points));
+            }
+        }
+        start = end + 1;
+    }
+    return geometries;
+}
+
+std::vector<std::vector<m2::PointD>> BuildInteractionLineGeometries(
+    std::vector<m2::PointD> const & points,
+    DuckDBInteractionLineStyle const & style) {
+    if (points.size() < 2) {
+        return {};
+    }
+    if (!style.dashed) {
+        return {points};
+    }
+
+    ScreenBase screen;
+    {
+        std::lock_guard<std::mutex> lock(g_viewportMutex);
+        if (!g_currentScreen) {
+            return {points};
+        }
+        screen = *g_currentScreen;
+    }
+
+    double const dashLength = std::max(1.0, style.dashLength);
+    double const gapLength = std::max(1.0, style.gapLength);
+    double const cycleLength = dashLength + gapLength;
+    std::vector<std::vector<m2::PointD>> dashes;
+    for (size_t segmentIndex = 1; segmentIndex < points.size(); ++segmentIndex) {
+        auto const & start = points[segmentIndex - 1];
+        auto const & end = points[segmentIndex];
+        auto const startPx = screen.GtoP(start);
+        auto const endPx = screen.GtoP(end);
+        double const lengthPx = std::hypot(endPx.x - startPx.x, endPx.y - startPx.y);
+        if (lengthPx <= 0.0) {
+            continue;
+        }
+        for (double offsetPx = 0.0; offsetPx < lengthPx; offsetPx += cycleLength) {
+            double const dashEndPx = std::min(lengthPx, offsetPx + dashLength);
+            if (dashEndPx <= offsetPx) {
+                continue;
+            }
+            double const startT = offsetPx / lengthPx;
+            double const endT = dashEndPx / lengthPx;
+            dashes.push_back({
+                m2::PointD(
+                    start.x + ((end.x - start.x) * startT),
+                    start.y + ((end.y - start.y) * startT)),
+                m2::PointD(
+                    start.x + ((end.x - start.x) * endT),
+                    start.y + ((end.y - start.y) * endT)),
+            });
+        }
+    }
+    return dashes.empty() ? std::vector<std::vector<m2::PointD>>{points} : dashes;
+}
+
+void UpdateDuckDBDrapeApiLines(
+    std::set<std::string> & activeIds,
+    std::vector<std::vector<m2::PointD>> const & lineGeometries,
+    std::string const & idPrefix,
+    DuckDBInteractionLineStyle const & style) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        return;
+    }
+
+    std::set<std::string> nextIds;
+    size_t lineIndex = 0;
+    for (auto const & points : lineGeometries) {
+        auto const renderGeometries = BuildInteractionLineGeometries(points, style);
+        size_t segmentIndex = 0;
+        for (auto const & renderPoints : renderGeometries) {
+            if (renderPoints.size() < 2) {
+                continue;
+            }
+            auto const id = idPrefix + "-" + std::to_string(lineIndex) +
+                "-" + std::to_string(segmentIndex++);
+            nextIds.insert(id);
+            g_framework->GetDrapeApi().AddLine(
+                id,
+                df::DrapeApiLineData(renderPoints, style.color).Width(style.width));
+        }
+        ++lineIndex;
+    }
+
+    for (auto const & oldId : activeIds) {
+        if (nextIds.count(oldId) == 0) {
+            g_framework->GetDrapeApi().RemoveLine(oldId);
+        }
+    }
+    activeIds = std::move(nextIds);
+}
+
+void ClearDuckDBDrapeApiLines(std::set<std::string> & activeIds) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        activeIds.clear();
+        return;
+    }
+    for (auto const & id : activeIds) {
+        g_framework->GetDrapeApi().RemoveLine(id);
+    }
+    activeIds.clear();
 }
 
 void SetOutdoorsEnabledInternal(bool enabled) {
@@ -632,6 +816,46 @@ FFI_PLUGIN_EXPORT int comaps_screen_to_latlon(
     return 1;
 }
 
+FFI_PLUGIN_EXPORT int comaps_update_map_pointer(
+    double physical_x,
+    double physical_y,
+    int inside_map,
+    double* lat,
+    double* lon) {
+    if (!lat || !lon) {
+        return 0;
+    }
+
+    bool hasCoordinate = false;
+    double projectedLat = 0.0;
+    double projectedLon = 0.0;
+    if (g_framework && inside_map != 0) {
+        auto const mercatorPoint = g_framework->PtoG(
+            m2::PointD(physical_x, physical_y));
+        auto const coordinate = mercator::ToLatLon(mercatorPoint);
+        projectedLat = coordinate.m_lat;
+        projectedLon = coordinate.m_lon;
+        hasCoordinate = true;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_mapPointerMutex);
+        g_lastMapPointer.physicalX = physical_x;
+        g_lastMapPointer.physicalY = physical_y;
+        g_lastMapPointer.lat = projectedLat;
+        g_lastMapPointer.lon = projectedLon;
+        g_lastMapPointer.insideMap = inside_map != 0;
+        g_lastMapPointer.hasCoordinate = hasCoordinate;
+    }
+
+    if (!hasCoordinate) {
+        return 0;
+    }
+    *lat = projectedLat;
+    *lon = projectedLon;
+    return 1;
+}
+
 FFI_PLUGIN_EXPORT int comaps_latlon_to_screen(
     double lat,
     double lon,
@@ -701,13 +925,86 @@ FFI_PLUGIN_EXPORT void agus_duckdb_free_render_features(
 
 FFI_PLUGIN_EXPORT int32_t agus_duckdb_refresh_render_layers(void) { return -1; }
 
-FFI_PLUGIN_EXPORT void agus_duckdb_set_edit_handles_from_wkt(const char* /* geometryWkt */) {}
+FFI_PLUGIN_EXPORT void agus_duckdb_set_edit_handles_from_wkt(const char* geometryWkt) {
+    std::vector<std::vector<m2::PointD>> geometries = ParseWktMercatorGeometries(geometryWkt);
+    DuckDBInteractionLineStyle style;
+    style.color = dp::Color(245, 158, 11, 242);
+    style.dashed = false;
+    UpdateDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds, geometries, "duckdb-interaction", style);
+    std::fprintf(stderr,
+                 "[AgusMapsFlutter] DuckDB interaction geometry: mode=2 geometries=%zu renderer=DrapeApiLineData depthTest=0 lineWidth=%.2f dashed=0 platform=linux\n",
+                 geometries.size(),
+                 style.width);
+    WakeRenderer();
+}
 
 FFI_PLUGIN_EXPORT void agus_duckdb_set_interaction_geometry_from_wkt(
-    int32_t /* interactionMode */,
-    const char* /* geometryWkt */) {}
+    int32_t interactionMode,
+    const char* geometryWkt) {
+    if (interactionMode == 0 || geometryWkt == nullptr || *geometryWkt == '\0') {
+        ClearDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds);
+        WakeRenderer();
+        return;
+    }
+    DuckDBInteractionLineStyle style;
+    style.dashed = interactionMode == 1;
+    if (interactionMode == 2) {
+        style.color = dp::Color(245, 158, 11, 242);
+        style.dashed = false;
+    }
+    auto geometries = ParseWktMercatorGeometries(geometryWkt);
+    UpdateDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds, geometries, "duckdb-interaction", style);
+    std::fprintf(stderr,
+                 "[AgusMapsFlutter] DuckDB interaction geometry: mode=%d geometries=%zu renderer=DrapeApiLineData depthTest=0 lineWidth=%.2f dashed=%d platform=linux\n",
+                 interactionMode,
+                 geometries.size(),
+                 style.width,
+                 style.dashed ? 1 : 0);
+    WakeRenderer();
+}
 
-FFI_PLUGIN_EXPORT void agus_duckdb_clear_edit_handles(void) {}
+FFI_PLUGIN_EXPORT void agus_duckdb_update_interaction_geometry(
+    int32_t interactionMode,
+    const char* geometryWkt,
+    int32_t red,
+    int32_t green,
+    int32_t blue,
+    double opacity,
+    double width,
+    int32_t dashed,
+    double dashLength,
+    double gapLength) {
+    if (interactionMode == 0 || geometryWkt == nullptr || *geometryWkt == '\0') {
+        ClearDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds);
+        WakeRenderer();
+        return;
+    }
+    DuckDBInteractionLineStyle style;
+    int const clampedRed = std::max(0, std::min(red, 255));
+    int const clampedGreen = std::max(0, std::min(green, 255));
+    int const clampedBlue = std::max(0, std::min(blue, 255));
+    int const alpha = std::max(0, std::min(static_cast<int>(opacity * 255.0), 255));
+    style.color = dp::Color(clampedRed, clampedGreen, clampedBlue, alpha);
+    style.width = static_cast<float>(std::max(0.5, std::min(width, 8.0)));
+    style.dashed = dashed != 0;
+    style.dashLength = std::max(1.0, dashLength);
+    style.gapLength = std::max(1.0, gapLength);
+    auto geometries = ParseWktMercatorGeometries(geometryWkt);
+    UpdateDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds, geometries, "duckdb-interaction", style);
+    std::fprintf(stderr,
+                 "[AgusMapsFlutter] DuckDB interaction geometry: mode=%d geometries=%zu renderer=DrapeApiLineData depthTest=0 lineWidth=%.2f opacity=%d dashed=%d platform=linux\n",
+                 interactionMode,
+                 geometries.size(),
+                 style.width,
+                 alpha,
+                 style.dashed ? 1 : 0);
+    WakeRenderer();
+}
+
+FFI_PLUGIN_EXPORT void agus_duckdb_clear_edit_handles(void) {
+    ClearDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds);
+    WakeRenderer();
+}
 
 FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t /* enabled */) {}
 

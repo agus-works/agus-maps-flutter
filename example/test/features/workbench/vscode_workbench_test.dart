@@ -11,6 +11,7 @@ void main() {
     tester,
   ) async {
     final controller = WorkbenchController();
+    final modalActivities = <WorkbenchActivity>[];
 
     await pumpExampleWidget(
       tester,
@@ -35,6 +36,7 @@ void main() {
             ],
           ),
         ],
+        onModalActivitySelected: modalActivities.add,
         statusBarBuilder: (_, state) => AgusStatusBar(
           leftItems: [
             AgusStatusBarItem(
@@ -53,7 +55,8 @@ void main() {
 
     expect(find.byType(AgusWorkbench), findsOneWidget);
     expect(find.byType(AgusPanelTabBar), findsNothing);
-    expect(find.byType(AgusEditorTabBar), findsNWidgets(2));
+    expect(find.byType(AgusEditorTabBar), findsNothing);
+    expect(find.byType(AgusTabBar), findsNWidgets(2));
     expect(find.byType(AgusViewPaneContainer), findsOneWidget);
     expect(find.text('activity:explorer'), findsOneWidget);
     expect(find.text('editor:map'), findsOneWidget);
@@ -69,6 +72,11 @@ void main() {
     await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     expect(controller.state.primarySideBarVisible, isFalse);
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(modalActivities, [WorkbenchActivity.settings]);
+    expect(controller.state.activeActivity, WorkbenchActivity.search);
 
     await tester.tap(_tabText(0, 'Blank'));
     await tester.pumpAndSettle();
@@ -152,7 +160,7 @@ void main() {
 
 Finder _tabText(int tabBarIndex, String text) {
   return find.descendant(
-    of: find.byType(AgusEditorTabBar).at(tabBarIndex),
+    of: find.byType(AgusTabBar).at(tabBarIndex),
     matching: find.text(text),
   );
 }

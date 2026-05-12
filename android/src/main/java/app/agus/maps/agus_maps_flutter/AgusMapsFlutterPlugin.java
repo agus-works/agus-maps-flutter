@@ -237,6 +237,48 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, AgusMapsApi.AgusMap
     }
 
     @Override
+    public void updateMapPointer(
+            @NonNull AgusMapsApi.MapPointerUpdateRequest request,
+            @NonNull AgusMapsApi.NullableResult<AgusMapsApi.MapPointerCoordinate> result) {
+        double[] latLon = new double[2];
+        int projected = nativeUpdateMapPointer(
+                request.getPhysicalX(),
+                request.getPhysicalY(),
+                request.getInsideMap() ? 1 : 0,
+                latLon);
+        if (projected != 1) {
+            result.success(null);
+            return;
+        }
+        result.success(new AgusMapsApi.MapPointerCoordinate.Builder()
+                .setPhysicalX(request.getPhysicalX())
+                .setPhysicalY(request.getPhysicalY())
+                .setInsideMap(request.getInsideMap())
+                .setLat(latLon[0])
+                .setLon(latLon[1])
+                .build());
+    }
+
+    @Override
+    public void updateDrapeInteractionGeometry(
+            @NonNull AgusMapsApi.DrapeInteractionGeometryRequest request,
+            @NonNull AgusMapsApi.Result<Boolean> result) {
+        AgusMapsApi.DrapeInteractionLineStyle style = request.getLineStyle();
+        nativeUpdateDrapeInteractionGeometry(
+                request.getMode().intValue(),
+                request.getGeometryWkt(),
+                style.getColorRed().intValue(),
+                style.getColorGreen().intValue(),
+                style.getColorBlue().intValue(),
+                style.getOpacity(),
+                style.getWidth(),
+                style.getDashed() ? 1 : 0,
+                style.getDashLength(),
+                style.getGapLength());
+        result.success(true);
+    }
+
+    @Override
     public void getCurrentPlacePage(@NonNull AgusMapsApi.NullableResult<AgusMapsApi.PlacePageData> result) {
         result.success(nativeGetCurrentPlacePage());
     }
@@ -271,6 +313,19 @@ public class AgusMapsFlutterPlugin implements FlutterPlugin, AgusMapsApi.AgusMap
     private native void nativeSetLocale(String locale);
     private native AgusMapsApi.PlacePageData nativeGetCurrentPlacePage();
     private native void nativeClearPlacePageSelection();
+    private native int nativeUpdateMapPointer(
+            double physicalX, double physicalY, int insideMap, double[] latLon);
+    private native void nativeUpdateDrapeInteractionGeometry(
+            int mode,
+            String geometryWkt,
+            int red,
+            int green,
+            int blue,
+            double opacity,
+            double width,
+            int dashed,
+            double dashLength,
+            double gapLength);
 
   /**
    * Called from native code when an active frame is rendered.
