@@ -14,8 +14,10 @@
 #include <flutter/texture_registrar.h>
 
 #include <ShlObj.h>
+#include <d3d11.h>
 #include <windows.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
@@ -42,8 +44,10 @@ using OnSizeChangedFn = void (*)(int32_t, int32_t);
 using SetVisualScaleFn = void (*)(float);
 using OnSurfaceDestroyedFn = void (*)();
 using GetSharedTextureHandleFn = void* (*)();
+using GetSharedTextureDescriptorInfoFn = int (*)(void**, int32_t*, int32_t*);
 using GetD3D11DeviceFn = void* (*)();
 using GetD3D11TextureFn = void* (*)();
+using GetD3D11TextureInfoFn = int (*)(void**, int32_t*, int32_t*);
 using RenderFrameFn = void (*)();
 using SetFrameReadyCallbackFn = void (*)(FrameReadyCallback);
 using UpdateMapPointerFn = int (*)(double, double, int, double*, double*);
@@ -52,14 +56,18 @@ using UpdateDrapeInteractionGeometryFn =
 
 static HMODULE g_ffiModule = nullptr;
 static bool g_ffiLoaded = false;
+static constexpr UINT kAgusFrameReadyMessage = WM_APP + 0x0471;
+static constexpr UINT kAgusMapReadyMessage = WM_APP + 0x0472;
 
 static CreateSurfaceFn g_fnCreateSurface = nullptr;
 static OnSizeChangedFn g_fnOnSizeChanged = nullptr;
 static SetVisualScaleFn g_fnSetVisualScale = nullptr;
 static OnSurfaceDestroyedFn g_fnOnSurfaceDestroyed = nullptr;
 static GetSharedTextureHandleFn g_fnGetSharedTextureHandle = nullptr;
+static GetSharedTextureDescriptorInfoFn g_fnGetSharedTextureDescriptorInfo = nullptr;
 static GetD3D11DeviceFn g_fnGetD3D11Device = nullptr;
 static GetD3D11TextureFn g_fnGetD3D11Texture = nullptr;
+static GetD3D11TextureInfoFn g_fnGetD3D11TextureInfo = nullptr;
 static RenderFrameFn g_fnRenderFrame = nullptr;
 static SetFrameReadyCallbackFn g_fnSetFrameReadyCallback = nullptr;
 static UpdateMapPointerFn g_fnUpdateMapPointer = nullptr;
@@ -111,10 +119,14 @@ static bool LoadFfiLibrary() {
         GetProcAddress(g_ffiModule, "agus_native_on_surface_destroyed"));
     g_fnGetSharedTextureHandle = reinterpret_cast<GetSharedTextureHandleFn>(
         GetProcAddress(g_ffiModule, "agus_get_shared_texture_handle"));
+    g_fnGetSharedTextureDescriptorInfo = reinterpret_cast<GetSharedTextureDescriptorInfoFn>(
+        GetProcAddress(g_ffiModule, "agus_get_shared_texture_descriptor_info"));
     g_fnGetD3D11Device = reinterpret_cast<GetD3D11DeviceFn>(
         GetProcAddress(g_ffiModule, "agus_get_d3d11_device"));
     g_fnGetD3D11Texture = reinterpret_cast<GetD3D11TextureFn>(
         GetProcAddress(g_ffiModule, "agus_get_d3d11_texture"));
+    g_fnGetD3D11TextureInfo = reinterpret_cast<GetD3D11TextureInfoFn>(
+        GetProcAddress(g_ffiModule, "agus_get_d3d11_texture_info"));
     g_fnRenderFrame = reinterpret_cast<RenderFrameFn>(
         GetProcAddress(g_ffiModule, "agus_render_frame"));
     g_fnSetFrameReadyCallback = reinterpret_cast<SetFrameReadyCallbackFn>(
@@ -397,11 +409,16 @@ private:
     std::string ExtractAllDataFiles();
     void ExtractDirectory(const fs::path& sourcePath, const fs::path& destPath);
     bool DataDirLooksComplete(const fs::path& dataDir);
+    void MarkFrameAvailableOnPlatformThread();
+    void SendMapReadyOnPlatformThread();
 
     flutter::PluginRegistrarWindows* registrar_;
     flutter::TextureRegistrar* texture_registrar_;
     std::unique_ptr<AgusMapsFlutterApi> flutter_api_;
-    bool map_ready_sent_ = false;
+    std::atomic_bool frame_ready_pending_{false};
+    std::atomic_bool map_ready_sent_{false};
+    HWND window_handle_ = nullptr;
+    int window_proc_delegate_id_ = 0;
     
     // Texture state
     int64_t texture_id_ = -1;
@@ -420,6 +437,12 @@ private:
 static void OnNativeFrameReady() {
     if (g_pluginInstance) {
         g_pluginInstance->OnFrameReady();
+    }
+}
+
+static void ReleaseD3D11Texture(void* release_context) {
+    if (release_context) {
+        static_cast<ID3D11Texture2D*>(release_context)->Release();
     }
 }
 
@@ -445,10 +468,30 @@ AgusMapsFlutterPlugin::AgusMapsFlutterPlugin(
     : registrar_(registrar)
     , texture_registrar_(registrar->texture_registrar()) {
     flutter_api_ = std::make_unique<AgusMapsFlutterApi>(registrar->messenger());
+    if (auto* view = registrar_->GetView()) {
+        window_handle_ = view->GetNativeWindow();
+        window_proc_delegate_id_ = registrar_->RegisterTopLevelWindowProcDelegate(
+            [this](HWND, UINT message, WPARAM, LPARAM) -> std::optional<LRESULT> {
+                if (message == kAgusFrameReadyMessage) {
+                    MarkFrameAvailableOnPlatformThread();
+                    return 0;
+                }
+                if (message == kAgusMapReadyMessage) {
+                    SendMapReadyOnPlatformThread();
+                    return 0;
+                }
+                return std::nullopt;
+            });
+    }
     AGUS_DEBUG_LOG("[AgusMapsFlutter] Plugin constructed\n");
 }
 
 AgusMapsFlutterPlugin::~AgusMapsFlutterPlugin() {
+    if (window_proc_delegate_id_ != 0) {
+        registrar_->UnregisterTopLevelWindowProcDelegate(window_proc_delegate_id_);
+        window_proc_delegate_id_ = 0;
+    }
+
     // Cleanup texture if registered
     if (texture_id_ >= 0 && texture_registrar_) {
         texture_registrar_->UnregisterTexture(texture_id_);
@@ -465,20 +508,42 @@ AgusMapsFlutterPlugin::~AgusMapsFlutterPlugin() {
 }
 
 void AgusMapsFlutterPlugin::OnFrameReady() {
-    // Mark texture as needing update (called from native render thread)
-    if (texture_id_ >= 0 && texture_registrar_) {
-        texture_registrar_->MarkTextureFrameAvailable(texture_id_);
-        if (!map_ready_sent_ && flutter_api_) {
-            map_ready_sent_ = true;
-            flutter_api_->OnMapReady(
-                texture_id_,
-                []() {},
-                [](const FlutterError& error) {
-                    AgusWriteLog("[AgusMapsFlutter] onMapReady failed\n");
-                });
+    if (texture_id_ < 0 || !texture_registrar_) {
+        return;
+    }
+
+    texture_registrar_->MarkTextureFrameAvailable(texture_id_);
+
+    if (flutter_api_ && !map_ready_sent_.exchange(true)) {
+        if (window_handle_) {
+            PostMessageW(window_handle_, kAgusMapReadyMessage, 0, 0);
+        } else {
+            AgusWriteLog("[AgusMapsFlutter] WARN: Cannot dispatch onMapReady without a Flutter window\n");
+            map_ready_sent_ = false;
         }
     }
 }
+
+void AgusMapsFlutterPlugin::MarkFrameAvailableOnPlatformThread() {
+    frame_ready_pending_.store(false);
+    if (texture_id_ >= 0 && texture_registrar_) {
+        texture_registrar_->MarkTextureFrameAvailable(texture_id_);
+    }
+}
+
+void AgusMapsFlutterPlugin::SendMapReadyOnPlatformThread() {
+    if (texture_id_ < 0 || !flutter_api_) {
+        return;
+    }
+
+    flutter_api_->OnMapReady(
+        texture_id_,
+        []() {},
+        [](const FlutterError& error) {
+            AgusWriteLog("[AgusMapsFlutter] onMapReady failed\n");
+        });
+}
+
 void AgusMapsFlutterPlugin::ExtractMap(
     const std::string& asset_path,
     std::function<void(ErrorOr<std::string> reply)> result) {
@@ -734,52 +799,70 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
     surface_height_ = height;
     last_density_ = density;
     
-    // Create Flutter texture using GPU surface descriptor
+    // Create Flutter texture using the DXGI shared handle. Flutter's Windows
+    // embedder accepts both ID3D11Texture2D* and HANDLE descriptors, but the
+    // ANGLE path used by Flutter reliably binds this shared-handle variant for
+    // textures produced by the plugin's own D3D device.
     if (sharedHandle && texture_registrar_) {
-        // Create texture variant with GPU surface callback
-        // IMPORTANT: We query the current handle dynamically because it changes on resize
         texture_ = std::make_unique<flutter::TextureVariant>(
             flutter::GpuSurfaceTexture(
                 kFlutterDesktopGpuSurfaceTypeDxgiSharedHandle,
                 [this](size_t w, size_t h) -> const FlutterDesktopGpuSurfaceDescriptor* {
-                    // Query the CURRENT shared handle - it may have changed due to resize
+                    std::lock_guard<std::mutex> lock(this->mutex_);
                     void* currentHandle = nullptr;
-                    if (g_fnGetSharedTextureHandle) {
+                    void* currentTextureForSize = nullptr;
+                    int32_t textureWidth = 0;
+                    int32_t textureHeight = 0;
+                    if (g_fnGetSharedTextureDescriptorInfo &&
+                        g_fnGetSharedTextureDescriptorInfo(
+                            &currentHandle,
+                            &textureWidth,
+                            &textureHeight) != 0) {
+                        currentTextureForSize = nullptr;
+                    } else if (g_fnGetSharedTextureHandle) {
                         currentHandle = g_fnGetSharedTextureHandle();
                     }
-                    
+                    if ((textureWidth <= 0 || textureHeight <= 0) &&
+                        g_fnGetD3D11TextureInfo &&
+                        g_fnGetD3D11TextureInfo(
+                            &currentTextureForSize,
+                            &textureWidth,
+                            &textureHeight) != 0 &&
+                        currentTextureForSize) {
+                        ReleaseD3D11Texture(currentTextureForSize);
+                    }
+
                     if (!currentHandle) {
-                        AgusWriteLog("[AgusMapsFlutter] WARNING: No current shared handle available\n");
+                        AgusWriteLog("[AgusMapsFlutter] WARNING: No current DXGI shared texture handle available\n");
                         return nullptr;
                     }
-                    
+                    if (textureWidth <= 0 || textureHeight <= 0) {
+                        textureWidth = surface_width_;
+                        textureHeight = surface_height_;
+                    }
+                    if (textureWidth <= 0 || textureHeight <= 0) {
+                        AgusWriteLog("[AgusMapsFlutter] WARNING: Invalid current DXGI texture size\n");
+                        return nullptr;
+                    }
+
                     // Debug logging (once per 60 samples to avoid spam)
                     static int sampleCount = 0;
                     if (sampleCount % 60 == 0) {
                         char dbg[256];
                         snprintf(dbg, sizeof(dbg),
-                            "[AgusMapsFlutter] GpuSurfaceTexture callback: requested=%zux%zu, surface=%dx%d, handle=%p\n",
-                            w, h, this->surface_width_, this->surface_height_, currentHandle);
+                            "[AgusMapsFlutter] GpuSurfaceTexture callback: requested=%zux%zu, texture=%dx%d, sharedHandle=%p\n",
+                            w, h, textureWidth, textureHeight, currentHandle);
                         AGUS_DEBUG_LOG("%s", dbg);
-
-                        if (w != static_cast<size_t>(this->surface_width_) ||
-                            h != static_cast<size_t>(this->surface_height_)) {
-                            char mismatch[256];
-                            snprintf(mismatch, sizeof(mismatch),
-                                "[AgusMapsFlutter] WARNING: Flutter requested size differs from surface (requested=%zux%zu, surface=%dx%d)\n",
-                                w, h, this->surface_width_, this->surface_height_);
-                            AGUS_DEBUG_LOG("%s", mismatch);
-                        }
                     }
                     sampleCount++;
-                    
+
                     // Use a member descriptor instead of static to avoid race conditions
                     this->gpu_surface_desc_.struct_size = sizeof(FlutterDesktopGpuSurfaceDescriptor);
                     this->gpu_surface_desc_.handle = currentHandle;
-                    this->gpu_surface_desc_.width = static_cast<size_t>(this->surface_width_);
-                    this->gpu_surface_desc_.height = static_cast<size_t>(this->surface_height_);
-                    this->gpu_surface_desc_.visible_width = static_cast<size_t>(this->surface_width_);
-                    this->gpu_surface_desc_.visible_height = static_cast<size_t>(this->surface_height_);
+                    this->gpu_surface_desc_.width = static_cast<size_t>(textureWidth);
+                    this->gpu_surface_desc_.height = static_cast<size_t>(textureHeight);
+                    this->gpu_surface_desc_.visible_width = static_cast<size_t>(textureWidth);
+                    this->gpu_surface_desc_.visible_height = static_cast<size_t>(textureHeight);
                     this->gpu_surface_desc_.format = kFlutterDesktopPixelFormatBGRA8888;
                     this->gpu_surface_desc_.release_context = nullptr;
                     this->gpu_surface_desc_.release_callback = nullptr;
@@ -805,7 +888,7 @@ void AgusMapsFlutterPlugin::CreateMapSurface(
         }
     } else {
         // Fallback: return -1 if texture creation failed
-        AgusWriteLog("[AgusMapsFlutter] WARN: No D3D11 texture available, returning -1\n");
+        AgusWriteLog("[AgusMapsFlutter] WARN: No DXGI shared texture handle available, returning -1\n");
         result(ErrorOr<int64_t>(static_cast<int64_t>(-1)));
     }
 }
@@ -825,12 +908,11 @@ void AgusMapsFlutterPlugin::ResizeMapSurface(
         AGUS_DEBUG_LOG("[AgusMapsFlutter] Resizing surface to %dx%d\n", width, height);
     }
 
-    surface_width_ = width;
-    surface_height_ = height;
-
     if (g_fnOnSizeChanged) {
         AGUS_DEBUG_LOG("[AgusMapsFlutter] Calling g_fnOnSizeChanged(%d, %d)\n", width, height);
         g_fnOnSizeChanged(width, height);
+        surface_width_ = width;
+        surface_height_ = height;
 
         if (density > 0.0 && g_fnSetVisualScale) {
             if (std::fabs(density - last_density_) > 0.001) {
@@ -841,8 +923,7 @@ void AgusMapsFlutterPlugin::ResizeMapSurface(
         }
 
         if (texture_id_ >= 0 && texture_registrar_) {
-            texture_registrar_->MarkTextureFrameAvailable(texture_id_);
-            AGUS_DEBUG_LOG("[AgusMapsFlutter] MarkTextureFrameAvailable called after resize\n");
+            AGUS_DEBUG_LOG("[AgusMapsFlutter] Texture frame notification deferred until post-resize native copy\n");
         }
     } else {
         AgusWriteLog("[AgusMapsFlutter] WARNING: g_fnOnSizeChanged is null!\n");

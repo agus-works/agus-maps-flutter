@@ -339,8 +339,12 @@ Windows builds can render a small overlay in the **upper-right corner** of the m
 - The interop blit flips Y to match D3D texture orientation. The overlay must therefore render with a **top‑left origin** when drawn into the interop FBO.
 - The CPU path keeps the standard OpenGL bottom‑left origin.
 
-**Disable overlay:**
-- Set `AGUS_MAPS_WIN_OVERLAY=0` (default is enabled).
+**Diagnostics overlay:**
+- Debug builds show `AGUS_MAPS_WIN_OVERLAY` diagnostics by default.
+- Release builds hide the overlay by default to avoid per-frame diagnostic text
+  rendering during production map interaction.
+- Set `AGUS_MAPS_WIN_OVERLAY=1` to force it on, or `AGUS_MAPS_WIN_OVERLAY=0` to
+  force it off.
 
 **Custom lines (native):**
 Developers can append lines from native code using:

@@ -1086,17 +1086,23 @@ void initWithPaths(String resourcePath, String writablePath) {
 }
 
 void _ensureDuckDBBridgeSupported() {
-  if (!(Platform.isMacOS || Platform.isIOS || Platform.isAndroid)) {
+  if (!(Platform.isMacOS ||
+      Platform.isIOS ||
+      Platform.isAndroid ||
+      Platform.isWindows)) {
     throw UnsupportedError(
-      'DuckDB bridge is currently wired on Apple and Android only',
+      'DuckDB bridge is currently wired on Apple, Android, and Windows only',
     );
   }
 }
 
 void _ensureNativeDuckDBLayerRenderingSupported() {
-  if (!(Platform.isMacOS || Platform.isIOS || Platform.isAndroid)) {
+  if (!(Platform.isMacOS ||
+      Platform.isIOS ||
+      Platform.isAndroid ||
+      Platform.isWindows)) {
     throw UnsupportedError(
-      'Native DuckDB layer rendering is currently wired on Apple and Android only',
+      'Native DuckDB layer rendering is currently wired on Apple, Android, and Windows only',
     );
   }
 }
@@ -1223,7 +1229,7 @@ bool applyDuckDBMigrationFile(String path) {
 
 /// Enables or disables native Drape rendering for visible DuckDB layers.
 ///
-/// Android, macOS, and iOS render DuckDB-backed points and line/polygon
+/// Android, macOS, iOS, and Windows render DuckDB-backed points and line/polygon
 /// outlines by submitting native user marks to CoMaps Drape. The renderer
 /// refreshes as the viewport changes while enabled.
 void setDuckDBMapLayerRenderingEnabled(bool enabled) {
@@ -1280,21 +1286,21 @@ DrapeInteractionLineStyle defaultDuckDBInteractionLineStyle([
 ]) {
   return switch (mode) {
     AgusDrapeInteractionMode.drawing => DrapeInteractionLineStyle(
-        colorRed: 37,
-        colorGreen: 99,
-        colorBlue: 235,
-        opacity: 0.94,
-        width: 2,
-        dashed: true,
-        dashLength: 12,
-        gapLength: 7,
+        colorRed: 14,
+        colorGreen: 165,
+        colorBlue: 233,
+        opacity: 0.98,
+        width: 3,
+        dashed: false,
+        dashLength: 14,
+        gapLength: 8,
       ),
     AgusDrapeInteractionMode.editingFeature => DrapeInteractionLineStyle(
-        colorRed: 245,
-        colorGreen: 158,
-        colorBlue: 11,
-        opacity: 0.95,
-        width: 2,
+        colorRed: 219,
+        colorGreen: 39,
+        colorBlue: 119,
+        opacity: 0.98,
+        width: 3.25,
         dashed: false,
         dashLength: 12,
         gapLength: 7,
@@ -1303,8 +1309,8 @@ DrapeInteractionLineStyle defaultDuckDBInteractionLineStyle([
         colorRed: 71,
         colorGreen: 85,
         colorBlue: 105,
-        opacity: 0.70,
-        width: 1.5,
+        opacity: 0.78,
+        width: 2.5,
         dashed: false,
         dashLength: 12,
         gapLength: 7,
@@ -1996,11 +2002,16 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   double _visualScale = 1.0;
   double _lastPanZoomRotation = 0.0;
   double _lastPanZoomBearing = 0.0;
+  double _lastPanZoomScale = 1.0;
 
   // Track pending resize to apply when becoming visible
   Size? _pendingResizeSize;
   double? _pendingResizePixelRatio;
   double? _pendingResizeUserScale;
+  Timer? _windowsResizeDebounceTimer;
+  int? _pendingWindowsPhysicalWidth;
+  int? _pendingWindowsPhysicalHeight;
+  double? _pendingWindowsVisualScale;
 
   @override
   void initState() {
@@ -2011,6 +2022,7 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _windowsResizeDebounceTimer?.cancel();
     super.dispose();
   }
 
@@ -2243,11 +2255,40 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
       }
     }
 
-    await resizeMapSurface(physicalWidth, physicalHeight, density: visualScale);
+    if (Platform.isWindows) {
+      _scheduleWindowsNativeResize(
+        physicalWidth,
+        physicalHeight,
+        visualScale,
+      );
+    } else {
+      await resizeMapSurface(physicalWidth, physicalHeight,
+          density: visualScale);
+    }
 
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _scheduleWindowsNativeResize(
+    int physicalWidth,
+    int physicalHeight,
+    double visualScale,
+  ) {
+    _pendingWindowsPhysicalWidth = physicalWidth;
+    _pendingWindowsPhysicalHeight = physicalHeight;
+    _pendingWindowsVisualScale = visualScale;
+    _windowsResizeDebounceTimer?.cancel();
+    _windowsResizeDebounceTimer = Timer(const Duration(milliseconds: 50), () {
+      final width = _pendingWindowsPhysicalWidth;
+      final height = _pendingWindowsPhysicalHeight;
+      final scale = _pendingWindowsVisualScale;
+      if (!mounted || width == null || height == null || scale == null) {
+        return;
+      }
+      unawaited(resizeMapSurface(width, height, density: scale));
+    });
   }
 
   bool _sameVisualScale(double left, double right) {
@@ -2314,7 +2355,16 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
         tap.moved = true;
       }
     }
-    _sendTouchEvent(TouchType.move, event.pointer, event.localPosition);
+    final isPrimaryMouseDrag = event.kind == PointerDeviceKind.mouse &&
+        (event.buttons & kPrimaryMouseButton) != 0;
+    if (Platform.isWindows &&
+        isPrimaryMouseDrag &&
+        _activePointers.length == 1) {
+      final pixelRatio = _devicePixelRatio;
+      scrollMap(-event.delta.dx * pixelRatio, -event.delta.dy * pixelRatio);
+    } else {
+      _sendTouchEvent(TouchType.move, event.pointer, event.localPosition);
+    }
     widget.onMapPointerMove?.call(event.localPosition);
   }
 
@@ -2395,10 +2445,28 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
     if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
     _lastPanZoomRotation = 0.0;
     _lastPanZoomBearing = getCurrentBearing();
+    _lastPanZoomScale = 1.0;
   }
 
   void _handlePointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
     if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
+
+    final pixelRatio = _devicePixelRatio;
+    final panDelta = event.panDelta;
+    if (panDelta.distanceSquared > 0) {
+      scrollMap(-panDelta.dx * pixelRatio, -panDelta.dy * pixelRatio);
+    }
+
+    final scaleDelta = event.scale / _lastPanZoomScale;
+    _lastPanZoomScale = event.scale;
+    if (scaleDelta.isFinite && (scaleDelta - 1.0).abs() > 0.001) {
+      scaleMap(
+        scaleDelta,
+        event.localPosition.dx * pixelRatio,
+        event.localPosition.dy * pixelRatio,
+        animated: false,
+      );
+    }
 
     final rotationDelta = event.rotation - _lastPanZoomRotation;
     _lastPanZoomRotation = event.rotation;
@@ -2414,6 +2482,7 @@ class _AgusMapState extends State<AgusMap> with WidgetsBindingObserver {
     if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux)) return;
     _lastPanZoomRotation = 0.0;
     _lastPanZoomBearing = getCurrentBearing();
+    _lastPanZoomScale = 1.0;
   }
 
   double _normalizeBearingDegrees(double degrees) {

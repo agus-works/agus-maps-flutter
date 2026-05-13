@@ -45,7 +45,8 @@ import 'duckdb_build.dart'
     show
         buildDuckDBAndroidArchives,
         buildDuckDBiOSXCFramework,
-        buildDuckDBMacOSXCFramework;
+        buildDuckDBMacOSXCFramework,
+        buildDuckDBWindowsRuntime;
 import 'duckdb_migration_generator.dart' show generateDuckDBMigrations;
 import 'archive_manager.dart' show createTarGz, extractTarGz;
 
@@ -990,7 +991,8 @@ Future<void> _buildMacOS() async {
 
 /// Build Windows library
 Future<void> _buildWindows() async {
-  await buildWindowsLibrary();
+  final duckdbWindowsDir = await buildDuckDBWindowsRuntime();
+  await buildWindowsLibrary(duckdbWindowsDir: duckdbWindowsDir);
 
   // Copy to windows/prebuilt/x64
   final outputDir = path.join(getBuildDir(), 'agus-binaries-windows', 'x64');

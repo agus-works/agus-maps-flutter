@@ -44,7 +44,8 @@ Layers and features can span large geographic areas or contain many scattered ge
 ### Active Selection State
 - ✅ Layer Manager tracks which layer/feature is currently selected
 - ✅ Selected layer highlights in UI with visual indicator
-- ✅ Selected feature shows edit handles in Drape (native rendering)
+- ✅ Selected feature shows edit handles in Drape (native rendering on Android,
+  iOS, macOS, and Windows)
 - ✅ Command bar "Focus Layer" commands populate from layer metadata
 - ✅ MWM layer focus commands use known region coordinates or trigger search
 

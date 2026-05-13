@@ -166,9 +166,22 @@ bool ShouldEnableOverlay()
 {
   const char * env = std::getenv("AGUS_MAPS_WIN_OVERLAY");
   if (!env)
+#ifdef NDEBUG
+    return false;
+#else
     return true;
+#endif
 
   return !(std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0 || std::strcmp(env, "FALSE") == 0);
+}
+
+bool ShouldDisableInterop()
+{
+  const char * env = std::getenv("AGUS_MAPS_WIN_DISABLE_INTEROP");
+  if (!env)
+    return false;
+
+  return std::strcmp(env, "1") == 0 || std::strcmp(env, "true") == 0 || std::strcmp(env, "TRUE") == 0;
 }
 
 static std::string ToLower(std::string value)
@@ -391,6 +404,8 @@ bool AgusWglContextFactory::InitializeWGL()
   }
 
   // Load WGL_NV_DX_interop functions
+  m_wglDXSetResourceShareHandleNV =
+      (PFNWGLDXSETRESOURCESHAREHANDLENVPROC)wglGetProcAddress("wglDXSetResourceShareHandleNV");
   m_wglDXOpenDeviceNV = (PFNWGLDXOPENDEVICENVPROC)wglGetProcAddress("wglDXOpenDeviceNV");
   m_wglDXCloseDeviceNV = (PFNWGLDXCLOSEDEVICENVPROC)wglGetProcAddress("wglDXCloseDeviceNV");
   m_wglDXRegisterObjectNV = (PFNWGLDXREGISTEROBJECTNVPROC)wglGetProcAddress("wglDXRegisterObjectNV");
@@ -399,6 +414,7 @@ bool AgusWglContextFactory::InitializeWGL()
   m_wglDXUnlockObjectsNV = (PFNWGLDXUNLOCKOBJECTSNVPROC)wglGetProcAddress("wglDXUnlockObjectsNV");
 
   LOG(LINFO, ("WGL interop functions:",
+              "share", m_wglDXSetResourceShareHandleNV != nullptr,
               "open", m_wglDXOpenDeviceNV != nullptr,
               "register", m_wglDXRegisterObjectNV != nullptr,
               "lock", m_wglDXLockObjectsNV != nullptr,
@@ -598,13 +614,33 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
       m_interopTexture = 0;
   }
 
-  // Close existing handle
-  if (m_sharedHandle)
+  // Keep the last completed shared texture alive across resize. Flutter may ask
+  // for a descriptor before Drape has rendered into the new texture; exposing the
+  // previous completed texture prevents a blank/intermediate resize frame.
+  if (m_sharedTexture && m_sharedHandle && m_width > 0 && m_height > 0)
   {
-    CloseHandle(m_sharedHandle);
-    m_sharedHandle = nullptr;
+    if (m_presentedSharedHandle && m_presentedSharedHandle != m_sharedHandle)
+      CloseHandle(m_presentedSharedHandle);
+    m_presentedSharedTexture = m_sharedTexture;
+    m_presentedSharedHandle = m_sharedHandle;
+    m_presentedWidth = m_width;
+    m_presentedHeight = m_height;
+    m_resizeHandoffPending = true;
+    LOG(LINFO, ("Shared texture resize handoff started: keeping previous texture",
+                m_presentedWidth, "x", m_presentedHeight));
+  }
+  else
+  {
+    if (m_presentedSharedHandle)
+      CloseHandle(m_presentedSharedHandle);
+    m_presentedSharedTexture.Reset();
+    m_presentedSharedHandle = nullptr;
+    m_presentedWidth = 0;
+    m_presentedHeight = 0;
+    m_resizeHandoffPending = false;
   }
 
+  m_sharedHandle = nullptr;
   m_sharedTexture.Reset();
   m_stagingTexture.Reset();
   m_keyedMutex.Reset();
@@ -681,7 +717,11 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
   //
   // WGL Interop setup:
   // WGL Interop setup:
-  if (m_wglDXOpenDeviceNV)
+  if (ShouldDisableInterop())
+  {
+      LOG(LWARNING, ("WGL Interop: disabled by AGUS_MAPS_WIN_DISABLE_INTEROP; using CPU copy"));
+  }
+  else if (m_wglDXOpenDeviceNV)
   {
       // Open Device
       m_interopDevice = m_wglDXOpenDeviceNV(m_d3dDevice.Get());
@@ -710,7 +750,21 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
             }
           };
 
+          auto prepareSharedHandleForInterop = [&]() -> bool {
+            if (!m_wglDXSetResourceShareHandleNV || !m_sharedHandle)
+              return true;
+            if (m_wglDXSetResourceShareHandleNV(m_sharedTexture.Get(), m_sharedHandle))
+              return true;
+
+            LOG(LWARNING, ("WGL Interop: Failed to associate shared handle with D3D texture.",
+                           "GetLastError:", GetLastError()));
+            return false;
+          };
+
           auto tryTextureInterop = [&]() -> bool {
+            if (!prepareSharedHandleForInterop())
+              return false;
+
             glGenTextures(1, &m_interopTexture);
             glBindTexture(GL_TEXTURE_2D, m_interopTexture);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -761,6 +815,9 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
           };
 
           auto tryRenderbufferInterop = [&]() -> bool {
+            if (!prepareSharedHandleForInterop())
+              return false;
+
             glGenRenderbuffers(1, &m_interopRenderbuffer);
             glBindRenderbuffer(GL_RENDERBUFFER, m_interopRenderbuffer);
             glBindRenderbuffer(GL_RENDERBUFFER, 0);
@@ -863,6 +920,66 @@ bool AgusWglContextFactory::CreateSharedTexture(int width, int height)
   return true;
 }
 
+HANDLE AgusWglContextFactory::GetSharedTextureHandle() const
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (m_resizeHandoffPending && m_presentedSharedTexture && m_presentedSharedHandle)
+    return m_presentedSharedHandle;
+  return m_sharedHandle;
+}
+
+bool AgusWglContextFactory::GetSharedTextureInfo(HANDLE * handle, int * width, int * height) const
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (!handle || !width || !height)
+    return false;
+
+  if (m_resizeHandoffPending && m_presentedSharedTexture && m_presentedSharedHandle &&
+      m_presentedWidth > 0 && m_presentedHeight > 0)
+  {
+    *handle = m_presentedSharedHandle;
+    *width = m_presentedWidth;
+    *height = m_presentedHeight;
+    return true;
+  }
+
+  if (!m_sharedHandle || m_width <= 0 || m_height <= 0)
+    return false;
+
+  *handle = m_sharedHandle;
+  *width = m_width;
+  *height = m_height;
+  return true;
+}
+
+bool AgusWglContextFactory::AddRefSharedTextureInfo(ID3D11Texture2D ** texture, int * width, int * height) const
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  if (!texture || !width || !height)
+    return false;
+
+  if (m_resizeHandoffPending && m_presentedSharedTexture &&
+      m_presentedWidth > 0 && m_presentedHeight > 0)
+  {
+    ID3D11Texture2D * presentedTexture = m_presentedSharedTexture.Get();
+    presentedTexture->AddRef();
+    *texture = presentedTexture;
+    *width = m_presentedWidth;
+    *height = m_presentedHeight;
+    return true;
+  }
+
+  if (!m_sharedTexture)
+    return false;
+
+  ID3D11Texture2D * sharedTexture = m_sharedTexture.Get();
+  sharedTexture->AddRef();
+  *texture = sharedTexture;
+  *width = m_width;
+  *height = m_height;
+  return true;
+}
+
 void AgusWglContextFactory::CleanupWGL()
 {
   if (m_uploadGlrc)
@@ -897,11 +1014,20 @@ void AgusWglContextFactory::CleanupD3D11()
     CloseHandle(m_sharedHandle);
     m_sharedHandle = nullptr;
   }
+  if (m_presentedSharedHandle && m_presentedSharedHandle != m_sharedHandle)
+  {
+    CloseHandle(m_presentedSharedHandle);
+  }
 
   m_stagingTexture.Reset();
   m_sharedTexture.Reset();
+  m_presentedSharedTexture.Reset();
   m_d3dContext.Reset();
   m_d3dDevice.Reset();
+  m_presentedSharedHandle = nullptr;
+  m_presentedWidth = 0;
+  m_presentedHeight = 0;
+  m_resizeHandoffPending = false;
 }
 
 void AgusWglContextFactory::SetOverlayCustomLines(std::vector<std::string> lines)
@@ -1178,10 +1304,6 @@ void AgusWglContextFactory::SetSurfaceSize(int width, int height)
   else
     wglMakeCurrent(nullptr, nullptr);
 
-  // Update dimensions
-  m_width = width;
-  m_height = height;
-
   // Recreate D3D11 shared texture at new size
   CreateSharedTexture(width, height);
 }
@@ -1228,18 +1350,10 @@ void AgusWglContextFactory::CopyToSharedTexture()
   if (fboToRead == 0)
     fboToRead = m_framebuffer;
 
-  // Determine size
-  GLint viewport[4];
-  glGetIntegerv(GL_VIEWPORT, viewport);
-  int readWidth = viewport[2];
-  int readHeight = viewport[3];
-
-  if (readWidth <= 0 || readHeight <= 0) {
-      readWidth = m_width;
-      readHeight = m_height;
-  }
-  if (readWidth > m_width) readWidth = m_width;
-  if (readHeight > m_height) readHeight = m_height;
+  const int readWidth = m_width;
+  const int readHeight = m_height;
+  if (readWidth <= 0 || readHeight <= 0)
+    return;
   
   m_renderedWidth.store(readWidth);
   m_renderedHeight.store(readHeight);
@@ -1289,10 +1403,25 @@ void AgusWglContextFactory::CopyToSharedTexture()
           glBindFramebuffer(GL_READ_FRAMEBUFFER, fboToRead);
           glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_interopFramebuffer);
 
+          GLboolean const wasScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+          GLint previousScissor[4] = {};
+          glGetIntegerv(GL_SCISSOR_BOX, previousScissor);
+          glDisable(GL_SCISSOR_TEST);
+
           // CRITICAL: Flip Y (OpenGL is Y-up, D3D is Y-down).
+          // Copy the whole native surface. CoMaps can leave a tile/postprocess
+          // scissor or viewport current at Present(); using that transient state
+          // clips the shared texture and appears as missing square sections.
           glBlitFramebuffer(0, 0, readWidth, readHeight,
                             0, readHeight, readWidth, 0,
                             GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+          if (wasScissorEnabled)
+          {
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(previousScissor[0], previousScissor[1],
+                      previousScissor[2], previousScissor[3]);
+          }
 
           glFinish();
 
@@ -1369,6 +1498,14 @@ void AgusWglContextFactory::CopyToSharedTexture()
         m_d3dContext->Flush();
         if (m_keyedMutex) m_keyedMutex->ReleaseSync(1);
       }
+  }
+
+  if (copiedFrame && m_resizeHandoffPending)
+  {
+    m_resizeHandoffPending = false;
+    LOG(LINFO, ("Shared texture resize handoff completed:",
+                m_width, "x", m_height,
+                "previous:", m_presentedWidth, "x", m_presentedHeight));
   }
 
   // Restore previous context state

@@ -44,11 +44,17 @@ Implementation details:
 
 ## Enable/Disable
 
-Enabled by default. To disable it:
+The overlay is enabled by default for debug builds and disabled by default for
+release builds so production map editing does not pay per-frame diagnostic text
+rendering cost. To force it on:
+
+- Set environment variable AGUS_MAPS_WIN_OVERLAY=1
+
+To force it off:
 
 - Set environment variable AGUS_MAPS_WIN_OVERLAY=0
 
-Example (PowerShell):
+Examples (PowerShell):
 
 $env:AGUS_MAPS_WIN_OVERLAY = "0"
 
@@ -85,6 +91,8 @@ Text is drawn using WGL font bitmaps created once per process. This avoids per-f
 
 If the overlay does not appear:
 
+- Release builds hide it by default; set AGUS_MAPS_WIN_OVERLAY=1 when diagnostics
+  are needed.
 - Ensure AGUS_MAPS_WIN_OVERLAY is not set to 0.
 - Verify the OpenGL context is created successfully.
 - Confirm frames are being copied (the overlay renders during CopyToSharedTexture()).

@@ -502,11 +502,20 @@ FFI_PLUGIN_EXPORT void agus_native_on_surface_destroyed(void);
 // Returns HANDLE that can be used to open the shared texture
 FFI_PLUGIN_EXPORT void* agus_get_shared_texture_handle(void);
 
+// Get the currently displayable DXGI shared texture handle and physical size.
+// The returned legacy shared handle is owned by the native D3D resource.
+FFI_PLUGIN_EXPORT int agus_get_shared_texture_descriptor_info(void** handle, int32_t* width, int32_t* height);
+
 // Get the D3D11 device pointer (Windows only)
 FFI_PLUGIN_EXPORT void* agus_get_d3d11_device(void);
 
 // Get the D3D11 texture pointer (Windows only)
 FFI_PLUGIN_EXPORT void* agus_get_d3d11_texture(void);
+
+// Get an AddRef'd D3D11 texture pointer and its current physical size
+// atomically with respect to native resize. The caller must Release() the
+// returned texture pointer.
+FFI_PLUGIN_EXPORT int agus_get_d3d11_texture_info(void** texture, int32_t* width, int32_t* height);
 
 // Render a single frame (triggers frame ready callback)
 FFI_PLUGIN_EXPORT void agus_render_frame(void);

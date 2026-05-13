@@ -123,6 +123,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
   AgusDrawPoint? _previewVertex;
   int? _selectedVertexIndex;
   bool _isCommitting = false;
+  int _pointerMoveRevision = 0;
   String? _lastError;
   String _title = '';
   String _note = '';
@@ -197,6 +198,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
       return;
     }
     _debugDuckDBDrawLog('setTool ${_tool.name} -> ${tool.name}');
+    _invalidatePendingPointerMoves();
     _tool = tool;
     _editingFeature = null;
     _vertices.clear();
@@ -218,6 +220,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
 
   /// Starts editing a committed feature's vertices.
   void beginEditFeature(AgusLayerFeature feature) {
+    _invalidatePendingPointerMoves();
     final nextTool = _drawToolForFeature(feature);
     final nextVertices = _drawPointsForFeature(feature);
     _debugDuckDBDrawLog(
@@ -289,6 +292,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
     _debugDuckDBDrawLog(
       'tap accepted tool=${_tool.name} screen=${_formatOffset(localPosition)}',
     );
+    _invalidatePendingPointerMoves();
     unawaited(_addSketchVertex(localPosition));
     return true;
   }
@@ -303,6 +307,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
       return false;
     }
 
+    _invalidatePendingPointerMoves();
     final nearest = _nearestVertex(localPosition);
     if (nearest == null) {
       _debugDuckDBDrawLog(
@@ -323,10 +328,12 @@ class DuckDBLayerDrawController extends ChangeNotifier {
 
   /// Handles a drag move for vertex editing.
   Future<void> handlePointerMove(Offset localPosition) async {
+    final revision = ++_pointerMoveRevision;
     final index = _selectedVertexIndex;
     if (index == null || index < 0 || index >= _vertices.length) {
       if (isDrawing) {
         final coordinate = await projector(localPosition);
+        if (revision != _pointerMoveRevision) return;
         if (coordinate != null) {
           _previewVertex = AgusDrawPoint(
             screenPosition: localPosition,
@@ -351,6 +358,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
     }
 
     final coordinate = await projector(localPosition);
+    if (revision != _pointerMoveRevision) return;
     if (coordinate == null) {
       _debugDuckDBDrawLog(
         'editMove projection null screen=${_formatOffset(localPosition)}',
@@ -373,6 +381,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
 
   /// Finishes the current pointer edit gesture.
   Future<void> handlePointerUp() async {
+    _invalidatePendingPointerMoves();
     if (_editingFeature != null) {
       _debugDuckDBDrawLog(
         'pointerUp auto-commit feature=${_editingFeature?.featureId} '
@@ -402,6 +411,7 @@ class DuckDBLayerDrawController extends ChangeNotifier {
 
   /// Cancels the current sketch and returns to map interaction mode.
   void cancel() {
+    _invalidatePendingPointerMoves();
     _debugDuckDBDrawLog(
       'cancel tool=${_tool.name} editingFeature=${_editingFeature?.featureId} '
       'vertices=${_vertices.length}',
@@ -621,6 +631,10 @@ class DuckDBLayerDrawController extends ChangeNotifier {
   void _clearNativeInteractionGeometry() {
     _debugDuckDBDrawLog('clearNativeInteractionGeometry');
     nativeEditGeometryRenderer?.call(AgusDrapeInteractionMode.inactive, null);
+  }
+
+  void _invalidatePendingPointerMoves() {
+    _pointerMoveRevision++;
   }
 
   bool get _canPreviewSketchVertex {

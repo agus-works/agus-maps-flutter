@@ -492,16 +492,23 @@ Windows `wingdi.h` defines `#define ERROR 0`, which conflicts with protobuf's `G
 
 **Category:** Windows C Runtime Safety
 
-**Purpose:** Fixes `std::toupper` call with unsigned char cast.
+**Purpose:** Fixes Windows logging runtime assertions during parsing and early
+startup.
 
 **What it does:**
 - Casts character to `unsigned char` before passing to `std::toupper`
+- Uses constant-initialized default log levels instead of function-call
+  initialization for global atomics.
 
 **Why it's needed:**
 On Windows MSVC, `std::toupper(char)` can trigger an assertion failure if the character value is negative (e.g., non-ASCII characters). Casting to `unsigned char` ensures defined behavior.
+Windows debug plugin startup can also log while global initialization order is
+still settling; function-call initialization can leave `g_LogAbortLevel`
+zero-initialized long enough for a normal `LINFO` startup log to abort.
 
 **Without this patch:**
 - Debug assertion failure on Windows with non-ASCII log level strings
+- Debug assertion failure on Windows during early plugin startup logging
 - Potential crash in debug builds
 
 
@@ -1504,3 +1511,54 @@ atlas was generated and loaded correctly.
 - Linux startup logs contain repeated unknown-symbol warnings for transit route
   icons.
 - The logs make valid asset-loading problems harder to identify.
+
+
+### 0074-libs-base-localisation-constexpr-string.patch
+
+**File Modified:** `libs/base/localisation.hpp`
+
+**Category:** Windows Build Compatibility
+
+**Purpose:** Keeps `kReservedLanguageCode` constexpr-compatible on MSVC.
+
+**What it does:**
+- Replaces `static LanguageCode constexpr kReservedLanguageCode = "reserved";`
+  with a constexpr string literal array.
+- Preserves existing comparisons and `LanguageCode` construction because callers
+  can still compare or initialize `std::string` values from the literal.
+
+**Why it's needed:**
+`LanguageCode` is an alias for `std::string`. Visual Studio rejects that
+`constexpr` variable in debug builds while compiling CoMaps search, which breaks
+`flutter run -d windows`.
+
+**Without this patch:**
+- Windows debug builds can fail with
+  `libs/base/localisation.hpp(41,53): error C2131: expression did not evaluate
+  to a constant`.
+
+
+### 0075-libs-editor-feature-type-empty-result.patch
+
+**Files Modified:**
+- `libs/editor/feature_type_to_osm.hpp`
+- `libs/editor/feature_type_to_osm.cpp`
+
+**Category:** Windows Build Compatibility
+
+**Purpose:** Keeps the editor empty OSM tag result compatible with MSVC.
+
+**What it does:**
+- Replaces an invalid `static constexpr std::vector` member with a normal static
+  const declaration.
+- Adds the single out-of-class definition in `feature_type_to_osm.cpp`.
+
+**Why it's needed:**
+`std::vector` is not a constant-expression object for this MSVC build mode.
+Windows debug builds compile the editor target for the plugin and reject the
+header-only constexpr member.
+
+**Without this patch:**
+- Windows debug builds can fail with
+  `libs/editor/feature_type_to_osm.hpp(16,64): error C2131: expression did not
+  evaluate to a constant`.

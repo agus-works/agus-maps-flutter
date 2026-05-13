@@ -1,17 +1,19 @@
+import 'dart:async';
+
 import 'package:agus_maps_flutter/agus_maps_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('DuckDB native interaction style', () {
-    test('uses dashed thin blue edges for new geometry', () {
+    test('uses solid thin blue edges for new geometry', () {
       final style = defaultDuckDBInteractionLineStyle();
 
-      expect(style.colorRed, 37);
-      expect(style.colorGreen, 99);
-      expect(style.colorBlue, 235);
+      expect(style.colorRed, 14);
+      expect(style.colorGreen, 165);
+      expect(style.colorBlue, 233);
       expect(style.opacity, inInclusiveRange(0, 1));
       expect(style.width, inInclusiveRange(0.5, 4));
-      expect(style.dashed, isTrue);
+      expect(style.dashed, isFalse);
       expect(style.dashLength, greaterThan(0));
       expect(style.gapLength, greaterThan(0));
     });
@@ -21,9 +23,9 @@ void main() {
         AgusDrapeInteractionMode.editingFeature,
       );
 
-      expect(style.colorRed, 245);
-      expect(style.colorGreen, 158);
-      expect(style.colorBlue, 11);
+      expect(style.colorRed, 219);
+      expect(style.colorGreen, 39);
+      expect(style.colorBlue, 119);
       expect(style.opacity, inInclusiveRange(0, 1));
       expect(style.width, inInclusiveRange(0.5, 4));
       expect(style.dashed, isFalse);
@@ -136,6 +138,39 @@ void main() {
       expect(notifications, 1);
     });
 
+    test('ignores stale async pointer projections during vertex drag',
+        () async {
+      final projections = <Completer<AgusLatLon?>>[];
+      final rendered = <_RenderedGeometry>[];
+      final controller = _newController(
+        rendered: rendered,
+        projector: (position) {
+          final completer = Completer<AgusLatLon?>();
+          projections.add(completer);
+          return completer.future;
+        },
+      );
+
+      controller.beginEditFeature(_lineFeature());
+      final initialRenderCount = rendered.length;
+      expect(controller.handlePointerDown(Offset.zero), isTrue);
+
+      final firstMove = controller.handlePointerMove(const Offset(10, 10));
+      final secondMove = controller.handlePointerMove(const Offset(20, 20));
+      expect(projections, hasLength(2));
+
+      projections[0].complete(const AgusLatLon(lat: 10, lon: 10));
+      await firstMove;
+      expect(rendered, hasLength(initialRenderCount));
+
+      projections[1].complete(const AgusLatLon(lat: 20, lon: 20));
+      await secondMove;
+      expect(
+        rendered.last.geometryWkt,
+        'LINESTRING (0.0 0.0, 20.0 20.0)',
+      );
+    });
+
     test('commit while editing updates the existing feature id', () async {
       final store = _RecordingDuckDBLayerStore();
       final rendered = <_RenderedGeometry>[];
@@ -208,14 +243,16 @@ void main() {
 DuckDBLayerDrawController _newController({
   _RecordingDuckDBLayerStore? store,
   List<_RenderedGeometry>? rendered,
+  AgusScreenProjector? projector,
 }) {
   return DuckDBLayerDrawController(
     store: store ?? _RecordingDuckDBLayerStore(),
     layerId: 'layer-1',
-    projector: (position) => AgusLatLon(
-      lat: position.dy,
-      lon: position.dx,
-    ),
+    projector: projector ??
+        (position) => AgusLatLon(
+              lat: position.dy,
+              lon: position.dx,
+            ),
     coordinateProjector: (coordinate) => Offset(
       coordinate.lon,
       coordinate.lat,

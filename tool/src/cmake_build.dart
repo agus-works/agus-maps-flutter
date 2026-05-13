@@ -1,5 +1,6 @@
 // CMake build orchestration for all platforms
 
+import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'process_runner.dart'
@@ -62,6 +63,29 @@ String _getCMakePath() {
       'CMake not found. Install CMake and add to PATH, or install via Android Studio SDK Manager.');
 }
 
+/// Prefer the newest installed Visual Studio generator so project builds and
+/// vcpkg-built private dependencies use the same MSVC STL/runtime revision.
+String getWindowsVisualStudioGenerator() {
+  if (!Platform.isWindows) {
+    return 'Visual Studio 17 2022';
+  }
+
+  final cmake = _getCMakePath();
+  final result = Process.runSync(cmake, ['--help'], runInShell: true);
+  if (result.exitCode != 0) {
+    throw Exception('Failed to query CMake generators: ${result.stderr}');
+  }
+
+  final help = result.stdout.toString();
+  if (help.contains('Visual Studio 18 2026')) {
+    return 'Visual Studio 18 2026';
+  }
+  if (help.contains('Visual Studio 17 2022')) {
+    return 'Visual Studio 17 2022';
+  }
+  throw Exception('No supported Visual Studio CMake generator was found');
+}
+
 /// Build configuration for CMake
 class CMakeBuildConfig {
   final String sourceDir;
@@ -69,6 +93,7 @@ class CMakeBuildConfig {
   final Map<String, String> variables;
   final Map<String, String>? environment;
   final String? generator;
+  final String? platform;
   final String? target;
   final int? parallelJobs;
 
@@ -78,6 +103,7 @@ class CMakeBuildConfig {
     required this.variables,
     this.environment,
     this.generator,
+    this.platform,
     this.target,
     this.parallelJobs,
   });
@@ -85,6 +111,7 @@ class CMakeBuildConfig {
 
 /// Configure and build with CMake
 Future<void> buildWithCMake(CMakeBuildConfig config) async {
+  await _prepareCMakeBuildDirectory(config);
   await ensureDir(config.buildDir);
 
   // CMake configure arguments
@@ -99,6 +126,9 @@ Future<void> buildWithCMake(CMakeBuildConfig config) async {
   if (config.generator != null) {
     cmakeArgs.addAll(['-G', config.generator!]);
   }
+  if (config.platform != null) {
+    cmakeArgs.addAll(['-A', config.platform!]);
+  }
 
   // Add CMake variables
   for (final entry in config.variables.entries) {
@@ -112,6 +142,9 @@ Future<void> buildWithCMake(CMakeBuildConfig config) async {
   print('  Build: ${config.buildDir}');
   if (config.generator != null) {
     print('  Generator: ${config.generator}');
+  }
+  if (config.platform != null) {
+    print('  Platform: ${config.platform}');
   }
 
   // Configure
@@ -172,6 +205,69 @@ Future<void> buildWithCMake(CMakeBuildConfig config) async {
   }
 
   print('CMake build complete!');
+}
+
+Future<void> _prepareCMakeBuildDirectory(CMakeBuildConfig config) async {
+  final cacheFile = File(path.join(config.buildDir, 'CMakeCache.txt'));
+  if (!await cacheFile.exists()) return;
+
+  final cacheValues = await _readCMakeCacheValues(cacheFile, const {
+    'CMAKE_HOME_DIRECTORY',
+    'CMAKE_CACHEFILE_DIR',
+  });
+
+  final cachedSource = cacheValues['CMAKE_HOME_DIRECTORY'];
+  final cachedBuild = cacheValues['CMAKE_CACHEFILE_DIR'];
+  final expectedSource = _normalizeCMakeCachePath(config.sourceDir);
+  final expectedBuild = _normalizeCMakeCachePath(config.buildDir);
+
+  final sourceMatches = cachedSource == null ||
+      _normalizeCMakeCachePath(cachedSource) == expectedSource;
+  final buildMatches = cachedBuild == null ||
+      _normalizeCMakeCachePath(cachedBuild) == expectedBuild;
+
+  if (sourceMatches && buildMatches) return;
+
+  print('Discarding stale CMake build directory: ${config.buildDir}');
+  if (cachedSource != null && !sourceMatches) {
+    print('  Cached source: $cachedSource');
+    print('  Current source: ${config.sourceDir}');
+  }
+  if (cachedBuild != null && !buildMatches) {
+    print('  Cached build: $cachedBuild');
+    print('  Current build: ${config.buildDir}');
+  }
+  await _deleteIfExists(config.buildDir);
+}
+
+Future<Map<String, String>> _readCMakeCacheValues(
+  File cacheFile,
+  Set<String> keys,
+) async {
+  final values = <String, String>{};
+  await for (final line in cacheFile
+      .openRead()
+      .transform(systemEncoding.decoder)
+      .transform(const LineSplitter())) {
+    final separator = line.indexOf('=');
+    if (separator <= 0) continue;
+    final nameAndType = line.substring(0, separator);
+    final typeSeparator = nameAndType.indexOf(':');
+    final name = typeSeparator >= 0
+        ? nameAndType.substring(0, typeSeparator)
+        : nameAndType;
+    if (keys.contains(name)) {
+      values[name] = line.substring(separator + 1);
+    }
+  }
+  return values;
+}
+
+String _normalizeCMakeCachePath(String value) {
+  final normalized = path.normalize(
+    path.isAbsolute(value) ? value : path.absolute(value),
+  );
+  return Platform.isWindows ? normalized.toLowerCase() : normalized;
 }
 
 /// Build Android native library for a specific ABI
@@ -454,6 +550,7 @@ Future<void> _createMacOSXCFramework(
 Future<void> buildWindowsLibrary({
   String? sourceDir,
   String? vcpkgRoot,
+  String? duckdbWindowsDir,
 }) async {
   final source = sourceDir ?? path.join(getRepoRoot(), 'src');
   final buildDir = path.join(getBuildDir(), 'windows-x64');
@@ -470,8 +567,8 @@ Future<void> buildWindowsLibrary({
   // (ICU has known issues with newer GCC versions like 15.2.0)
   String? generator;
   if (Platform.isWindows) {
-    // Use Visual Studio generator on Windows to avoid GCC/MinGW issues
-    generator = 'Visual Studio 17 2022';
+    // Use Visual Studio generator on Windows to avoid GCC/MinGW issues.
+    generator = getWindowsVisualStudioGenerator();
   } else {
     // On other platforms, use Ninja if available
     if (await commandExists('ninja')) {
@@ -495,12 +592,17 @@ Future<void> buildWindowsLibrary({
     'CMAKE_C_COMPILER_LAUNCHER': '',
     'CMAKE_CXX_COMPILER_LAUNCHER': '',
   };
+  if (duckdbWindowsDir != null) {
+    variables['AGUS_DUCKDB_WINDOWS_DIR'] = duckdbWindowsDir;
+  }
 
+  await _deleteIfExists(buildDir);
   await buildWithCMake(CMakeBuildConfig(
     sourceDir: source,
     buildDir: buildDir,
     variables: variables,
     generator: generator,
+    platform: Platform.isWindows ? 'x64' : null,
   ));
 
   // Copy output DLL
@@ -527,6 +629,17 @@ Future<void> buildWindowsLibrary({
 
   if (!dllCopied) {
     throw Exception('Build output not found: $dllName');
+  }
+
+  if (duckdbWindowsDir != null) {
+    for (final name in ['duckdb.dll', 'duckdb.lib']) {
+      final sourcePath = path.join(duckdbWindowsDir, name);
+      if (!fileExists(sourcePath)) {
+        throw Exception('DuckDB Windows artifact not found: $sourcePath');
+      }
+      await copyPath(sourcePath, path.join(outputDir, name));
+    }
+    print('Copied DuckDB runtime to $outputDir');
   }
 
   // Copy zlib1.dll runtime dependency from available Windows dependency roots.

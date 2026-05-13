@@ -655,6 +655,7 @@ class _MyAppState extends State<MyApp> {
     agus_maps_flutter.setMapTheme(_resolveMapTheme());
     agus_maps_flutter.setMapLanguage(_mapLanguageCode);
     agus_maps_flutter.setMapLayerState(_mapLayerState);
+    _refreshDuckDBSelectionHighlight();
   }
 
   void _applyNativeNavigationSettings() {
@@ -1577,9 +1578,41 @@ class _MyAppState extends State<MyApp> {
       agus_maps_flutter.updateDrapeInteractionGeometry(
         mode: mode,
         geometryWkt: geometryWkt,
-        lineStyle: agus_maps_flutter.defaultDuckDBInteractionLineStyle(mode),
+        lineStyle: _duckDBInteractionLineStyle(mode),
       ),
     );
+  }
+
+  agus_maps_flutter.DrapeInteractionLineStyle _duckDBInteractionLineStyle(
+    agus_maps_flutter.AgusDrapeInteractionMode mode,
+  ) {
+    final darkMap = _resolveMapTheme() == agus_maps_flutter.MapThemeMode.dark;
+    return switch (mode) {
+      agus_maps_flutter.AgusDrapeInteractionMode.drawing =>
+        agus_maps_flutter.DrapeInteractionLineStyle(
+          colorRed: darkMap ? 56 : 124,
+          colorGreen: darkMap ? 189 : 58,
+          colorBlue: darkMap ? 248 : 237,
+          opacity: 0.98,
+          width: 3.25,
+          dashed: false,
+          dashLength: 14,
+          gapLength: 8,
+        ),
+      agus_maps_flutter.AgusDrapeInteractionMode.editingFeature =>
+        agus_maps_flutter.DrapeInteractionLineStyle(
+          colorRed: darkMap ? 251 : 219,
+          colorGreen: darkMap ? 191 : 39,
+          colorBlue: darkMap ? 36 : 119,
+          opacity: 0.98,
+          width: 3.5,
+          dashed: false,
+          dashLength: 12,
+          gapLength: 7,
+        ),
+      agus_maps_flutter.AgusDrapeInteractionMode.inactive =>
+        agus_maps_flutter.defaultDuckDBInteractionLineStyle(mode),
+    };
   }
 
   void _refreshDuckDBSelectionHighlight() {
