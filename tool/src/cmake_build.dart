@@ -70,6 +70,164 @@ String getWindowsVisualStudioGenerator() {
     return 'Visual Studio 17 2022';
   }
 
+  final override = Platform.environment['AGUS_WINDOWS_CMAKE_GENERATOR'];
+  if (override != null && override.trim().isNotEmpty) {
+    return override.trim();
+  }
+
+  final installedGenerators = _findInstalledVisualStudioGenerators();
+  if (installedGenerators.isEmpty) {
+    throw Exception(
+      'No supported Visual Studio installation with C++ tools was found. '
+      'Install Visual Studio 2019/2022/2026 with the Desktop development '
+      'with C++ workload, or set AGUS_WINDOWS_CMAKE_GENERATOR explicitly.',
+    );
+  }
+
+  final supportedGenerators = _getCMakeVisualStudioGenerators();
+  for (final generator in installedGenerators) {
+    if (supportedGenerators.contains(generator)) return generator;
+  }
+
+  if (supportedGenerators.isEmpty) {
+    throw Exception(
+      'The selected CMake does not support any Visual Studio generator.',
+    );
+  }
+
+  throw Exception(
+    'Installed Visual Studio generators (${installedGenerators.join(', ')}) '
+    'are not supported by the selected CMake. Supported Visual Studio '
+    'generators: ${supportedGenerators.join(', ')}',
+  );
+}
+
+List<String> _findInstalledVisualStudioGenerators() {
+  final generators = <String>{
+    ..._findVisualStudioGeneratorsWithVsWhere(),
+    ..._findVisualStudioGeneratorsInDefaultLocations(),
+  };
+
+  return _sortVisualStudioGenerators(generators);
+}
+
+List<String> _findVisualStudioGeneratorsWithVsWhere() {
+  final programFilesX86 =
+      Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)';
+  final programFiles =
+      Platform.environment['ProgramFiles'] ?? r'C:\Program Files';
+  final candidates = <String>[
+    path.join(
+      programFilesX86,
+      'Microsoft Visual Studio',
+      'Installer',
+      'vswhere.exe',
+    ),
+    path.join(
+      programFiles,
+      'Microsoft Visual Studio',
+      'Installer',
+      'vswhere.exe',
+    ),
+    'vswhere',
+  ];
+
+  final generators = <String>{};
+  for (final candidate in candidates) {
+    final isPath = candidate.toLowerCase().endsWith('.exe');
+    if (isPath && !fileExists(candidate)) continue;
+
+    final result = _runVsWhere(candidate);
+    if (result == null || result.exitCode != 0) continue;
+
+    for (final line in result.stdout.toString().split(RegExp(r'\r?\n'))) {
+      final generator = _visualStudioGeneratorForVersion(line.trim());
+      if (generator != null) generators.add(generator);
+    }
+  }
+
+  return _sortVisualStudioGenerators(generators);
+}
+
+ProcessResult? _runVsWhere(String executable) {
+  try {
+    return Process.runSync(
+      executable,
+      [
+        '-products',
+        '*',
+        '-requires',
+        'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+        '-property',
+        'installationVersion',
+      ],
+      runInShell: executable == 'vswhere',
+    );
+  } on ProcessException {
+    return null;
+  }
+}
+
+List<String> _findVisualStudioGeneratorsInDefaultLocations() {
+  final programFilesX86 =
+      Platform.environment['ProgramFiles(x86)'] ?? r'C:\Program Files (x86)';
+  final programFiles =
+      Platform.environment['ProgramFiles'] ?? r'C:\Program Files';
+  final editions = [
+    'Enterprise',
+    'Professional',
+    'Community',
+    'BuildTools',
+    'Preview',
+  ];
+  final versions = [
+    (year: '2026', generator: 'Visual Studio 18 2026'),
+    (year: '2022', generator: 'Visual Studio 17 2022'),
+    (year: '2019', generator: 'Visual Studio 16 2019'),
+  ];
+
+  final generators = <String>{};
+  for (final version in versions) {
+    final basePath = version.year == '2019' ? programFilesX86 : programFiles;
+    for (final edition in editions) {
+      final vcvars64 = path.join(
+        basePath,
+        'Microsoft Visual Studio',
+        version.year,
+        edition,
+        'VC',
+        'Auxiliary',
+        'Build',
+        'vcvars64.bat',
+      );
+      if (fileExists(vcvars64)) generators.add(version.generator);
+    }
+  }
+
+  return _sortVisualStudioGenerators(generators);
+}
+
+List<String> _sortVisualStudioGenerators(Iterable<String> generators) {
+  const preferredOrder = [
+    'Visual Studio 18 2026',
+    'Visual Studio 17 2022',
+    'Visual Studio 16 2019',
+  ];
+  final uniqueGenerators = generators.toSet();
+  return [
+    for (final generator in preferredOrder)
+      if (uniqueGenerators.contains(generator)) generator,
+  ];
+}
+
+String? _visualStudioGeneratorForVersion(String version) {
+  if (version.startsWith('18.')) return 'Visual Studio 18 2026';
+  if (version.startsWith('17.')) return 'Visual Studio 17 2022';
+  if (version.startsWith('16.')) return 'Visual Studio 16 2019';
+  return null;
+}
+
+Set<String> _getCMakeVisualStudioGenerators() {
   final cmake = _getCMakePath();
   final result = Process.runSync(cmake, ['--help'], runInShell: true);
   if (result.exitCode != 0) {
@@ -77,13 +235,11 @@ String getWindowsVisualStudioGenerator() {
   }
 
   final help = result.stdout.toString();
-  if (help.contains('Visual Studio 18 2026')) {
-    return 'Visual Studio 18 2026';
-  }
-  if (help.contains('Visual Studio 17 2022')) {
-    return 'Visual Studio 17 2022';
-  }
-  throw Exception('No supported Visual Studio CMake generator was found');
+  return {
+    if (help.contains('Visual Studio 18 2026')) 'Visual Studio 18 2026',
+    if (help.contains('Visual Studio 17 2022')) 'Visual Studio 17 2022',
+    if (help.contains('Visual Studio 16 2019')) 'Visual Studio 16 2019',
+  };
 }
 
 /// Build configuration for CMake

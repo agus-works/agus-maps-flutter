@@ -569,7 +569,10 @@ Set with: `AGUS_MAPS_BUILD_MODE=contributor` or auto-detected when in plugin rep
 
 ### Windows
 
-- Requires Visual Studio 2019/2022 with "Desktop development with C++" workload
+- Requires Visual Studio 2019/2022/2026 with "Desktop development with C++"
+  workload
+- The build tool selects the CMake Visual Studio generator from the installed
+  Visual Studio instance, not merely from generators advertised by CMake
 - CMake from Android SDK can be used if not in PATH
 - vcpkg is used for dependencies (set `VCPKG_ROOT`)
 - Git Bash is used for Unix-style scripts

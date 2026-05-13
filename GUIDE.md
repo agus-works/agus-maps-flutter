@@ -131,6 +131,11 @@ GitHub Actions builds are detected via `CI=true`. The workflow:
 2. Copies binaries to `{platform}/prebuilt/` directories
 3. Packages everything into `agus-maps-sdk-vX.Y.Z.zip`
 
+On Windows CI, CMake Visual Studio generator selection follows the installed
+Visual Studio instance with C++ tools. This avoids choosing a newer generator
+that CMake advertises before the hosted runner has the matching Visual Studio
+version installed.
+
 #### 3. Plugin Consumers (SDK-based)
 
 For developers using the published plugin:
