@@ -1,0 +1,27 @@
+diff --git a/libs/editor/feature_type_to_osm.cpp b/libs/editor/feature_type_to_osm.cpp
+index a9bdc8a37..fcce41c0d 100644
+--- a/libs/editor/feature_type_to_osm.cpp
++++ b/libs/editor/feature_type_to_osm.cpp
+@@ -8,6 +8,8 @@
+ #include <string>
+ 
+ namespace editor
+ {
++std::vector<OsmElement::Tag> const TypeToOSMTranslator::kEmptyResult = {};
++
+ TypeToOSMTranslator::TypeToOSMTranslator(bool initialize)
+ {
+   if (initialize)
+diff --git a/libs/editor/feature_type_to_osm.hpp b/libs/editor/feature_type_to_osm.hpp
+index 033e133c7..9e6816780 100644
+--- a/libs/editor/feature_type_to_osm.hpp
++++ b/libs/editor/feature_type_to_osm.hpp
+@@ -13,7 +13,7 @@ namespace editor
+ class TypeToOSMTranslator
+ {
+ public:
+-  std::vector<OsmElement::Tag> static constexpr kEmptyResult = {};
++  static std::vector<OsmElement::Tag> const kEmptyResult;
+ 
+   TypeToOSMTranslator() : TypeToOSMTranslator(true) {}
+   explicit TypeToOSMTranslator(bool initialize);

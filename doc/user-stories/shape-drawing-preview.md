@@ -63,12 +63,13 @@ fallback.
   because the segment is complete.
 - ✅ Polygon drawing renders as a closed shape by connecting the final preview or
   placed vertex back to the first vertex.
-- ✅ New drawing previews render as thin blue dashed native lines; active edits
+- ✅ New drawing previews render as thin solid blue native lines; active edits
   and selected feature/layer highlights render as thin solid amber native lines.
 - ✅ Existing visible non-active line, segment, and polygon edges render through
   the same native Drape API path as thin muted slate lines.
-- ✅ Color, opacity, thickness, and dashed/solid behavior are configurable from
-  Flutter through Pigeon.
+- ✅ Color, opacity, thickness, and optional dashed/solid behavior are configurable
+  from Flutter through Pigeon, but the example app uses continuous solid preview
+  strokes by default.
 
 ### Feature Editing
 - ✅ Existing point, segment, line, and polygon features expose visible edit
@@ -90,7 +91,7 @@ fallback.
   `ios/Classes/agus_maps_flutter_ios.mm`
 - Native Android/shared renderer:
   `src/agus_maps_flutter.cpp`
-- Native Linux/Windows interaction line renderers:
+- Native Linux interaction line renderer and Windows DuckDB renderer:
   `src/agus_maps_flutter_linux.cpp`,
   `src/agus_maps_flutter_win.cpp`
 - Example app edit wiring: `example/lib/main.dart`
@@ -119,13 +120,15 @@ fallback.
     - Edit commit and pointer-up edit persistence preserve the existing feature id
    - Polygon edit commits preserve closed WKT while updating the original feature
      id
-   - Default native interaction line style stays thin, blue, dashed, and within
-      valid opacity/width bounds
+   - Default native interaction line style stays thin, blue, solid, and within
+       valid opacity/width bounds
    - Active edit/selection interaction line style stays thin, solid, amber, and
       within valid opacity/width bounds
-- Manual macOS verification:
+- Manual macOS/Windows verification:
    - Rebuild or run the macOS debug target after native `.mm`, map wrapper, or
      Pigeon host API changes.
+   - Rebuild or run the Windows debug target after `src/agus_maps_flutter_win.cpp`
+     or DuckDB runtime packaging changes.
    - Draw a segment, line, and polygon and confirm each new vertex produces a
      Dart `render submit` log and a native `DuckDB interaction geometry` log with
      `lines=1` once at least two points are present.

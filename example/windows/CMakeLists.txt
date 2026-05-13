@@ -39,6 +39,9 @@ endif()
 
 project(agus_maps_flutter_example LANGUAGES CXX)
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/AgusMsvcParallel.cmake")
+agus_enable_msvc_parallel_builds()
+
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "agus_maps_flutter_example")

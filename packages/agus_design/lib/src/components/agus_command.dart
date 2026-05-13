@@ -464,44 +464,49 @@ class _AgusCommandDialogState extends State<AgusCommandDialog> {
                             ),
                           ),
                         )
-                      : ListView(
+                      : SingleChildScrollView(
                           controller: _scrollController,
                           padding: const EdgeInsets.symmetric(vertical: 6),
-                          shrinkWrap: true,
-                          children: [
-                            for (final group in filteredGroups) ...[
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  12,
-                                  8,
-                                  12,
-                                  4,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (final group in filteredGroups) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    8,
+                                    12,
+                                    4,
+                                  ),
+                                  child: Text(
+                                    group.heading.toUpperCase(),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: colors.sideBarForeground
+                                              .withValues(alpha: 0.56),
+                                          letterSpacing: 0.6,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
                                 ),
-                                child: Text(
-                                  group.heading.toUpperCase(),
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(
-                                        color: colors.sideBarForeground
-                                            .withValues(alpha: 0.56),
-                                        letterSpacing: 0.6,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ),
-                              for (final item in group.items)
-                                _AgusCommandItemTile(
-                                  key: _keyForItem(item.id),
-                                  item: item,
-                                  selected:
-                                      highlightedIndex >= 0 &&
-                                      filteredItems[highlightedIndex].id ==
-                                          item.id,
-                                  query: _queryController.text,
-                                  onHover: () => _setHighlightedItem(item.id),
-                                  onSelected: () => _select(item),
-                                ),
+                                for (final item in group.items)
+                                  _AgusCommandItemTile(
+                                    key: _keyForItem(item.id),
+                                    item: item,
+                                    selected:
+                                        highlightedIndex >= 0 &&
+                                        filteredItems[highlightedIndex].id ==
+                                            item.id,
+                                    query: _queryController.text,
+                                    onHover: () => _setHighlightedItem(item.id),
+                                    onSelected: () => _select(item),
+                                  ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                 ),
               ],
@@ -514,13 +519,22 @@ class _AgusCommandDialogState extends State<AgusCommandDialog> {
 
   List<AgusCommandGroup> get _filteredGroups {
     final query = _queryController.text;
+    final seenIds = <String>{};
     return [
       for (final group in [...widget.groups, ..._asyncGroups])
-        if (_rankedItems(group.items, query).isNotEmpty)
-          AgusCommandGroup(
-            heading: group.heading,
-            items: _rankedItems(group.items, query),
-          ),
+        if (_dedupeRankedItems(_rankedItems(group.items, query), seenIds)
+            case final items when items.isNotEmpty)
+          AgusCommandGroup(heading: group.heading, items: items),
+    ];
+  }
+
+  List<AgusCommandItem> _dedupeRankedItems(
+    List<AgusCommandItem> items,
+    Set<String> seenIds,
+  ) {
+    return [
+      for (final item in items)
+        if (seenIds.add(item.id)) item,
     ];
   }
 

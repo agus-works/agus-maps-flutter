@@ -6,7 +6,11 @@ import 'dart:convert';
 import 'package:path/path.dart' as path;
 
 import 'cmake_build.dart'
-    show CMakeBuildConfig, buildWithCMake, detectAndroidNDK;
+    show
+        CMakeBuildConfig,
+        buildWithCMake,
+        detectAndroidNDK,
+        getWindowsVisualStudioGenerator;
 import 'config.dart' show BuildConfig;
 import 'file_operations.dart' show copyPath, dirExists, ensureDir, fileExists;
 import 'platform_detector.dart'
@@ -291,6 +295,101 @@ Future<String> buildDuckDBAndroidArchives({
   return outputRoot;
 }
 
+/// Build DuckDB for Windows as a private x64 runtime bundle.
+Future<String> buildDuckDBWindowsRuntime({
+  String? duckdbDir,
+  String? duckdbSpatialDir,
+  String? vcpkgRoot,
+}) async {
+  if (!Platform.isWindows) {
+    throw UnsupportedError(
+        'DuckDB Windows runtime can only be built on Windows');
+  }
+
+  final duckdbSourceDir = duckdbDir ?? getDuckdbDir();
+  final spatialSourceDir = duckdbSpatialDir ?? getDuckdbSpatialDir();
+  final extensionConfig = _getExtensionConfigPath();
+  _validateDuckDBInputs(duckdbSourceDir, spatialSourceDir, extensionConfig);
+
+  final resolvedVcpkgRoot = vcpkgRoot ?? await _detectVcpkgRoot();
+  final toolchainFile = path.join(
+    resolvedVcpkgRoot,
+    'scripts',
+    'buildsystems',
+    'vcpkg.cmake',
+  );
+  if (!fileExists(toolchainFile)) {
+    throw Exception('vcpkg toolchain not found: $toolchainFile');
+  }
+
+  print('=== Build DuckDB Windows x64 runtime ===');
+  print('DuckDB source: $duckdbSourceDir');
+  print('duckdb-spatial source: $spatialSourceDir');
+  print('DuckDB extensions: ${_requiredDuckDBExtensions.join(', ')}');
+  print('vcpkg root: $resolvedVcpkgRoot');
+
+  final manifestDir = await _generateDuckDBVcpkgManifest(
+    duckdbSourceDir: duckdbSourceDir,
+    spatialSourceDir: spatialSourceDir,
+    extensionConfig: extensionConfig,
+  );
+  await _ensureVcpkgBaselineAvailable(resolvedVcpkgRoot, manifestDir);
+
+  final buildRoot = path.join(getBuildDir(), 'duckdb', 'windows');
+  final buildDir = path.join(buildRoot, 'x64');
+  final installedDir =
+      path.join(getBuildDir(), 'duckdb-vcpkg-installed-windows');
+  final outputDir =
+      path.join(getBuildDir(), 'agus-binaries-windows-duckdb', 'x64');
+  final tripletsDir = await _writeDuckDBWindowsTriplets(buildRoot);
+
+  await _deleteIfExists(buildDir);
+  await _deleteIfExists(installedDir);
+  final icuPrefixHeader = await _writeDuckDBICUPrefixHeader(
+    duckdbSourceDir: duckdbSourceDir,
+    buildDir: buildDir,
+  );
+  final forceIncludeICUPrefix = '/FI"${path.normalize(icuPrefixHeader)}"';
+
+  await buildWithCMake(CMakeBuildConfig(
+    sourceDir: duckdbSourceDir,
+    buildDir: buildDir,
+    variables: {
+      'CMAKE_TOOLCHAIN_FILE': toolchainFile,
+      'VCPKG_MANIFEST_DIR': manifestDir,
+      'VCPKG_INSTALLED_DIR': installedDir,
+      'VCPKG_TARGET_TRIPLET': 'x64-windows-agus',
+      'VCPKG_OVERLAY_TRIPLETS': tripletsDir,
+      'VCPKG_BUILD': '1',
+      'CMAKE_BUILD_TYPE': BuildConfig.buildType,
+      'CMAKE_MSVC_RUNTIME_LIBRARY': 'MultiThreaded',
+      'DUCKDB_EXTENSION_CONFIGS': extensionConfig,
+      'AGUS_DUCKDB_SPATIAL_SOURCE_DIR': spatialSourceDir,
+      'EXTENSION_STATIC_BUILD': 'TRUE',
+      'BUILD_SHELL': 'OFF',
+      'BUILD_UNITTESTS': 'OFF',
+      'BUILD_BENCHMARKS': 'OFF',
+      'ENABLE_EXTENSION_AUTOLOADING': 'OFF',
+      'ENABLE_EXTENSION_AUTOINSTALL': 'OFF',
+      'OPENSSL_USE_STATIC_LIBS': 'ON',
+      'ZLIB_USE_STATIC_LIBS': 'ON',
+      'CMAKE_C_FLAGS': forceIncludeICUPrefix,
+      'CMAKE_CXX_FLAGS': forceIncludeICUPrefix,
+      'CMAKE_SHARED_LINKER_FLAGS': 'libcpmt.lib comsuppw.lib',
+    },
+    generator: getWindowsVisualStudioGenerator(),
+    platform: 'x64',
+    target: 'duckdb',
+  ));
+
+  await _bundleDuckDBWindowsRuntime(
+    buildDir: buildDir,
+    outputDir: outputDir,
+    duckdbSourceDir: duckdbSourceDir,
+  );
+  return outputDir;
+}
+
 String _getExtensionConfigPath() {
   return path.join(
       getRepoRoot(), 'tool', 'duckdb', 'agus_duckdb_extensions.cmake');
@@ -400,6 +499,7 @@ Future<String> _generateDuckDBVcpkgManifest({
   final buildDir = path.join(getBuildDir(), 'duckdb-extension-configuration');
   final duckdbManifestDir =
       path.join(duckdbSourceDir, 'build', 'extension_configuration');
+  await _deleteIfExists(buildDir);
   await ensureDir(duckdbManifestDir);
 
   await buildWithCMake(CMakeBuildConfig(
@@ -415,7 +515,8 @@ Future<String> _generateDuckDBVcpkgManifest({
       'BUILD_UNITTESTS': 'OFF',
       'BUILD_BENCHMARKS': 'OFF',
     },
-    generator: 'Ninja',
+    generator: Platform.isWindows ? getWindowsVisualStudioGenerator() : 'Ninja',
+    platform: Platform.isWindows ? 'x64' : null,
     target: 'duckdb_merge_vcpkg_manifests',
   ));
 
@@ -722,6 +823,45 @@ Future<List<String>> _copyStaticLibrariesToDirectory(
   return copied;
 }
 
+Future<void> _bundleDuckDBWindowsRuntime({
+  required String buildDir,
+  required String outputDir,
+  required String duckdbSourceDir,
+}) async {
+  await _deleteIfExists(outputDir);
+  await ensureDir(outputDir);
+
+  final includeDir = path.join(outputDir, 'include');
+  await copyPath(path.join(duckdbSourceDir, 'src', 'include'), includeDir);
+
+  final duckdbDll = await _findFirstFileNamed(buildDir, 'duckdb.dll');
+  final duckdbImportLib = await _findFirstFileNamed(buildDir, 'duckdb.lib');
+  if (duckdbDll == null) {
+    throw Exception('DuckDB Windows runtime DLL not found under $buildDir');
+  }
+  if (duckdbImportLib == null) {
+    throw Exception('DuckDB Windows import library not found under $buildDir');
+  }
+
+  await copyPath(duckdbDll, path.join(outputDir, 'duckdb.dll'));
+  await copyPath(duckdbImportLib, path.join(outputDir, 'duckdb.lib'));
+  print('Created DuckDB Windows runtime bundle: $outputDir');
+}
+
+Future<String?> _findFirstFileNamed(String directory, String fileName) async {
+  final dir = Directory(directory);
+  if (!await dir.exists()) return null;
+
+  await for (final entity in dir.list(recursive: true)) {
+    if (entity is File &&
+        path.basename(entity.path).toLowerCase() == fileName.toLowerCase() &&
+        !entity.path.contains('${path.separator}CMakeFiles${path.separator}')) {
+      return entity.path;
+    }
+  }
+  return null;
+}
+
 String _renderDuckDBAndroidBundleCMake({
   required String includeDir,
   required List<String> libraries,
@@ -983,6 +1123,20 @@ Future<void> _writeDuckDBAndroidTriplet({
 
   await File(path.join(tripletsDir, '$name.cmake'))
       .writeAsString(buffer.toString());
+}
+
+Future<String> _writeDuckDBWindowsTriplets(String buildRoot) async {
+  final tripletsDir = path.join(buildRoot, 'vcpkg-triplets');
+  await _deleteIfExists(tripletsDir);
+  await ensureDir(tripletsDir);
+
+  final buffer = StringBuffer()
+    ..writeln('set(VCPKG_TARGET_ARCHITECTURE x64)')
+    ..writeln('set(VCPKG_CRT_LINKAGE static)')
+    ..writeln('set(VCPKG_LIBRARY_LINKAGE static)');
+  await File(path.join(tripletsDir, 'x64-windows-agus.cmake'))
+      .writeAsString(buffer.toString());
+  return tripletsDir;
 }
 
 String _androidVcpkgTripletForAbi(String abi) {

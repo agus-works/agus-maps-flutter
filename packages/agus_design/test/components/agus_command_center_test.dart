@@ -215,4 +215,81 @@ void main() {
 
     expect(selected, 'Gibraltar');
   });
+
+  testWidgets('command dialog de-duplicates repeated command ids', (
+    tester,
+  ) async {
+    await pumpAgusWidget(
+      tester,
+      const SizedBox(
+        width: 460,
+        child: AgusCommandDialog(
+          groups: [
+            AgusCommandGroup(
+              heading: 'Primary',
+              items: [AgusCommandItem(id: 'open', label: 'Open')],
+            ),
+            AgusCommandGroup(
+              heading: 'Secondary',
+              items: [AgusCommandItem(id: 'open', label: 'Open Duplicate')],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Open Duplicate'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('command center survives an open overlay rebuild', (
+    tester,
+  ) async {
+    final controller = AgusCommandController();
+    var showExtra = false;
+    late StateSetter rebuildCommandCenter;
+
+    await pumpAgusWidget(
+      tester,
+      StatefulBuilder(
+        builder: (context, setState) {
+          rebuildCommandCenter = setState;
+          return Column(
+            children: [
+              SizedBox(
+                width: 460,
+                height: 24,
+                child: AgusCommandCenter(
+                  controller: controller,
+                  groups: [
+                    AgusCommandGroup(
+                      heading: 'Actions',
+                      items: [
+                        const AgusCommandItem(id: 'open', label: 'Open'),
+                        if (showExtra)
+                          const AgusCommandItem(
+                            id: 'extra',
+                            label: 'Extra Command',
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    await tester.tap(find.text('Search or run a command'));
+    await tester.pumpAndSettle();
+    rebuildCommandCenter(() => showExtra = true);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Extra Command'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

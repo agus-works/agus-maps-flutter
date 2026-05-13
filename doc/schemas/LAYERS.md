@@ -83,18 +83,22 @@ machine:
 Visible sketch and edit handles belong to native Drape, not Flutter. Dart sends
 transient WKT and mode through `agus_duckdb_set_interaction_geometry_from_wkt()`.
 The native bridge parses lon/lat vertex pairs into Mercator points and submits
-colored point/line marks to `kDuckDBEditGroupId`, which now acts as the Drape
-interaction group. Drawing mode uses green marks; committed feature editing uses
-orange marks. Because Drape renders those handles in the map scene, they stay
-anchored during pan, zoom, and rotation. Flutter currently observes map taps and
-captures only vertex-drag pointers; native hit-testing/drag callbacks should
-replace that input bridge in a later milestone.
+styleable `DrapeApiLineData` geometry for interaction edges. Drawing mode uses
+thin solid blue native lines; committed feature editing and selected-feature
+highlighting use thin solid amber native lines. Because Drape renders those
+handles in the map scene, they stay anchored during pan, zoom, and rotation.
+Flutter currently observes map taps and captures only vertex-drag pointers;
+native hit-testing/drag callbacks should replace that input bridge in a later
+milestone.
 
-Linux and Windows currently export the same DuckDB/Drape layer ABI as safe
-unavailable stubs. This keeps the desktop native symbol surface aligned with the
-header while Dart continues to gate DuckDB persistence and native layer rendering
-to Apple and Android. Full Linux/Windows parity requires wiring DuckDB packaging,
-store startup, and Drape user-mark providers on those platforms.
+Windows now shares the native DuckDB persistence ABI with Apple, Android, and
+the common Dart layer store, and builds against a private x64
+`duckdb.dll`/`duckdb.lib` bundle. Windows committed
+layer refreshes use the same paged render-feature C ABI and submit the visible
+features into the native Drape scene through `DrapeApiLineData`; no Flutter
+custom painter or overlay fallback should be used for map graphics. Linux still
+exports unavailable DuckDB/Drape layer stubs until its own private DuckDB runtime
+and native renderer are wired.
 
 ```mermaid
 flowchart LR

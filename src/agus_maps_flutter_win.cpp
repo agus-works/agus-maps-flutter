@@ -39,6 +39,7 @@
 #include <iomanip>
 #include <cmath>
 #include <string_view>
+#include <thread>
 
 // CoMaps Framework includes
 #include "base/file_name_utils.hpp"
@@ -245,10 +246,34 @@ namespace
 double constexpr kDegreesPerRadian = 180.0 / 3.14159265358979323846;
 double constexpr kRadiansPerDegree = 3.14159265358979323846 / 180.0;
 std::set<std::string> g_duckDBInteractionDrapeLineIds;
+std::set<std::string> g_duckDBInteractionPointIds;
+std::set<std::string> g_duckDBCommittedDrapeLineIds;
+std::set<std::string> g_duckDBCommittedPointIds;
+std::mutex g_duckDBRenderMutex;
+bool g_duckDBRenderingEnabled = false;
+bool g_duckDBRenderPublished = false;
+std::vector<std::string> g_lastDuckDBRenderableFeatureKeys;
+std::chrono::steady_clock::time_point g_lastDuckDBRenderRefresh;
+std::atomic<uint64_t> g_duckDBViewportGeneration{0};
+std::atomic<bool> g_duckDBViewportRefreshScheduled{false};
+int32_t constexpr kDuckDBRenderFetchBatchSize = 1000;
+int32_t constexpr kDuckDBRenderFetchMaxFeatures = 10000;
+auto constexpr kDuckDBViewportRefreshInterval = std::chrono::milliseconds(250);
+auto constexpr kDuckDBViewportIdleRefreshDelay = std::chrono::milliseconds(450);
+
+struct DuckDBRenderViewport {
+    double minLon = 0.0;
+    double minLat = 0.0;
+    double maxLon = 0.0;
+    double maxLat = 0.0;
+};
+
+int32_t RefreshDuckDBRenderLayersInternal();
+void ScheduleDuckDBRenderRefreshAfterViewportIdle();
 
 struct DuckDBInteractionLineStyle {
     dp::Color color = dp::Color(37, 99, 235, 235);
-    float width = 2.0f;
+    float width = 3.0f;
     bool dashed = false;
     double dashLength = 12.0;
     double gapLength = 7.0;
@@ -287,6 +312,12 @@ void WakeRenderer() {
     }
 }
 
+void RequestActiveRenderFrame() {
+    if (g_framework && g_drapeEngineCreated) {
+        g_framework->MakeFrameActive();
+    }
+}
+
 void SetViewportTracking() {
     if (!g_framework) {
         return;
@@ -294,8 +325,11 @@ void SetViewportTracking() {
     g_framework->SetViewportListener([](ScreenBase const & screen) {
         g_currentBearingDegrees = NormalizeBearingDegrees(
             screen.GetAngle() * kDegreesPerRadian);
-        std::lock_guard<std::mutex> lock(g_viewportMutex);
-        g_currentScreen = std::make_unique<ScreenBase>(screen);
+        {
+            std::lock_guard<std::mutex> lock(g_viewportMutex);
+            g_currentScreen = std::make_unique<ScreenBase>(screen);
+        }
+        ScheduleDuckDBRenderRefreshAfterViewportIdle();
     });
 }
 
@@ -349,6 +383,15 @@ std::vector<std::vector<m2::PointD>> ParseWktMercatorGeometries(char const * wkt
         start = end + 1;
     }
     return geometries;
+}
+
+std::vector<m2::PointD> FlattenGeometryPoints(
+    std::vector<std::vector<m2::PointD>> const & geometries) {
+    std::vector<m2::PointD> points;
+    for (auto const & geometry : geometries) {
+        points.insert(points.end(), geometry.begin(), geometry.end());
+    }
+    return points;
 }
 
 std::vector<std::vector<m2::PointD>> BuildInteractionLineGeometries(
@@ -426,9 +469,14 @@ void UpdateDuckDBDrapeApiLines(
             nextIds.insert(id);
             g_framework->GetDrapeApi().AddLine(
                 id,
-                df::DrapeApiLineData(renderPoints, style.color).Width(style.width));
+                df::DrapeApiLineData(renderPoints, style.color)
+                    .Width(style.width));
         }
         ++lineIndex;
+    }
+
+    if (!lineGeometries.empty() && nextIds.empty() && !activeIds.empty()) {
+        return;
     }
 
     for (auto const & oldId : activeIds) {
@@ -448,6 +496,36 @@ void ClearDuckDBDrapeApiLines(std::set<std::string> & activeIds) {
         g_framework->GetDrapeApi().RemoveLine(id);
     }
     activeIds.clear();
+}
+
+void UpdateDuckDBDrapeApiPoints(
+    std::set<std::string> & activeIds,
+    std::vector<m2::PointD> const & points,
+    std::string const & idPrefix,
+    dp::Color color,
+    float width) {
+    if (!g_framework || !g_drapeEngineCreated) {
+        activeIds.clear();
+        return;
+    }
+
+    std::set<std::string> nextIds;
+    for (size_t index = 0; index < points.size(); ++index) {
+        auto const id = idPrefix + "-" + std::to_string(index);
+        nextIds.insert(id);
+        g_framework->GetDrapeApi().AddLine(
+            id,
+            df::DrapeApiLineData(std::vector<m2::PointD>{points[index]}, color)
+                .Width(width)
+                .ShowPoints(true));
+    }
+
+    for (auto const & oldId : activeIds) {
+        if (nextIds.count(oldId) == 0) {
+            g_framework->GetDrapeApi().RemoveLine(oldId);
+        }
+    }
+    activeIds = std::move(nextIds);
 }
 
 void SetOutdoorsEnabledInternal(bool enabled) {
@@ -484,6 +562,76 @@ void SetSubwayEnabledInternal(bool enabled) {
     }
     g_subwayEnabled = enabled;
     g_framework->GetTransitManager().EnableTransitSchemeMode(enabled);
+}
+
+bool IsPointFeature(char const * geometryKind, char const * wkt) {
+    std::string_view const kind =
+        geometryKind == nullptr ? std::string_view() : std::string_view(geometryKind);
+    if (kind == "point") {
+        return true;
+    }
+    std::string_view const text =
+        wkt == nullptr ? std::string_view() : std::string_view(wkt);
+    return text.rfind("POINT", 0) == 0;
+}
+
+int ClampZoom(int zoom) {
+    if (zoom < 1) {
+        return 1;
+    }
+    return std::min(zoom, 20);
+}
+
+DuckDBRenderViewport GetDuckDBRenderViewport() {
+    auto const latLonRect = mercator::ToLatLon(g_framework->GetCurrentViewport());
+    return {
+        std::min(latLonRect.minY(), latLonRect.maxY()),
+        std::min(latLonRect.minX(), latLonRect.maxX()),
+        std::max(latLonRect.minY(), latLonRect.maxY()),
+        std::max(latLonRect.minX(), latLonRect.maxX()),
+    };
+}
+
+bool ShouldRefreshDuckDBRenderOnViewportChange() {
+    std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+    if (!g_duckDBRenderingEnabled) {
+        return false;
+    }
+    auto const now = std::chrono::steady_clock::now();
+    return now - g_lastDuckDBRenderRefresh >= kDuckDBViewportRefreshInterval;
+}
+
+void ScheduleDuckDBRenderRefreshAfterViewportIdle() {
+    {
+        std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+        if (!g_duckDBRenderingEnabled) {
+            return;
+        }
+    }
+
+    g_duckDBViewportGeneration.fetch_add(1, std::memory_order_relaxed);
+    bool expected = false;
+    if (!g_duckDBViewportRefreshScheduled.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+        return;
+    }
+
+    std::thread([]() {
+        while (true) {
+            auto const observedGeneration =
+                g_duckDBViewportGeneration.load(std::memory_order_relaxed);
+            std::this_thread::sleep_for(kDuckDBViewportIdleRefreshDelay);
+            if (observedGeneration ==
+                g_duckDBViewportGeneration.load(std::memory_order_relaxed)) {
+                break;
+            }
+        }
+
+        g_duckDBViewportRefreshScheduled.store(false, std::memory_order_release);
+        if (ShouldRefreshDuckDBRenderOnViewportChange()) {
+            RefreshDuckDBRenderLayersInternal();
+        }
+    }).detach();
 }
 }  // namespace
 
@@ -719,11 +867,11 @@ static void createDrapeEngineIfNeeded(int width, int height, float density) {
         return;
     }
     
-    // Register active frame callback BEFORE creating DrapeEngine
-    df::SetActiveFrameCallback([]() {
-        notifyFlutterFrameReady();
-    });
-    AGUS_DEBUG_LOG("[AgusMapsFlutter] Active frame callback registered\n");
+    // Present() performs the D3D copy and only then notifies Flutter. Avoid the
+    // generic active-frame callback here because it fires before Present(), which
+    // can make Flutter sample an old or blank shared texture.
+    df::SetActiveFrameCallback({});
+    AGUS_DEBUG_LOG("[AgusMapsFlutter] Active frame callback disabled; Present handles frame delivery\n");
     
     Framework::DrapeCreationParams p;
     p.m_apiVersion = dp::ApiVersion::OpenGLES3;  // Use OpenGL on Windows
@@ -908,66 +1056,107 @@ FFI_PLUGIN_EXPORT int comaps_latlon_to_screen(
     return 1;
 }
 
-FFI_PLUGIN_EXPORT const char* agus_duckdb_library_version(void) { return ""; }
+namespace {
+int32_t RefreshDuckDBRenderLayersInternal() {
+    std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+    if (!g_framework || !g_drapeEngineCreated || agus_duckdb_is_open() == 0) {
+        return -1;
+    }
 
-FFI_PLUGIN_EXPORT const char* agus_duckdb_last_error(void) {
-    return "DuckDB bridge is not wired on Windows yet.";
+    auto const viewport = GetDuckDBRenderViewport();
+    auto const zoom = ClampZoom(g_framework->GetDrawScale());
+    std::vector<std::vector<m2::PointD>> lineGeometries;
+    std::vector<m2::PointD> pointGeometries;
+    std::vector<std::string> featureKeys;
+    lineGeometries.reserve(kDuckDBRenderFetchBatchSize);
+    pointGeometries.reserve(64);
+    featureKeys.reserve(kDuckDBRenderFetchBatchSize);
+
+    int32_t queryOffset = 0;
+    while (queryOffset < kDuckDBRenderFetchMaxFeatures) {
+        int32_t const batchLimit =
+            std::min(kDuckDBRenderFetchBatchSize,
+                     kDuckDBRenderFetchMaxFeatures - queryOffset);
+        AgusDuckDBRenderFeature * features = nullptr;
+        int32_t featureCount = 0;
+        if (agus_duckdb_copy_render_features_page(
+                viewport.minLon, viewport.minLat, viewport.maxLon, viewport.maxLat,
+                zoom, batchLimit, queryOffset, &features, &featureCount) == 0) {
+            return -2;
+        }
+
+        for (int32_t index = 0; index < featureCount; ++index) {
+            auto const & feature = features[index];
+            auto points = ParseWktMercatorPoints(feature.geometry_wkt);
+            if (points.empty()) {
+                continue;
+            }
+            std::string key = feature.layer_id ? feature.layer_id : "";
+            key += "/";
+            key += feature.feature_id ? feature.feature_id : "";
+            key += ":";
+            key += feature.geometry_wkt ? feature.geometry_wkt : "";
+            featureKeys.push_back(std::move(key));
+            if (IsPointFeature(feature.geometry_kind, feature.geometry_wkt)) {
+                pointGeometries.push_back(points.front());
+            } else if (points.size() > 1) {
+                lineGeometries.push_back(std::move(points));
+            }
+        }
+
+        agus_duckdb_free_render_features(features, featureCount);
+        queryOffset += featureCount;
+        if (featureCount < batchLimit) {
+            break;
+        }
+    }
+
+    if (g_duckDBRenderPublished && featureKeys == g_lastDuckDBRenderableFeatureKeys) {
+        g_lastDuckDBRenderRefresh = std::chrono::steady_clock::now();
+        return static_cast<int32_t>(featureKeys.size());
+    }
+
+    DuckDBInteractionLineStyle style;
+    style.color = dp::Color(37, 99, 235, 235);
+    style.width = 3.0f;
+    style.dashed = false;
+    UpdateDuckDBDrapeApiLines(
+        g_duckDBCommittedDrapeLineIds,
+        lineGeometries,
+        "duckdb-committed",
+        style);
+    UpdateDuckDBDrapeApiPoints(
+        g_duckDBCommittedPointIds,
+        pointGeometries,
+        "duckdb-committed-point",
+        dp::Color(219, 39, 119, 240),
+        10.0f);
+    g_framework->GetDrapeApi().Invalidate();
+
+    g_duckDBRenderPublished = true;
+    g_lastDuckDBRenderableFeatureKeys = std::move(featureKeys);
+    g_lastDuckDBRenderRefresh = std::chrono::steady_clock::now();
+    WakeRenderer();
+    return static_cast<int32_t>(lineGeometries.size() + pointGeometries.size());
 }
+}  // namespace
 
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_open_app_database(const char* /* writablePath */) { return 0; }
-
-FFI_PLUGIN_EXPORT void agus_duckdb_close(void) {}
-
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_is_open(void) { return 0; }
-
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_load_required_extensions(void) { return 0; }
-
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_execute(const char* /* sql */) { return 0; }
-
-FFI_PLUGIN_EXPORT const char* agus_duckdb_query_json(const char* /* sql */) { return nullptr; }
-
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_validate_render_query(const char* /* sql */) { return 0; }
-
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features(
-    double /* min_lon */,
-    double /* min_lat */,
-    double /* max_lon */,
-    double /* max_lat */,
-    int32_t /* zoom */,
-    AgusDuckDBRenderFeature** out_features,
-    int32_t* out_count) {
-    if (out_features) *out_features = nullptr;
-    if (out_count) *out_count = 0;
-    return 0;
+FFI_PLUGIN_EXPORT int32_t agus_duckdb_refresh_render_layers(void) {
+    return RefreshDuckDBRenderLayersInternal();
 }
-
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_copy_render_features_page(
-    double /* min_lon */,
-    double /* min_lat */,
-    double /* max_lon */,
-    double /* max_lat */,
-    int32_t /* zoom */,
-    int32_t /* limit */,
-    int32_t /* offset */,
-    AgusDuckDBRenderFeature** out_features,
-    int32_t* out_count) {
-    if (out_features) *out_features = nullptr;
-    if (out_count) *out_count = 0;
-    return 0;
-}
-
-FFI_PLUGIN_EXPORT void agus_duckdb_free_render_features(
-    AgusDuckDBRenderFeature* /* features */,
-    int32_t /* count */) {}
-
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_refresh_render_layers(void) { return -1; }
 
 FFI_PLUGIN_EXPORT void agus_duckdb_set_edit_handles_from_wkt(const char* geometryWkt) {
     auto geometries = ParseWktMercatorGeometries(geometryWkt);
     DuckDBInteractionLineStyle style;
-    style.color = dp::Color(245, 158, 11, 242);
+    style.color = dp::Color(219, 39, 119, 245);
     style.dashed = false;
     UpdateDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds, geometries, "duckdb-interaction", style);
+    UpdateDuckDBDrapeApiPoints(
+        g_duckDBInteractionPointIds,
+        FlattenGeometryPoints(geometries),
+        "duckdb-interaction-point",
+        dp::Color(219, 39, 119, 245),
+        9.0f);
     AGUS_DEBUG_LOG(
         "[AgusMapsFlutter] DuckDB interaction geometry: mode=2 geometries=%zu renderer=DrapeApiLineData depthTest=0 lineWidth=%.2f dashed=0 platform=windows\n",
         geometries.size(),
@@ -980,17 +1169,28 @@ FFI_PLUGIN_EXPORT void agus_duckdb_set_interaction_geometry_from_wkt(
     const char* geometryWkt) {
     if (interactionMode == 0 || geometryWkt == nullptr || *geometryWkt == '\0') {
         ClearDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds);
+        ClearDuckDBDrapeApiLines(g_duckDBInteractionPointIds);
         WakeRenderer();
         return;
     }
     DuckDBInteractionLineStyle style;
-    style.dashed = interactionMode == 1;
+    style.dashed = false;
     if (interactionMode == 2) {
-        style.color = dp::Color(245, 158, 11, 242);
+        style.color = dp::Color(219, 39, 119, 245);
         style.dashed = false;
     }
     auto geometries = ParseWktMercatorGeometries(geometryWkt);
     UpdateDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds, geometries, "duckdb-interaction", style);
+    if (interactionMode == 2) {
+        UpdateDuckDBDrapeApiPoints(
+            g_duckDBInteractionPointIds,
+            FlattenGeometryPoints(geometries),
+            "duckdb-interaction-point",
+            dp::Color(219, 39, 119, 245),
+            9.0f);
+    } else {
+        ClearDuckDBDrapeApiLines(g_duckDBInteractionPointIds);
+    }
     AGUS_DEBUG_LOG(
         "[AgusMapsFlutter] DuckDB interaction geometry: mode=%d geometries=%zu renderer=DrapeApiLineData depthTest=0 lineWidth=%.2f dashed=%d platform=windows\n",
         interactionMode,
@@ -1013,6 +1213,7 @@ FFI_PLUGIN_EXPORT void agus_duckdb_update_interaction_geometry(
     double gapLength) {
     if (interactionMode == 0 || geometryWkt == nullptr || *geometryWkt == '\0') {
         ClearDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds);
+        ClearDuckDBDrapeApiLines(g_duckDBInteractionPointIds);
         WakeRenderer();
         return;
     }
@@ -1028,6 +1229,16 @@ FFI_PLUGIN_EXPORT void agus_duckdb_update_interaction_geometry(
     style.gapLength = std::max(1.0, gapLength);
     auto geometries = ParseWktMercatorGeometries(geometryWkt);
     UpdateDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds, geometries, "duckdb-interaction", style);
+    if (interactionMode == 2) {
+        UpdateDuckDBDrapeApiPoints(
+            g_duckDBInteractionPointIds,
+            FlattenGeometryPoints(geometries),
+            "duckdb-interaction-point",
+            style.color,
+            std::max(7.0f, style.width * 2.5f));
+    } else {
+        ClearDuckDBDrapeApiLines(g_duckDBInteractionPointIds);
+    }
     AGUS_DEBUG_LOG(
         "[AgusMapsFlutter] DuckDB interaction geometry: mode=%d geometries=%zu renderer=DrapeApiLineData depthTest=0 lineWidth=%.2f opacity=%d dashed=%d platform=windows\n",
         interactionMode,
@@ -1040,14 +1251,28 @@ FFI_PLUGIN_EXPORT void agus_duckdb_update_interaction_geometry(
 
 FFI_PLUGIN_EXPORT void agus_duckdb_clear_edit_handles(void) {
     ClearDuckDBDrapeApiLines(g_duckDBInteractionDrapeLineIds);
+    ClearDuckDBDrapeApiLines(g_duckDBInteractionPointIds);
     WakeRenderer();
 }
 
-FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t /* enabled */) {}
+FFI_PLUGIN_EXPORT void agus_duckdb_set_rendering_enabled(int32_t enabled) {
+    if (enabled != 0) {
+        {
+            std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+            g_duckDBRenderingEnabled = true;
+        }
+        RefreshDuckDBRenderLayersInternal();
+        return;
+    }
 
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_apply_migration_file(const char* /* path */) { return 0; }
-
-FFI_PLUGIN_EXPORT int32_t agus_duckdb_run_migrations(void) { return 0; }
+    std::lock_guard<std::mutex> lock(g_duckDBRenderMutex);
+    g_duckDBRenderingEnabled = false;
+    g_duckDBRenderPublished = false;
+    g_lastDuckDBRenderableFeatureKeys.clear();
+    ClearDuckDBDrapeApiLines(g_duckDBCommittedDrapeLineIds);
+    ClearDuckDBDrapeApiLines(g_duckDBCommittedPointIds);
+    WakeRenderer();
+}
 
 FFI_PLUGIN_EXPORT void comaps_zoom_in(int animated) {
     if (!g_framework || !g_drapeEngineCreated) {
@@ -1344,6 +1569,7 @@ FFI_PLUGIN_EXPORT void comaps_touch(int type, int id1, float x1, float y1, int i
     }
     
     g_framework->TouchEvent(event);
+    RequestActiveRenderFrame();
 }
 
 FFI_PLUGIN_EXPORT void comaps_scale(double factor, double pixelX, double pixelY, int animated) {
@@ -1354,6 +1580,7 @@ FFI_PLUGIN_EXPORT void comaps_scale(double factor, double pixelX, double pixelY,
     // Scale the map by the given factor, centered on the pixel point
     // This is the preferred method for scroll wheel zoom on desktop
     g_framework->Scale(factor, m2::PointD(pixelX, pixelY), animated != 0);
+    RequestActiveRenderFrame();
 }
 
 FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY) {
@@ -1363,6 +1590,7 @@ FFI_PLUGIN_EXPORT void comaps_scroll(double distanceX, double distanceY) {
     
     // Scroll the map by the given distance
     g_framework->Scroll(distanceX, distanceY);
+    RequestActiveRenderFrame();
 }
 
 FFI_PLUGIN_EXPORT int comaps_place_page_has_data(void) {
@@ -1782,6 +2010,24 @@ FFI_PLUGIN_EXPORT void* agus_get_shared_texture_handle(void) {
     return nullptr;
 }
 
+FFI_PLUGIN_EXPORT int agus_get_shared_texture_descriptor_info(void** handle, int32_t* width, int32_t* height) {
+    if (!g_wglFactory || !handle || !width || !height) {
+        return 0;
+    }
+
+    HANDLE sharedHandle = nullptr;
+    int textureWidth = 0;
+    int textureHeight = 0;
+    if (!g_wglFactory->GetSharedTextureInfo(&sharedHandle, &textureWidth, &textureHeight)) {
+        return 0;
+    }
+
+    *handle = sharedHandle;
+    *width = static_cast<int32_t>(textureWidth);
+    *height = static_cast<int32_t>(textureHeight);
+    return 1;
+}
+
 /// Get the D3D11 device pointer for Flutter
 /// @return ID3D11Device pointer
 FFI_PLUGIN_EXPORT void* agus_get_d3d11_device(void) {
@@ -1798,6 +2044,24 @@ FFI_PLUGIN_EXPORT void* agus_get_d3d11_texture(void) {
         return g_wglFactory->GetD3D11Texture();
     }
     return nullptr;
+}
+
+FFI_PLUGIN_EXPORT int agus_get_d3d11_texture_info(void** texture, int32_t* width, int32_t* height) {
+    if (!g_wglFactory || !texture || !width || !height) {
+        return 0;
+    }
+
+    ID3D11Texture2D* d3dTexture = nullptr;
+    int textureWidth = 0;
+    int textureHeight = 0;
+    if (!g_wglFactory->AddRefSharedTextureInfo(&d3dTexture, &textureWidth, &textureHeight)) {
+        return 0;
+    }
+
+    *texture = d3dTexture;
+    *width = static_cast<int32_t>(textureWidth);
+    *height = static_cast<int32_t>(textureHeight);
+    return 1;
 }
 
 /// Render a single frame (called by Flutter's texture system)

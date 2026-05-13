@@ -75,9 +75,11 @@ public:
   int GetHeight() const { return m_height; }
 
   // D3D11 interop for Flutter texture sharing
-  HANDLE GetSharedTextureHandle() const { return m_sharedHandle; }
+  HANDLE GetSharedTextureHandle() const;
+  bool GetSharedTextureInfo(HANDLE * handle, int * width, int * height) const;
   ID3D11Device * GetD3D11Device() const { return m_d3dDevice.Get(); }
   ID3D11Texture2D * GetD3D11Texture() const { return m_sharedTexture.Get(); }
+  bool AddRefSharedTextureInfo(ID3D11Texture2D ** texture, int * width, int * height) const;
 
   // Frame synchronization
   void SetFrameCallback(std::function<void()> callback) { m_frameCallback = callback; }
@@ -131,7 +133,12 @@ private:
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_d3dContext;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> m_sharedTexture;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> m_stagingTexture;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> m_presentedSharedTexture;
   HANDLE m_sharedHandle = nullptr;
+  HANDLE m_presentedSharedHandle = nullptr;
+  int m_presentedWidth = 0;
+  int m_presentedHeight = 0;
+  bool m_resizeHandoffPending = false;
   Microsoft::WRL::ComPtr<IDXGIKeyedMutex> m_keyedMutex;
   bool m_useKeyedMutex = false;
 
@@ -143,7 +150,7 @@ private:
   GLuint m_interopFramebuffer = 0;
 
   // Function pointers for WGL_NV_DX_interop
-  // Function pointers for WGL_NV_DX_interop
+  PFNWGLDXSETRESOURCESHAREHANDLENVPROC m_wglDXSetResourceShareHandleNV = nullptr;
   PFNWGLDXOPENDEVICENVPROC m_wglDXOpenDeviceNV = nullptr;
   PFNWGLDXCLOSEDEVICENVPROC m_wglDXCloseDeviceNV = nullptr;
   PFNWGLDXREGISTEROBJECTNVPROC m_wglDXRegisterObjectNV = nullptr;
@@ -163,21 +170,15 @@ private:
   std::string m_glRenderer;
   std::string m_glVendor;
   
-  // Track the size at which the most recent frame was ACTUALLY rendered.
-  // This is critical for resize handling: when SetSurfaceSize() is called,
-  // m_width/m_height are updated immediately to the target size, but the
-  // FBO still contains content rendered at the OLD size until the DrapeEngine
-  // completes a new frame at the new size.
-  // CopyToSharedTexture() must read pixels at m_renderedWidth/m_renderedHeight,
-  // not at m_width/m_height, to avoid reading garbage/black pixels beyond
-  // the actually-rendered content.
+  // Last copied native surface size, used only by the optional diagnostics
+  // overlay. The D3D copy always publishes the full native surface.
   std::atomic<int> m_renderedWidth{0};
   std::atomic<int> m_renderedHeight{0};
   
   std::atomic<bool> m_presentAvailable{true};
   std::function<void()> m_frameCallback;
   std::function<void()> m_keepAliveCallback;  // Called to keep render loop active
-  std::mutex m_mutex;
+  mutable std::mutex m_mutex;
 
   // Diagnostics overlay state
   bool m_overlayEnabled = true;

@@ -29,6 +29,9 @@ endif()
 set(PROJECT_NAME "agus_maps_flutter")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AgusMsvcParallel.cmake")
+agus_enable_msvc_parallel_builds()
+
 # This value is used when generating builds using this plugin, so it must
 # not be changed
 set(PLUGIN_NAME "agus_maps_flutter_plugin")
@@ -211,41 +214,63 @@ endif()
 # ============================================================================
 # Find Runtime Dependencies
 # ============================================================================
+set(ZLIB_DLLS "")
+
 if(USE_PREBUILT_WINDOWS)
   # Use pre-built zlib DLL
   if(EXISTS "${PREBUILT_ZLIB}")
-    set(ZLIB_DLL "${PREBUILT_ZLIB}")
-    message(STATUS "Using pre-built zlib: ${ZLIB_DLL}")
+    list(APPEND ZLIB_DLLS "${PREBUILT_ZLIB}")
+    message(STATUS "Using pre-built zlib: ${PREBUILT_ZLIB}")
   else()
     message(WARNING "Pre-built zlib1.dll not found at ${PREBUILT_ZLIB}")
   endif()
 else()
   # CoMaps uses zlib via find_package(ZLIB), which on Windows with vcpkg
-  # results in a dynamic library dependency on zlib1.dll
+  # results in a dynamic library dependency on zlib1.dll for release builds and
+  # zlibd1.dll for debug builds.
   find_package(ZLIB REQUIRED)
 
-# Get the zlib DLL path for bundling
-# vcpkg installs zlib1.dll in the bin directory
-if(ZLIB_FOUND)
-  get_filename_component(ZLIB_LIB_DIR "${ZLIB_LIBRARY_RELEASE}" DIRECTORY)
-  get_filename_component(ZLIB_ROOT_DIR "${ZLIB_LIB_DIR}" DIRECTORY)
-  set(ZLIB_DLL "${ZLIB_ROOT_DIR}/bin/zlib1.dll")
-  if(EXISTS "${ZLIB_DLL}")
-    message(STATUS "Found zlib DLL: ${ZLIB_DLL}")
-  else()
-    # Fallback: check vcpkg installed directory
-    if(DEFINED ENV{VCPKG_ROOT})
-      set(ZLIB_DLL "$ENV{VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll")
-    elseif(EXISTS "C:/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll")
-      set(ZLIB_DLL "C:/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll")
+  # Get the zlib DLL paths for bundling. vcpkg installs runtime DLLs next to
+  # bin/ for release and debug/bin/ for debug.
+  if(ZLIB_FOUND)
+    if(ZLIB_LIBRARY_RELEASE)
+      get_filename_component(ZLIB_RELEASE_LIB_DIR "${ZLIB_LIBRARY_RELEASE}" DIRECTORY)
+      get_filename_component(ZLIB_RELEASE_ROOT_DIR "${ZLIB_RELEASE_LIB_DIR}" DIRECTORY)
+      set(ZLIB_RELEASE_DLL "${ZLIB_RELEASE_ROOT_DIR}/bin/zlib1.dll")
+      if(NOT EXISTS "${ZLIB_RELEASE_DLL}")
+        if(DEFINED ENV{VCPKG_ROOT})
+          set(ZLIB_RELEASE_DLL "$ENV{VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll")
+        elseif(EXISTS "C:/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll")
+          set(ZLIB_RELEASE_DLL "C:/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll")
+        endif()
+      endif()
+      if(EXISTS "${ZLIB_RELEASE_DLL}")
+        list(APPEND ZLIB_DLLS "${ZLIB_RELEASE_DLL}")
+        message(STATUS "Found release zlib DLL: ${ZLIB_RELEASE_DLL}")
+      else()
+        message(WARNING "zlib1.dll not found - release app builds may fail to load")
+      endif()
     endif()
-    if(EXISTS "${ZLIB_DLL}")
-      message(STATUS "Found zlib DLL (fallback): ${ZLIB_DLL}")
-    else()
-      message(WARNING "zlib1.dll not found - app may fail to load")
+
+    if(ZLIB_LIBRARY_DEBUG)
+      get_filename_component(ZLIB_DEBUG_LIB_DIR "${ZLIB_LIBRARY_DEBUG}" DIRECTORY)
+      get_filename_component(ZLIB_DEBUG_ROOT_DIR "${ZLIB_DEBUG_LIB_DIR}" DIRECTORY)
+      set(ZLIB_DEBUG_DLL "${ZLIB_DEBUG_ROOT_DIR}/bin/zlibd1.dll")
+      if(NOT EXISTS "${ZLIB_DEBUG_DLL}")
+        if(DEFINED ENV{VCPKG_ROOT})
+          set(ZLIB_DEBUG_DLL "$ENV{VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/debug/bin/zlibd1.dll")
+        elseif(EXISTS "C:/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/debug/bin/zlibd1.dll")
+          set(ZLIB_DEBUG_DLL "C:/vcpkg/installed/${VCPKG_TARGET_TRIPLET}/debug/bin/zlibd1.dll")
+        endif()
+      endif()
+      if(EXISTS "${ZLIB_DEBUG_DLL}")
+        list(APPEND ZLIB_DLLS "${ZLIB_DEBUG_DLL}")
+        message(STATUS "Found debug zlib DLL: ${ZLIB_DEBUG_DLL}")
+      else()
+        message(WARNING "zlibd1.dll not found - debug app builds may fail to load")
+      endif()
     endif()
   endif()
-endif()
 endif()
 
 # ============================================================================
@@ -260,7 +285,7 @@ if(USE_PREBUILT_WINDOWS)
     # Pre-built native CoMaps FFI library
     "${PREBUILT_DLL}"
     # Runtime dependencies
-    "${ZLIB_DLL}"
+    ${ZLIB_DLLS}
   )
 else()
   # Use freshly built DLLs
@@ -270,7 +295,7 @@ else()
     # The native CoMaps FFI library
     $<TARGET_FILE:agus_maps_flutter>
     # Runtime dependencies
-    "${ZLIB_DLL}"
+    ${ZLIB_DLLS}
   )
 endif()
 
