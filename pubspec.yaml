@@ -24,7 +24,7 @@ dependencies:
   # For HTTP requests (mirror service)
   http: ^1.1.0
   # For Dart hooks (build orchestration)
-  hooks: ^1.0.0
+  hooks: ^2.0.0
   # For archive operations (compress/extract)
   archive: ^4.0.7
   # For YAML parsing (pubspec.yaml)
