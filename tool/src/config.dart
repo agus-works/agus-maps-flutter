@@ -15,7 +15,7 @@ class BuildConfig {
   static const String defaultDuckdbTag = 'v1.5.2';
   static const String defaultDuckdbSpatialTag =
       'dc1996bfd16bd8614fb4ccb5895b3ee0dbd4298e';
-  static const String flutterVersion = '3.41.8';
+  static const String flutterVersion = '3.44.0';
   static const String cmakeVersion = '4.2.1';
   static const String ndkVersion = '29.0.14206865';
   static const String buildType = 'Release';
