@@ -46,7 +46,7 @@ dependencies:
   fuzzywuzzy: ^1.1.6
   
   # For connectivity checking
-  connectivity_plus: ^6.1.4
+  connectivity_plus: ^7.1.1
   
   # For disk space detection on Android/iOS
   storage_space: ^1.2.0
