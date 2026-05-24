@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart'
+    show LogicalKeyboardKey, SelectionChangedCause, rootBundle;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -101,6 +102,257 @@ const List<_WorkbenchToolRegistration> _workbenchToolRegistry = [
     keywords: ['bottom', 'panel', 'logs', 'debug'],
   ),
 ];
+
+class _AgusPlatformMenuModel {
+  _AgusPlatformMenuModel({
+    required this.onShowSettings,
+    required this.onShowAbout,
+    required this.onOpenSearch,
+    required this.onSelectPanelTab,
+  });
+
+  final VoidCallback onShowSettings;
+  final VoidCallback onShowAbout;
+  final VoidCallback onOpenSearch;
+  final ValueChanged<WorkbenchPanelTab> onSelectPanelTab;
+
+  List<PlatformMenuItem>? _compactMenus;
+  List<PlatformMenuItem>? _desktopMenus;
+
+  List<PlatformMenuItem> menusFor(ExampleFormFactor formFactor) {
+    if (formFactor.isDesktop) {
+      return _desktopMenus ??= _buildMenus(includeWorkbenchTools: true);
+    }
+    return _compactMenus ??= _buildMenus(includeWorkbenchTools: false);
+  }
+
+  List<PlatformMenuItem> _buildMenus({required bool includeWorkbenchTools}) {
+    return [
+      _buildMacOSApplicationMenu(),
+      _buildEditMenu(),
+      _buildViewMenu(),
+      _buildWindowMenu(),
+      _buildHelpMenu(),
+      if (includeWorkbenchTools) _buildToolsMenu(),
+    ];
+  }
+
+  PlatformMenu _buildMacOSApplicationMenu() {
+    return PlatformMenu(
+      label: 'APP_NAME',
+      menus: [
+        const PlatformMenuItemGroup(
+          members: [
+            PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.about),
+          ],
+        ),
+        PlatformMenuItemGroup(
+          members: [
+            PlatformMenuItem(
+              label: 'Settings...',
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.comma,
+                meta: true,
+              ),
+              onSelected: onShowSettings,
+            ),
+          ],
+        ),
+        const PlatformMenuItemGroup(
+          members: [
+            PlatformProvidedMenuItem(
+              type: PlatformProvidedMenuItemType.servicesSubmenu,
+            ),
+          ],
+        ),
+        const PlatformMenuItemGroup(
+          members: [
+            PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.hide),
+            PlatformProvidedMenuItem(
+              type: PlatformProvidedMenuItemType.hideOtherApplications,
+            ),
+            PlatformProvidedMenuItem(
+              type: PlatformProvidedMenuItemType.showAllApplications,
+            ),
+          ],
+        ),
+        const PlatformMenuItemGroup(
+          members: [
+            PlatformProvidedMenuItem(type: PlatformProvidedMenuItemType.quit),
+          ],
+        ),
+      ],
+    );
+  }
+
+  PlatformMenu _buildEditMenu() {
+    return PlatformMenu(
+      label: 'Edit',
+      menus: [
+        PlatformMenuItemGroup(
+          members: [
+            PlatformMenuItem(
+              label: 'Undo',
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyZ,
+                meta: true,
+              ),
+              onSelected: () => _invokeFocusedAction(
+                const UndoTextIntent(SelectionChangedCause.keyboard),
+              ),
+            ),
+            PlatformMenuItem(
+              label: 'Redo',
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyZ,
+                meta: true,
+                shift: true,
+              ),
+              onSelected: () => _invokeFocusedAction(
+                const RedoTextIntent(SelectionChangedCause.keyboard),
+              ),
+            ),
+          ],
+        ),
+        PlatformMenuItemGroup(
+          members: [
+            PlatformMenuItem(
+              label: 'Cut',
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyX,
+                meta: true,
+              ),
+              onSelected: () => _invokeFocusedAction(
+                const CopySelectionTextIntent.cut(
+                  SelectionChangedCause.keyboard,
+                ),
+              ),
+            ),
+            PlatformMenuItem(
+              label: 'Copy',
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyC,
+                meta: true,
+              ),
+              onSelected: () =>
+                  _invokeFocusedAction(CopySelectionTextIntent.copy),
+            ),
+            PlatformMenuItem(
+              label: 'Paste',
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyV,
+                meta: true,
+              ),
+              onSelected: () => _invokeFocusedAction(
+                const PasteTextIntent(SelectionChangedCause.keyboard),
+              ),
+            ),
+            PlatformMenuItem(
+              label: 'Delete',
+              onSelected: () => _invokeFocusedAction(
+                const DeleteCharacterIntent(forward: true),
+              ),
+            ),
+            PlatformMenuItem(
+              label: 'Select All',
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyA,
+                meta: true,
+              ),
+              onSelected: () => _invokeFocusedAction(
+                const SelectAllTextIntent(SelectionChangedCause.keyboard),
+              ),
+            ),
+          ],
+        ),
+        PlatformMenuItemGroup(
+          members: [
+            PlatformMenu(
+              label: 'Find',
+              menus: [
+                PlatformMenuItem(
+                  label: 'Find...',
+                  shortcut: const SingleActivator(
+                    LogicalKeyboardKey.keyF,
+                    meta: true,
+                  ),
+                  onSelected: onOpenSearch,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  PlatformMenu _buildViewMenu() {
+    return const PlatformMenu(
+      label: 'View',
+      menus: [
+        PlatformProvidedMenuItem(
+          type: PlatformProvidedMenuItemType.toggleFullScreen,
+        ),
+      ],
+    );
+  }
+
+  PlatformMenu _buildWindowMenu() {
+    return const PlatformMenu(
+      label: 'Window',
+      menus: [
+        PlatformMenuItemGroup(
+          members: [
+            PlatformProvidedMenuItem(
+              type: PlatformProvidedMenuItemType.minimizeWindow,
+            ),
+            PlatformProvidedMenuItem(
+              type: PlatformProvidedMenuItemType.zoomWindow,
+            ),
+          ],
+        ),
+        PlatformMenuItemGroup(
+          members: [
+            PlatformProvidedMenuItem(
+              type: PlatformProvidedMenuItemType.arrangeWindowsInFront,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  PlatformMenu _buildHelpMenu() {
+    return PlatformMenu(
+      label: 'Help',
+      menus: [
+        PlatformMenuItem(
+          label: 'Agus Suite Help',
+          onSelected: onShowAbout,
+        ),
+      ],
+    );
+  }
+
+  PlatformMenu _buildToolsMenu() {
+    return PlatformMenu(
+      label: 'Tools',
+      menus: [
+        for (final tool in _workbenchToolRegistry)
+          PlatformMenuItem(
+            label: tool.label,
+            onSelected: () => onSelectPanelTab(tool.panelTab),
+          ),
+      ],
+    );
+  }
+
+  void _invokeFocusedAction(Intent intent) {
+    final context = FocusManager.instance.primaryFocus?.context;
+    if (context == null) return;
+    Actions.maybeInvoke(context, intent);
+  }
+}
 
 enum MapSearchResultSource {
   native,
@@ -449,6 +701,7 @@ class _MyAppState extends State<MyApp> {
   final GlobalKey _downloadsTabKey = GlobalKey(debugLabel: 'downloads-tab');
   bool _duckDBLayerPanelVisible = true;
   bool _mobileLayerManagerVisible = false;
+  late final _AgusPlatformMenuModel _platformMenuModel;
 
   int? _bundledMwmVersion;
   String? _dataPath;
@@ -483,6 +736,12 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    _platformMenuModel = _AgusPlatformMenuModel(
+      onShowSettings: () => unawaited(_showSettingsDialog()),
+      onShowAbout: () => unawaited(_showAboutDialog()),
+      onOpenSearch: _openSearch,
+      onSelectPanelTab: _workbenchController.selectPanelTab,
+    );
     // Defer initialization to after the first frame is rendered.
     // This ensures Flutter platform channels (SharedPreferences, path_provider)
     // are fully registered before we try to use them. On Android with Impeller,
@@ -2666,10 +2925,25 @@ class _MyAppState extends State<MyApp> {
   Widget _buildShellForFormFactor(BuildContext context) {
     final formFactor = context.exampleFormFactor;
     _synchronizeMapTabForFormFactor(formFactor);
-    if (formFactor.isDesktop) {
-      return _buildDesktopWorkbench(context);
-    }
-    return _buildAdaptiveTabScaffold(context);
+    final shell = formFactor.isDesktop
+        ? _buildDesktopWorkbench(context)
+        : _buildAdaptiveTabScaffold(context);
+    return _buildPlatformMenuShell(formFactor: formFactor, child: shell);
+  }
+
+  Widget _buildPlatformMenuShell({
+    required ExampleFormFactor formFactor,
+    required Widget child,
+  }) {
+    // Flutter's stock native PlatformMenuBar delegate is implemented on macOS.
+    // Keep it mounted for every responsive layout so resizing never clears the
+    // app menu; update the menu tree only when the compact/desktop bucket flips.
+    if (!Platform.isMacOS) return child;
+
+    return PlatformMenuBar(
+      menus: _platformMenuModel.menusFor(formFactor),
+      child: child,
+    );
   }
 
   void _synchronizeMapTabForFormFactor(ExampleFormFactor formFactor) {
@@ -2755,31 +3029,16 @@ class _MyAppState extends State<MyApp> {
   Widget _buildDesktopWorkbench(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: PlatformMenuBar(
-        menus: [
-          PlatformMenu(
-            label: 'Tools',
-            menus: [
-              for (final tool in _workbenchToolRegistry)
-                PlatformMenuItem(
-                  label: tool.label,
-                  onSelected: () =>
-                      _workbenchController.selectPanelTab(tool.panelTab),
-                ),
-            ],
-          ),
-        ],
-        child: VSCodeWorkbench(
-          controller: _workbenchController,
-          activityBuilder: _buildWorkbenchActivity,
-          editorBuilder: _buildWorkbenchEditor,
-          panelBuilder: _buildWorkbenchPanel,
-          secondarySideBarBuilder: _buildWorkbenchSecondarySideBar,
-          statusBarBuilder: _buildWorkbenchStatusBar,
-          commandGroups: _buildWorkbenchCommandGroups(),
-          commandAsyncProviders: _buildWorkbenchCommandAsyncProviders(),
-          onModalActivitySelected: _showWorkbenchModalActivity,
-        ),
+      body: VSCodeWorkbench(
+        controller: _workbenchController,
+        activityBuilder: _buildWorkbenchActivity,
+        editorBuilder: _buildWorkbenchEditor,
+        panelBuilder: _buildWorkbenchPanel,
+        secondarySideBarBuilder: _buildWorkbenchSecondarySideBar,
+        statusBarBuilder: _buildWorkbenchStatusBar,
+        commandGroups: _buildWorkbenchCommandGroups(),
+        commandAsyncProviders: _buildWorkbenchCommandAsyncProviders(),
+        onModalActivitySelected: _showWorkbenchModalActivity,
       ),
     );
   }

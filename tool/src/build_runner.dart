@@ -1114,77 +1114,104 @@ Future<void> _buildMetalShaders() async {
 
   // Compile each .metal file to .air
   final airFiles = <String>[];
+  final compileFailures = <String>[];
   for (final metalFile in metalFiles) {
     final filename = path.basename(metalFile);
     final name = path.basenameWithoutExtension(metalFile);
     final airFile = path.join(tempDir, '$name.air');
 
-    try {
-      // Try with macosx SDK first (works for both macOS and iOS with Metal 2.0)
-      await runProcess(
-        'xcrun',
-        [
-          '-sdk',
-          'macosx',
-          'metal',
-          '-c',
-          '-std=osx-metal2.0',
-          '-I',
-          shadersDir,
-          '-o',
-          airFile,
-          metalFile
-        ],
-        throwOnError: false,
-      );
+    // Use the macOS SDK; the resulting metallib is packaged for iOS and macOS.
+    final result = await runProcess(
+      'xcrun',
+      [
+        '-sdk',
+        'macosx',
+        'metal',
+        '-c',
+        '-std=osx-metal2.0',
+        '-I',
+        shadersDir,
+        '-o',
+        airFile,
+        metalFile
+      ],
+      throwOnError: false,
+    );
 
-      if (await File(airFile).exists()) {
-        airFiles.add(airFile);
-        print('  Compiled: $filename');
-      }
-    } catch (e) {
-      print('Warning: Failed to compile $filename: $e');
+    if (result.exitCode == 0 && await File(airFile).exists()) {
+      airFiles.add(airFile);
+      print('  Compiled: $filename');
+    } else {
+      final details = [
+        '  Failed: $filename (exit ${result.exitCode})',
+        if (result.stdout.toString().trim().isNotEmpty)
+          '  stdout: ${result.stdout.toString().trim()}',
+        if (result.stderr.toString().trim().isNotEmpty)
+          '  stderr: ${result.stderr.toString().trim()}',
+      ].join('\n');
+      compileFailures.add(details);
+      print(details);
     }
   }
 
   if (airFiles.isEmpty) {
-    print('Warning: No Metal shaders compiled successfully');
-    return;
+    throw StateError(
+      'No Metal shaders compiled successfully.\n'
+      '${compileFailures.join('\n')}\n'
+      'Apple rendering requires shaders_metal.metallib. If Xcode reports a '
+      'missing Metal Toolchain, run: '
+      'xcodebuild -downloadComponent MetalToolchain',
+    );
   }
 
   // Link .air files to .metallib
   print('Linking ${airFiles.length} shaders...');
-  try {
-    await runProcess(
-      'xcrun',
-      ['-sdk', 'macosx', 'metallib', '-o', outputLib, ...airFiles],
-      throwOnError: false,
+  final linkResult = await runProcess(
+    'xcrun',
+    ['-sdk', 'macosx', 'metallib', '-o', outputLib, ...airFiles],
+    throwOnError: false,
+  );
+
+  if (linkResult.exitCode != 0 || !await File(outputLib).exists()) {
+    throw StateError(
+      'Failed to link Metal library.\n'
+      'stdout: ${linkResult.stdout.toString().trim()}\n'
+      'stderr: ${linkResult.stderr.toString().trim()}',
     );
+  }
 
-    if (!await File(outputLib).exists()) {
-      print('Warning: Failed to link Metal library');
-      return;
-    }
+  print('Created: ${path.basename(outputLib)}');
 
-    print('Created: ${path.basename(outputLib)}');
+  // Copy to platform resource directories used by CocoaPods and SwiftPM.
+  final resourceDirectories = [
+    path.join(repoRoot, 'ios', 'Resources'),
+    path.join(
+      repoRoot,
+      'ios',
+      'agus_maps_flutter',
+      'Sources',
+      'agus_maps_flutter',
+      'Resources',
+    ),
+    path.join(repoRoot, 'macos', 'Resources'),
+    path.join(
+      repoRoot,
+      'macos',
+      'agus_maps_flutter',
+      'Sources',
+      'agus_maps_flutter',
+      'Resources',
+    ),
+  ];
 
-    // Copy to platform resource directories
-    final iosResources = path.join(repoRoot, 'ios', 'Resources');
-    final macosResources = path.join(repoRoot, 'macos', 'Resources');
-
-    await ensureDir(iosResources);
-    await ensureDir(macosResources);
-
-    final iosDest = path.join(iosResources, 'shaders_metal.metallib');
-    final macosDest = path.join(macosResources, 'shaders_metal.metallib');
-
-    await File(outputLib).copy(iosDest);
-    await File(outputLib).copy(macosDest);
-
-    print('Copied to ios/Resources/');
-    print('Copied to macos/Resources/');
-  } catch (e) {
-    print('Warning: Failed to link Metal library: $e');
+  for (final resourceDirectory in resourceDirectories) {
+    await ensureDir(resourceDirectory);
+    final destination = path.join(
+      resourceDirectory,
+      'shaders_metal.metallib',
+    );
+    await File(outputLib).copy(destination);
+    print('Copied to ${path.relative(resourceDirectory, from: repoRoot)}/');
   }
 }
 

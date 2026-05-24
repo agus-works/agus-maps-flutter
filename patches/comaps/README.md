@@ -350,6 +350,7 @@ When building as a library (not a full application), test/quality tools aren't n
 - Searches all loaded bundles
 - Searches all frameworks
 - Searches nested `.bundle` directories within frameworks
+- Searches SwiftPM resource bundles in the app resources directory
 - On iOS, searches `<AppBundle>/Frameworks` directory for plugin frameworks
 - On macOS, searches `<AppBundle>/Contents/Frameworks` directory for plugin frameworks
 - Adds extensive logging for debugging library location
@@ -358,6 +359,10 @@ When building as a library (not a full application), test/quality tools aren't n
 Flutter plugins package Metal shaders in CocoaPods resource bundles (`resource_bundles`). The shader library is typically located at `<Framework>/Resources/<PluginName>_shaders.bundle/shaders_metal.metallib`. The framework structure differs between iOS and macOS:
 - iOS: `Runner.app/Frameworks/agus_maps_flutter.framework/agus_maps_flutter_shaders.bundle/`
 - macOS: `Runner.app/Contents/Frameworks/agus_maps_flutter.framework/Resources/agus_maps_flutter_shaders.bundle/Contents/Resources/`
+With Swift Package Manager, the plugin does not necessarily produce an
+`agus_maps_flutter.framework`; package resources are copied as app resource
+bundles such as
+`Runner.app/Contents/Resources/agus_maps_flutter_agus_maps_flutter.bundle/`.
 
 **Without this patch:**
 - Metal shader library would not be found in Flutter plugin builds on iOS

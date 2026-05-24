@@ -3,6 +3,10 @@ import UIKit
 import Metal
 import CoreVideo
 
+#if SWIFT_PACKAGE
+import agus_maps_flutter_native
+#endif
+
 /// AgusMapsFlutterPlugin - Flutter plugin for CoMaps rendering on iOS
 ///
 /// This plugin implements:

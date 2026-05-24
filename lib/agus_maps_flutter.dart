@@ -2607,12 +2607,8 @@ const String _libName = 'agus_maps_flutter';
 
 /// The dynamic library in which the symbols for [AgusMapsFlutterBindings] can be found.
 final DynamicLibrary _dylib = () {
-  if (Platform.isMacOS) {
-    return DynamicLibrary.open('$_libName.framework/$_libName');
-  }
-  if (Platform.isIOS) {
-    // On iOS, the plugin is linked into the main executable
-    // Use process() to look up symbols from the app itself
+  if (Platform.isIOS || Platform.isMacOS) {
+    // Apple builds may link the plugin into the app image via SwiftPM.
     return DynamicLibrary.process();
   }
   if (Platform.isAndroid || Platform.isLinux) {
