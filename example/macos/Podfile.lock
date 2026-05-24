@@ -1,20 +1,14 @@
 PODS:
-  - agus_maps_flutter (0.1.24):
-    - FlutterMacOS
   - FlutterMacOS (1.0.0)
 
 DEPENDENCIES:
-  - agus_maps_flutter (from `Flutter/ephemeral/.symlinks/plugins/agus_maps_flutter/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
 
 EXTERNAL SOURCES:
-  agus_maps_flutter:
-    :path: Flutter/ephemeral/.symlinks/plugins/agus_maps_flutter/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
 
 SPEC CHECKSUMS:
-  agus_maps_flutter: 24ea50ac5171dc8a3c4ec415e55b173d3ded7bd3
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
 
 PODFILE CHECKSUM: 8141e6dab03fc5cb3498bc0c87a91302e106aa49

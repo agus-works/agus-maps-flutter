@@ -316,7 +316,9 @@ jobs:
 
           # Create output directories
           mkdir -p ios/Resources
+          mkdir -p ios/agus_maps_flutter/Sources/agus_maps_flutter/Resources
           mkdir -p macos/Resources
+          mkdir -p macos/agus_maps_flutter/Sources/agus_maps_flutter/Resources
           mkdir -p build/metal_shaders
 
           # Compile Metal shaders
@@ -355,7 +357,9 @@ jobs:
           # Copy to plugin resource directories
           if [[ -f "build/metal_shaders/shaders_metal.metallib" ]]; then
             cp build/metal_shaders/shaders_metal.metallib ios/Resources/
+            cp build/metal_shaders/shaders_metal.metallib ios/agus_maps_flutter/Sources/agus_maps_flutter/Resources/
             cp build/metal_shaders/shaders_metal.metallib macos/Resources/
+            cp build/metal_shaders/shaders_metal.metallib macos/agus_maps_flutter/Sources/agus_maps_flutter/Resources/
             echo "✓ Metal shaders compiled successfully"
             ls -lh ios/Resources/shaders_metal.metallib
           else

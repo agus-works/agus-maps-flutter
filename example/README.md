@@ -128,8 +128,10 @@ flutter run -d macos --debug 2>&1 | tee ../output.log
 - Uses `IOSurface` + `Metal` for zero-copy rendering.
 - Requires a physical device or Simulator.
 - Place page metadata is serialized with readable `metadataTags`, matching macOS.
-- If Xcode reports missing `ios/Classes/AgusMapsApi.g.swift`, regenerate the
-  workspace with `flutter pub get` and `pod install` under `example/ios`.
+- If Xcode reports missing
+  `ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsApi.g.swift`,
+  regenerate the workspace with `flutter pub get` and `pod install` under
+  `example/ios`.
 
 ### macOS
 - Proven desktop support with resize capabilities.

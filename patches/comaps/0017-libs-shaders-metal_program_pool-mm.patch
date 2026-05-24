@@ -1,5 +1,5 @@
 diff --git a/libs/shaders/metal_program_pool.mm b/libs/shaders/metal_program_pool.mm
-index 3803d93cd..0545e9f39 100644
+index 3803d93cd..39b14ce11 100644
 --- a/libs/shaders/metal_program_pool.mm
 +++ b/libs/shaders/metal_program_pool.mm
 @@ -5,6 +5,8 @@
@@ -11,13 +11,13 @@ index 3803d93cd..0545e9f39 100644
  #include <cstdint>
  #include <utility>
  #include <vector>
-@@ -217,7 +219,138 @@ MetalProgramPool::MetalProgramPool(id<MTLDevice> device)
+@@ -217,7 +219,174 @@ MetalProgramPool::MetalProgramPool(id<MTLDevice> device)
  {
    ProgramParams::Init();
  
 +  // Search for metallib in various bundles (main bundle, framework bundles)
    NSString * libPath = [[NSBundle mainBundle] pathForResource:@"shaders_metal" ofType:@"metallib"];
-+  
++
 +  // If not found in main bundle, search in all loaded bundles (for CocoaPods/frameworks)
 +  if (!libPath)
 +  {
@@ -31,7 +31,7 @@ index 3803d93cd..0545e9f39 100644
 +      }
 +    }
 +  }
-+  
++
 +  // Also search in all frameworks
 +  if (!libPath)
 +  {
@@ -45,7 +45,7 @@ index 3803d93cd..0545e9f39 100644
 +      }
 +    }
 +  }
-+  
++
 +  // Search for nested .bundle directories inside frameworks (CocoaPods resource_bundles)
 +  if (!libPath)
 +  {
@@ -53,7 +53,7 @@ index 3803d93cd..0545e9f39 100644
 +    {
 +      NSString *resourcePath = [framework resourcePath];
 +      if (!resourcePath) continue;
-+      
++
 +      NSFileManager *fm = [NSFileManager defaultManager];
 +      NSArray *contents = [fm contentsOfDirectoryAtPath:resourcePath error:nil];
 +      for (NSString *item in contents)
@@ -76,36 +76,72 @@ index 3803d93cd..0545e9f39 100644
 +      if (libPath) break;
 +    }
 +  }
-+  
++
++  // iOS/macOS: Search app resource bundles produced by SwiftPM.
++  if (!libPath)
++  {
++    NSString *mainBundlePath = [[NSBundle mainBundle] bundlePath];
++
++    // SwiftPM packages resources as sibling .bundle directories in the app
++    // resources directory, e.g. Contents/Resources/<package>_<target>.bundle.
++#if TARGET_OS_OSX
++    NSString *appResourcesPath = [mainBundlePath stringByAppendingPathComponent:@"Contents/Resources"];
++#else
++    NSString *appResourcesPath = mainBundlePath;
++#endif
++
++    NSFileManager *fm = [NSFileManager defaultManager];
++    NSArray *resources = [fm contentsOfDirectoryAtPath:appResourcesPath error:nil];
++
++    NSLog(@"Searching for metallib in app Resources directory: %@", appResourcesPath);
++
++    for (NSString *item in resources)
++    {
++      if (![item hasSuffix:@".bundle"]) continue;
++
++      NSString *bundlePath = [appResourcesPath stringByAppendingPathComponent:item];
++      NSBundle *resourceBundle = [NSBundle bundleWithPath:bundlePath];
++      NSLog(@"Checking app resource bundle: %@ (bundle=%@)", item, resourceBundle ? @"YES" : @"NO");
++      if (!resourceBundle) continue;
++
++      libPath = [resourceBundle pathForResource:@"shaders_metal" ofType:@"metallib"];
++      if (libPath)
++      {
++        NSLog(@"Found shaders_metal.metallib in app resource bundle: %@", bundlePath);
++        break;
++      }
++    }
++  }
++
 +  // iOS/macOS: Search in app's Frameworks directory for plugin frameworks (Flutter/CocoaPods)
 +  // This handles cases where plugin frameworks aren't in [NSBundle allFrameworks]
 +  if (!libPath)
 +  {
 +    NSString *mainBundlePath = [[NSBundle mainBundle] bundlePath];
-+    
++
 +    // iOS: <AppBundle>/Frameworks, macOS: <AppBundle>/Contents/Frameworks
 +#if TARGET_OS_OSX
 +    NSString *frameworksPath = [mainBundlePath stringByAppendingPathComponent:@"Contents/Frameworks"];
 +#else
 +    NSString *frameworksPath = [mainBundlePath stringByAppendingPathComponent:@"Frameworks"];
 +#endif
-+    
++
 +    NSFileManager *fm = [NSFileManager defaultManager];
 +    NSArray *frameworks = [fm contentsOfDirectoryAtPath:frameworksPath error:nil];
-+    
++
 +    NSLog(@"Searching for metallib in app Frameworks directory: %@", frameworksPath);
-+    
++
 +    for (NSString *frameworkName in frameworks)
 +    {
 +      if (![frameworkName hasSuffix:@".framework"]) continue;
-+      
++
 +      NSString *frameworkPath = [frameworksPath stringByAppendingPathComponent:frameworkName];
 +      NSBundle *frameworkBundle = [NSBundle bundleWithPath:frameworkPath];
-+      
++
 +      NSLog(@"Checking framework: %@ (bundle=%@)", frameworkName, frameworkBundle ? @"YES" : @"NO");
-+      
++
 +      if (!frameworkBundle) continue;
-+      
++
 +      // Check directly in framework resources
 +      libPath = [frameworkBundle pathForResource:@"shaders_metal" ofType:@"metallib"];
 +      if (libPath)
@@ -113,15 +149,15 @@ index 3803d93cd..0545e9f39 100644
 +        NSLog(@"Found shaders_metal.metallib in app framework: %@", frameworkPath);
 +        break;
 +      }
-+      
++
 +      // Check in nested resource bundles within framework
 +      NSString *resourcePath = [frameworkBundle resourcePath];
 +      NSLog(@"Framework resource path: %@", resourcePath);
 +      if (!resourcePath) continue;
-+      
++
 +      NSArray *resources = [fm contentsOfDirectoryAtPath:resourcePath error:nil];
 +      NSLog(@"Resources in framework: %@", resources);
-+      
++
 +      for (NSString *item in resources)
 +      {
 +        if ([item hasSuffix:@".bundle"])

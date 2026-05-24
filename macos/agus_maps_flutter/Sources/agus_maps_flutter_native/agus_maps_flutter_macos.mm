@@ -6,7 +6,7 @@
 /// This file implements the full CoMaps Framework integration for macOS,
 /// using Metal for rendering via CVPixelBuffer/IOSurface zero-copy texture sharing.
 
-#include "../src/agus_maps_flutter.h"
+#include "agus_maps_flutter.h"
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>

@@ -217,7 +217,8 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
 
   # Source files - Swift plugin + Objective-C++ native code
   s.source_files = [
-    'Classes/**/*.{h,m,mm,swift}',
+    'agus_maps_flutter/Sources/agus_maps_flutter/**/*.{swift}',
+    'agus_maps_flutter/Sources/agus_maps_flutter_native/**/*.{h,m,mm,c}',
     '../src/agus_maps_flutter.h',
     '../src/agus_search_bridge.hpp',
   ]
@@ -225,14 +226,14 @@ sharing via Metal and CVPixelBuffer for optimal performance on iOS devices.
   # Public headers for FFI - only C-compatible headers!
   # C++ headers must NOT be exposed to Swift module
   s.public_header_files = [
-    'Classes/AgusPlatformIOS.h',
-    'Classes/AgusBridge.h',
+    'agus_maps_flutter/Sources/agus_maps_flutter_native/AgusPlatformIOS.h',
+    'agus_maps_flutter/Sources/agus_maps_flutter_native/include/agus_maps_flutter_native/AgusBridge.h',
     '../src/agus_maps_flutter.h'
   ]
   
   # Private headers - C++ headers that should not be in umbrella header
   s.private_header_files = [
-    'Classes/AgusMetalContextFactory.h',
+    'agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.h',
     '../src/agus_search_bridge.hpp'
   ]
 
