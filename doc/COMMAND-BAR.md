@@ -55,6 +55,14 @@ where stale native generations are cancelled and route actions are available.
 The command bar feeds the typed query into that same flow so command input and
 search input stay consistent.
 
+## Platform menu entry points
+
+On macOS, the native `Edit > Find` menu item opens the same map search flow as
+the Search Map command. The desktop-only native `Tools` menu uses the same
+workbench tool registry as the command bar for Point of Interest and Debug
+Console, so future tool additions should update the shared registry rather than
+adding separate menu-only actions.
+
 ## MWM layer actions
 
 The Project Layers activity shows bundled and downloaded MWM files in an

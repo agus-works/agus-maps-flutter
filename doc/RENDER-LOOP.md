@@ -57,7 +57,7 @@ flowchart TD
 ### Key Implementation Files
 
 #### 1. CVPixelBuffer Creation (Zero-Copy Foundation)
-**File:** [`ios/Classes/AgusMapsFlutterPlugin.swift:373-427`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/Classes/AgusMapsFlutterPlugin.swift#L373-L427)
+**File:** [`ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift:373-427`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift#L373-L427)
 
 ```swift
 private func createPixelBuffer(width: Int, height: Int) throws {
@@ -82,7 +82,7 @@ private func createPixelBuffer(width: Int, height: Int) throws {
 - `kCVPixelBufferMetalCompatibilityKey`: Ensures the pixel buffer can be wrapped in a `MTLTexture` without copying data.
 
 #### 2. Metal Texture Creation from CVPixelBuffer
-**File:** [`ios/Classes/AgusMetalContextFactory.mm:458-494`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/Classes/AgusMetalContextFactory.mm#L458-L494)
+**File:** [`ios/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm:458-494`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm#L458-L494)
 
 ```objc
 void AgusMetalContextFactory::CreateTextureFromPixelBuffer(CVPixelBufferRef pixelBuffer, m2::PointU const & screenSize) {
@@ -108,7 +108,7 @@ void AgusMetalContextFactory::CreateTextureFromPixelBuffer(CVPixelBufferRef pixe
 - The returned `MTLTexture` (via `CVMetalTextureGetTexture`) directly maps to the same GPU memory Flutter will read from.
 
 #### 3. Fake CAMetalDrawable for Offscreen Rendering
-**File:** [`ios/Classes/AgusMetalContextFactory.mm:35-152`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/Classes/AgusMetalContextFactory.mm#L35-L152)
+**File:** [`ios/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm:35-152`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm#L35-L152)
 
 CoMaps' `MetalBaseContext` expects to render to a `CAMetalDrawable` (normally from `CAMetalLayer`). Since we render offscreen to a `CVPixelBuffer`, we implement a **fake drawable**:
 
@@ -124,7 +124,7 @@ CoMaps' `MetalBaseContext` expects to render to a `CAMetalDrawable` (normally fr
 - **Why crashes only on second launch:** Metal caches stateful information and activates different code paths on subsequent runs.
 
 #### 4. Present() Override for iOS
-**File:** [`ios/Classes/AgusMetalContextFactory.mm:266-355`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/Classes/AgusMetalContextFactory.mm#L266-L355)
+**File:** [`ios/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm:266-355`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm#L266-L355)
 
 ```objc
 void Present() override {
@@ -152,7 +152,7 @@ void Present() override {
 - Using a completion handler ensures Flutter is notified only after the GPU finishes all rendering passes.
 
 #### 5. FlutterTexture Protocol
-**File:** [`ios/Classes/AgusMapsFlutterPlugin.swift:93-98`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/Classes/AgusMapsFlutterPlugin.swift#L93-L98)
+**File:** [`ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift:93-98`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift#L93-L98)
 
 ```swift
 public func copyPixelBuffer() -> Unmanaged<CVPixelBuffer>? {
@@ -180,7 +180,7 @@ macOS uses an **identical** approach to iOS, leveraging `CVPixelBuffer` + `IOSur
 ### Key Differences from iOS
 
 #### 1. Window Resize Handling
-**File:** [`macos/Classes/AgusMapsFlutterPlugin.swift:462-513`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/Classes/AgusMapsFlutterPlugin.swift#L462-L513)
+**File:** [`macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift:462-513`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift#L462-L513)
 
 macOS windows can be resized by the user. The plugin must:
 1. **Recreate CVPixelBuffer** at the new dimensions.
@@ -203,7 +203,7 @@ private func performResize(width: Int, height: Int) {
 }
 ```
 
-**File:** [`macos/Classes/agus_maps_flutter_macos.mm:169-178`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/Classes/agus_maps_flutter_macos.mm#L169-L178)
+**File:** [`macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm:169-178`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm#L169-L178)
 
 ```objc
 void agus_native_resize_surface(CVPixelBufferRef pixelBuffer, int32_t width, int32_t height) {
@@ -219,7 +219,7 @@ void agus_native_resize_surface(CVPixelBufferRef pixelBuffer, int32_t width, int
 ```
 
 #### 2. Thread-Safe Texture Swap
-**File:** [`macos/Classes/AgusMetalContextFactory.mm:507-517`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/Classes/AgusMetalContextFactory.mm#L507-L517)
+**File:** [`macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm:507-517`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm#L507-L517)
 
 ```objc
 void AgusMetalContextFactory::SetPixelBuffer(CVPixelBufferRef pixelBuffer, m2::PointU const & screenSize) {
@@ -664,14 +664,14 @@ glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, eglImage);
 ### Platform-Specific Source Files
 
 #### iOS
-- Plugin: [`ios/Classes/AgusMapsFlutterPlugin.swift`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/Classes/AgusMapsFlutterPlugin.swift)
-- Context Factory: [`ios/Classes/AgusMetalContextFactory.mm`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/Classes/AgusMetalContextFactory.mm)
-- FFI Bridge: [`ios/Classes/agus_maps_flutter_ios.mm`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/Classes/agus_maps_flutter_ios.mm)
+- Plugin: [`ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift)
+- Context Factory: [`ios/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm)
+- FFI Bridge: [`ios/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_ios.mm`](https://github.com/bangonkali/agus-maps-flutter/blob/main/ios/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_ios.mm)
 
 #### macOS
-- Plugin: [`macos/Classes/AgusMapsFlutterPlugin.swift`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/Classes/AgusMapsFlutterPlugin.swift)
-- Context Factory: [`macos/Classes/AgusMetalContextFactory.mm`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/Classes/AgusMetalContextFactory.mm)
-- FFI Bridge: [`macos/Classes/agus_maps_flutter_macos.mm`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/Classes/agus_maps_flutter_macos.mm)
+- Plugin: [`macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift)
+- Context Factory: [`macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm)
+- FFI Bridge: [`macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm`](https://github.com/bangonkali/agus-maps-flutter/blob/main/macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm)
 
 #### Android
 - Plugin: [`android/src/main/java/app/agus/maps/agus_maps_flutter/AgusMapsFlutterPlugin.java`](https://github.com/bangonkali/agus-maps-flutter/blob/main/android/src/main/java/app/agus/maps/agus_maps_flutter/AgusMapsFlutterPlugin.java)

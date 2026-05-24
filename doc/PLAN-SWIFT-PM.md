@@ -1,13 +1,17 @@
 # Swift Package Manager Support - Implementation Plan
 
-> **Status:** Planning / Research  
+> **Status:** Implemented for the repository-owned `agus_maps_flutter` plugin
 > **Target Version:** unspecified
 > **Author:** Agus Maps Team  
-> **Last Updated:** January 2026
+> **Last Updated:** May 2026
 
 ## Executive Summary
 
 This document outlines the plan to add Swift Package Manager (SwiftPM) support to `agus_maps_flutter` for iOS and macOS platforms. SwiftPM is Flutter's preferred future direction for Apple platform dependencies, but our plugin's architecture presents unique challenges due to the vendored `CoMaps.xcframework` binary dependency.
+
+As of May 2026, the repository-owned plugin has SwiftPM support for iOS and
+macOS. External Flutter plugins are intentionally not migrated here; they remain
+the responsibility of their package authors.
 
 **Key Decision:** We will implement a **hybrid approach** maintaining both CocoaPods and SwiftPM support, with different trade-offs for each:
 
@@ -16,6 +20,51 @@ This document outlines the plan to add Swift Package Manager (SwiftPM) support t
 | **CocoaPods** | ✅ Yes | ❌ No (v0.1.7+) | Enterprise, air-gapped, custom SDK locations |
 | **SwiftPM** | ❌ No | ✅ Yes | Standard consumers, simpler setup |
 
+## Implementation Snapshot
+
+The implemented plugin-owned Apple package layout is:
+
+```text
+ios/agus_maps_flutter/
+├── Package.swift
+└── Sources/
+    ├── agus_maps_flutter/
+    │   ├── AgusMapsApi.g.swift
+    │   ├── AgusMapsFlutterPlugin.swift
+    │   └── Resources/shaders_metal.metallib
+    └── agus_maps_flutter_native/
+        ├── include/agus_maps_flutter_native/AgusBridge.h
+        ├── AgusMetalContextFactory.h
+        ├── AgusMetalContextFactory.mm
+        ├── AgusPlatformIOS.h
+        ├── AgusPlatformIOS.mm
+        ├── agus_duckdb_bridge.mm
+        └── agus_maps_flutter_ios.mm
+
+macos/agus_maps_flutter/
+├── Package.swift
+└── Sources/
+    ├── agus_maps_flutter/
+    │   ├── AgusMapsApi.g.swift
+    │   ├── AgusMapsFlutterPlugin.swift
+    │   └── Resources/shaders_metal.metallib
+    └── agus_maps_flutter_native/
+        ├── include/agus_maps_flutter_native/AgusBridge.h
+        ├── AgusMetalContextFactory.h
+        ├── AgusMetalContextFactory.mm
+        ├── AgusPlatformMacOS.h
+        ├── AgusPlatformMacOS.mm
+        ├── agus_duckdb_bridge.mm
+        └── agus_maps_flutter_macos.mm
+```
+
+The package splits Swift/Pigeon code from Objective-C++ native code because
+SwiftPM cannot compile Swift and Objective-C++ sources inside one target.
+Package-local symlinks expose the existing `Frameworks`, `Headers`,
+`SharedSrc`, and `thirdparty` inputs inside the package root.
+
+Runtime follow-ups are tracked in
+[`doc/issues/ISSUE-swift-package-manager.md`](issues/ISSUE-swift-package-manager.md).
 
 ## Table of Contents
 

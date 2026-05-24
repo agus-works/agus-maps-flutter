@@ -12,7 +12,7 @@ The plugin relies on a shared C++ core (`comaps`). This core has strict compilat
 
 ## Platform-Specific Configurations
 
-### 1. iOS (`ios/agus_maps_flutter.podspec`)
+### 1. iOS (`ios/agus_maps_flutter.podspec` / `ios/agus_maps_flutter/Package.swift`)
 
 | Flutter Mode | Xcode Configuration | Macros Injected | Description |
 | :--- | :--- | :--- | :--- |
@@ -26,13 +26,21 @@ The example iOS Runner target includes a dedicated
 Profile configuration aligned with CocoaPods and avoids stale generated file
 references from previous pod graphs.
 
-### 2. macOS (`macos/agus_maps_flutter.podspec`)
+The repository-owned plugin also supports Swift Package Manager. The SwiftPM
+manifest uses the same platform macros and consumes the same generated
+`CoMaps.xcframework` and Metal shader resource layout.
+
+### 2. macOS (`macos/agus_maps_flutter.podspec` / `macos/agus_maps_flutter/Package.swift`)
 
 | Flutter Mode | Xcode Configuration | Macros Injected | Description |
 | :--- | :--- | :--- | :--- |
 | `flutter run -d macos --debug` | `Debug` | `DEBUG=1`<br>`PLATFORM_MAC=1`<br>`PLATFORM_DESKTOP=1` | **Development**: Includes macOS desktop-specific debug logic. |
 | `flutter run -d macos --release` | `Release` | `RELEASE=1`<br>`NDEBUG=1`<br>`PLATFORM_MAC=1`<br>`PLATFORM_DESKTOP=1` | **Production/App Store**: Optimized for distribution. |
 | `flutter run -d macos --profile` | `Profile` | `RELEASE=1`<br>`NDEBUG=1`<br>`PLATFORM_MAC=1`<br>`PLATFORM_DESKTOP=1` | **Performance Analysis**: Uses Release native code. |
+
+SwiftPM macOS builds link the plugin into the app image, so Dart FFI resolves
+Apple symbols through `DynamicLibrary.process()` instead of opening an
+`agus_maps_flutter.framework` from the app bundle.
 
 ### 3. Android (`android/build.gradle` + CMake)
 
@@ -125,8 +133,8 @@ When you run a build command, the following flow ensures the C++ library doesn't
 ```mermaid
 flowchart TD
     A["Flutter Command"] --> B{"Platform?"}
-    B -- "iOS/macOS" --> C["CocoaPods"]
-    C -->|"Reads Podspec"| D{"Config?"}
+    B -- "iOS/macOS" --> C["CocoaPods or SwiftPM"]
+    C -->|"Reads podspec or Package.swift"| D{"Config?"}
     D -- Debug --> E["Inject DEBUG=1"]
     D -- "Release/Profile" --> F["Inject RELEASE=1, NDEBUG=1"]
     
@@ -162,8 +170,8 @@ This ensures the Apple XCFrameworks are rebuilt from the patched
 
 | Platform | Build System | Detection Mechanism | Configuration Source |
 | :--- | :--- | :--- | :--- |
-| **iOS** | Xcode (CocoaPods) | **Manual Injection** | `agus_maps_flutter.podspec` |
-| **macOS** | Xcode (CocoaPods) | **Manual Injection** | `agus_maps_flutter.podspec` |
+| **iOS** | Xcode (CocoaPods or SwiftPM) | **Manual Injection** | `agus_maps_flutter.podspec` / `Package.swift` |
+| **macOS** | Xcode (CocoaPods or SwiftPM) | **Manual Injection** | `agus_maps_flutter.podspec` / `Package.swift` |
 | **Android** | Gradle + CMake | **Automatic** | `src/CMakeLists.txt` |
 | **Windows**| MSVC + CMake | **Automatic** | `src/CMakeLists.txt` |
 | **Linux** | Make/Ninja + CMake | **Automatic** | `src/CMakeLists.txt` |

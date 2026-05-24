@@ -71,8 +71,8 @@ Pigeon generates platform‑specific bindings in:
 
 - lib/src/agus_maps_api.g.dart
 - android/src/main/java/app/agus/maps/agus_maps_flutter/AgusMapsApi.java
-- ios/Classes/AgusMapsApi.g.swift
-- macos/Classes/AgusMapsApi.g.swift
+- ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsApi.g.swift
+- macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsApi.g.swift
 - windows/agus_maps_api.g.h
 - windows/agus_maps_api.g.cpp
 - linux/agus_maps_api.g.h
@@ -318,7 +318,7 @@ The native platform code uses this struct to convert into Pigeon models.
 - Uses comaps_place_page_copy and converts to Swift Pigeon types
 
 **Native C++:**
-- ios/Classes/agus_maps_flutter_ios.mm
+- ios/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_ios.mm
 - Builds AgusPlacePageData snapshot from CoMaps place page info
 
 **Data Flow:**
@@ -331,8 +331,8 @@ The native platform code uses this struct to convert into Pigeon models.
 
 Same architecture as iOS:
 
-- Swift host API in macos/Classes/AgusMapsFlutterPlugin.swift
-- Native C++ in macos/Classes/agus_maps_flutter_macos.mm
+- Swift host API in macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift
+- Native C++ in macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm
 - Uses comaps_place_page_copy → Swift conversion
 
 ### 5.4 Linux

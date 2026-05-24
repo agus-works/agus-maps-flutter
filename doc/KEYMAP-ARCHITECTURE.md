@@ -329,7 +329,14 @@ The keymap system respects platform conventions:
 - Undo: `⌘Z`, Redo: `⌘⇧Z`
 - Quit: `⌘Q`
 - Settings: `⌘,`
+- Find/Search: `⌘F`
 - Symbols in labels: `⌘⇧K`
+
+The example macOS app also exposes these through the native platform menu. The
+`Agus Suite` app menu uses platform-provided About, Services, Hide, Show All,
+and Quit items, so `Cmd+Q` terminates through AppKit instead of a custom Dart
+exit handler. The `Edit > Find` item opens the map search flow, and
+`Agus Suite > Settings...` opens the settings dialog.
 
 ### Windows
 - Primary modifier: `Ctrl`

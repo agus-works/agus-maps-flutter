@@ -116,8 +116,8 @@ Edit `lib/agus_maps_flutter.dart` to expose a user-friendly Dart API:
 For platform-specific functionality (surface creation, asset extraction), use MethodChannel:
 
 1. **Android**: Edit `android/src/main/java/app/agus/maps/agus_maps_flutter/AgusMapsFlutterPlugin.java`
-2. **iOS**: Edit `ios/Classes/AgusMapsFlutterPlugin.swift`
-3. **macOS**: Edit `macos/Classes/AgusMapsFlutterPlugin.swift`
+2. **iOS**: Edit `ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift`
+3. **macOS**: Edit `macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift`
 4. **Windows**: Edit `windows/agus_maps_flutter_plugin.cpp`
 5. **Linux**: Edit `linux/agus_maps_flutter_plugin.cc`
 

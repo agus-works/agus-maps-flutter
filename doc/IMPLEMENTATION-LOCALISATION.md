@@ -38,7 +38,7 @@ selected place page whenever CoMaps has that metadata available.
   - Added `metadataTags` (string keys via `feature::ToString`).
 
 **macOS path:**
-- [macos/Classes/agus_maps_flutter_macos.mm](macos/Classes/agus_maps_flutter_macos.mm)
+- [macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm](macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm)
   - Added `metadataTags` serialization to match the iOS payload for rich POI
     details such as Wikipedia, phone, IATA, elevation, and internet access.
 

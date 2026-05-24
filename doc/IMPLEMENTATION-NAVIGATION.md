@@ -453,8 +453,8 @@ The plugin now has a shared native helper:
 It is exported from every supported native implementation:
 
 - `src/agus_maps_flutter.cpp` for Android.
-- `ios/Classes/agus_maps_flutter_ios.mm` for iOS.
-- `macos/Classes/agus_maps_flutter_macos.mm` for macOS.
+- `ios/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_ios.mm` for iOS.
+- `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm` for macOS.
 - `src/agus_maps_flutter_linux.cpp` for Linux.
 - `src/agus_maps_flutter_win.cpp` for Windows.
 
@@ -654,13 +654,13 @@ Android:
 
 iOS:
 
-- Uses `ios/Classes/agus_maps_flutter_ios.mm`.
+- Uses `ios/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_ios.mm`.
 - Native map rendering remains Metal/IOSurface.
 - Future voice can mirror `MWMRoutingManager` notification drain plus iOS TTS.
 
 macOS:
 
-- Uses `macos/Classes/agus_maps_flutter_macos.mm`.
+- Uses `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm`.
 - Native map rendering remains Metal/IOSurface.
 - Route planning should work through the common C++ manager; location provider
   availability is the main platform-specific concern.

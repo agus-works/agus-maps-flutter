@@ -37,7 +37,14 @@ Important CI assumptions:
 - CMake configure/build failures stop the job immediately instead of allowing partial Apple artifacts to be packaged.
 - Existing `CoMaps.xcframework` and intermediate `libcomaps.a` outputs are removed before `xcodebuild -create-xcframework`.
 - Metal shaders are built before CocoaPods setup because the podspec declares `Resources/shaders_metal.metallib`.
+- The same `shaders_metal.metallib` is copied into the iOS/macOS SwiftPM
+  resource directories before app builds run.
+- macOS runners must have Xcode's Metal Toolchain available. If shader
+  compilation produces no `.air` files, the Dart build hook fails instead of
+  packaging an app that later crashes at runtime.
 - iOS uses Monocypher Ed25519 in the headless CMake build to avoid the unavailable Xcode-generated `platform-Swift.h` dependency.
+- The `agus_maps_flutter` plugin supports SwiftPM; remaining SwiftPM warnings
+  from external plugins are not fixed in this repository.
 
 ### Goals
 

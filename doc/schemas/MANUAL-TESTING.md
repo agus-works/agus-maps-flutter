@@ -108,3 +108,24 @@ cd example && flutter build macos --debug 2>&1 | tee ../output.log
 ```
 
 Expected result: the app builds and the About tab can report DuckDB health when the macOS DuckDB framework is bundled.
+
+## macOS Platform Menu Resize Smoke
+
+Run this after changes to responsive shell layout, app menus, or macOS runner
+metadata:
+
+```bash
+cd example && flutter run -d macos --debug 2>&1 | tee ../output.log
+```
+
+1. Launch the app at the default window size.
+2. Confirm the menu bar shows `Agus Suite`, `Edit`, `View`, `Window`, and
+   `Help`.
+3. Resize wide enough for the desktop workbench.
+4. Confirm `Tools` appears while the default menus remain.
+5. Resize back to tablet/mobile width.
+6. Confirm only `Tools` disappears and the default menus remain clickable.
+7. Press `Cmd+Q`.
+
+Expected result: the app quits normally without Force Quit, and no resize
+transition clears the native menu bar.

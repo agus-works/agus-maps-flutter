@@ -26,5 +26,8 @@ command bar.
 - The command bar and platform Tools menu expose the same bottom-panel tools.
   The example app registry is `_workbenchToolRegistry` in `example/lib/main.dart`;
   future tools should be added there rather than as one-off pane buttons.
+- On macOS, the `Tools` platform menu is desktop-layout-only. The default app
+  menus remain present in tablet/mobile window widths, and resizing between
+  widths should only add or remove `Tools`, not clear the whole menu bar.
 - Map Presentation is part of Explorer because it controls native map-layer
   visibility alongside Project Layers and MWM Maps.

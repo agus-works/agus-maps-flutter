@@ -399,7 +399,7 @@ private String extractDataFiles() throws IOException {
 | **iCloud Backup** | Excluded via `isExcludedFromBackup = true` |
 | **Validation** | Marker reuse requires symbol atlas presence + minimum size checks |
 
-**Implementation:** `ios/Classes/AgusMapsFlutterPlugin.swift`
+**Implementation:** `ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift`
 
 ```swift
 private func extractDataFiles() throws -> String {
@@ -446,7 +446,7 @@ private func extractDataFiles() throws -> String {
 | **Marker File** | `~/Documents/.comaps_data_extracted` |
 | **Validation** | Re-extracts if essential files such as `subtypes.csv` are missing or symbol atlas files are suspiciously small |
 
-**Implementation:** `macos/Classes/AgusMapsFlutterPlugin.swift`.
+**Implementation:** `macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift`.
 
 ### Windows
 

@@ -35,6 +35,22 @@ visible through panes and tabs.
 | About | Inspect attribution, licenses, and DuckDB smoke status. | About activity can reuse scrollable route/card content inside Primary Side Bar until a desktop-specific pane is built. |
 | Diagnostics | Inspect logs and properties. | Debug Console bottom panel and Properties side bar expose runtime state without mobile debug overlays. |
 
+## Platform menu contract
+
+On macOS, desktop layout adds a `Tools` native platform menu for workbench-only
+panel tools. It does not own the whole platform menu by itself; the app-level
+menu host remains mounted above the responsive shell so resizing between
+desktop, tablet, and mobile widths never clears the default macOS menus.
+
+Expected desktop menu bar:
+
+```text
+Agus Suite | Edit | View | Window | Help | Tools
+```
+
+The `Tools` entries use the same `_workbenchToolRegistry` as command-bar and
+pane actions.
+
 ## Desktop-specific rules
 
 - Do not use mobile rounded cards inside dense workbench panes unless the pane
