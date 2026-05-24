@@ -266,34 +266,83 @@ build_flutter_apps() {
     
     pushd "$ROOT_DIR/example" >/dev/null
     
-    # Build Android distribution artifacts. Use split APKs so each direct
-    # install artifact carries only one native ABI; the App Bundle lets Play
-    # deliver the same ABI split server-side.
-    log_step "Building Android split APKs..."
-    flutter build apk --release --split-per-abi || log_warn "Android split APK build failed"
+    # Build Android distribution artifacts. The APK path is used by local
+    # verification, and the App Bundle remains useful for Play-style delivery.
+    log_step "Building Android release APK..."
+    flutter build apk --release
+    verify_file "$ROOT_DIR/example/build/app/outputs/flutter-apk/app-release.apk" \
+        "Android release APK"
 
     log_step "Building Android App Bundle..."
-    flutter build appbundle --release || log_warn "Android app bundle build failed"
+    flutter build appbundle --release
+    verify_file "$ROOT_DIR/example/build/app/outputs/bundle/release/app-release.aab" \
+        "Android App Bundle"
     
     # Build iOS (if on macOS)
     if [[ "$(uname -s)" == "Darwin" ]]; then
         log_step "Building iOS app (simulator, debug)..."
         # Note: iOS simulator does not support release mode
-        flutter build ios --simulator --debug || log_warn "iOS build failed"
+        flutter build ios --simulator --debug
+        stage_ios_simulator_app
+        verify_dir "$ROOT_DIR/example/build/ios/iphonesimulator/Runner.app" \
+            "iOS simulator app"
         
         log_step "Building macOS app..."
-        flutter build macos --release || log_warn "macOS build failed"
+        flutter build macos --release
+        verify_dir "$ROOT_DIR/example/build/macos/Build/Products/Release/agus_maps_flutter_example.app" \
+            "macOS release app"
     fi
     
     # Build Linux (if on Linux)
     if [[ "$(uname -s)" == "Linux" ]]; then
         log_step "Building Linux app..."
-        flutter build linux --release || log_warn "Linux build failed"
+        flutter build linux --release
+        verify_dir "$ROOT_DIR/example/build/linux/x64/release/bundle" \
+            "Linux release bundle"
     fi
     
     popd >/dev/null
     
     log_success "Flutter apps built"
+}
+
+stage_ios_simulator_app() {
+    local built_app="$ROOT_DIR/example/build/ios/Debug-iphonesimulator/Runner.app"
+    local expected_dir="$ROOT_DIR/example/build/ios/iphonesimulator"
+    local expected_app="$expected_dir/Runner.app"
+
+    if [[ ! -d "$built_app" ]]; then
+        verify_dir "$expected_app" "iOS simulator app"
+        return
+    fi
+
+    rm -rf "$expected_dir"
+    mkdir -p "$expected_dir"
+    ditto "$built_app" "$expected_app"
+}
+
+verify_file() {
+    local file_path="$1"
+    local label="$2"
+
+    if [[ ! -f "$file_path" ]]; then
+        log_error "Missing $label: $file_path"
+        exit 1
+    fi
+
+    log_info "Verified $label: $file_path"
+}
+
+verify_dir() {
+    local dir_path="$1"
+    local label="$2"
+
+    if [[ ! -d "$dir_path" ]]; then
+        log_error "Missing $label: $dir_path"
+        exit 1
+    fi
+
+    log_info "Verified $label: $dir_path"
 }
 
 # ============================================================================

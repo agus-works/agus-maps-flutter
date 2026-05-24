@@ -256,7 +256,9 @@ jobs:
           fi
 
           # CoMaps build uses modular headers, but iOS plugin needs flat boost/
-          if [ ! -f "$BOOST_DIR/boost/regex.hpp" ] || [ ! -f "$BOOST_DIR/boost/config.hpp" ]; then
+          if [ ! -f "$BOOST_DIR/boost/regex.hpp" ] || \
+             [ ! -f "$BOOST_DIR/boost/config.hpp" ] || \
+             [ ! -f "$BOOST_DIR/boost/container_hash/hash.hpp" ]; then
             echo "Generating Boost flat headers (b2 headers)..."
             cd "$BOOST_DIR"
             if [ ! -f "./b2" ]; then
@@ -492,6 +494,15 @@ jobs:
           flutter build ios --simulator --debug \
             --build-name=1.0.0 \
             --build-number=${{ github.run_number }}
+          if [ -d build/ios/Debug-iphonesimulator/Runner.app ]; then
+            rm -rf build/ios/iphonesimulator
+            mkdir -p build/ios/iphonesimulator
+            ditto build/ios/Debug-iphonesimulator/Runner.app \
+              build/ios/iphonesimulator/Runner.app
+          elif [ ! -d build/ios/iphonesimulator/Runner.app ]; then
+            echo "ERROR: iOS simulator Runner.app was not produced"
+            exit 1
+          fi
 
       - name: Prepare iOS Artifact
         run: |

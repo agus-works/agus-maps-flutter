@@ -46,7 +46,9 @@ dependencies:
   fuzzywuzzy: ^1.1.6
   
   # For connectivity checking
-  connectivity_plus: ^7.1.1
+  # Pin 7.0.0 until GitHub macOS runners provide an SDK with
+  # NWPath.isUltraConstrained, used by 7.1.x.
+  connectivity_plus: 7.0.0
   
   # For disk space detection on Android/iOS
   storage_space: ^1.2.0

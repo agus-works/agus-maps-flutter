@@ -395,22 +395,48 @@ Future<void> _buildBoostHeaders() async {
 
   // Check for flat boost/ directory (created by b2 headers)
   final flatConfigFile = path.join(boostDir, 'boost', 'config.hpp');
+  final requiredFlatHeaders = <String>[
+    flatConfigFile,
+    path.join(boostDir, 'boost', 'regex.hpp'),
+    path.join(boostDir, 'boost', 'container_hash', 'hash.hpp'),
+  ];
 
   // Check for modular structure (libs/config/include/boost/config.hpp)
-  // CoMaps CMake directly includes from modular paths, so we don't need b2 headers
+  // CoMaps CMake directly includes from modular paths, but CocoaPods consumes
+  // the flat boost/ layout on Apple platforms.
   final modularConfigFile =
       path.join(boostDir, 'libs', 'config', 'include', 'boost', 'config.hpp');
 
   print('=== Build Boost Headers ===');
 
-  // First, check if modular structure exists (preferred - no build needed)
+  Future<bool> hasRequiredFlatHeaders() async {
+    for (final headerPath in requiredFlatHeaders) {
+      if (!await File(headerPath).exists()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Check if flat structure already exists (from previous b2 headers run).
+  if (await hasRequiredFlatHeaders()) {
+    print('Boost flat headers already built');
+    print('');
+    return;
+  }
+
+  // First, check if modular structure exists.
   if (await File(modularConfigFile).exists()) {
     print('Boost modular headers found (libs/*/include structure)');
-    print(
-        'CMake will use modular include paths directly - no b2 headers needed');
 
     // Verify a few more essential modules exist
-    final essentialModules = ['regex', 'container', 'iterator', 'range'];
+    final essentialModules = [
+      'regex',
+      'container',
+      'container_hash',
+      'iterator',
+      'range',
+    ];
     var allFound = true;
     for (final module in essentialModules) {
       final modulePath = path.join(boostDir, 'libs', module, 'include');
@@ -422,18 +448,16 @@ Future<void> _buildBoostHeaders() async {
 
     if (allFound) {
       print('All essential Boost modules verified');
-      print('');
-      return;
+      if (!Platform.isMacOS) {
+        print(
+            'CMake will use modular include paths directly - no b2 headers needed');
+        print('');
+        return;
+      }
+      print('Apple plugin builds require flat boost/ headers; running b2.');
     } else {
       print('Some Boost modules missing, will try to build headers...');
     }
-  }
-
-  // Check if flat structure already exists (from previous b2 headers run)
-  if (await File(flatConfigFile).exists()) {
-    print('Boost flat headers already built (boost/config.hpp exists)');
-    print('');
-    return;
   }
 
   if (!await Directory(boostDir).exists()) {
@@ -441,7 +465,6 @@ Future<void> _buildBoostHeaders() async {
   }
 
   // If we get here, we need to run b2 headers to create the flat structure
-  // This is a fallback path - normally the modular structure should be sufficient
   print('Building flat Boost headers with b2...');
 
   final b2Exe = Platform.isWindows
@@ -538,9 +561,9 @@ call bootstrap.bat
   }
 
   // Verify headers were generated
-  if (!await File(flatConfigFile).exists()) {
+  if (!await hasRequiredFlatHeaders()) {
     throw Exception(
-        'b2 headers completed but config.hpp not found at: $flatConfigFile');
+        'b2 headers completed but required Boost flat headers are missing');
   }
 
   print('Boost headers built');
