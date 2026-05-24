@@ -92,7 +92,7 @@ Future<void> main(List<String> args) async {
       buildBinaries: results['build-binaries'] as bool,
       skipPatches: results['skip-patches'] as bool,
       noCache: results['no-cache'] as bool,
-      platforms: results['platform'] as List<String>?,
+      platforms: results.wasParsed('platform') ? results['platform'] as List<String> : null,
     );
 
     // Run build
