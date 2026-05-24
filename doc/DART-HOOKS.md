@@ -205,6 +205,20 @@ CocoaPods setup. The podspec declares `Resources/shaders_metal.metallib`, and
 CocoaPods validates declared resources during project generation, so the shader
 bundle must exist before `pod install` runs.
 
+The same shader artifact is also copied into the Swift Package Manager resource
+directories:
+
+- `ios/agus_maps_flutter/Sources/agus_maps_flutter/Resources/shaders_metal.metallib`
+- `macos/agus_maps_flutter/Sources/agus_maps_flutter/Resources/shaders_metal.metallib`
+
+If the optional Xcode Metal Toolchain is not installed, `xcrun metal` can fail
+without producing any `.air` files. The build runner now treats that as fatal
+and reports the compiler output with the remediation command:
+
+```bash
+xcodebuild -downloadComponent MetalToolchain
+```
+
 Patch application is deterministic: patch files are sorted by basename before
 they are applied. This avoids filesystem-order differences between machines.
 

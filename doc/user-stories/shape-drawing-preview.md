@@ -86,9 +86,9 @@ fallback.
 - Native interaction renderer API:
   `updateDrapeInteractionGeometry`
 - Native macOS renderer:
-  `macos/Classes/agus_maps_flutter_macos.mm`
+  `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm`
 - Native iOS renderer:
-  `ios/Classes/agus_maps_flutter_ios.mm`
+  `ios/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_ios.mm`
 - Native Android/shared renderer:
   `src/agus_maps_flutter.cpp`
 - Native Linux interaction line renderer and Windows DuckDB renderer:

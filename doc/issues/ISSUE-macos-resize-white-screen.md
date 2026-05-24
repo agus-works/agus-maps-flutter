@@ -143,10 +143,10 @@ private func nativeResizeSurface(pixelBuffer: CVPixelBuffer, width: Int32, heigh
 
 | File | Change |
 |------|--------|
-| `macos/Classes/AgusBridge.h` | Added `agus_native_resize_surface()` declaration |
-| `macos/Classes/agus_maps_flutter_macos.mm` | Added `g_metalContextFactory` pointer, implemented `agus_native_resize_surface()` |
-| `macos/Classes/AgusMetalContextFactory.mm` | Added `g_currentRenderTexture` global, updated constructor and `SetRenderTexture()` |
-| `macos/Classes/AgusMapsFlutterPlugin.swift` | Added `nativeResizeSurface()` wrapper, updated `handleResizeMapSurface()` |
+| `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/include/agus_maps_flutter_native/AgusBridge.h` | Added `agus_native_resize_surface()` declaration |
+| `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm` | Added `g_metalContextFactory` pointer, implemented `agus_native_resize_surface()` |
+| `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm` | Added `g_currentRenderTexture` global, updated constructor and `SetRenderTexture()` |
+| `macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift` | Added `nativeResizeSurface()` wrapper, updated `handleResizeMapSurface()` |
 
 
 ## Follow-up Fix: Resize Instability with Rapid Events
@@ -260,9 +260,9 @@ extern "C" void agus_native_resize_surface(CVPixelBufferRef pixelBuffer, int32_t
 
 | File | Change |
 |------|--------|
-| `macos/Classes/AgusMapsFlutterPlugin.swift` | Added debounce properties, refactored resize handling |
-| `macos/Classes/AgusMetalContextFactory.mm` | Added `#include <mutex>`, `g_textureMutex`, mutex protection |
-| `macos/Classes/agus_maps_flutter_macos.mm` | Added early return check, `MakeFrameActive()` call |
+| `macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift` | Added debounce properties, refactored resize handling |
+| `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm` | Added `#include <mutex>`, `g_textureMutex`, mutex protection |
+| `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm` | Added early return check, `MakeFrameActive()` call |
 
 
 ## Why macOS-Only?

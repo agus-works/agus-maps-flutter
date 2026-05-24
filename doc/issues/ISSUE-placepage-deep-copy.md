@@ -167,7 +167,7 @@ static AgusPlacePageData* BuildPlacePageData(place_page::Info const & info) {
 }
 ```
 
-**Platform conversion** (e.g., iOS [ios/Classes/AgusMapsFlutterPlugin.swift#L110-L200](../../ios/Classes/AgusMapsFlutterPlugin.swift)):
+**Platform conversion** (e.g., iOS [ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift#L110-L200](../../ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift)):
 ```swift
 private func makePlacePageData(from native: UnsafePointer<AgusPlacePageData>) -> PlacePageData {
     // Each string is copied from C to Swift

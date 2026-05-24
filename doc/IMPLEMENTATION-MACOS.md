@@ -6,6 +6,9 @@
 
 - Flutter SDK 3.24+ installed
 - Xcode 15+ with macOS 12.0+ SDK
+- Xcode Metal Toolchain component installed. Verify with
+  `xcodebuild -showComponent MetalToolchain -json`; install with
+  `xcodebuild -downloadComponent MetalToolchain` if needed.
 - CocoaPods 1.14+
 - macOS Monterey or later (for Metal development)
 - ~5GB disk space for CoMaps build artifacts
@@ -83,6 +86,28 @@ This matches how CoMaps/Organic Maps operates: maps are stored as standalone `.m
 
 Those come after we have a repeatable dependency + data workflow and a stable FFI boundary.
 
+## Current Packaging Status
+
+The repository-owned macOS plugin now supports both CocoaPods and Swift Package
+Manager. CocoaPods remains available through `macos/agus_maps_flutter.podspec`;
+SwiftPM uses `macos/agus_maps_flutter/Package.swift`.
+
+SwiftPM links the plugin into the app image instead of embedding
+`agus_maps_flutter.framework`, so the Dart FFI loader resolves Apple symbols via
+`DynamicLibrary.process()`. Do not assume
+`Contents/Frameworks/agus_maps_flutter.framework` exists in a SwiftPM build.
+
+Metal shader resources are copied to both integration layouts:
+
+- `macos/Resources/shaders_metal.metallib` for CocoaPods.
+- `macos/agus_maps_flutter/Sources/agus_maps_flutter/Resources/shaders_metal.metallib`
+  for SwiftPM.
+
+At runtime, CoMaps also searches SwiftPM app resource bundles such as:
+
+```text
+Contents/Resources/agus_maps_flutter_agus_maps_flutter.bundle/Contents/Resources/shaders_metal.metallib
+```
 
 ## Architecture Overview
 
@@ -204,20 +229,22 @@ If the XCFramework is not found, `pod install` will fail with an error.
 ```
 macos/
 ├── agus_maps_flutter.podspec        # CocoaPods configuration
-├── Classes/
-│   ├── AgusMapsFlutterPlugin.swift  # Flutter plugin (macOS specific)
-│   │   - Uses FlutterMacOS, AppKit
-│   │   - Has nativeResizeSurface() for window resize
-│   ├── AgusMetalContextFactory.h    # Metal context header
-│   ├── AgusMetalContextFactory.mm   # Metal context impl
-│   │   - Has g_currentRenderTexture for resize
-│   ├── AgusBridge.h                 # C interface for Swift (macOS specific)
-│   │   - Has agus_native_resize_surface()
-│   ├── AgusPlatformMacOS.h          # macOS platform header
-│   ├── AgusPlatformMacOS.mm         # macOS platform impl
-│   └── agus_maps_flutter_macos.mm   # FFI implementation
-│       - Has g_metalContextFactory pointer
-│       - Implements agus_native_resize_surface()
+├── agus_maps_flutter/
+│   ├── Package.swift                # SwiftPM package manifest
+│   └── Sources/
+│       ├── agus_maps_flutter/
+│       │   ├── AgusMapsApi.g.swift
+│       │   ├── AgusMapsFlutterPlugin.swift
+│       │   └── Resources/
+│       │       └── shaders_metal.metallib
+│       └── agus_maps_flutter_native/
+│           ├── include/agus_maps_flutter_native/AgusBridge.h
+│           ├── AgusMetalContextFactory.h
+│           ├── AgusMetalContextFactory.mm
+│           ├── AgusPlatformMacOS.h
+│           ├── AgusPlatformMacOS.mm
+│           ├── agus_duckdb_bridge.mm
+│           └── agus_maps_flutter_macos.mm
 ├── Resources/
 │   └── shaders_metal.metallib       # Pre-compiled Metal shaders
 └── Frameworks/
@@ -231,7 +258,7 @@ macos/
 
 ### Step 1: Create macOS Plugin Swift Class
 
-Adapt `ios/Classes/AgusMapsFlutterPlugin.swift` for macOS:
+Adapt `ios/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift` for macOS:
 
 1. Change `import Flutter` → `import FlutterMacOS`
 2. Change `import UIKit` → `import AppKit`
@@ -286,6 +313,14 @@ Use `dart run tool/build.dart --no-cache` to:
 For source builds, Metal shader compilation happens before CocoaPods setup so
 the podspec resource bundle `Resources/shaders_metal.metallib` exists when
 `pod install` validates declared resources.
+
+The same build step copies `shaders_metal.metallib` into the SwiftPM target
+resource directory. If Xcode's optional Metal Toolchain is missing, the Dart
+build hook must fail the build and tell the developer to run:
+
+```bash
+xcodebuild -downloadComponent MetalToolchain
+```
 
 
 ## Build Configuration
@@ -432,7 +467,7 @@ with a **fake `CAMetalDrawable`**. The base implementation uses `presentDrawable
   - Commit the command buffer and only wait until scheduled (non-blocking relative to GPU finish).
 
 **Files Updated:**
-- [macos/Classes/AgusMetalContextFactory.mm](macos/Classes/AgusMetalContextFactory.mm)
+- [macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm](macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm)
 
 **Why This Is Correct:** For offscreen rendering into a CVPixelBuffer/IOSurface, the correct
 presentation model is **command buffer commit + completion handler**, not drawable presentation.
@@ -451,7 +486,7 @@ to escape the destructor and terminate the process.
 defensive locking in the destructor to prevent exceptions during teardown.
 
 **Files Updated:**
-- [macos/Classes/AgusMetalContextFactory.mm](macos/Classes/AgusMetalContextFactory.mm)
+- [macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm](macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm)
 
 ### Window Resizing ✅ RESOLVED
 
@@ -485,11 +520,36 @@ Unlike iOS, macOS windows can be freely resized by users. This required special 
 
 3. **Improved Resize Handler:** Added `MakeFrameActive()` call after resize to force immediate re-render of new viewport areas.
 
-See [ISSUE-macos-resize-white-screen.md](ISSUE-macos-resize-white-screen.md) for full technical details.
+See [ISSUE-macos-resize-white-screen.md](issues/ISSUE-macos-resize-white-screen.md) for full technical details.
 
 **Key differences from iOS:**
 - iOS: `AgusBridge.h` does NOT have `agus_native_resize_surface()` (iOS apps don't resize)
 - macOS: Has the additional function, debouncing, and thread synchronization for resize
+
+### Platform Menu Lifecycle ✅ RESOLVED
+
+**Problem:** The app initially showed normal macOS menus, but resizing into the
+desktop workbench replaced them with only `Agus Suite` and `Tools`. Resizing
+back to tablet/mobile then cleared the menu bar entirely.
+
+**Root Cause:** Flutter's `PlatformMenuBar` replaces the whole native
+`NSApp.mainMenu`, and the earlier implementation mounted it only inside the
+desktop workbench branch. When the responsive layout switched away from desktop,
+the widget disposed and Flutter cleared the native menu.
+
+**Solution:** The example app now owns a single macOS `PlatformMenuBar` above
+the responsive shell. It caches compact and desktop menu trees:
+
+- Compact/tablet/mobile: `Agus Suite`, `Edit`, `View`, `Window`, `Help`.
+- Desktop: compact menus plus `Tools`.
+
+The `Tools` menu exposes workbench bottom-panel tools from
+`_workbenchToolRegistry`. `CFBundleDisplayName` and `CFBundleName` are set to
+`Agus Suite`, while the bundle output remains
+`agus_maps_flutter_example.app`.
+
+See [ISSUE-macos-platform-menu-lifecycle.md](issues/ISSUE-macos-platform-menu-lifecycle.md)
+for validation details.
 
 ### Stalled Rendering on Interactive Gestures ✅ RESOLVED
 
@@ -500,7 +560,7 @@ See [ISSUE-macos-resize-white-screen.md](ISSUE-macos-resize-white-screen.md) for
 **Solution:** Removed the frame count limit in `AgusMetalContextFactory::Present()`. We now **always** notify Flutter when a frame is presented. This is efficient because the CoMaps engine inherently suspends its render loop when idle, so `Present()` is only called when there is actual content to display.
 
 **Files Updated:**
-- `macos/Classes/AgusMetalContextFactory.mm`
+- `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/AgusMetalContextFactory.mm`
 
 ### Missing `subtypes.csv` Place Page Crash ✅ RESOLVED
 
@@ -520,7 +580,7 @@ missing.
 
 **Files Updated:**
 - `tool/src/assets_updater.dart`
-- `macos/Classes/AgusMapsFlutterPlugin.swift`
+- `macos/agus_maps_flutter/Sources/agus_maps_flutter/AgusMapsFlutterPlugin.swift`
 - `doc/COMAPS-ASSETS.md`
 
 ### Place Page Metadata Parity ✅ RESOLVED
@@ -538,7 +598,7 @@ OSM-style tag map as iOS and can render matching rich details in the place-page
 sheet.
 
 **Files Updated:**
-- `macos/Classes/agus_maps_flutter_macos.mm`
+- `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm`
 - `doc/IMPLEMENTATION-LOCALISATION.md`
 - `doc/IMPL-05-place-page-drawer.md`
 

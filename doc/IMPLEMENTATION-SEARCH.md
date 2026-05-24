@@ -216,8 +216,8 @@ The example search box should behave like CoMaps:
 All target platforms must compile the same FFI declarations:
 
 - Android: `src/agus_maps_flutter.cpp`
-- iOS: `ios/Classes/agus_maps_flutter_ios.mm`
-- macOS: `macos/Classes/agus_maps_flutter_macos.mm`
+- iOS: `ios/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_ios.mm`
+- macOS: `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_maps_flutter_macos.mm`
 - Linux: `src/agus_maps_flutter_linux.cpp`
 - Windows: `src/agus_maps_flutter_win.cpp`
 

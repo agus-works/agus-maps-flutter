@@ -1176,7 +1176,9 @@ flowchart TB
 - The overlay triplets force `HAVE_PIPE2=0` for vcpkg CMake packages. This fixes curl `8.17.0` mis-detecting `pipe2` on the Xcode `iPhoneSimulator26.4.sdk`, where `pipe2` is not declared.
 - iOS CMake builds pass explicit `CMAKE_SYSTEM_NAME=iOS`, `CMAKE_SYSTEM_PROCESSOR`, a generated `CMAKE_PROJECT_TOP_LEVEL_INCLUDES` file that forces the processor cache value early, and `DUCKDB_EXPLICIT_PLATFORM` so DuckDB does not try to execute a cross-compiled platform detector binary on macOS.
 - `tool/src/build_runner.dart` now calls `buildDuckDBiOSXCFramework()` from the iOS platform build and copies `DuckDB.xcframework` into `ios/Frameworks` beside CoMaps.
-- `ios/agus_maps_flutter.podspec` now vendors `DuckDB.xcframework`, compiles `ios/Classes/agus_duckdb_bridge.mm`, and includes DuckDB headers.
+- `ios/agus_maps_flutter.podspec` now vendors `DuckDB.xcframework`, compiles
+  `ios/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_duckdb_bridge.mm`,
+  and includes DuckDB headers.
 
 ### Apple Native Bridge
 
@@ -1396,8 +1398,10 @@ The C ABI declarations and Dart bindings were correct, but the bridge implementa
 
 Fix applied:
 
-- Added `ios/Classes/agus_duckdb_bridge.mm`, which includes `../../src/agus_duckdb_bridge.cpp`.
-- Added `macos/Classes/agus_duckdb_bridge.mm`, which includes `../../src/agus_duckdb_bridge.cpp`.
+- Added `ios/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_duckdb_bridge.mm`,
+  which includes `../../../../src/agus_duckdb_bridge.cpp`.
+- Added `macos/agus_maps_flutter/Sources/agus_maps_flutter_native/agus_duckdb_bridge.mm`,
+  which includes `../../../../src/agus_duckdb_bridge.cpp`.
 - Removed direct `../src/agus_duckdb_bridge.cpp` entries from both Apple podspec `s.source_files` lists, because CocoaPods was not placing that outside-`Classes` C++ source into the generated Pods projects.
 - Reran `pod install` for `example/ios` and `example/macos`.
 

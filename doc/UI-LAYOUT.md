@@ -18,6 +18,22 @@ Linux, and Windows use the VS Code-style workbench at desktop widths, but narrow
 desktop windows still move through the tablet and mobile layouts so the app can
 be tested and used responsively.
 
+## Platform menus
+
+On macOS, the native platform menu is owned above the responsive shell. This is
+intentional: Flutter's `PlatformMenuBar` replaces the whole native app menu and
+clears it when disposed, so it must not live inside only the desktop workbench
+branch.
+
+The compact/tablet/mobile macOS menu always contains `Agus Suite`, `Edit`,
+`View`, `Window`, and `Help`. Desktop layout adds a `Tools` menu for
+workbench-only panel tools such as Point of Interest and Debug Console. The menu
+tree is cached by resolved layout bucket so resizing within the same bucket does
+not send redundant platform-menu updates.
+
+Windows and Linux currently keep their runner/platform default behavior; the
+Flutter stock platform menu delegate used here is macOS-only.
+
 ## Desktop workbench terminology
 
 The desktop shell intentionally uses VS Code component terminology:
