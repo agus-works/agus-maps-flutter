@@ -230,6 +230,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "flutter build appbundle failed" }
 
     Write-LogStep "Building Windows Executable..."
+    $windowsBuildDir = Join-Path (Get-Location) "build\windows"
+    if (Test-Path $windowsBuildDir) {
+        Write-LogInfo "Removing stale Flutter Windows build directory: $windowsBuildDir"
+        Remove-Item -LiteralPath $windowsBuildDir -Recurse -Force
+    }
     flutter build windows --release
     if ($LASTEXITCODE -ne 0) { throw "flutter build windows failed" }
 

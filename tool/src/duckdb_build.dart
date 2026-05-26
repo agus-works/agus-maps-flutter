@@ -362,6 +362,8 @@ Future<String> buildDuckDBWindowsRuntime({
       'VCPKG_OVERLAY_TRIPLETS': tripletsDir,
       'VCPKG_BUILD': '1',
       'CMAKE_BUILD_TYPE': BuildConfig.buildType,
+      'CMAKE_CXX_STANDARD': '17',
+      'CMAKE_CXX_STANDARD_REQUIRED': 'ON',
       'CMAKE_MSVC_RUNTIME_LIBRARY': 'MultiThreaded',
       'DUCKDB_EXTENSION_CONFIGS': extensionConfig,
       'AGUS_DUCKDB_SPATIAL_SOURCE_DIR': spatialSourceDir,
