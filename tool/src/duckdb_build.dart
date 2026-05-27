@@ -310,6 +310,7 @@ Future<String> buildDuckDBWindowsRuntime({
   final spatialSourceDir = duckdbSpatialDir ?? getDuckdbSpatialDir();
   final extensionConfig = _getExtensionConfigPath();
   _validateDuckDBInputs(duckdbSourceDir, spatialSourceDir, extensionConfig);
+  await _ensureDuckDBWindowsFmtSecureSclPatch(duckdbSourceDir);
 
   final resolvedVcpkgRoot = vcpkgRoot ?? await _detectVcpkgRoot();
   final toolchainFile = path.join(
@@ -412,6 +413,41 @@ void _validateDuckDBInputs(
   if (!fileExists(extensionConfig)) {
     throw Exception('DuckDB extension config not found: $extensionConfig');
   }
+}
+
+Future<void> _ensureDuckDBWindowsFmtSecureSclPatch(
+  String duckdbSourceDir,
+) async {
+  final fmtHeader = File(path.join(
+    duckdbSourceDir,
+    'third_party',
+    'fmt',
+    'include',
+    'fmt',
+    'format.h',
+  ));
+  if (!fmtHeader.existsSync()) {
+    throw Exception('DuckDB bundled fmt header not found: ${fmtHeader.path}');
+  }
+
+  const patchedGuard = '#if defined(_SECURE_SCL) && _SECURE_SCL';
+  const upstreamGuard = '#ifdef _SECURE_SCL';
+  final contents = await fmtHeader.readAsString();
+  if (contents.contains(patchedGuard)) {
+    return;
+  }
+
+  if (!contents.contains(upstreamGuard)) {
+    throw Exception(
+      'DuckDB bundled fmt header does not contain the expected '
+      '_SECURE_SCL guard. Revisit the Windows fmt compatibility patch.',
+    );
+  }
+
+  await fmtHeader.writeAsString(
+    contents.replaceFirst(upstreamGuard, patchedGuard),
+  );
+  print('Applied DuckDB Windows fmt _SECURE_SCL compatibility guard.');
 }
 
 Future<String> _detectVcpkgRoot() async {
