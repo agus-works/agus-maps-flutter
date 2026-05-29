@@ -24,6 +24,7 @@ migrate_working_dir/
 # VS Code which you may wish to be included in version control, so this line
 # is commented out by default.
 #.vscode/
+.vs/
 
 # Flutter/Dart/Pub related
 # Pub workspaces keep a single root lockfile; commit it for reproducible Melos bootstraps.
