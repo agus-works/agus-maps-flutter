@@ -237,6 +237,8 @@ Write-LogHeader "Building Flutter Example Apps"
 
 Push-Location (Join-Path $repoRoot "example")
 try {
+    # windows/CMakeLists.txt honors this flag to prefer windows/prebuilt/x64
+    # over an in-repo source rebuild during flutter build windows.
     $env:AGUS_MAPS_USE_PREBUILT_WINDOWS = "1"
 
     Write-LogStep "Building Android split APKs..."
