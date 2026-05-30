@@ -805,6 +805,8 @@ Future<void> buildWindowsLibrary({
     path.join(vcpkgInstalledDir, 'x64-windows', 'bin', 'zlib1.dll'),
     // Classic mode: vcpkg/installed/x64-windows/bin/zlib1.dll
     path.join(vcpkg, 'installed', 'x64-windows', 'bin', 'zlib1.dll'),
+    // Common global vcpkg installation used on Windows contributors/CI.
+    r'C:\vcpkg\installed\x64-windows\bin\zlib1.dll',
   ];
   final msys2Root = Platform.environment['MSYS2_ROOT'];
   if (msys2Root != null && msys2Root.isNotEmpty) {

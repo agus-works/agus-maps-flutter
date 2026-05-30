@@ -214,6 +214,22 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-LogSuccess "Native binaries built"
 
+# Stage pre-built Windows binaries for flutter build windows and avoid
+# re-building native sources (which can fail if zlib cannot be resolved).
+$pluginPrebuiltDir = Join-Path $repoRoot "windows\prebuilt\x64"
+$nativeOutputDir = Join-Path $repoRoot "build\agus-binaries-windows\x64"
+if (-not (Test-Path $nativeOutputDir)) {
+    throw "Native Windows output directory not found: $nativeOutputDir"
+}
+
+New-Item -ItemType Directory -Force -Path $pluginPrebuiltDir | Out-Null
+Copy-Item -Path (Join-Path $nativeOutputDir '*') -Destination $pluginPrebuiltDir -Force
+
+$zlibInPrebuilt = Join-Path $pluginPrebuiltDir "zlib1.dll"
+if (-not (Test-Path $zlibInPrebuilt)) {
+    throw "zlib1.dll missing from prebuilt runtime directory: $pluginPrebuiltDir"
+}
+
 # ----------------------------------------------------------------------------
 # Build Flutter Apps
 # ----------------------------------------------------------------------------
@@ -221,6 +237,8 @@ Write-LogHeader "Building Flutter Example Apps"
 
 Push-Location (Join-Path $repoRoot "example")
 try {
+    $env:AGUS_MAPS_USE_PREBUILT_WINDOWS = "1"
+
     Write-LogStep "Building Android split APKs..."
     flutter build apk --release --split-per-abi
     if ($LASTEXITCODE -ne 0) { throw "flutter build apk --split-per-abi failed" }
@@ -244,5 +262,6 @@ try {
     Write-Host "Windows EXE: example\build\windows\x64\runner\Release\agus_maps_flutter_example.exe" -ForegroundColor Green
 }
 finally {
+    Remove-Item Env:AGUS_MAPS_USE_PREBUILT_WINDOWS -ErrorAction SilentlyContinue
     Pop-Location
 }
