@@ -223,7 +223,17 @@ if (-not (Test-Path $nativeOutputDir)) {
 }
 
 New-Item -ItemType Directory -Force -Path $pluginPrebuiltDir | Out-Null
-Copy-Item -Path (Join-Path $nativeOutputDir '*') -Destination $pluginPrebuiltDir -Force
+# Stage only link/load artifacts that Flutter's Windows packaging consumes.
+# Other intermediate files are not needed in windows/prebuilt/x64.
+$nativeArtifacts = Get-ChildItem -Path $nativeOutputDir -File | Where-Object {
+    $_.Extension -in @('.dll', '.lib', '.pdb')
+}
+if (-not $nativeArtifacts) {
+    throw "No Windows native artifacts (.dll/.lib/.pdb) found in: $nativeOutputDir"
+}
+foreach ($artifact in $nativeArtifacts) {
+    Copy-Item -Path $artifact.FullName -Destination (Join-Path $pluginPrebuiltDir $artifact.Name) -Force
+}
 
 $zlibInPrebuilt = Join-Path $pluginPrebuiltDir "zlib1.dll"
 if (-not (Test-Path $zlibInPrebuilt)) {
