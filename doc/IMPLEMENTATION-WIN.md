@@ -1394,7 +1394,7 @@ dart run tool/build.dart --no-cache
 
 ### "Could NOT find ZLIB (missing: ZLIB_LIBRARY ZLIB_INCLUDE_DIR)"
 
-**Cause:** CMake is using the wrong vcpkg installation (e.g., Visual Studio's bundled vcpkg instead of your installed C:\vcpkg).
+**Cause:** CMake is using the wrong vcpkg installation (e.g., Visual Studio's bundled vcpkg instead of your dedicated local or global installation).
 
 **Solution:**
 1. Install zlib via vcpkg: `C:\vcpkg\vcpkg.exe install zlib:x64-windows --classic`
@@ -1403,6 +1403,25 @@ dart run tool/build.dart --no-cache
 4. Rebuild: `flutter build windows --release`
 
 The CMakeLists.txt checks for the actual presence of `zlib.lib` before selecting a vcpkg installation, ensuring it uses a vcpkg that actually has the required packages.
+
+**Solution 2:**
+1. Clean the build directory from the root: 
+    ```powershell
+    Remove-Item -Recurse -Force example\build\windows
+    ```
+2. Set the CMake prefix env variable: 
+    ```powershell
+    $env:CMAKE_PREFIX_PATH = "$PWD\vcpkg_installed\x64-windows"
+    ```
+3. Reinstall vcpkg dependencies: 
+    ```powershell
+    vcpkg install
+    ```
+4. Navigate to the example app directory and rebuild: 
+    ```powershell
+    cd example 
+    flutter build windows --release
+    ```
 
 ### "MissingPluginException: No implementation found for method extractMap"
 
