@@ -1423,6 +1423,21 @@ The CMakeLists.txt checks for the actual presence of `zlib.lib` before selecting
     flutter build windows --release
     ```
 
+### Windows Release Build Fails during INSTALL Phase (Error MSB3073)
+
+**Cause:** The build fails with error `MSB3073` during the `vcpkg` `INSTALL` phase because the deployment script unconditionally searches for a `native_assets/windows` folder that does not exist.
+
+**Solution:**
+1. Force-create the missing empty directory structure from the repository root:
+   ```powershell
+   New-Item -ItemType Directory -Path ".\example\build\native_assets\windows" -Force
+   ```
+4. Navigate to the example app directory and rebuild: 
+    ```powershell
+    cd example 
+    flutter build windows --release
+    ```
+
 ### "MissingPluginException: No implementation found for method extractMap"
 
 **Cause:** Plugin not registered with Flutter.  
