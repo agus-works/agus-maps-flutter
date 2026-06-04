@@ -367,13 +367,16 @@ Future<void> _prepareCMakeBuildDirectory(CMakeBuildConfig config) async {
   final cacheFile = File(path.join(config.buildDir, 'CMakeCache.txt'));
   if (!await cacheFile.exists()) return;
 
+  final expectedMetalCompiler = config.variables['CMAKE_Metal_COMPILER'];
   final cacheValues = await _readCMakeCacheValues(cacheFile, const {
     'CMAKE_HOME_DIRECTORY',
     'CMAKE_CACHEFILE_DIR',
+    'CMAKE_Metal_COMPILER',
   });
 
   final cachedSource = cacheValues['CMAKE_HOME_DIRECTORY'];
   final cachedBuild = cacheValues['CMAKE_CACHEFILE_DIR'];
+  final cachedMetalCompiler = cacheValues['CMAKE_Metal_COMPILER'];
   final expectedSource = _normalizeCMakeCachePath(config.sourceDir);
   final expectedBuild = _normalizeCMakeCachePath(config.buildDir);
 
@@ -381,8 +384,19 @@ Future<void> _prepareCMakeBuildDirectory(CMakeBuildConfig config) async {
       _normalizeCMakeCachePath(cachedSource) == expectedSource;
   final buildMatches = cachedBuild == null ||
       _normalizeCMakeCachePath(cachedBuild) == expectedBuild;
+  final metalCompilerMatches = expectedMetalCompiler == null ||
+      cachedMetalCompiler == null ||
+      _normalizeCMakeCachePath(cachedMetalCompiler) ==
+          _normalizeCMakeCachePath(expectedMetalCompiler);
+  final cachedMetalCompilerExists =
+      cachedMetalCompiler == null || fileExists(cachedMetalCompiler);
 
-  if (sourceMatches && buildMatches) return;
+  if (sourceMatches &&
+      buildMatches &&
+      metalCompilerMatches &&
+      cachedMetalCompilerExists) {
+    return;
+  }
 
   print('Discarding stale CMake build directory: ${config.buildDir}');
   if (cachedSource != null && !sourceMatches) {
@@ -392,6 +406,13 @@ Future<void> _prepareCMakeBuildDirectory(CMakeBuildConfig config) async {
   if (cachedBuild != null && !buildMatches) {
     print('  Cached build: $cachedBuild');
     print('  Current build: ${config.buildDir}');
+  }
+  if (cachedMetalCompiler != null && !metalCompilerMatches) {
+    print('  Cached Metal compiler: $cachedMetalCompiler');
+    print('  Current Metal compiler: $expectedMetalCompiler');
+  }
+  if (cachedMetalCompiler != null && !cachedMetalCompilerExists) {
+    print('  Cached Metal compiler no longer exists: $cachedMetalCompiler');
   }
   await _deleteIfExists(config.buildDir);
 }
@@ -424,6 +445,37 @@ String _normalizeCMakeCachePath(String value) {
     path.isAbsolute(value) ? value : path.absolute(value),
   );
   return Platform.isWindows ? normalized.toLowerCase() : normalized;
+}
+
+Future<String> _resolveMacOSMetalCompiler() async {
+  final result = await Process.run(
+    'xcrun',
+    ['--find', 'metal'],
+  );
+  if (result.exitCode != 0) {
+    throw Exception(
+      'Failed to locate the Metal compiler with xcrun --find metal: '
+      '${result.stderr}',
+    );
+  }
+
+  final compilerPath = result.stdout.toString().trim();
+  if (compilerPath.isEmpty || !fileExists(compilerPath)) {
+    throw Exception(
+      'xcrun returned a Metal compiler path that does not exist: '
+      '$compilerPath',
+    );
+  }
+
+  final versionResult = await Process.run(compilerPath, ['--version']);
+  if (versionResult.exitCode != 0) {
+    throw Exception(
+      'The Metal compiler is not executable: $compilerPath\n'
+      '${versionResult.stderr}',
+    );
+  }
+
+  return compilerPath;
 }
 
 /// Build Android native library for a specific ABI
@@ -607,6 +659,8 @@ Future<void> buildMacOSXCFramework({
     throw Exception('Failed to get macOS SDK path');
   }
   final sdkPath = sdkResult.stdout.toString().trim();
+  final metalCompiler = await _resolveMacOSMetalCompiler();
+  print('Using Metal compiler: $metalCompiler');
 
   // Build for arm64
   final arm64BuildDir = path.join(buildDir, 'arm64');
@@ -620,6 +674,7 @@ Future<void> buildMacOSXCFramework({
       'CMAKE_OSX_ARCHITECTURES': 'arm64',
       'CMAKE_OSX_SYSROOT': sdkPath,
       'CMAKE_OSX_DEPLOYMENT_TARGET': BuildConfig.macOSDeploymentTarget,
+      'CMAKE_Metal_COMPILER': metalCompiler,
       'PLATFORM_IPHONE': 'OFF',
       'PLATFORM_DESKTOP': 'ON',
       'SKIP_TESTS': 'ON',
@@ -645,6 +700,7 @@ Future<void> buildMacOSXCFramework({
       'CMAKE_OSX_ARCHITECTURES': 'x86_64',
       'CMAKE_OSX_SYSROOT': sdkPath,
       'CMAKE_OSX_DEPLOYMENT_TARGET': BuildConfig.macOSDeploymentTarget,
+      'CMAKE_Metal_COMPILER': metalCompiler,
       'PLATFORM_IPHONE': 'OFF',
       'PLATFORM_DESKTOP': 'ON',
       'SKIP_TESTS': 'ON',

@@ -61,6 +61,21 @@ const List<String> _symbolsDpiFolders = [
   'xxxhdpi',
 ];
 const List<String> _symbolsStyleFolders = ['light', 'dark'];
+const String _metalToolchainFallback =
+    'If Xcode reports a missing Metal Toolchain, run: '
+    'xcodebuild -downloadComponent MetalToolchain';
+
+class _MetalShaderTools {
+  const _MetalShaderTools({
+    required this.metalPath,
+    required this.metallibPath,
+    required this.macosSdkPath,
+  });
+
+  final String metalPath;
+  final String metallibPath;
+  final String macosSdkPath;
+}
 
 /// Build runner configuration
 class BuildRunnerConfig {
@@ -1098,6 +1113,13 @@ Future<void> _buildMetalShaders() async {
 
   print('Compiling Metal shaders from $shadersDir...');
 
+  final tools = await _resolveMetalShaderTools();
+  print(_formatMetalToolchainDetails(
+    metalPath: tools.metalPath,
+    metallibPath: tools.metallibPath,
+    macosSdkPath: tools.macosSdkPath,
+  ));
+
   // Find all .metal files
   final metalFiles = <String>[];
   await for (final entity in Directory(shadersDir).list(recursive: false)) {
@@ -1122,13 +1144,12 @@ Future<void> _buildMetalShaders() async {
 
     // Use the macOS SDK; the resulting metallib is packaged for iOS and macOS.
     final result = await runProcess(
-      'xcrun',
+      tools.metalPath,
       [
-        '-sdk',
-        'macosx',
-        'metal',
         '-c',
         '-std=osx-metal2.0',
+        '-isysroot',
+        tools.macosSdkPath,
         '-I',
         shadersDir,
         '-o',
@@ -1157,26 +1178,36 @@ Future<void> _buildMetalShaders() async {
   if (airFiles.isEmpty) {
     throw StateError(
       'No Metal shaders compiled successfully.\n'
+      '${_formatMetalToolchainDetails(
+        metalPath: tools.metalPath,
+        metallibPath: tools.metallibPath,
+        macosSdkPath: tools.macosSdkPath,
+      )}\n'
       '${compileFailures.join('\n')}\n'
-      'Apple rendering requires shaders_metal.metallib. If Xcode reports a '
-      'missing Metal Toolchain, run: '
-      'xcodebuild -downloadComponent MetalToolchain',
+      'Apple rendering requires shaders_metal.metallib. '
+      '$_metalToolchainFallback',
     );
   }
 
   // Link .air files to .metallib
   print('Linking ${airFiles.length} shaders...');
   final linkResult = await runProcess(
-    'xcrun',
-    ['-sdk', 'macosx', 'metallib', '-o', outputLib, ...airFiles],
+    tools.metallibPath,
+    ['-o', outputLib, ...airFiles],
     throwOnError: false,
   );
 
   if (linkResult.exitCode != 0 || !await File(outputLib).exists()) {
     throw StateError(
       'Failed to link Metal library.\n'
+      '${_formatMetalToolchainDetails(
+        metalPath: tools.metalPath,
+        metallibPath: tools.metallibPath,
+        macosSdkPath: tools.macosSdkPath,
+      )}\n'
       'stdout: ${linkResult.stdout.toString().trim()}\n'
-      'stderr: ${linkResult.stderr.toString().trim()}',
+      'stderr: ${linkResult.stderr.toString().trim()}\n'
+      '$_metalToolchainFallback',
     );
   }
 
@@ -1213,6 +1244,116 @@ Future<void> _buildMetalShaders() async {
     await File(outputLib).copy(destination);
     print('Copied to ${path.relative(resourceDirectory, from: repoRoot)}/');
   }
+}
+
+Future<_MetalShaderTools> _resolveMetalShaderTools() async {
+  final metal = await _tryResolveXcrunToolPath('metal');
+  final metallib = await _tryResolveXcrunToolPath('metallib');
+  final macosSdk = await _tryResolveMacOSSdkPath();
+  final failures = [
+    if (metal.error != null) metal.error!,
+    if (metallib.error != null) metallib.error!,
+    if (macosSdk.error != null) macosSdk.error!,
+  ];
+
+  if (failures.isNotEmpty) {
+    throw StateError(
+      'Failed to resolve the Metal shader toolchain.\n'
+      '${_formatMetalToolchainDetails(
+        metalPath: metal.path,
+        metallibPath: metallib.path,
+        macosSdkPath: macosSdk.path,
+      )}\n'
+      '${failures.join('\n')}\n'
+      '$_metalToolchainFallback',
+    );
+  }
+
+  return _MetalShaderTools(
+    metalPath: metal.path!,
+    metallibPath: metallib.path!,
+    macosSdkPath: macosSdk.path!,
+  );
+}
+
+Future<({String? path, String? error})> _tryResolveXcrunToolPath(
+  String toolName,
+) async {
+  final result = await runProcess(
+    'xcrun',
+    ['--find', toolName],
+    throwOnError: false,
+  );
+  final toolPath = result.stdout.toString().trim();
+  if (result.exitCode != 0 || toolPath.isEmpty) {
+    return (
+      path: toolPath.isEmpty ? null : toolPath,
+      error: [
+        'xcrun --find $toolName failed with exit ${result.exitCode}.',
+        _formatProcessOutput(result),
+      ].join('\n'),
+    );
+  }
+
+  if (!await File(toolPath).exists()) {
+    return (
+      path: toolPath,
+      error: 'xcrun --find $toolName returned a missing path: $toolPath',
+    );
+  }
+
+  return (path: toolPath, error: null);
+}
+
+Future<({String? path, String? error})> _tryResolveMacOSSdkPath() async {
+  final result = await runProcess(
+    'xcrun',
+    ['--sdk', 'macosx', '--show-sdk-path'],
+    throwOnError: false,
+  );
+  final sdkPath = result.stdout.toString().trim();
+  if (result.exitCode != 0 || sdkPath.isEmpty) {
+    return (
+      path: sdkPath.isEmpty ? null : sdkPath,
+      error: [
+        'xcrun --sdk macosx --show-sdk-path failed with exit '
+            '${result.exitCode}.',
+        _formatProcessOutput(result),
+      ].join('\n'),
+    );
+  }
+
+  if (!await Directory(sdkPath).exists()) {
+    return (
+      path: sdkPath,
+      error: 'xcrun returned a missing macOS SDK path: $sdkPath',
+    );
+  }
+
+  return (path: sdkPath, error: null);
+}
+
+String _formatMetalToolchainDetails({
+  required String? metalPath,
+  required String? metallibPath,
+  required String? macosSdkPath,
+}) {
+  return [
+    'Metal toolchain:',
+    '  metal: ${metalPath ?? 'not resolved'}',
+    '  metallib: ${metallibPath ?? 'not resolved'}',
+    '  macOS SDK: ${macosSdkPath ?? 'not resolved'}',
+  ].join('\n');
+}
+
+String _formatProcessOutput(ProcessResult result) {
+  final stdoutText = result.stdout.toString().trim();
+  final stderrText = result.stderr.toString().trim();
+  final output = [
+    if (stdoutText.isNotEmpty) 'stdout: $stdoutText',
+    if (stderrText.isNotEmpty) 'stderr: $stderrText',
+  ];
+  return output.isEmpty ? 'No output captured.' : output.join('\n');
 }
 
 /// Setup CocoaPods for iOS or macOS

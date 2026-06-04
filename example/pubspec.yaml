@@ -151,6 +151,7 @@ flutter:
     - assets/comaps_data/countries-strings/cy.json/
     - assets/comaps_data/countries-strings/da.json/
     - assets/comaps_data/countries-strings/de.json/
+    - assets/comaps_data/countries-strings/default.json/
     - assets/comaps_data/countries-strings/el.json/
     - assets/comaps_data/countries-strings/en.json/
     - assets/comaps_data/countries-strings/en_CA.json/
